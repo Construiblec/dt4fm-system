@@ -26,5 +26,3 @@ Servicios API
 docs/  
 Documentación de arquitectura
 
-infrastructure/  
-Configuración de despliegue e infraestructura
