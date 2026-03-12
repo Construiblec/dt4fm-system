@@ -2,9 +2,10 @@ import { AppLayout } from "@/app/layout/AppLayout";
 import { useEffect, useMemo, useState, type ChangeEvent } from "react";
 import { useForm } from "react-hook-form";
 import { useNavigate } from "react-router-dom";
+import axios from "axios";
+import { getBuildings } from "@/modules/incidentes/services/buildingsService";
+import type { Building } from "@/modules/incidentes/types/Building";
 import logo from "@/shared/assets/images/construiblec-logo.png";
-
-const buildings = ["Edificio A", "Edificio B", "Edificio C"];
 
 const priorities = [
   {
@@ -39,6 +40,7 @@ type EvidencePreview = {
 
 export const ReportIncidentPage = () => {
   const navigate = useNavigate();
+  const [buildings, setBuildings] = useState<Building[]>([]);
   const [selectedPriority, setSelectedPriority] = useState<
     (typeof priorities)[number]["value"]
   >("Media");
@@ -56,6 +58,42 @@ export const ReportIncidentPage = () => {
       evidence.forEach((item) => URL.revokeObjectURL(item.previewUrl));
     };
   }, [evidence]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadBuildings = async () => {
+      try {
+        const data = await getBuildings();
+
+        if (isMounted) {
+          setBuildings(data);
+        }
+      } catch (error) {
+        if (axios.isAxiosError(error)) {
+          const status = error.response?.status;
+
+          if (status === 401) {
+            navigate("/login");
+            return;
+          }
+
+          if (status === 500) {
+            console.error("Error loading buildings");
+            return;
+          }
+        }
+
+        console.error("Error loading buildings");
+      }
+    };
+
+    void loadBuildings();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [navigate]);
 
   const remainingSlots = useMemo(() => 3 - evidence.length, [evidence.length]);
 
@@ -136,8 +174,8 @@ export const ReportIncidentPage = () => {
             >
               <option value="">Seleccionar edificio</option>
               {buildings.map((building) => (
-                <option key={building} value={building}>
-                  {building}
+                <option key={building.id} value={String(building.id)}>
+                  {building.description}
                 </option>
               ))}
             </select>
