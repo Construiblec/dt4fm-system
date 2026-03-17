@@ -1,4 +1,4 @@
-import { Injectable, InternalServerErrorException } from '@nestjs/common'
+import { BadGatewayException, Injectable, InternalServerErrorException } from '@nestjs/common'
 import { OpenmaintService } from '../../integrations/openmaint/openmaint.service'
 import { CreateIncidentDto } from './dto/create-incident.dto'
 
@@ -8,12 +8,51 @@ type UploadedImage = {
   mimetype: string
 }
 
+type OpenmaintIncidentListItem = {
+  _id: number
+  Number: string
+  ShortDescr: string
+  _Priority_description: string
+  _ProcessStatus_description: string
+  _Site_description: string
+  OpeningDate: string
+}
+
+type OpenmaintIncidentListResponse = {
+  data?: OpenmaintIncidentListItem[]
+}
+
 @Injectable()
 export class IncidentsService {
 
   constructor(
     private readonly openmaintService: OpenmaintService
   ) {}
+
+  async getMyIncidents(employeeId: number, sessionId: string) {
+    let response: OpenmaintIncidentListResponse
+
+    try {
+      response = await this.openmaintService.getIncidentsByRequester(
+        sessionId,
+        employeeId
+      ) as OpenmaintIncidentListResponse
+    } catch {
+      throw new BadGatewayException('Error al consultar incidentes en OpenMAINT')
+    }
+
+    return {
+      incidents: (response.data ?? []).map((incident) => ({
+        id: incident._id,
+        number: incident.Number,
+        location: incident.ShortDescr,
+        priority: incident._Priority_description,
+        status: incident._ProcessStatus_description,
+        building: incident._Site_description,
+        createdAt: incident.OpeningDate
+      }))
+    }
+  }
 
   async createIncident(
     sessionId: string,

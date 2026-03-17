@@ -1,36 +1,35 @@
 import { AppLayout } from "@/app/layout/AppLayout";
+import { useEffect, useState } from "react";
 import logo from "@/shared/assets/images/construiblec-logo.png";
 import { useLogout } from "@/modules/auth/hooks/useLogout";
 import { BottomNavigation } from "@/modules/incidentes/components/BottomNavigation";
 import { FloatingReportButton } from "@/modules/incidentes/components/FloatingReportButton";
 import { TaskCard } from "@/modules/incidentes/components/TaskCard";
-
-const tasks = [
-  {
-    id: "R103",
-    priority: "ALTA" as const,
-    time: "9:00 AM - 45m",
-    description: "Habitaci\u00f3n sin utensilios",
-    status: "Finalizada",
-  },
-  {
-    id: "I203",
-    priority: "MEDIA" as const,
-    time: "9:00 AM - 45m",
-    description: "Llevar escobas",
-    status: "Iniciar",
-  },
-  {
-    id: "B203",
-    priority: "BAJA" as const,
-    time: "9:00 AM - 45m",
-    description: "Retirar escobas en recepci\u00f3n",
-    status: "En Pausa",
-  },
-];
+import { getMyIncidents } from "@/modules/incidentes/services/incidentsService";
+import type { Incident } from "@/modules/incidentes/types/Incident";
 
 export const DashboardPage = () => {
   const logout = useLogout();
+  const [incidents, setIncidents] = useState<Incident[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const data = await getMyIncidents();
+        setIncidents(data);
+      } catch {
+        setError("No se pudieron cargar los incidentes");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    void load();
+  }, []);
 
   return (
     <AppLayout className="bg-gray-100">
@@ -65,11 +64,31 @@ export const DashboardPage = () => {
               <h2 className="text-2xl font-bold text-slate-900">Mis tareas</h2>
             </div>
 
-            <div className="space-y-4">
-              {tasks.map((task) => (
-                <TaskCard key={task.id} {...task} />
-              ))}
-            </div>
+            {loading ? (
+              <div className="rounded-xl bg-white p-4 text-sm text-slate-500 shadow-sm">
+                Cargando incidentes...
+              </div>
+            ) : null}
+
+            {!loading && error ? (
+              <div className="rounded-xl bg-white p-4 text-sm text-red-600 shadow-sm">
+                Error al cargar incidentes
+              </div>
+            ) : null}
+
+            {!loading && !error && incidents.length === 0 ? (
+              <div className="rounded-xl bg-white p-4 text-sm text-slate-500 shadow-sm">
+                No tienes incidentes asignados
+              </div>
+            ) : null}
+
+            {!loading && !error && incidents.length > 0 ? (
+              <div className="space-y-4">
+                {incidents.map((incident) => (
+                  <TaskCard key={incident.id} {...incident} />
+                ))}
+              </div>
+            ) : null}
           </div>
         </section>
 

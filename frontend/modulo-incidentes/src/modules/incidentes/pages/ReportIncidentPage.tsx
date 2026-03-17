@@ -9,6 +9,7 @@ import {
   type CreateIncidentResponse,
 } from "@/modules/incidentes/services/incidentsService";
 import type { Building } from "@/modules/incidentes/types/Building";
+import { ConfirmModal } from "@/shared/components/ConfirmModal";
 import { ErrorModal } from "@/shared/components/ErrorModal";
 import { LoadingModal } from "@/shared/components/LoadingModal";
 import { SuccessModal } from "@/shared/components/SuccessModal";
@@ -44,7 +45,7 @@ type FormValues = {
 };
 
 const MAX_IMAGES = 6;
-const MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024;
+const MAX_IMAGE_SIZE_BYTES = 50 * 1024 * 1024;
 
 export const ReportIncidentPage = () => {
   const navigate = useNavigate();
@@ -54,10 +55,12 @@ export const ReportIncidentPage = () => {
     null,
   );
   const [error, setError] = useState<string | null>(null);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [selectedPriority, setSelectedPriority] = useState<
     (typeof priorities)[number]
   >(priorities[1]);
   const [images, setImages] = useState<File[]>([]);
+  const isVisitor = Boolean(localStorage.getItem("visitorName"));
   const { register, handleSubmit } = useForm<FormValues>({
     defaultValues: {
       building: "",
@@ -154,6 +157,10 @@ export const ReportIncidentPage = () => {
   };
 
   const getSuccessMessage = (response: CreateIncidentResponse) => {
+    if (isVisitor) {
+      return "Incidente enviado correctamente. Será redirigido al inicio.";
+    }
+
     if (response.attachmentsFailed === 0) {
       return `${response.attachmentsUploaded} fotograf\u00edas adjuntadas`;
     }
@@ -161,7 +168,19 @@ export const ReportIncidentPage = () => {
     return `Incidente creado\n${response.attachmentsUploaded} fotograf\u00edas adjuntadas\n${response.attachmentsFailed} fotograf\u00eda${response.attachmentsFailed > 1 ? "s" : ""} no pudo subirse`;
   };
 
+  const handleConfirmSubmit = () => {
+    setShowConfirmModal(false);
+    void handleSubmit(onSubmit)();
+  };
+
   const onSubmit = async (values: FormValues) => {
+    const visitorName = localStorage.getItem("visitorName");
+    const visitorPhone = localStorage.getItem("visitorPhone");
+    const notes =
+      visitorName && visitorPhone
+        ? `${values.description}\n\n--- Datos del visitante ---\nNombre: ${visitorName}\nTeléfono: ${visitorPhone}`
+        : values.description;
+
     if (!values.building) {
       setError("Debe seleccionar un edificio.");
       return;
@@ -191,7 +210,7 @@ export const ReportIncidentPage = () => {
         buildingId: values.building,
         floorArea: values.area,
         priority: Number(selectedPriority.id),
-        notes: values.description,
+        notes,
         images,
       });
 
@@ -236,7 +255,13 @@ export const ReportIncidentPage = () => {
           </div>
         </div>
 
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-5 px-4 py-5">
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            setShowConfirmModal(true);
+          }}
+          className="space-y-5 px-4 py-5"
+        >
           <section className="space-y-2">
             <label
               htmlFor="building"
@@ -372,11 +397,33 @@ export const ReportIncidentPage = () => {
         </form>
 
         <LoadingModal open={isSubmitting} />
+        <ConfirmModal
+          open={showConfirmModal}
+          title="Confirmar acción"
+          message="¿Está seguro que desea reportar esta novedad?"
+          onConfirm={handleConfirmSubmit}
+          onCancel={() => setShowConfirmModal(false)}
+        />
         <SuccessModal
           open={successData !== null}
           incidentId={successData?.incidentId ?? null}
           message={successData ? getSuccessMessage(successData) : ""}
-          onClose={() => navigate("/dashboard")}
+          onClose={() => {
+            const isVisitor = Boolean(localStorage.getItem("visitorName"));
+
+            if (isVisitor) {
+              localStorage.removeItem("visitorName");
+              localStorage.removeItem("visitorPhone");
+              localStorage.removeItem("sessionId");
+              localStorage.removeItem("employeeId");
+              localStorage.removeItem("username");
+              localStorage.removeItem("role");
+              navigate("/login");
+              return;
+            }
+
+            navigate("/dashboard");
+          }}
         />
         <ErrorModal
           open={error !== null}

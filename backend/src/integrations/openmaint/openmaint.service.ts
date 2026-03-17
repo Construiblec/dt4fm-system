@@ -1,119 +1,151 @@
-import { InternalServerErrorException, Injectable } from '@nestjs/common'
-import FormData from 'form-data'
-import { OpenmaintClient } from './openmaint.client'
+import {
+  BadGatewayException,
+  InternalServerErrorException,
+  Injectable,
+} from '@nestjs/common';
+import FormData from 'form-data';
+import { OpenmaintClient } from './openmaint.client';
 
 type EmployeeCard = {
-  _id: number
-}
+  _id: number;
+};
 
 type EmployeeCardsResponse = {
-  data?: EmployeeCard[]
-}
+  data?: EmployeeCard[];
+};
 
 type OpenmaintCreateIncidentBody = {
-  _type: 'CorrectiveMaint'
-  _activity: 'CM01-Opening'
-  _advance: true
-  OpeningDate: string
-  ShortDescr: string
-  ProcessNotes: string
-  Requester: number
-  Type: number
-  Priority: number
-  Site: number
-  Category: number
-  Subcategory: number
-  ProcessStatus: number
-}
+  _type: 'CorrectiveMaint';
+  _activity: 'CM01-Opening';
+  _advance: true;
+  OpeningDate: string;
+  ShortDescr: string;
+  ProcessNotes: string;
+  Requester: number;
+  Type: number;
+  Priority: number;
+  Site: number;
+  Category: number;
+  Subcategory: number;
+  ProcessStatus: number;
+};
 
 type OpenmaintIncidentResponse = {
-  success?: boolean
+  success?: boolean;
   data?: {
-    _id?: number
-    Id?: number
-    id?: number
-  }
-}
+    _id?: number;
+    Id?: number;
+    id?: number;
+  };
+};
 
 type UploadedImage = {
-  buffer: Buffer
-  originalname: string
-  mimetype: string
-}
+  buffer: Buffer;
+  originalname: string;
+  mimetype: string;
+};
 
 @Injectable()
 export class OpenmaintService {
-
-  constructor(
-    private readonly client: OpenmaintClient
-  ) {}
+  constructor(private readonly client: OpenmaintClient) {}
 
   async getBuildings(sessionId: string) {
-    return this.client.get('/classes/Building/cards', sessionId)
+    return this.client.get('/classes/Building/cards', sessionId);
   }
 
-  async resolveEmployeeId(userId: number, sessionId?: string): Promise<number | null> {
+  async getIncidentsByRequester(sessionId: string, employeeId: number) {
+    const encodedSort = encodeURIComponent(
+      JSON.stringify([
+        {
+          property: 'Sorting',
+          direction: 'DESC',
+        },
+      ]),
+    );
+
+    const path = `/processes/CorrectiveMaint/instances?include_tasklist=false&onlyGridAttrs=true&start=0&limit=50&sort=${encodedSort}`;
+
+    try {
+      return await this.client.get(path, sessionId);
+    } catch {
+      throw new BadGatewayException(
+        'Error al consultar incidentes en OpenMAINT',
+      );
+    }
+  }
+
+  async resolveEmployeeId(
+    userId: number,
+    sessionId?: string,
+  ): Promise<number | null> {
     const filter = {
       attribute: {
         simple: {
           attribute: 'LoginUser',
           operator: 'equal',
-          value: userId
-        }
-      }
-    }
+          value: userId,
+        },
+      },
+    };
 
-    const encodedFilter = encodeURIComponent(JSON.stringify(filter))
+    const encodedFilter = encodeURIComponent(JSON.stringify(filter));
 
     try {
-      const response = await this.client.get(
+      const response = (await this.client.get(
         `/classes/Employee/cards?filter=${encodedFilter}`,
-        sessionId
-      ) as EmployeeCardsResponse
+        sessionId,
+      )) as EmployeeCardsResponse;
 
-      return response.data?.[0]?._id ?? null
+      return response.data?.[0]?._id ?? null;
     } catch {
-      return null
+      return null;
     }
   }
 
-  async createCorrectiveMaintIncident(body: OpenmaintCreateIncidentBody, sessionId: string) {
+  async createCorrectiveMaintIncident(
+    body: OpenmaintCreateIncidentBody,
+    sessionId: string,
+  ) {
     try {
-      const response = await this.client.post(
+      const response = (await this.client.post(
         '/processes/CorrectiveMaint/instances',
         body,
-        sessionId
-      ) as OpenmaintIncidentResponse
+        sessionId,
+      )) as OpenmaintIncidentResponse;
 
       if (response.success === false) {
-        throw new InternalServerErrorException('OpenMAINT no pudo crear el incidente')
+        throw new InternalServerErrorException(
+          'OpenMAINT no pudo crear el incidente',
+        );
       }
 
-      return response
+      return response;
     } catch (error) {
       if (error instanceof InternalServerErrorException) {
-        throw error
+        throw error;
       }
 
-      throw new InternalServerErrorException('Error al crear incidente en OpenMAINT')
+      throw new InternalServerErrorException(
+        'Error al crear incidente en OpenMAINT',
+      );
     }
   }
 
   extractIncidentId(response: OpenmaintIncidentResponse): number | null {
-    return response.data?._id ?? response.data?.Id ?? response.data?.id ?? null
+    return response.data?._id ?? response.data?.Id ?? response.data?.id ?? null;
   }
 
   async uploadIncidentAttachment(
     incidentId: number,
     image: UploadedImage,
-    sessionId: string
+    sessionId: string,
   ): Promise<boolean> {
-    const formData = new FormData()
+    const formData = new FormData();
 
     formData.append('file', image.buffer, {
       filename: image.originalname,
-      contentType: image.mimetype
-    })
+      contentType: image.mimetype,
+    });
 
     try {
       await this.client.post(
@@ -121,14 +153,13 @@ export class OpenmaintService {
         formData,
         sessionId,
         {
-          headers: formData.getHeaders()
-        }
-      )
+          headers: formData.getHeaders(),
+        },
+      );
 
-      return true
+      return true;
     } catch {
-      return false
+      return false;
     }
   }
-
 }

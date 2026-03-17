@@ -4,35 +4,35 @@ import logo from "@/shared/assets/images/construiblec-logo.png";
 
 export const LoginPage = () => {
   return (
-    <AppLayout className="bg-gray-100">
+    <AppLayout className="bg-gradient-to-b from-slate-100 via-slate-50 to-white">
       <main className="min-h-screen px-4 py-8">
         <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center">
-          <section className="w-full max-w-sm rounded-xl bg-white p-6 shadow-md sm:p-8">
+          <section className="w-full max-w-sm rounded-[28px] border border-white/80 bg-white p-6 shadow-[0_20px_60px_rgba(15,23,42,0.10)] sm:p-8">
             <div className="mb-8 flex flex-col items-center text-center">
-              <div className="mb-4 flex items-center justify-center">
+              <div className="mb-5 flex h-20 w-20 items-center justify-center rounded-3xl bg-slate-50 shadow-inner">
                 <img
                   src={logo}
                   alt="Construiblec"
-                  className="h-16 w-16 rounded-xl object-contain"
+                  className="h-10 w-10 object-contain"
                 />
               </div>
 
-              <div className="space-y-2">
-                <p className="text-sm font-semibold uppercase tracking-[0.3em] text-slate-500">
-                  Construiblec
+              <div className="space-y-1">
+                <p className="text-xs font-semibold uppercase tracking-[0.35em] text-slate-500">
+                  CONSTRUIBLEC
                 </p>
-                <h1 className="text-3xl font-bold tracking-tight text-slate-900">
+                <h1 className="text-2xl font-bold tracking-tight text-slate-900">
                   Bienvenido
                 </h1>
-                <p className="text-sm leading-6 text-slate-500">
-                  Por favor ingresa tus credenciales para ingresar
+                <p className="text-sm leading-5 text-slate-500">
+                  Selecciona tu perfil para continuar
                 </p>
               </div>
             </div>
 
             <LoginForm />
 
-            <footer className="mt-8 text-center text-[11px] font-medium uppercase tracking-[0.18em] text-slate-400">
+            <footer className="mt-8 text-center text-[10px] font-medium uppercase tracking-[0.16em] text-slate-400">
               &copy; 2026 CONSTRUIBLEC {"\u00b7"} TODOS LOS DERECHOS RESERVADOS
             </footer>
           </section>

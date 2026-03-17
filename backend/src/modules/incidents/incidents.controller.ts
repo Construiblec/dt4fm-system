@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Get,
   Headers,
   Post,
   UploadedFiles,
@@ -21,6 +22,24 @@ type UploadedImage = {
 @Controller('incidents')
 export class IncidentsController {
   constructor(private readonly incidentsService: IncidentsService) {}
+
+  @Get('my')
+  async getMyIncidents(
+    @Headers('authorization') sessionId: string,
+    @Headers('x-employee-id') employeeIdHeader: string,
+  ) {
+    const employeeId = Number(employeeIdHeader);
+
+    if (!sessionId) {
+      throw new BadRequestException('Authorization header is required');
+    }
+
+    if (!Number.isInteger(employeeId) || employeeId <= 0) {
+      throw new BadRequestException('x-employee-id header is required');
+    }
+
+    return this.incidentsService.getMyIncidents(employeeId, sessionId);
+  }
 
   @Post()
   @UseInterceptors(
