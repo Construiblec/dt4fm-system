@@ -3,6 +3,7 @@ import { env } from "@/config/env";
 
 export type LoginResponse = {
   sessionId: string;
+  employeeId: string;
   username: string;
   role: string;
 };

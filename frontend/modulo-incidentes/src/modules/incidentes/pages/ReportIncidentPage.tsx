@@ -4,24 +4,34 @@ import { useForm } from "react-hook-form";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import { getBuildings } from "@/modules/incidentes/services/buildingsService";
+import {
+  createIncident,
+  type CreateIncidentResponse,
+} from "@/modules/incidentes/services/incidentsService";
 import type { Building } from "@/modules/incidentes/types/Building";
+import { ErrorModal } from "@/shared/components/ErrorModal";
+import { LoadingModal } from "@/shared/components/LoadingModal";
+import { SuccessModal } from "@/shared/components/SuccessModal";
 import logo from "@/shared/assets/images/construiblec-logo.png";
 
 const priorities = [
   {
-    value: "Baja",
+    id: 120,
+    label: "Baja",
     baseClassName:
       "border-emerald-200 bg-emerald-50 text-emerald-700 hover:border-emerald-300",
     activeClassName: "border-emerald-500 bg-emerald-500 text-white",
   },
   {
-    value: "Media",
+    id: 119,
+    label: "Media",
     baseClassName:
       "border-amber-200 bg-amber-50 text-amber-700 hover:border-amber-300",
     activeClassName: "border-amber-500 bg-amber-500 text-slate-900",
   },
   {
-    value: "Alta",
+    id: 118,
+    label: "Alta",
     baseClassName: "border-red-200 bg-red-50 text-red-700 hover:border-red-300",
     activeClassName: "border-red-500 bg-red-500 text-white",
   },
@@ -33,18 +43,21 @@ type FormValues = {
   description: string;
 };
 
-type EvidencePreview = {
-  file: File;
-  previewUrl: string;
-};
+const MAX_IMAGES = 6;
+const MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024;
 
 export const ReportIncidentPage = () => {
   const navigate = useNavigate();
   const [buildings, setBuildings] = useState<Building[]>([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [successData, setSuccessData] = useState<CreateIncidentResponse | null>(
+    null,
+  );
+  const [error, setError] = useState<string | null>(null);
   const [selectedPriority, setSelectedPriority] = useState<
-    (typeof priorities)[number]["value"]
-  >("Media");
-  const [evidence, setEvidence] = useState<EvidencePreview[]>([]);
+    (typeof priorities)[number]
+  >(priorities[1]);
+  const [images, setImages] = useState<File[]>([]);
   const { register, handleSubmit } = useForm<FormValues>({
     defaultValues: {
       building: "",
@@ -53,11 +66,20 @@ export const ReportIncidentPage = () => {
     },
   });
 
+  const imagePreviews = useMemo(
+    () =>
+      images.map((file) => ({
+        file,
+        previewUrl: URL.createObjectURL(file),
+      })),
+    [images],
+  );
+
   useEffect(() => {
     return () => {
-      evidence.forEach((item) => URL.revokeObjectURL(item.previewUrl));
+      imagePreviews.forEach((item) => URL.revokeObjectURL(item.previewUrl));
     };
-  }, [evidence]);
+  }, [imagePreviews]);
 
   useEffect(() => {
     let isMounted = true;
@@ -95,41 +117,96 @@ export const ReportIncidentPage = () => {
     };
   }, [navigate]);
 
-  const remainingSlots = useMemo(() => 3 - evidence.length, [evidence.length]);
+  const remainingSlots = useMemo(
+    () => MAX_IMAGES - images.length,
+    [images.length],
+  );
 
   const handleEvidenceChange = (event: ChangeEvent<HTMLInputElement>) => {
-    const selectedFiles = Array.from(event.target.files ?? []).slice(
-      0,
-      remainingSlots,
-    );
+    const selectedFiles = Array.from(event.target.files ?? []);
 
     if (selectedFiles.length === 0) {
       return;
     }
 
-    const previews = selectedFiles.map((file) => ({
-      file,
-      previewUrl: URL.createObjectURL(file),
-    }));
+    const invalidFile = selectedFiles.find(
+      (file) => file.size > MAX_IMAGE_SIZE_BYTES,
+    );
 
-    setEvidence((current) => [...current, ...previews]);
+    if (invalidFile) {
+      setError("Cada imagen debe pesar m\u00e1ximo 5MB.");
+      event.target.value = "";
+      return;
+    }
+
+    if (images.length + selectedFiles.length > MAX_IMAGES) {
+      setError("Solo puede adjuntar hasta 6 im\u00e1genes.");
+    }
+
+    const updatedImages = [...images, ...selectedFiles].slice(0, MAX_IMAGES);
+
+    setImages(updatedImages);
     event.target.value = "";
   };
 
-  const removeEvidence = (previewUrl: string) => {
-    setEvidence((current) => {
-      const target = current.find((item) => item.previewUrl === previewUrl);
-
-      if (target) {
-        URL.revokeObjectURL(target.previewUrl);
-      }
-
-      return current.filter((item) => item.previewUrl !== previewUrl);
-    });
+  const removeEvidence = (fileToRemove: File) => {
+    setImages((current) => current.filter((file) => file !== fileToRemove));
   };
 
-  const onSubmit = (_values: FormValues) => {
-    console.log("incidente enviado");
+  const getSuccessMessage = (response: CreateIncidentResponse) => {
+    if (response.attachmentsFailed === 0) {
+      return `${response.attachmentsUploaded} fotograf\u00edas adjuntadas`;
+    }
+
+    return `Incidente creado\n${response.attachmentsUploaded} fotograf\u00edas adjuntadas\n${response.attachmentsFailed} fotograf\u00eda${response.attachmentsFailed > 1 ? "s" : ""} no pudo subirse`;
+  };
+
+  const onSubmit = async (values: FormValues) => {
+    if (!values.building) {
+      setError("Debe seleccionar un edificio.");
+      return;
+    }
+
+    if (!Number.isInteger(Number(selectedPriority.id))) {
+      setError("La prioridad seleccionada no es v\u00e1lida.");
+      return;
+    }
+
+    if (images.length > MAX_IMAGES) {
+      setError("Solo puede adjuntar hasta 6 im\u00e1genes.");
+      return;
+    }
+
+    if (images.some((image) => image.size > MAX_IMAGE_SIZE_BYTES)) {
+      setError("Cada imagen debe pesar m\u00e1ximo 5MB.");
+      return;
+    }
+
+    try {
+      setError(null);
+      setSuccessData(null);
+      setIsSubmitting(true);
+
+      const response = await createIncident({
+        buildingId: values.building,
+        floorArea: values.area,
+        priority: Number(selectedPriority.id),
+        notes: values.description,
+        images,
+      });
+
+      setSuccessData(response);
+      console.log("incidente enviado");
+    } catch (error) {
+      if (axios.isAxiosError(error) && error.response?.status === 401) {
+        navigate("/login");
+        return;
+      }
+
+      setError("Intente nuevamente.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -175,14 +252,17 @@ export const ReportIncidentPage = () => {
               <option value="">Seleccionar edificio</option>
               {buildings.map((building) => (
                 <option key={building.id} value={String(building.id)}>
-                  {building.description}
+                  {building.description ?? building.name}
                 </option>
               ))}
             </select>
           </section>
 
           <section className="space-y-2">
-            <label htmlFor="area" className="text-sm font-semibold text-slate-700">
+            <label
+              htmlFor="area"
+              className="text-sm font-semibold text-slate-700"
+            >
               Piso / {"\u00c1rea"}
             </label>
             <input
@@ -200,16 +280,16 @@ export const ReportIncidentPage = () => {
             </p>
             <div className="grid grid-cols-3 gap-2">
               {priorities.map((priority) => {
-                const isActive = selectedPriority === priority.value;
+                const isActive = selectedPriority.id === priority.id;
 
                 return (
                   <button
-                    key={priority.value}
+                    key={priority.id}
                     type="button"
-                    onClick={() => setSelectedPriority(priority.value)}
+                    onClick={() => setSelectedPriority(priority)}
                     className={`rounded-2xl border px-3 py-3 text-sm font-semibold transition ${isActive ? priority.activeClassName : priority.baseClassName}`}
                   >
-                    {priority.value}
+                    {priority.label}
                   </button>
                 );
               })}
@@ -236,7 +316,7 @@ export const ReportIncidentPage = () => {
             <div className="flex items-center justify-between">
               <p className="text-sm font-semibold text-slate-700">Evidencia</p>
               <span className="text-xs font-medium text-slate-400">
-                {evidence.length}/3 im{"\u00e1"}genes
+                {images.length}/{MAX_IMAGES} im{"\u00e1"}genes
               </span>
             </div>
 
@@ -245,7 +325,7 @@ export const ReportIncidentPage = () => {
                 Seleccionar im{"\u00e1"}genes
               </span>
               <span className="mt-1 text-xs text-slate-400">
-                JPG, PNG o WEBP. M{"\u00e1"}ximo 3 archivos.
+                JPG, PNG o WEBP. M{"\u00e1"}ximo 6 im{"\u00e1"}genes.
               </span>
               <input
                 type="file"
@@ -257,9 +337,9 @@ export const ReportIncidentPage = () => {
               />
             </label>
 
-            {evidence.length > 0 ? (
+            {imagePreviews.length > 0 ? (
               <div className="grid grid-cols-3 gap-3">
-                {evidence.map((item) => (
+                {imagePreviews.map((item) => (
                   <div
                     key={item.previewUrl}
                     className="overflow-hidden rounded-2xl bg-white shadow-sm"
@@ -271,7 +351,7 @@ export const ReportIncidentPage = () => {
                     />
                     <button
                       type="button"
-                      onClick={() => removeEvidence(item.previewUrl)}
+                      onClick={() => removeEvidence(item.file)}
                       className="w-full border-t border-slate-100 px-2 py-2 text-xs font-semibold text-red-500"
                     >
                       Eliminar
@@ -284,11 +364,25 @@ export const ReportIncidentPage = () => {
 
           <button
             type="submit"
+            disabled={isSubmitting}
             className="w-full rounded-2xl bg-brand px-4 py-4 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-hover focus:outline-none focus:ring-4 focus:ring-brand/30"
           >
             Reportar Novedad
           </button>
         </form>
+
+        <LoadingModal open={isSubmitting} />
+        <SuccessModal
+          open={successData !== null}
+          incidentId={successData?.incidentId ?? null}
+          message={successData ? getSuccessMessage(successData) : ""}
+          onClose={() => navigate("/dashboard")}
+        />
+        <ErrorModal
+          open={error !== null}
+          message={error ?? undefined}
+          onClose={() => setError(null)}
+        />
       </main>
     </AppLayout>
   );

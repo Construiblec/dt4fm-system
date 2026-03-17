@@ -29,6 +29,7 @@ export const LoginForm = () => {
       const response = await login(usuario, password);
 
       localStorage.setItem("sessionId", response.sessionId);
+      localStorage.setItem("employeeId", response.employeeId);
       localStorage.setItem("username", response.username);
       localStorage.setItem("role", response.role);
 
