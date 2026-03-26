@@ -92,7 +92,11 @@ export const DashboardPage = () => {
                 {/* ESTADO */}
                 <select
                   value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value)}
+                  onChange={(e) =>
+                    setStatusFilter(
+                      e.target.value as "ALL" | "Ejecución" | "Otros",
+                    )
+                  }
                   className="flex-shrink-0 w-32 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none"
                 >
                   <option value="ALL">Estado</option>
@@ -103,7 +107,9 @@ export const DashboardPage = () => {
                 {/* PRIORIDAD */}
                 <select
                   value={priorityFilter}
-                  onChange={(e) => setPriorityFilter(e.target.value)}
+                  onChange={(e) =>
+                    setPriorityFilter(e.target.value as string | "ALL")
+                  }
                   className="flex-shrink-0 w-32 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none"
                 >
                   <option value="ALL">Prioridad</option>
