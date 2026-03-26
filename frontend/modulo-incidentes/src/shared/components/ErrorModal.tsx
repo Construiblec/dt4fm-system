@@ -2,12 +2,14 @@ type ErrorModalProps = {
   open: boolean;
   message?: string;
   onClose: () => void;
+  title?: string;
 };
 
 export const ErrorModal = ({
   open,
   message = "Intente nuevamente.",
   onClose,
+  title = "No se pudo crear el incidente.",
 }: ErrorModalProps) => {
   if (!open) {
     return null;
@@ -21,9 +23,7 @@ export const ErrorModal = ({
         </div>
 
         <div className="mt-4 space-y-2 text-center">
-          <h2 className="text-lg font-bold text-slate-900">
-            No se pudo crear el incidente.
-          </h2>
+          <h2 className="text-lg font-bold text-slate-900">{title}</h2>
           <p className="text-sm text-slate-500">{message}</p>
         </div>
 

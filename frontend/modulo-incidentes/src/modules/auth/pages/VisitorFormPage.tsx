@@ -23,10 +23,7 @@ export const VisitorFormPage = () => {
     },
   });
 
-  const onSubmit = async ({
-    fullName,
-    phone,
-  }: VisitorFormValues) => {
+  const onSubmit = async ({ fullName, phone }: VisitorFormValues) => {
     try {
       setErrorMessage(null);
 
@@ -77,11 +74,8 @@ export const VisitorFormPage = () => {
                   CONSTRUIBLEC
                 </p>
                 <h1 className="text-2xl font-bold tracking-tight text-slate-900">
-                  Datos del visitante
+                  Completa la informaci{"\u00f3"}n para reportar tu novedad.
                 </h1>
-                <p className="text-sm leading-6 text-slate-500">
-                  Complete la informaci{"\u00f3"}n para reportar una novedad.
-                </p>
               </div>
             </div>
 

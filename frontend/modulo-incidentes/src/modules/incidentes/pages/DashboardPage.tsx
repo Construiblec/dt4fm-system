@@ -2,17 +2,21 @@ import { AppLayout } from "@/app/layout/AppLayout";
 import { useEffect, useState } from "react";
 import logo from "@/shared/assets/images/construiblec-logo.png";
 import { useLogout } from "@/modules/auth/hooks/useLogout";
-import { BottomNavigation } from "@/modules/incidentes/components/BottomNavigation";
 import { FloatingReportButton } from "@/modules/incidentes/components/FloatingReportButton";
 import { TaskCard } from "@/modules/incidentes/components/TaskCard";
 import { getMyIncidents } from "@/modules/incidentes/services/incidentsService";
 import type { Incident } from "@/modules/incidentes/types/Incident";
+import { Filter, Eraser } from "lucide-react";
 
 export const DashboardPage = () => {
   const logout = useLogout();
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [priorityFilter, setPriorityFilter] = useState<string | "ALL">("ALL");
+  const [statusFilter, setStatusFilter] = useState<
+    "ALL" | "Ejecución" | "Otros"
+  >("ALL");
 
   useEffect(() => {
     const load = async () => {
@@ -31,6 +35,18 @@ export const DashboardPage = () => {
     void load();
   }, []);
 
+  const filteredIncidents = incidents.filter((incident) => {
+    const matchPriority =
+      priorityFilter === "ALL" || incident.priority === priorityFilter;
+
+    const matchStatus =
+      statusFilter === "ALL" ||
+      (statusFilter === "Ejecución" && incident.status === "Ejecución") ||
+      (statusFilter === "Otros" && incident.status !== "Ejecución");
+
+    return matchPriority && matchStatus;
+  });
+
   return (
     <AppLayout className="bg-gray-100">
       <main className="min-h-screen flex flex-col bg-gray-100">
@@ -45,7 +61,9 @@ export const DashboardPage = () => {
               <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-500">
                 Construiblec
               </p>
-              <h1 className="text-lg font-bold text-slate-900">Dashboard</h1>
+              <h1 className="text-lg font-bold text-slate-900">
+                Modulo de novedades
+              </h1>
             </div>
           </div>
 
@@ -63,6 +81,50 @@ export const DashboardPage = () => {
             <div className="space-y-1">
               <h2 className="text-2xl font-bold text-slate-900">Mis tareas</h2>
             </div>
+
+            {!loading && !error && incidents.length > 0 ? (
+              <div className="flex items-center gap-2 overflow-x-auto rounded-2xl bg-white px-3 py-2 shadow-sm">
+                {/* ICONO */}
+                <div className="flex-shrink-0 flex items-center justify-center rounded-lg bg-slate-100 p-2">
+                  <Filter className="h-4 w-4 text-slate-600" />
+                </div>
+
+                {/* ESTADO */}
+                <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                  className="flex-shrink-0 w-32 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none"
+                >
+                  <option value="ALL">Estado</option>
+                  <option value="Ejecución">En ejecución</option>
+                  <option value="Otros">Otros</option>
+                </select>
+
+                {/* PRIORIDAD */}
+                <select
+                  value={priorityFilter}
+                  onChange={(e) => setPriorityFilter(e.target.value)}
+                  className="flex-shrink-0 w-32 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none"
+                >
+                  <option value="ALL">Prioridad</option>
+                  <option value="Alto">Alto</option>
+                  <option value="Medio">Medio</option>
+                  <option value="Bajo">Bajo</option>
+                </select>
+
+                {/* LIMPIAR */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPriorityFilter("ALL");
+                    setStatusFilter("ALL");
+                  }}
+                  className="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-100 text-slate-600 transition hover:bg-slate-200"
+                >
+                  <Eraser className="h-4 w-4" />
+                </button>
+              </div>
+            ) : null}
 
             {loading ? (
               <div className="rounded-xl bg-white p-4 text-sm text-slate-500 shadow-sm">
@@ -82,9 +144,18 @@ export const DashboardPage = () => {
               </div>
             ) : null}
 
-            {!loading && !error && incidents.length > 0 ? (
+            {!loading &&
+            !error &&
+            incidents.length > 0 &&
+            filteredIncidents.length === 0 ? (
+              <div className="rounded-xl bg-white p-4 text-sm text-slate-500 shadow-sm">
+                No hay incidentes que coincidan con los filtros
+              </div>
+            ) : null}
+
+            {!loading && !error && filteredIncidents.length > 0 ? (
               <div className="space-y-4">
-                {incidents.map((incident) => (
+                {filteredIncidents.map((incident) => (
                   <TaskCard key={incident.id} {...incident} />
                 ))}
               </div>
@@ -93,7 +164,6 @@ export const DashboardPage = () => {
         </section>
 
         <FloatingReportButton />
-        <BottomNavigation />
       </main>
     </AppLayout>
   );

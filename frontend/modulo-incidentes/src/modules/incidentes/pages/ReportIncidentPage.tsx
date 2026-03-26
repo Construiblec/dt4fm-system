@@ -13,7 +13,7 @@ import { ConfirmModal } from "@/shared/components/ConfirmModal";
 import { ErrorModal } from "@/shared/components/ErrorModal";
 import { LoadingModal } from "@/shared/components/LoadingModal";
 import { SuccessModal } from "@/shared/components/SuccessModal";
-import logo from "@/shared/assets/images/construiblec-logo.png";
+import { ArrowLeft } from "lucide-react";
 
 const priorities = [
   {
@@ -232,26 +232,18 @@ export const ReportIncidentPage = () => {
     <AppLayout className="bg-[#f1f1f2]">
       <main className="min-h-screen bg-[#f1f1f2]">
         <div className="border-b border-slate-200 bg-white px-4 py-4">
-          <button
-            type="button"
-            onClick={() => navigate("/dashboard")}
-            className="flex items-center gap-2 text-sm font-semibold text-slate-700"
-          >
-            <span aria-hidden="true">&larr;</span>
-            Reporte de novedad
-          </button>
-        </div>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => navigate("/dashboard")}
+              className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 text-slate-700 transition hover:bg-slate-200"
+            >
+              <ArrowLeft className="h-5 w-5" />
+            </button>
 
-        <div className="border-b border-slate-200 bg-white px-4 py-3">
-          <div className="flex items-center gap-2.5">
-            <img
-              src={logo}
-              alt="Construiblec"
-              className="h-8 w-8 rounded-md border border-slate-200 bg-white p-0.5"
-            />
-            <span className="text-[15px] font-semibold text-slate-800">
-              Construiblec
-            </span>
+            <h1 className="text-base font-semibold text-slate-900">
+              Reporte de novedad
+            </h1>
           </div>
         </div>
 

@@ -1,8 +1,12 @@
 type LoadingModalProps = {
   open: boolean;
+  message?: string;
 };
 
-export const LoadingModal = ({ open }: LoadingModalProps) => {
+export const LoadingModal = ({
+  open,
+  message = "Creando incidente...",
+}: LoadingModalProps) => {
   if (!open) {
     return null;
   }
@@ -12,7 +16,7 @@ export const LoadingModal = ({ open }: LoadingModalProps) => {
       <div className="w-full max-w-xs rounded-2xl bg-white p-6 text-center shadow-xl">
         <div className="mx-auto h-10 w-10 animate-spin rounded-full border-4 border-slate-200 border-t-brand" />
         <p className="mt-4 text-sm font-semibold text-slate-800">
-          Creando incidente...
+          {message}
         </p>
       </div>
     </div>

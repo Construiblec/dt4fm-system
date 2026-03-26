@@ -4,7 +4,7 @@ export const FloatingReportButton = () => {
   const navigate = useNavigate();
 
   return (
-    <div className="fixed bottom-24 left-0 z-30 flex w-full justify-center px-4">
+    <div className="fixed bottom-6 left-0 z-30 flex w-full justify-center px-4">
       <button
         type="button"
         onClick={() => navigate("/reportar-incidente")}

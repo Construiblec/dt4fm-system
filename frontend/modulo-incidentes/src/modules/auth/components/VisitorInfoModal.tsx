@@ -19,8 +19,8 @@ export const VisitorInfoModal = ({
         <div className="space-y-3 text-center">
           <h2 className="text-lg font-bold text-slate-900">Acceso visitante</h2>
           <p className="text-sm leading-6 text-slate-500">
-            Para ingresar una novedad como visitante necesitamos sus datos para
-            dar seguimiento.
+            Por favor, completa tus datos para registrar tu novedad y
+            permitirnos darle seguimiento.
           </p>
         </div>
 

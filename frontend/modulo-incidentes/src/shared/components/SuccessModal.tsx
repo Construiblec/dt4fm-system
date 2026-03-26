@@ -3,6 +3,8 @@ type SuccessModalProps = {
   incidentId: number | null;
   message: string;
   onClose: () => void;
+  title?: string;
+  buttonLabel?: string;
 };
 
 export const SuccessModal = ({
@@ -10,6 +12,8 @@ export const SuccessModal = ({
   incidentId,
   message,
   onClose,
+  title = "Novedad reportada correctamente",
+  buttonLabel = "Volver a pagina principal",
 }: SuccessModalProps) => {
   if (!open || incidentId === null) {
     return null;
@@ -23,9 +27,7 @@ export const SuccessModal = ({
         </div>
 
         <div className="mt-4 space-y-2 text-center">
-          <h2 className="text-lg font-bold text-slate-900">
-            Incidente creado correctamente
-          </h2>
+          <h2 className="text-lg font-bold text-slate-900">{title}</h2>
           <p className="text-sm text-slate-600">ID: {incidentId}</p>
           <p className="whitespace-pre-line text-sm text-slate-500">
             {message}
@@ -37,7 +39,7 @@ export const SuccessModal = ({
           onClick={onClose}
           className="mt-6 w-full rounded-xl bg-brand px-4 py-3 text-sm font-semibold text-white"
         >
-          Volver al Dashboard
+          {buttonLabel}
         </button>
       </div>
     </div>

@@ -2,6 +2,7 @@ import { createBrowserRouter } from "react-router-dom";
 import { LoginPage } from "@/modules/auth/pages/LoginPage";
 import { VisitorFormPage } from "@/modules/auth/pages/VisitorFormPage";
 import { DashboardPage } from "@/modules/incidentes/pages/DashboardPage";
+import { IncidentDetailPage } from "@/modules/incidentes/pages/IncidentDetailPage";
 import { ReportIncidentPage } from "@/modules/incidentes/pages/ReportIncidentPage";
 
 export const router = createBrowserRouter([
@@ -24,6 +25,10 @@ export const router = createBrowserRouter([
   {
     path: "/report-incident",
     element: <ReportIncidentPage />,
+  },
+  {
+    path: "/incidents/:id",
+    element: <IncidentDetailPage />,
   },
   {
     path: "/reportar-incidente",

@@ -7,16 +7,41 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+# Dependencies
 node_modules
+
+# Build output
 dist
 dist-ssr
-*.local
+build
+
+# TypeScript
+*.tsbuildinfo
+
+# Environment variables — NEVER commit these
+.env
+.env.local
+.env.*.local
+# .env.example is intentionally NOT ignored (safe to commit as template)
+
+# Vite cache
+.vite
+
+# Test coverage
+coverage
+
+# Vercel deployment artifacts
+.vercel
 
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
 .idea
+
+# OS generated files
 .DS_Store
+Thumbs.db
+Desktop.ini
 *.suo
 *.ntvs*
 *.njsproj
