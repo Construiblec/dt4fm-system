@@ -58,4 +58,25 @@ export class OpenmaintClient {
     return response.data
   }
 
+  async put(path: string, body: any, sessionId?: string, config?: AxiosRequestConfig) {
+
+    const url = `${this.baseUrl}${path}`
+
+    const headers = sessionId
+      ? { 'Cmdbuild-authorization': sessionId }
+      : {}
+
+    const response = await firstValueFrom(
+      this.httpService.put(url, body, {
+        ...config,
+        headers: {
+          ...headers,
+          ...(config?.headers ?? {})
+        }
+      })
+    )
+
+    return response.data
+  }
+
 }

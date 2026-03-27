@@ -140,7 +140,7 @@ export const DashboardPage = () => {
 
             {!loading && error ? (
               <div className="rounded-xl bg-white p-4 text-sm text-red-600 shadow-sm">
-                Error al cargar incidentes
+                No tienes incidentes asignados
               </div>
             ) : null}
 

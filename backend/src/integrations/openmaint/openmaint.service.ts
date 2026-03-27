@@ -45,6 +45,16 @@ type UploadedImage = {
   mimetype: string;
 };
 
+type CompleteIncidentBody = {
+  _id: number;
+  _type: 'CorrectiveMaint';
+  _activity: string;
+  _advance: true;
+  Action: 'CM03-Advance';
+  Outcome: number;
+  ProcessNotes: string | null;
+};
+
 @Injectable()
 export class OpenmaintService {
   constructor(private readonly client: OpenmaintClient) {}
@@ -72,6 +82,90 @@ export class OpenmaintService {
         'Error al consultar incidentes en OpenMAINT',
       );
     }
+  }
+
+  async getIncidentDetail(incidentId: number, sessionId: string) {
+    return this.client.get(
+      `/processes/CorrectiveMaint/instances/${incidentId}`,
+      sessionId,
+    );
+  }
+
+  async getIncidentWithTask(incidentId: number, sessionId: string) {
+    return this.client.get(
+      `/processes/CorrectiveMaint/instances/${incidentId}?include_tasklist=true`,
+      sessionId,
+    );
+  }
+
+  async getIncidentAttachments(incidentId: number, sessionId: string) {
+    return this.client.get(
+      `/processes/CorrectiveMaint/instances/${incidentId}/attachments`,
+      sessionId,
+    );
+  }
+
+  async getAttachmentPreview(
+    incidentId: number,
+    attachmentId: string,
+    sessionId: string,
+  ) {
+    return this.client.get(
+      `/processes/CorrectiveMaint/instances/${incidentId}/attachments/${attachmentId}/preview`,
+      sessionId,
+    );
+  }
+
+  async uploadCompletionAttachment(
+    incidentId: number,
+    file: UploadedImage,
+    sessionId: string,
+  ) {
+    const formData = new FormData();
+
+    formData.append('file', file.buffer, {
+      filename: file.originalname,
+      contentType: file.mimetype,
+    });
+    formData.append(
+      'attachment',
+      JSON.stringify({
+        fileName: file.originalname,
+        majorVersion: true,
+      }),
+    );
+
+    return this.client.post(
+      `/processes/CorrectiveMaint/instances/${incidentId}/attachments`,
+      formData,
+      sessionId,
+      {
+      headers: formData.getHeaders(),
+      },
+    );
+  }
+
+  async completeIncident(
+    incidentId: number,
+    activityId: string,
+    notes: string | null,
+    sessionId: string,
+  ) {
+    const body: CompleteIncidentBody = {
+      _id: incidentId,
+      _type: 'CorrectiveMaint',
+      _activity: activityId,
+      _advance: true,
+      Action: 'CM03-Advance',
+      Outcome: 261326,
+      ProcessNotes: notes,
+    };
+
+    return this.client.put(
+      `/processes/CorrectiveMaint/instances/${incidentId}`,
+      body,
+      sessionId,
+    );
   }
 
   async resolveEmployeeId(
