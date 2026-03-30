@@ -140,7 +140,7 @@ export class OpenmaintService {
       formData,
       sessionId,
       {
-      headers: formData.getHeaders(),
+        headers: formData.getHeaders(),
       },
     );
   }
@@ -201,11 +201,21 @@ export class OpenmaintService {
     sessionId: string,
   ) {
     try {
+      console.log(
+        '[OpenMAINT] createCorrectiveMaintIncident - payload:',
+        JSON.stringify(body),
+      );
+
       const response = (await this.client.post(
         '/processes/CorrectiveMaint/instances',
         body,
         sessionId,
       )) as OpenmaintIncidentResponse;
+
+      console.log(
+        '[OpenMAINT] createCorrectiveMaintIncident - response:',
+        JSON.stringify(response),
+      );
 
       if (response.success === false) {
         throw new InternalServerErrorException(
@@ -218,6 +228,12 @@ export class OpenmaintService {
       if (error instanceof InternalServerErrorException) {
         throw error;
       }
+
+      console.error('[OpenMAINT] createCorrectiveMaintIncident - error:', {
+        status: error?.response?.status,
+        data: JSON.stringify(error?.response?.data),
+        message: error?.message,
+      });
 
       throw new InternalServerErrorException(
         'Error al crear incidente en OpenMAINT',

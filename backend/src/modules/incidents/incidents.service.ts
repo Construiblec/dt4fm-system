@@ -62,10 +62,12 @@ type OpenmaintAttachmentsResponse = {
 };
 
 type OpenmaintIncidentTaskContext = {
-  data?: {
-    _id?: number;
-    _tasklist?: OpenmaintTaskItem[];
-  } | OpenmaintIncidentTaskContextData;
+  data?:
+    | {
+        _id?: number;
+        _tasklist?: OpenmaintTaskItem[];
+      }
+    | OpenmaintIncidentTaskContextData;
 };
 
 type OpenmaintIncidentTaskContextData = {
@@ -182,9 +184,7 @@ export class IncidentsService {
         incident.ProcessStatus_description ??
         null,
       priority:
-        incident._Priority_description ??
-        incident.Priority_description ??
-        null,
+        incident._Priority_description ?? incident.Priority_description ?? null,
       createdAt: incident.OpeningDate ?? null,
       notes: this.extractNotes(incident.Register ?? null),
       images,
@@ -237,8 +237,8 @@ export class IncidentsService {
           Type: 268288,
           Priority: dto.priority,
           Site: dto.buildingId,
-          Category: 510370,
-          Subcategory: 510391,
+          Category: 1460015,
+          Subcategory: 1460074,
           ProcessStatus: 277461,
         },
         sessionId,
@@ -294,7 +294,10 @@ export class IncidentsService {
     }
 
     const notes = matches.map((match) =>
-      match[1].replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim(),
+      match[1]
+        .replace(/<[^>]*>/g, '')
+        .replace(/\s+/g, ' ')
+        .trim(),
     );
 
     return notes[notes.length - 1] || null;
@@ -388,7 +391,9 @@ export class IncidentsService {
     }
 
     const rawData =
-      'data' in response && response.data !== undefined ? response.data : response;
+      'data' in response && response.data !== undefined
+        ? response.data
+        : response;
 
     if (Array.isArray(rawData)) {
       return rawData[0] ?? null;
