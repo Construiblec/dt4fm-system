@@ -190,7 +190,7 @@ export class CleaningTasksOpenmaintService {
    */
   async getTasksByEmployee(
     employeeId: number,
-    sessionToken: string,
+    _sessionToken: string,
     limit: number,
     offset: number,
   ): Promise<OpenmaintCardsResponse> {
@@ -208,14 +208,14 @@ export class CleaningTasksOpenmaintService {
       JSON.stringify(filter),
     )}&limit=${limit}&start=${offset}`;
 
-    try {
-      return (await this.client.get(path, sessionToken)) as OpenmaintCardsResponse;
-    } catch (error) {
+    return this.executeWithRetry(async (sessionId) => {
+      return (await this.client.get(path, sessionId)) as OpenmaintCardsResponse;
+    }, 'getTasksByEmployee').catch((error) => {
       this.logger.error('Error al obtener tareas del empleado:', error.message);
       throw new InternalServerErrorException(
         'Error al obtener tareas de limpieza de OpenMAINT',
       );
-    }
+    });
   }
 
   /**
@@ -265,18 +265,18 @@ export class CleaningTasksOpenmaintService {
   /**
    * Obtiene el detalle de una Unit usando el session token del usuario.
    */
-  async getUnitById(unitId: number, sessionToken: string): Promise<UnitResponse> {
-    try {
+  async getUnitById(unitId: number, _sessionToken: string): Promise<UnitResponse> {
+    return this.executeWithRetry(async (sessionId) => {
       return (await this.client.get(
         `/classes/Unit/cards/${unitId}`,
-        sessionToken,
+        sessionId,
       )) as UnitResponse;
-    } catch (error) {
+    }, 'getUnitById').catch((error) => {
       this.logger.error(`Error al obtener Unit ${unitId}:`, error.message);
       throw new InternalServerErrorException(
         `Error al obtener Unit ${unitId} de OpenMAINT`,
       );
-    }
+    });
   }
 
   /**
