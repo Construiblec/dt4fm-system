@@ -69,6 +69,9 @@ export const DashboardPage = () => {
     }
 
     if (cleaningError) {
+      // Si hay error cargando tareas, limpiar el activeTask del store
+      // para evitar mostrar la barra cuando no podemos verificar el estado real
+      clearActiveTask();
       return;
     }
 
@@ -76,50 +79,24 @@ export const DashboardPage = () => {
       isActiveCleaningTaskPhase(task.phase),
     );
 
-    if (!activeTask) {
-      if (!backendActiveTask) {
-        return;
-      }
-
-      syncActiveTask({
-        id: backendActiveTask.id,
-        taskNumber: backendActiveTask.taskNumber,
-        description: backendActiveTask.description,
-        phase: backendActiveTask.phase,
-        actualStartTime:
-          backendActiveTask.actualStartTime ?? new Date().toISOString(),
-        plannedEndTime: backendActiveTask.plannedEndTime,
-        unitDescription:
-          backendActiveTask.unit?.description ?? backendActiveTask.description,
-      });
-      return;
-    }
-
-    const matchedTask = cleaningTasks.find((task) => task.id === activeTask.id);
-
-    if (!matchedTask || !isActiveCleaningTaskPhase(matchedTask.phase)) {
+    if (!backendActiveTask) {
+      // No hay ninguna tarea activa en el backend → limpiar store siempre
       clearActiveTask();
       return;
     }
 
-    if (
-      matchedTask.phase !== activeTask.phase ||
-      matchedTask.actualStartTime !== activeTask.actualStartTime ||
-      matchedTask.plannedEndTime !== activeTask.plannedEndTime ||
-      matchedTask.taskNumber !== activeTask.taskNumber ||
-      matchedTask.description !== activeTask.description ||
-      (matchedTask.unit?.description ?? matchedTask.description) !== activeTask.unitDescription
-    ) {
-      syncActiveTask({
-        id: matchedTask.id,
-        taskNumber: matchedTask.taskNumber,
-        description: matchedTask.description,
-        phase: matchedTask.phase,
-        actualStartTime: matchedTask.actualStartTime ?? activeTask.actualStartTime,
-        plannedEndTime: matchedTask.plannedEndTime,
-        unitDescription: matchedTask.unit?.description ?? matchedTask.description,
-      });
-    }
+    // Hay tarea activa en el backend → sincronizar store
+    syncActiveTask({
+      id: backendActiveTask.id,
+      taskNumber: backendActiveTask.taskNumber,
+      description: backendActiveTask.description,
+      phase: backendActiveTask.phase,
+      actualStartTime:
+        backendActiveTask.actualStartTime ?? activeTask?.actualStartTime ?? new Date().toISOString(),
+      plannedEndTime: backendActiveTask.plannedEndTime,
+      unitDescription:
+        backendActiveTask.unit?.description ?? backendActiveTask.description,
+    });
   }, [
     activeTask,
     cleaningError,
