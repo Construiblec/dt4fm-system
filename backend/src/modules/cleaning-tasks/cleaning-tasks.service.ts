@@ -434,11 +434,13 @@ export class CleaningTasksService {
     const existing = await this.openmaintService.getAttachments(taskId, sessionToken);
     if ((existing.data?.length ?? 0) >= MAX_ATTACHMENTS) throw new BadRequestException(`Maximum ${MAX_ATTACHMENTS} photos allowed per task`);
     const categoryCode = dto.category ?? 'Photo';
-    const response = await this.openmaintService.uploadAttachment(taskId, file.buffer, file.originalname, file.mimetype, categoryCode, sessionToken);
+    const ext = file.originalname.includes('.') ? file.originalname.split('.').pop() : 'jpg';
+    const uniqueName = `${Date.now()}_${Math.random().toString(36).slice(2, 7)}.${ext}`;
+    const response = await this.openmaintService.uploadAttachment(taskId, file.buffer, uniqueName, file.mimetype, categoryCode, sessionToken);
     const att = response?.data;
     return {
       success: true,
-      data: { id: att?._id ?? null, fileName: att?.fileName ?? file.originalname, category: categoryCode, uploadDate: att?.created ?? new Date().toISOString() },
+      data: { id: att?._id ?? null, fileName: att?.fileName ?? uniqueName, category: categoryCode, uploadDate: att?.created ?? new Date().toISOString() },
     };
   }
 
