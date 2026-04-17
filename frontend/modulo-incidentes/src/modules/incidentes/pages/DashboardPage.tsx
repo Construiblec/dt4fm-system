@@ -4,12 +4,19 @@ import logo from "@/shared/assets/images/construiblec-logo.png";
 import { useLogout } from "@/modules/auth/hooks/useLogout";
 import { FloatingReportButton } from "@/modules/incidentes/components/FloatingReportButton";
 import { TaskCard } from "@/modules/incidentes/components/TaskCard";
+import { CleaningTaskCard } from "@/modules/incidentes/components/CleaningTaskCard";
 import { getMyIncidents } from "@/modules/incidentes/services/incidentsService";
+import { fetchMyCleaningTasks } from "@/modules/incidentes/services/cleaningTasksService";
 import type { Incident } from "@/modules/incidentes/types/Incident";
+import type { CleaningTask } from "@/modules/incidentes/types/CleaningTask";
+import { isActiveCleaningTaskPhase, useCleaningTaskExecutionStore } from "@/store/cleaningTaskExecutionStore";
 import { Filter, Eraser } from "lucide-react";
 
 export const DashboardPage = () => {
   const logout = useLogout();
+  const activeTask = useCleaningTaskExecutionStore((state) => state.activeTask);
+  const syncActiveTask = useCleaningTaskExecutionStore((state) => state.syncActiveTask);
+  const clearActiveTask = useCleaningTaskExecutionStore((state) => state.clearActiveTask);
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -17,6 +24,10 @@ export const DashboardPage = () => {
   const [statusFilter, setStatusFilter] = useState<
     "ALL" | "Ejecución" | "Otros"
   >("ALL");
+
+  const [cleaningTasks, setCleaningTasks] = useState<CleaningTask[]>([]);
+  const [cleaningLoading, setCleaningLoading] = useState(true);
+  const [cleaningError, setCleaningError] = useState<string | null>(null);
 
   useEffect(() => {
     const load = async () => {
@@ -34,6 +45,89 @@ export const DashboardPage = () => {
 
     void load();
   }, []);
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        setCleaningLoading(true);
+        setCleaningError(null);
+        const data = await fetchMyCleaningTasks();
+        setCleaningTasks(data);
+      } catch {
+        setCleaningError("No se pudieron cargar las tareas de limpieza");
+      } finally {
+        setCleaningLoading(false);
+      }
+    };
+
+    void load();
+  }, []);
+
+  useEffect(() => {
+    if (cleaningLoading) {
+      return;
+    }
+
+    if (cleaningError) {
+      return;
+    }
+
+    const backendActiveTask = cleaningTasks.find((task) =>
+      isActiveCleaningTaskPhase(task.phase),
+    );
+
+    if (!activeTask) {
+      if (!backendActiveTask) {
+        return;
+      }
+
+      syncActiveTask({
+        id: backendActiveTask.id,
+        taskNumber: backendActiveTask.taskNumber,
+        description: backendActiveTask.description,
+        phase: backendActiveTask.phase,
+        actualStartTime:
+          backendActiveTask.actualStartTime ?? new Date().toISOString(),
+        plannedEndTime: backendActiveTask.plannedEndTime,
+        unitDescription:
+          backendActiveTask.unit?.description ?? backendActiveTask.description,
+      });
+      return;
+    }
+
+    const matchedTask = cleaningTasks.find((task) => task.id === activeTask.id);
+
+    if (!matchedTask || !isActiveCleaningTaskPhase(matchedTask.phase)) {
+      clearActiveTask();
+      return;
+    }
+
+    if (
+      matchedTask.phase !== activeTask.phase ||
+      matchedTask.actualStartTime !== activeTask.actualStartTime ||
+      matchedTask.plannedEndTime !== activeTask.plannedEndTime ||
+      matchedTask.taskNumber !== activeTask.taskNumber ||
+      matchedTask.description !== activeTask.description ||
+      (matchedTask.unit?.description ?? matchedTask.description) !== activeTask.unitDescription
+    ) {
+      syncActiveTask({
+        id: matchedTask.id,
+        taskNumber: matchedTask.taskNumber,
+        description: matchedTask.description,
+        phase: matchedTask.phase,
+        actualStartTime: matchedTask.actualStartTime ?? activeTask.actualStartTime,
+        plannedEndTime: matchedTask.plannedEndTime,
+        unitDescription: matchedTask.unit?.description ?? matchedTask.description,
+      });
+    }
+  }, [
+    activeTask,
+    cleaningError,
+    cleaningLoading,
+    cleaningTasks,
+    clearActiveTask,
+    syncActiveTask,
+  ]);
 
   const filteredIncidents = incidents.filter((incident) => {
     const matchPriority =
@@ -62,7 +156,7 @@ export const DashboardPage = () => {
                 Construiblec
               </p>
               <h1 className="text-lg font-bold text-slate-900">
-                Modulo de novedades
+                Mantenimiento y Limpieza
               </h1>
             </div>
           </div>
@@ -163,6 +257,30 @@ export const DashboardPage = () => {
               <div className="space-y-4">
                 {filteredIncidents.map((incident) => (
                   <TaskCard key={incident.id} {...incident} />
+                ))}
+              </div>
+            ) : null}
+
+            {/* Cleaning tasks section */}
+            {cleaningLoading ? (
+              <div className="rounded-xl bg-white p-4 text-sm text-slate-500 shadow-sm">
+                Cargando tareas de limpieza...
+              </div>
+            ) : null}
+
+            {!cleaningLoading && cleaningError ? (
+              <div className="rounded-xl bg-white p-4 text-sm text-slate-500 shadow-sm">
+                No tienes tareas de limpieza asignadas
+              </div>
+            ) : null}
+
+            {!cleaningLoading && !cleaningError && cleaningTasks.length > 0 ? (
+              <div className="space-y-4">
+                <p className="text-xs font-semibold uppercase tracking-widest text-slate-400">
+                  Limpieza
+                </p>
+                {cleaningTasks.map((task) => (
+                  <CleaningTaskCard key={task.id} {...task} />
                 ))}
               </div>
             ) : null}

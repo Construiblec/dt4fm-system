@@ -1,10 +1,10 @@
-import { Test, TestingModule } from '@nestjs/testing'
-import { OpenmaintClient } from './openmaint.client'
-import { OpenmaintService } from './openmaint.service'
+import { Test, TestingModule } from '@nestjs/testing';
+import { OpenmaintClient } from './openmaint.client';
+import { OpenmaintService } from './openmaint.service';
 
 describe('OpenmaintService', () => {
-  let service: OpenmaintService
-  let client: jest.Mocked<OpenmaintClient>
+  let service: OpenmaintService;
+  let client: jest.Mocked<OpenmaintClient>;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -14,32 +14,36 @@ describe('OpenmaintService', () => {
           provide: OpenmaintClient,
           useValue: {
             get: jest.fn(),
-            post: jest.fn()
-          }
-        }
+            post: jest.fn(),
+          },
+        },
       ],
-    }).compile()
+    }).compile();
 
-    service = module.get<OpenmaintService>(OpenmaintService)
-    client = module.get(OpenmaintClient)
-  })
+    service = module.get<OpenmaintService>(OpenmaintService);
+    client = module.get(OpenmaintClient);
+  });
 
   it('should be defined', () => {
-    expect(service).toBeDefined()
-  })
+    expect(service).toBeDefined();
+  });
 
   it('should resolve employee id from the first matching employee', async () => {
     client.get.mockResolvedValue({
       success: true,
-      data: [{ _id: 629039 }]
-    })
+      data: [{ _id: 629039 }],
+    });
 
-    await expect(service.resolveEmployeeId(628914, 'session-id')).resolves.toBe(629039)
-  })
+    await expect(service.resolveEmployeeId(628914, 'session-id')).resolves.toBe(
+      629039,
+    );
+  });
 
   it('should return null when employee lookup fails', async () => {
-    client.get.mockRejectedValue(new Error('OpenMAINT error'))
+    client.get.mockRejectedValue(new Error('OpenMAINT error'));
 
-    await expect(service.resolveEmployeeId(628914, 'session-id')).resolves.toBeNull()
-  })
-})
+    await expect(
+      service.resolveEmployeeId(628914, 'session-id'),
+    ).resolves.toBeNull();
+  });
+});

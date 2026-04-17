@@ -6,6 +6,7 @@ export type LoginResponse = {
   employeeId: string;
   username: string;
   role: string;
+  cleaningEmployeeId?: string | number;
 };
 
 const backendBaseUrl = env.VITE_API_URL.replace(/\/api\/?$/, "");

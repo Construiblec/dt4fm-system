@@ -23,16 +23,24 @@ export class AuthService {
 
     const sessionId = response.data._id
     const userId = response.data.userId
+    const username = response.data.username
+
     const employeeId = typeof userId === 'number'
       ? await this.openmaintService.resolveEmployeeId(userId, sessionId)
       : null
 
+    const cleaningEmployeeId = await this.openmaintService.resolveCleaningEmployeeId(
+      username,
+      sessionId,
+    )
+
     return {
       sessionId,
-      username: response.data.username,
+      username,
       userId,
       role: response.data.role,
-      employeeId
+      employeeId,
+      cleaningEmployeeId,
     }
   }
 

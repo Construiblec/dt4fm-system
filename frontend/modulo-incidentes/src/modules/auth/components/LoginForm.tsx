@@ -49,9 +49,19 @@ export const LoginForm = () => {
       localStorage.setItem("employeeId", response.employeeId);
       localStorage.setItem("username", response.username);
       localStorage.setItem("role", response.role);
+      if (response.cleaningEmployeeId !== undefined) {
+        localStorage.setItem(
+          "cleaningEmployeeId",
+          String(response.cleaningEmployeeId),
+        );
+      }
 
       setIsSuccess(true);
-      navigate("/dashboard");
+      if (response.role === "SuperUser" || response.role === "Admin") {
+        navigate("/supervisor");
+      } else {
+        navigate("/dashboard");
+      }
     } catch (error) {
       setIsSuccess(false);
 

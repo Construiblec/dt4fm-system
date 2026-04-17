@@ -4,6 +4,7 @@ import { OpenmaintModule } from './integrations/openmaint/openmaint.module';
 import { IncidentsModule } from './modules/incidents/incidents.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { BuildingsModule } from './modules/buildings/buildings.module';
+import { CleaningTasksModule } from './modules/cleaning-tasks/cleaning-tasks.module';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { BuildingsModule } from './modules/buildings/buildings.module';
     AuthModule,
     IncidentsModule,
     BuildingsModule,
+    CleaningTasksModule,
   ],
 })
 export class AppModule {}

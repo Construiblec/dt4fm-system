@@ -196,6 +196,34 @@ export class OpenmaintService {
     }
   }
 
+  async resolveCleaningEmployeeId(
+    username: string,
+    sessionId?: string,
+  ): Promise<number | null> {
+    const filter = {
+      attribute: {
+        simple: {
+          attribute: 'PortalUsername',
+          operator: 'equal',
+          value: [username],
+        },
+      },
+    };
+
+    const encodedFilter = encodeURIComponent(JSON.stringify(filter));
+
+    try {
+      const response = (await this.client.get(
+        `/classes/Employee/cards?filter=${encodedFilter}&limit=1`,
+        sessionId,
+      )) as EmployeeCardsResponse;
+
+      return response.data?.[0]?._id ?? null;
+    } catch {
+      return null;
+    }
+  }
+
   async createCorrectiveMaintIncident(
     body: OpenmaintCreateIncidentBody,
     sessionId: string,
