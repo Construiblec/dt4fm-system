@@ -133,7 +133,7 @@ export const SupervisorTaskDetailPage = () => {
             checkoutDate: detail.checkoutDate,
             source: detail.source,
             unit: detail.unit,
-            employee: detail.employee,
+            employee: detail.employee ?? { id: 0, name: "Sin asignar" },
           }}
           onClose={() => setShowReviewModal(false)}
           onSuccess={() => {

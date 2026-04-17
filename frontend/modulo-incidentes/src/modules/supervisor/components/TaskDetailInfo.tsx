@@ -1,4 +1,4 @@
-import { User, MapPin, Calendar, Clock, Hash } from "lucide-react";
+import { User, MapPin, Hash } from "lucide-react";
 import type { CleaningTaskDetail } from "@/modules/supervisor/types/SupervisorTask";
 
 const phaseStyles: Record<string, string> = {
