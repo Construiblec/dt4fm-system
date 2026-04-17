@@ -106,7 +106,7 @@ export const SupervisorTaskCard = ({ task, onReview }: Props) => {
         {canReview && (
           <button
             type="button"
-            onClick={() => navigate(`/supervisor/tasks/${task.id}`)}
+            onClick={() => onReview(task)}
             className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-violet-700"
           >
             Revisar
