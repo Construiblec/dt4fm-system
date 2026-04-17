@@ -69,8 +69,6 @@ export const DashboardPage = () => {
     }
 
     if (cleaningError) {
-      // Si hay error cargando tareas, limpiar el activeTask del store
-      // para evitar mostrar la barra cuando no podemos verificar el estado real
       clearActiveTask();
       return;
     }
@@ -80,31 +78,21 @@ export const DashboardPage = () => {
     );
 
     if (!backendActiveTask) {
-      // No hay ninguna tarea activa en el backend → limpiar store siempre
       clearActiveTask();
       return;
     }
 
-    // Hay tarea activa en el backend → sincronizar store
     syncActiveTask({
       id: backendActiveTask.id,
       taskNumber: backendActiveTask.taskNumber,
       description: backendActiveTask.description,
       phase: backendActiveTask.phase,
-      actualStartTime:
-        backendActiveTask.actualStartTime ?? activeTask?.actualStartTime ?? new Date().toISOString(),
+      actualStartTime: backendActiveTask.actualStartTime ?? new Date().toISOString(),
       plannedEndTime: backendActiveTask.plannedEndTime,
-      unitDescription:
-        backendActiveTask.unit?.description ?? backendActiveTask.description,
+      unitDescription: backendActiveTask.unit?.description ?? backendActiveTask.description,
     });
-  }, [
-    activeTask,
-    cleaningError,
-    cleaningLoading,
-    cleaningTasks,
-    clearActiveTask,
-    syncActiveTask,
-  ]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cleaningLoading, cleaningError, cleaningTasks, clearActiveTask, syncActiveTask]);
 
   const filteredIncidents = incidents.filter((incident) => {
     const matchPriority =
