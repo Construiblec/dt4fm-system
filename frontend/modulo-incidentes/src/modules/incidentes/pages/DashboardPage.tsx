@@ -5,29 +5,49 @@ import { useLogout } from "@/modules/auth/hooks/useLogout";
 import { FloatingReportButton } from "@/modules/incidentes/components/FloatingReportButton";
 import { TaskCard } from "@/modules/incidentes/components/TaskCard";
 import { CleaningTaskCard } from "@/modules/incidentes/components/CleaningTaskCard";
+import { MaintenanceFilters } from "@/modules/incidentes/components/MaintenanceFilters";
+import { CleaningFilters } from "@/modules/incidentes/components/CleaningFilters";
 import { getMyIncidents } from "@/modules/incidentes/services/incidentsService";
 import { fetchMyCleaningTasks } from "@/modules/incidentes/services/cleaningTasksService";
 import type { Incident } from "@/modules/incidentes/types/Incident";
 import type { CleaningTask } from "@/modules/incidentes/types/CleaningTask";
-import { isActiveCleaningTaskPhase, useCleaningTaskExecutionStore } from "@/store/cleaningTaskExecutionStore";
-import { Filter, Eraser } from "lucide-react";
+import {
+  isActiveCleaningTaskPhase,
+  useCleaningTaskExecutionStore,
+} from "@/store/cleaningTaskExecutionStore";
+
+type Tab = "maintenance" | "cleaning";
 
 export const DashboardPage = () => {
   const logout = useLogout();
-  const syncActiveTask = useCleaningTaskExecutionStore((state) => state.syncActiveTask);
-  const clearActiveTask = useCleaningTaskExecutionStore((state) => state.clearActiveTask);
+  const syncActiveTask = useCleaningTaskExecutionStore(
+    (state) => state.syncActiveTask,
+  );
+  const clearActiveTask = useCleaningTaskExecutionStore(
+    (state) => state.clearActiveTask,
+  );
+
+  // ── Tab activo ──────────────────────────────────────────────────────────────
+  const [activeTab, setActiveTab] = useState<Tab>("maintenance");
+
+  // ── Estado: incidentes de mantenimiento ────────────────────────────────────
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [priorityFilter, setPriorityFilter] = useState<string | "ALL">("ALL");
-  const [statusFilter, setStatusFilter] = useState<
-    "ALL" | "Ejecución" | "Otros"
-  >("ALL");
 
+  // Filtros de mantenimiento
+  const [priorityFilter, setPriorityFilter] = useState<string>("ALL");
+  const [statusFilter, setStatusFilter] = useState<"ALL" | "Ejecución" | "Otros">("ALL");
+
+  // ── Estado: tareas de limpieza ─────────────────────────────────────────────
   const [cleaningTasks, setCleaningTasks] = useState<CleaningTask[]>([]);
   const [cleaningLoading, setCleaningLoading] = useState(true);
   const [cleaningError, setCleaningError] = useState<string | null>(null);
 
+  // Filtros de limpieza
+  const [phaseFilter, setPhaseFilter] = useState<string>("ALL");
+
+  // ── Carga de datos ─────────────────────────────────────────────────────────
   useEffect(() => {
     const load = async () => {
       try {
@@ -62,10 +82,9 @@ export const DashboardPage = () => {
     void load();
   }, []);
 
+  // ── Sincronización con el store de tarea activa ────────────────────────────
   useEffect(() => {
-    if (cleaningLoading) {
-      return;
-    }
+    if (cleaningLoading) return;
 
     if (cleaningError) {
       clearActiveTask();
@@ -86,28 +105,35 @@ export const DashboardPage = () => {
       taskNumber: backendActiveTask.taskNumber,
       description: backendActiveTask.description,
       phase: backendActiveTask.phase,
-      actualStartTime: backendActiveTask.actualStartTime ?? new Date().toISOString(),
+      actualStartTime:
+        backendActiveTask.actualStartTime ?? new Date().toISOString(),
       plannedEndTime: backendActiveTask.plannedEndTime,
-      unitDescription: backendActiveTask.unit?.description ?? backendActiveTask.description,
+      unitDescription:
+        backendActiveTask.unit?.description ?? backendActiveTask.description,
     });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cleaningLoading, cleaningError, cleaningTasks, clearActiveTask, syncActiveTask]);
 
+  // ── Filtrado ───────────────────────────────────────────────────────────────
   const filteredIncidents = incidents.filter((incident) => {
     const matchPriority =
       priorityFilter === "ALL" || incident.priority === priorityFilter;
-
     const matchStatus =
       statusFilter === "ALL" ||
       (statusFilter === "Ejecución" && incident.status === "Ejecución") ||
       (statusFilter === "Otros" && incident.status !== "Ejecución");
-
     return matchPriority && matchStatus;
   });
 
+  const filteredCleaningTasks = cleaningTasks.filter((task) => {
+    return phaseFilter === "ALL" || task.phase === phaseFilter;
+  });
+
+  // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <AppLayout className="bg-gray-100">
       <main className="min-h-screen flex flex-col bg-gray-100">
+        {/* Header */}
         <header className="flex items-center justify-between p-4">
           <div className="flex items-center gap-3">
             <img
@@ -136,117 +162,133 @@ export const DashboardPage = () => {
 
         <section className="flex-1 px-4 pb-32">
           <div className="mx-auto w-full max-w-sm space-y-5">
-            <div className="space-y-1">
-              <h2 className="text-2xl font-bold text-slate-900">Mis tareas</h2>
+            <h2 className="text-2xl font-bold text-slate-900">Mis tareas</h2>
+
+            {/* Tab switcher */}
+            <div className="flex rounded-xl bg-white p-1 shadow-sm">
+              <button
+                type="button"
+                onClick={() => setActiveTab("maintenance")}
+                className={`flex-1 rounded-lg py-2 text-sm font-semibold transition ${
+                  activeTab === "maintenance"
+                    ? "bg-slate-900 text-white"
+                    : "text-slate-500 hover:text-slate-700"
+                }`}
+              >
+                Mantenimiento
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab("cleaning")}
+                className={`flex-1 rounded-lg py-2 text-sm font-semibold transition ${
+                  activeTab === "cleaning"
+                    ? "bg-slate-900 text-white"
+                    : "text-slate-500 hover:text-slate-700"
+                }`}
+              >
+                Limpieza
+              </button>
             </div>
 
-            {!loading && !error && incidents.length > 0 ? (
-              <div className="flex items-center gap-2 overflow-x-auto rounded-2xl bg-white px-3 py-2 shadow-sm">
-                {/* ICONO */}
-                <div className="flex-shrink-0 flex items-center justify-center rounded-lg bg-slate-100 p-2">
-                  <Filter className="h-4 w-4 text-slate-600" />
-                </div>
+            {/* ── Tab: Mantenimiento ─────────────────────────────────────── */}
+            {activeTab === "maintenance" ? (
+              <>
+                {!loading && !error && incidents.length > 0 ? (
+                  <MaintenanceFilters
+                    priorityFilter={priorityFilter}
+                    statusFilter={statusFilter}
+                    onPriorityChange={setPriorityFilter}
+                    onStatusChange={setStatusFilter}
+                    onClear={() => {
+                      setPriorityFilter("ALL");
+                      setStatusFilter("ALL");
+                    }}
+                  />
+                ) : null}
 
-                {/* ESTADO */}
-                <select
-                  value={statusFilter}
-                  onChange={(e) =>
-                    setStatusFilter(
-                      e.target.value as "ALL" | "Ejecución" | "Otros",
-                    )
-                  }
-                  className="flex-shrink-0 w-32 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none"
-                >
-                  <option value="ALL">Estado</option>
-                  <option value="Ejecución">En ejecución</option>
-                  <option value="Otros">Otros</option>
-                </select>
+                {loading ? (
+                  <div className="rounded-xl bg-white p-4 text-sm text-slate-500 shadow-sm">
+                    Cargando incidentes...
+                  </div>
+                ) : null}
 
-                {/* PRIORIDAD */}
-                <select
-                  value={priorityFilter}
-                  onChange={(e) =>
-                    setPriorityFilter(e.target.value as string | "ALL")
-                  }
-                  className="flex-shrink-0 w-32 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none"
-                >
-                  <option value="ALL">Prioridad</option>
-                  <option value="Alto">Alto</option>
-                  <option value="Medio">Medio</option>
-                  <option value="Bajo">Bajo</option>
-                </select>
+                {!loading && error ? (
+                  <div className="rounded-xl bg-white p-4 text-sm text-slate-500 shadow-sm">
+                    No tienes incidentes asignados
+                  </div>
+                ) : null}
 
-                {/* LIMPIAR */}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setPriorityFilter("ALL");
-                    setStatusFilter("ALL");
-                  }}
-                  className="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-100 text-slate-600 transition hover:bg-slate-200"
-                >
-                  <Eraser className="h-4 w-4" />
-                </button>
-              </div>
+                {!loading && !error && incidents.length === 0 ? (
+                  <div className="rounded-xl bg-white p-4 text-sm text-slate-500 shadow-sm">
+                    No tienes incidentes asignados
+                  </div>
+                ) : null}
+
+                {!loading &&
+                !error &&
+                incidents.length > 0 &&
+                filteredIncidents.length === 0 ? (
+                  <div className="rounded-xl bg-white p-4 text-sm text-slate-500 shadow-sm">
+                    No hay incidentes que coincidan con los filtros
+                  </div>
+                ) : null}
+
+                {!loading && !error && filteredIncidents.length > 0 ? (
+                  <div className="space-y-4">
+                    {filteredIncidents.map((incident) => (
+                      <TaskCard key={incident.id} {...incident} />
+                    ))}
+                  </div>
+                ) : null}
+              </>
             ) : null}
 
-            {loading ? (
-              <div className="rounded-xl bg-white p-4 text-sm text-slate-500 shadow-sm">
-                Cargando incidentes...
-              </div>
-            ) : null}
+            {/* ── Tab: Limpieza ──────────────────────────────────────────── */}
+            {activeTab === "cleaning" ? (
+              <>
+                {!cleaningLoading && !cleaningError && cleaningTasks.length > 0 ? (
+                  <CleaningFilters
+                    phaseFilter={phaseFilter}
+                    onPhaseChange={setPhaseFilter}
+                    onClear={() => setPhaseFilter("ALL")}
+                  />
+                ) : null}
 
-            {!loading && error ? (
-              <div className="rounded-xl bg-white p-4 text-sm text-red-600 shadow-sm">
-                No tienes incidentes asignados
-              </div>
-            ) : null}
+                {cleaningLoading ? (
+                  <div className="rounded-xl bg-white p-4 text-sm text-slate-500 shadow-sm">
+                    Cargando tareas de limpieza...
+                  </div>
+                ) : null}
 
-            {!loading && !error && incidents.length === 0 ? (
-              <div className="rounded-xl bg-white p-4 text-sm text-slate-500 shadow-sm">
-                No tienes incidentes asignados
-              </div>
-            ) : null}
+                {!cleaningLoading && cleaningError ? (
+                  <div className="rounded-xl bg-white p-4 text-sm text-slate-500 shadow-sm">
+                    No tienes tareas de limpieza asignadas
+                  </div>
+                ) : null}
 
-            {!loading &&
-            !error &&
-            incidents.length > 0 &&
-            filteredIncidents.length === 0 ? (
-              <div className="rounded-xl bg-white p-4 text-sm text-slate-500 shadow-sm">
-                No hay incidentes que coincidan con los filtros
-              </div>
-            ) : null}
+                {!cleaningLoading && !cleaningError && cleaningTasks.length === 0 ? (
+                  <div className="rounded-xl bg-white p-4 text-sm text-slate-500 shadow-sm">
+                    No tienes tareas de limpieza asignadas
+                  </div>
+                ) : null}
 
-            {!loading && !error && filteredIncidents.length > 0 ? (
-              <div className="space-y-4">
-                {filteredIncidents.map((incident) => (
-                  <TaskCard key={incident.id} {...incident} />
-                ))}
-              </div>
-            ) : null}
+                {!cleaningLoading &&
+                !cleaningError &&
+                cleaningTasks.length > 0 &&
+                filteredCleaningTasks.length === 0 ? (
+                  <div className="rounded-xl bg-white p-4 text-sm text-slate-500 shadow-sm">
+                    No hay tareas que coincidan con los filtros
+                  </div>
+                ) : null}
 
-            {/* Cleaning tasks section */}
-            {cleaningLoading ? (
-              <div className="rounded-xl bg-white p-4 text-sm text-slate-500 shadow-sm">
-                Cargando tareas de limpieza...
-              </div>
-            ) : null}
-
-            {!cleaningLoading && cleaningError ? (
-              <div className="rounded-xl bg-white p-4 text-sm text-slate-500 shadow-sm">
-                No tienes tareas de limpieza asignadas
-              </div>
-            ) : null}
-
-            {!cleaningLoading && !cleaningError && cleaningTasks.length > 0 ? (
-              <div className="space-y-4">
-                <p className="text-xs font-semibold uppercase tracking-widest text-slate-400">
-                  Limpieza
-                </p>
-                {cleaningTasks.map((task) => (
-                  <CleaningTaskCard key={task.id} {...task} />
-                ))}
-              </div>
+                {!cleaningLoading && !cleaningError && filteredCleaningTasks.length > 0 ? (
+                  <div className="space-y-4">
+                    {filteredCleaningTasks.map((task) => (
+                      <CleaningTaskCard key={task.id} {...task} />
+                    ))}
+                  </div>
+                ) : null}
+              </>
             ) : null}
           </div>
         </section>
