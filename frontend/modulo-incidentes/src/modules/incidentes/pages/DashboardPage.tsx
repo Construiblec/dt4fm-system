@@ -14,7 +14,6 @@ import { Filter, Eraser } from "lucide-react";
 
 export const DashboardPage = () => {
   const logout = useLogout();
-  const activeTask = useCleaningTaskExecutionStore((state) => state.activeTask);
   const syncActiveTask = useCleaningTaskExecutionStore((state) => state.syncActiveTask);
   const clearActiveTask = useCleaningTaskExecutionStore((state) => state.clearActiveTask);
   const [incidents, setIncidents] = useState<Incident[]>([]);
