@@ -3,19 +3,28 @@ import { useNavigate } from "react-router-dom";
 import type { CleaningTask } from "@/modules/incidentes/types/CleaningTask";
 
 const phaseStyles: Record<string, { badge: string; border: string }> = {
-  Assigned:    { badge: "bg-blue-100 text-blue-700",    border: "border-blue-400" },
-  InExecution: { badge: "bg-amber-100 text-amber-700",  border: "border-amber-400" },
-  Completed:   { badge: "bg-violet-100 text-violet-700", border: "border-violet-500" },
-  Reviewed:    { badge: "bg-emerald-100 text-emerald-700", border: "border-emerald-500" },
-  Cancelled:   { badge: "bg-red-100 text-red-700",      border: "border-red-400" },
+  Assigned: { badge: "bg-blue-100 text-blue-700", border: "border-blue-400" },
+  InExecution: {
+    badge: "bg-amber-100 text-amber-700",
+    border: "border-amber-400",
+  },
+  Completed: {
+    badge: "bg-violet-100 text-violet-700",
+    border: "border-violet-500",
+  },
+  Reviewed: {
+    badge: "bg-emerald-100 text-emerald-700",
+    border: "border-emerald-500",
+  },
+  Cancelled: { badge: "bg-red-100 text-red-700", border: "border-red-400" },
 };
 
 const phaseLabels: Record<string, string> = {
-  Assigned:    "Asignada",
+  Assigned: "Asignada",
   InExecution: "En ejecución",
-  Completed:   "Completada",
-  Reviewed:    "Revisada",
-  Cancelled:   "Cancelada",
+  Completed: "Completada",
+  Reviewed: "Revisada",
+  Cancelled: "Cancelada",
 };
 
 function formatDate(iso: string | null): string {
@@ -28,7 +37,10 @@ function formatDate(iso: string | null): string {
 
 function formatTime(iso: string | null): string {
   if (!iso) return "—";
-  return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  return new Date(iso).toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 type Props = {
@@ -38,11 +50,16 @@ type Props = {
 
 export const SupervisorTaskCard = ({ task, onReview }: Props) => {
   const navigate = useNavigate();
-  const style = phaseStyles[task.phase] ?? { badge: "bg-slate-100 text-slate-700", border: "border-slate-300" };
+  const style = phaseStyles[task.phase] ?? {
+    badge: "bg-slate-100 text-slate-700",
+    border: "border-slate-300",
+  };
   const canReview = task.phase === "Completed";
 
   return (
-    <article className={`rounded-xl border-l-4 bg-white p-4 shadow-sm ${style.border}`}>
+    <article
+      className={`rounded-xl border-l-4 bg-white p-4 shadow-sm ${style.border}`}
+    >
       {/* Header */}
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
@@ -82,7 +99,9 @@ export const SupervisorTaskCard = ({ task, onReview }: Props) => {
             <Clock className="h-4 w-4 flex-shrink-0 text-slate-400" />
             <span>
               {formatTime(task.actualStartTime)}
-              {task.actualEndTime ? ` → ${formatTime(task.actualEndTime)}` : " (en curso)"}
+              {task.actualEndTime
+                ? ` → ${formatTime(task.actualEndTime)}`
+                : " (en curso)"}
             </span>
           </div>
         )}
