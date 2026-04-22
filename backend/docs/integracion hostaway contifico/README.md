@@ -13,6 +13,8 @@
 9. [Manejo de errores](#9-manejo-de-errores)
 10. [Consideraciones importantes](#10-consideraciones-importantes)
 11. [Cómo probar localmente](#11-cómo-probar-localmente)
+12. [Estado actual de la integración](#12-estado-actual-de-la-integración)
+13. [Pendientes para activación completa](#13-pendientes-para-activación-completa)
 
 ---
 
@@ -45,7 +47,7 @@ Backend NestJS (Render)
    │
    └──► OpenmaintClient.post()  (clase HostawayInvoice)
              │
-             └──► POST https://<openmaint-url>/classes/HostawayInvoice/cards
+             └──► POST https://construiblec.cloud/cmdbuild/services/rest/v3/classes/HostawayInvoice/cards
 ```
 
 ---
@@ -59,7 +61,7 @@ Backend NestJS (Render)
 5. Se construye el payload de la factura mapeando los campos de Hostaway al formato que requiere Contifico.
 6. Se llama a `ContificoService.createDocumento()` que hace `POST /documento/` a Contifico.
 7. Independientemente de si la factura fue exitosa o falló, se guarda un registro en openMAINT con el estado `OK` o `ERROR`.
-8. El endpoint responde `200 OK` a Hostaway para confirmar la recepción (esto evita reintentos innecesarios de Hostaway).
+8. El endpoint responde `200 OK` a Hostaway para confirmar la recepción.
 
 ---
 
@@ -113,86 +115,104 @@ Importa `ContificoModule` y `OpenmaintModule`, registra el controller y el servi
 
 ## 5. Variables de entorno requeridas
 
-Agregar en **Render → Environment → Environment Variables**:
+Configuradas en **Render → Environment → Environment Variables**:
 
-| Variable | Descripción | Ejemplo |
+| Variable | Descripción | Estado |
 |---|---|---|
-| `CONTIFICO_API_KEY` | API Key de Contifico (obtenida por soporte al cliente de Contifico) | `abc123xyz...` |
-| `CONTIFICO_POS_TOKEN` | Token del POS configurado en Contifico | `ceaa9097-1d76-4eb8-...` |
-| `CONTIFICO_PRODUCTO_ID` | ID del producto en Contifico que representa "Noche de hospedaje" | `RZxg87rxLh9Mb1pV` |
-| `OPENMAINT_USERNAME` | Usuario del sistema openMAINT | `admin` |
-| `OPENMAINT_PASSWORD` | Contraseña del sistema openMAINT | `••••••••` |
-| `OPENMAINT_URL` | URL base de openMAINT (ya existente) | `https://openmaint.ejemplo.com/...` |
-
-> **Nota:** Las variables `OPENMAINT_*` ya existen en el proyecto. Solo se necesita agregar las tres de Contifico.
+| `CONTIFICO_API_KEY` | API Key de Contifico | ⏳ Pendiente |
+| `CONTIFICO_POS_TOKEN` | Token del POS en Contifico | ⏳ Pendiente |
+| `CONTIFICO_PRODUCTO_ID` | ID del producto de hospedaje en Contifico | ⏳ Pendiente |
+| `OPENMAINT_URL` | `http://187.77.250.224:8090/cmdbuild/services/rest/v3` | ✅ Configurada |
+| `OPENMAINT_USERNAME` | Usuario de openMAINT | ✅ Configurada |
+| `OPENMAINT_PASSWORD` | Contraseña de openMAINT | ✅ Configurada |
+| `HOSTAWAY_CLIENT_ID` | Account ID de Hostaway | ✅ Configurada |
+| `HOSTAWAY_CLIENT_SECRET` | Client secret de Hostaway | ✅ Configurada |
 
 ### Cómo obtener los valores de Contifico
 
-- **`CONTIFICO_API_KEY`**: Solicitar a soporte de Contifico en [contifico.com](https://contifico.com). Se entrega como una cadena larga de caracteres.
-- **`CONTIFICO_POS_TOKEN`**: Ir a Contifico → Configuración → Puntos de Venta → copiar el API Token del POS correspondiente.
-- **`CONTIFICO_PRODUCTO_ID`**: Ir a Contifico → Inventario → Productos → buscar el producto "Hospedaje" (o el que corresponda) → copiar su ID interno.
+- **`CONTIFICO_API_KEY`**: Solicitar a soporte de Contifico. Se entrega como cadena larga de caracteres.
+- **`CONTIFICO_POS_TOKEN`**: Contifico → Configuración → Puntos de Venta → copiar API Token del POS.
+- **`CONTIFICO_PRODUCTO_ID`**: Contifico → Inventario → Productos → buscar el producto de hospedaje → copiar su ID interno.
 
 ---
 
 ## 6. Configuración del webhook en Hostaway
 
-1. Ingresar al [Dashboard de Hostaway](https://dashboard.hostaway.com).
+1. Ingresar al [Dashboard de Hostaway](https://dashboard.hostaway.com) con la cuenta **Account Owner** (solo el dueño principal tiene acceso a Settings).
 2. Ir a **Settings → Integrations → Webhooks**.
-3. Crear un nuevo webhook con los siguientes datos:
+3. Crear un nuevo webhook:
 
 | Campo | Valor |
 |---|---|
 | **URL** | `https://tu-backend.onrender.com/webhooks/hostaway` |
 | **Events** | `reservation_created`, `reservation_updated` |
-| **Login** | *(opcional)* Usuario para autenticación básica |
-| **Password** | *(opcional)* Contraseña para autenticación básica |
 
-> **Importante:** Hostaway reintenta el webhook 3 veces si no recibe un `2xx`. El backend siempre responde `200 OK` al recibir el payload, incluso si hubo un error interno, para evitar duplicados. Los errores se registran en openMAINT.
+> **Importante:** Solo el Account Owner puede acceder a Settings en Hostaway. Los usuarios admin no tienen acceso a esta sección aunque tengan todos los permisos.
+
+> Hostaway reintenta el webhook 3 veces si no recibe `2xx`. El backend siempre responde `200 OK` al recibir el payload para evitar reintentos. Los errores internos se registran en openMAINT.
 
 ---
 
 ## 7. Clase HostawayInvoice en openMAINT
 
-Antes de que la integración pueda guardar datos en openMAINT, se debe crear manualmente la clase `HostawayInvoice` en el panel de administración de openMAINT.
+### Estado: ✅ Creada y validada
 
-### Atributos requeridos
+La clase fue creada manualmente desde la UI de administración de openMAINT en:
+```
+https://construiblec.cloud/cmdbuild/ui/#classes/HostawayInvoice/cards
+```
 
-| Nombre del atributo | Tipo | Descripción |
+### Atributos confirmados via API
+
+Verificados consultando `GET /classes/HostawayInvoice/attributes`:
+
+| Atributo | Tipo | Grupo |
 |---|---|---|
-| `ReservationId` | Text | ID de la reservación en Hostaway |
-| `GuestName` | Text | Nombre completo del huésped |
-| `ListingName` | Text | Nombre de la propiedad |
-| `ArrivalDate` | Text | Fecha de check-in (formato YYYY-MM-DD) |
-| `DepartureDate` | Text | Fecha de check-out (formato YYYY-MM-DD) |
-| `Total` | Decimal | Monto total de la reservación |
-| `Currency` | Text | Moneda (ej: USD) |
-| `ContificoId` | Text | ID del documento generado en Contifico |
-| `ContificoDocumento` | Text | Número de factura en Contifico (ej: 001-001-000000089) |
-| `FacturaError` | Text | Mensaje de error si la factura falló (vacío si fue exitosa) |
-| `Accion` | Text | Acción del webhook: `reservation_created` o `reservation_updated` |
-| `FechaProcesamiento` | Text | Timestamp ISO de cuando se procesó |
-| `Estado` | Text | `OK` si la factura se creó correctamente, `ERROR` si falló |
+| `ReservationId` | text | HostawayInvoice General |
+| `GuestName` | text | HostawayInvoice General |
+| `ListingName` | text | HostawayInvoice General |
+| `ArrivalDate` | text | HostawayInvoice General |
+| `DepartureDate` | text | HostawayInvoice General |
+| `Total` | decimal | HostawayInvoice General |
+| `Currency` | text | HostawayInvoice General |
+| `ContificoId` | text | HostawayInvoice General |
+| `ContificoDocumento` | text | HostawayInvoice General |
+| `FacturaError` | text | HostawayInvoice General |
+| `Accion` | text | HostawayInvoice General |
+| `FechaProcesamiento` | text | — |
+| `Estado` | text | HostawayInvoice General |
 
-### Pasos para crear la clase en openMAINT
+### Formato del body para insertar un card
 
-1. Ingresar como administrador a openMAINT.
-2. Ir a **Administración → Clases → Nueva Clase**.
-3. Nombre: `HostawayInvoice`.
-4. Agregar cada atributo de la tabla anterior.
-5. Guardar la clase.
+Capturado desde la UI de openMAINT. El backend usa exactamente este formato:
 
-Una vez creada, el backend detectará la clase automáticamente en el siguiente webhook recibido.
+```json
+{
+  "_type": "HostawayInvoice",
+  "_tenant": "",
+  "Code": null,
+  "Description": null,
+  "ReservationId": "999001",
+  "GuestName": "John Doe",
+  "ListingName": "Apartamento Centro",
+  "ArrivalDate": "2025-05-01",
+  "DepartureDate": "2025-05-05",
+  "Total": 250.00,
+  "Currency": "USD",
+  "ContificoId": "",
+  "ContificoDocumento": "",
+  "FacturaError": "",
+  "Accion": "reservation_created",
+  "FechaProcesamiento": "2025-04-21T10:00:00.000Z",
+  "Estado": "OK"
+}
+```
 
-> Si se desea cambiar el nombre de la clase, editar la constante `OPENMAINT_BILLING_CLASS` en `billing.service.ts`:
-> ```typescript
-> const OPENMAINT_BILLING_CLASS = 'HostawayInvoice'; // ← cambiar aquí
-> ```
+> **Nota importante:** El endpoint correcto usa el dominio `construiblec.cloud` y no la IP directa `187.77.250.224`. El servidor tiene un virtual host configurado en Nginx que solo responde peticiones con el header `Host: construiblec.cloud`. Sin embargo, el puerto `8090` accedido directamente por IP sí funciona para el API REST, que es el que usa el backend via `OPENMAINT_URL`.
 
 ---
 
 ## 8. Mapeo de datos Hostaway → Contifico
-
-Esta tabla muestra cómo se traducen los campos de Hostaway al formato de Contifico:
 
 | Campo Contifico | Valor / Origen |
 |---|---|
@@ -216,12 +236,10 @@ Esta tabla muestra cómo se traducen los campos de Hostaway al formato de Contif
 | `adicional2` | Fechas de check-in y check-out |
 
 ### Nota sobre el IVA
-
-El servicio de hospedaje en Ecuador aplica **tarifa 0% de IVA**. Por eso `subtotal_0 = total` y `subtotal_12 = 0`. Si tu configuración fiscal es diferente, ajustar estos valores en `billing.service.ts` en la sección marcada con el comentario `// IVA 0%`.
+El servicio de hospedaje en Ecuador aplica **tarifa 0% de IVA**. Si la configuración fiscal es diferente, ajustar los valores `subtotal_0`, `subtotal_12` e `iva` en `billing.service.ts`.
 
 ### Nota sobre la cédula del huésped
-
-Hostaway no garantiza que el huésped tenga cédula o RUC ecuatoriano. Se usa `9999999999` con `tipo: 'I'` (Sin identificación) como valor estándar para huéspedes extranjeros o sin identificación. Si en algún caso el huésped tiene cédula, se puede extender el DTO para capturarla de un campo personalizado (`customFieldValues`) de Hostaway.
+Hostaway no garantiza cédula o RUC ecuatoriano. Se usa `9999999999` con `tipo: 'I'` como estándar para huéspedes extranjeros. Si el huésped tiene cédula, se puede capturar desde `customFieldValues` de Hostaway.
 
 ---
 
@@ -229,33 +247,26 @@ Hostaway no garantiza que el huésped tenga cédula o RUC ecuatoriano. Se usa `9
 
 | Escenario | Comportamiento |
 |---|---|
-| Reservación con estado distinto a `confirmed`/`new` | Se ignora silenciosamente. Se responde `200 OK` a Hostaway. |
-| Fallo al crear la factura en Contifico | Se registra en openMAINT con `Estado: ERROR` y `FacturaError: <mensaje>`. Se responde `500` al webhook (Hostaway reintentará). |
-| Fallo al guardar en openMAINT | Se loguea el error pero **no** se interrumpe el flujo. La factura de Contifico ya fue creada. |
-| Variables de entorno faltantes | El servicio lanzará un error en tiempo de ejecución al primer webhook recibido. Verificar Render antes de activar. |
+| Reservación con estado distinto a `confirmed`/`new` | Se ignora. Responde `200 OK` a Hostaway. |
+| Fallo al crear la factura en Contifico | Se registra en openMAINT con `Estado: ERROR`. Responde `500` (Hostaway reintentará). |
+| Fallo al guardar en openMAINT | Se loguea el error pero no interrumpe el flujo. |
+| Variables de entorno faltantes | Error en tiempo de ejecución al primer webhook recibido. |
 
 ---
 
 ## 10. Consideraciones importantes
 
-- **Duplicados:** Si Hostaway reintenta el webhook (por haber recibido un `500`), se puede generar una segunda factura en Contifico con el mismo número de documento. Para evitar esto, se puede agregar una validación que consulte en openMAINT si ya existe un registro con el mismo `ReservationId` antes de crear la factura. Esto es una mejora futura recomendada.
+- **Duplicados:** Si Hostaway reintenta el webhook por haber recibido `500`, puede generarse una segunda factura. Mejora futura: validar en openMAINT si ya existe un registro con el mismo `ReservationId` antes de crear la factura.
 
-- **Rate limits de Hostaway:** 15 requests/10s por IP. No aplica directamente al webhook, solo a llamadas salientes al API de Hostaway.
+- **Número de documento:** Se genera como `001-001-{reservationId con padding de 9 dígitos}`. Verificar con Contifico si se debe omitir y dejar que asigne la secuencia automáticamente.
 
-- **Número de documento:** Actualmente se genera como `001-001-{reservationId con padding de 9 dígitos}`. Esto puede colisionar si el número de secuencia en Contifico no coincide. Contifico puede rechazar el documento si ya existe ese número. Revisar con Contifico si se debe omitir el campo `documento` y dejar que Contifico asigne la secuencia automáticamente.
+- **Producto en Contifico:** El producto referenciado por `CONTIFICO_PRODUCTO_ID` debe existir previamente en Contifico o rechazará el documento con error `400`.
 
-- **Producto en Contifico:** El producto referenciado por `CONTIFICO_PRODUCTO_ID` debe existir previamente en Contifico. Si no existe, Contifico rechazará el documento con error `400`.
+- **Account Owner en Hostaway:** Solo el dueño principal puede configurar webhooks en Settings. Los usuarios admin no tienen acceso a esa sección.
 
 ---
 
 ## 11. Cómo probar localmente
-
-### Requisitos
-- Tener el backend corriendo localmente (`npm run start:dev`)
-- Tener las variables de entorno configuradas en `.env`
-- Herramienta como [Postman](https://www.postman.com/) o `curl`
-
-### Request de prueba
 
 ```bash
 curl -X POST http://localhost:3000/webhooks/hostaway \
@@ -281,19 +292,50 @@ curl -X POST http://localhost:3000/webhooks/hostaway \
   }'
 ```
 
-### Respuesta esperada
-
+### Respuesta esperada (con credenciales de Contifico configuradas)
 ```json
 { "ok": true }
 ```
 
-### Verificar resultados
+### Respuesta esperada (sin credenciales de Contifico aún)
+```json
+{
+  "message": "Factura no creada en Contifico: No se pudo crear la factura en Contifico",
+  "error": "Internal Server Error",
+  "statusCode": 500
+}
+```
+El card se guarda en openMAINT con `Estado: ERROR` en ambos casos.
 
-1. En los logs del backend buscar:
-   - `[Billing] Procesando reservación 123456`
-   - `[Contifico] Documento creado: 001-001-...`
-   - `[Billing] Registro guardado en openMAINT`
+---
 
-2. En Contifico → Transacciones → Documentos: debe aparecer la factura nueva.
+## 12. Estado actual de la integración
 
-3. En openMAINT → clase `HostawayInvoice`: debe aparecer el registro con `Estado: OK`.
+| Componente | Estado |
+|---|---|
+| Backend NestJS — módulo billing | ✅ Implementado |
+| Endpoint `POST /webhooks/hostaway` | ✅ Funcionando en Render |
+| Integración con openMAINT | ✅ Validada — cards se insertan correctamente |
+| Clase `HostawayInvoice` en openMAINT | ✅ Creada con todos los atributos |
+| Integración con Contifico | ⏳ Pendiente credenciales |
+| Webhook configurado en Hostaway Dashboard | ⏳ Pendiente acceso Account Owner |
+
+---
+
+## 13. Pendientes para activación completa
+
+1. **Contifico** — Solicitar al equipo de Contifico:
+   - `CONTIFICO_API_KEY` (soporte al cliente)
+   - `CONTIFICO_POS_TOKEN` (Configuración → Puntos de Venta)
+   - `CONTIFICO_PRODUCTO_ID` (Inventario → Productos → producto de hospedaje)
+
+2. **Hostaway** — Solicitar al Account Owner que configure el webhook en:
+   ```
+   https://dashboard.hostaway.com/settings/integrations
+   ```
+   URL del webhook: `https://tu-backend.onrender.com/webhooks/hostaway`
+   Eventos: `reservation_created`, `reservation_updated`
+
+3. **Una vez con credenciales** — Probar el flujo completo con una reservación real y verificar:
+   - Factura creada en Contifico
+   - Card en openMAINT con `Estado: OK` y el número de factura en `ContificoDocumento`

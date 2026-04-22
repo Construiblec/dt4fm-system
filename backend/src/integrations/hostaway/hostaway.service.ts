@@ -15,14 +15,15 @@ interface TokenCache {
   expiresAt: number; // ms timestamp
 }
 
+// Solo estos statuses generan tarea de limpieza
+const VALID_RESERVATION_STATUSES = ['new', 'modified', 'confirmed'];
+
 @Injectable()
 export class HostawayService {
   private readonly logger = new Logger(HostawayService.name);
   private tokenCache: TokenCache | null = null;
   private readonly requestTimeoutMs = 15_000;
   private readonly maxRetries = 2;
-  private readonly pageSize = 100;
-  private readonly maxPages = 1000;
 
   constructor(
     private readonly httpService: HttpService,
@@ -51,9 +52,7 @@ export class HostawayService {
     ].includes(code ?? '');
   }
 
-  private buildSafeErrorMessage(
-    error: AxiosError | Error,
-  ): string {
+  private buildSafeErrorMessage(error: AxiosError | Error): string {
     const axiosError = error as AxiosError<{
       message?: string;
       error_description?: string;
@@ -93,9 +92,7 @@ export class HostawayService {
         if (!shouldRetry) break;
 
         const backoffMs = attempt * 1_500;
-        this.logger.warn(
-          `${operationName}: reintentando en ${backoffMs} ms`,
-        );
+        this.logger.warn(`${operationName}: reintentando en ${backoffMs} ms`);
         await this.delay(backoffMs);
       }
     }
@@ -104,10 +101,9 @@ export class HostawayService {
       message?: string;
       error_description?: string;
     }>;
-    const status = finalError?.response?.status;
     const safeMessage = this.buildSafeErrorMessage(finalError);
 
-    if (status === 401) {
+    if (finalError?.response?.status === 401) {
       throw new UnauthorizedException(
         `Hostaway rechazo las credenciales OAuth` +
           (safeMessage ? ` (${safeMessage})` : ''),
@@ -123,15 +119,12 @@ export class HostawayService {
   private async getAccessToken(): Promise<string> {
     const now = Date.now();
 
-    // Reutilizar token si aun tiene mas de 60 s de vida
     if (this.tokenCache && this.tokenCache.expiresAt > now + 60_000) {
       return this.tokenCache.accessToken;
     }
 
     const rawClientId = this.configService.get<string>('HOSTAWAY_CLIENT_ID');
-    const rawClientSecret = this.configService.get<string>(
-      'HOSTAWAY_CLIENT_SECRET',
-    );
+    const rawClientSecret = this.configService.get<string>('HOSTAWAY_CLIENT_SECRET');
     const clientId = rawClientId?.trim();
     const clientSecret = rawClientSecret?.trim();
 
@@ -143,7 +136,7 @@ export class HostawayService {
 
     if (rawClientId !== clientId || rawClientSecret !== clientSecret) {
       this.logger.warn(
-        'Las credenciales de Hostaway contienen espacios o saltos de linea y fueron normalizadas antes de enviar la solicitud OAuth',
+        'Las credenciales de Hostaway contienen espacios o saltos de linea y fueron normalizadas',
       );
     }
 
@@ -188,13 +181,19 @@ export class HostawayService {
   /**
    * Obtiene checkouts entre dateFrom y dateTo (inclusive).
    * Si HOSTAWAY_USE_MOCK=true retorna datos de prueba.
+   *
+   * NOTA: Hostaway no filtra por checkOutDateFrom/To en el resultado —
+   * devuelve las reservas más recientes. Por eso filtramos en código
+   * por departureDate y por status válido.
+   *
+   * Usamos limit=100 (máximo de Hostaway) para asegurar que
+   * no se pierda ningún checkout del día en propiedades con mucho movimiento.
    */
   async getCheckouts(
     dateFrom: string,
     dateTo: string,
   ): Promise<HostawayCheckoutsResponse> {
-    const useMock =
-      this.configService.get<string>('HOSTAWAY_USE_MOCK') === 'true';
+    const useMock = this.configService.get<string>('HOSTAWAY_USE_MOCK') === 'true';
 
     if (useMock) {
       this.logger.warn('[MOCK] Usando datos de prueba de Hostaway');
@@ -204,10 +203,45 @@ export class HostawayService {
     const token = await this.getAccessToken();
 
     this.logger.log(`Consultando checkouts Hostaway [${dateFrom} -> ${dateTo}]`);
-    const rawReservations = await this.getAllReservations(token, dateFrom, dateTo);
+
+    const response = await this.performRequest<{
+      result?: unknown[];
+      count?: number;
+    }>('Consulta de checkouts Hostaway', () =>
+      firstValueFrom(
+        this.httpService.get('https://api.hostaway.com/v1/reservations', {
+          timeout: this.requestTimeoutMs,
+          headers: { Authorization: `Bearer ${token}` },
+          params: {
+            checkOutDateFrom: dateFrom,
+            checkOutDateTo: dateTo,
+            includeResources: 1,
+            limit: 100,
+          },
+        }),
+      ),
+    );
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const rawReservations: any[] = response.data?.result ?? [];
+
+    // Filtro 1: solo reservas cuya departureDate esté en el rango solicitado
+    const inRange = rawReservations.filter((r) => {
+      const dep = r.departureDate ?? '';
+      return dep >= dateFrom && dep <= dateTo;
+    });
+
+    // Filtro 2: solo status válidos para generar tarea de limpieza
+    const filtered = inRange.filter((r) =>
+      VALID_RESERVATION_STATUSES.includes(r.status ?? ''),
+    );
+
+    this.logger.log(
+      `Hostaway: ${rawReservations.length} recibidas → ${inRange.length} en rango [${dateFrom}/${dateTo}] → ${filtered.length} con status válido`,
+    );
 
     return {
-      result: rawReservations.map((r) => ({
+      result: filtered.map((r) => ({
         reservationId: String(r.hostawayReservationId ?? r.id ?? ''),
         guestName: r.guestFirstName
           ? `${r.guestFirstName} ${r.guestLastName ?? ''}`.trim()
@@ -215,93 +249,16 @@ export class HostawayService {
         listingName: r.listingName ?? '',
         listingId: String(r.listingMapId ?? ''),
         checkoutDate: r.departureDate ?? dateFrom,
-        checkoutTime: r.checkOutTime ?? '11:00',
+        checkoutTime: r.checkOutTime ?? 11,
       })),
-      count: rawReservations.length,
+      count: filtered.length,
     };
   }
 
   /**
-   * Alias para compatibilidad; consulta un unico dia.
+   * Alias para compatibilidad; consulta un único día.
    */
   async getCheckoutsByDate(date: string): Promise<HostawayCheckoutsResponse> {
     return this.getCheckouts(date, date);
-  }
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private async getAllReservations(token: string, dateFrom: string, dateTo: string): Promise<any[]> {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const allReservations: any[] = [];
-    let afterId: number | null = null;
-
-    for (let page = 1; page <= this.maxPages; page++) {
-      const response = await this.performRequest<{
-        result?: unknown[];
-        count?: number;
-        totalPages?: number;
-      }>('Consulta de reservas Hostaway', () =>
-        firstValueFrom(
-          this.httpService.get('https://api.hostaway.com/v1/reservations', {
-            timeout: this.requestTimeoutMs,
-            headers: { Authorization: `Bearer ${token}` },
-            params: {
-              departureStartDate: dateFrom,
-              departureEndDate: dateTo,
-              includeResources: 1,
-              limit: this.pageSize,
-              ...(afterId != null ? { afterId } : {}),
-            },
-          }),
-        ),
-      );
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const pageReservations: any[] = response.data?.result ?? [];
-
-      if (pageReservations.length === 0) {
-        this.logger.log(
-          `Hostaway no devolvio mas reservas. Total acumulado: ${allReservations.length}`,
-        );
-        break;
-      }
-
-      allReservations.push(...pageReservations);
-
-      this.logger.log(
-        `Hostaway pagina ${page}: recibidas ${pageReservations.length}, acumuladas ${allReservations.length}`,
-      );
-
-      if (pageReservations.length < this.pageSize) {
-        break;
-      }
-
-      const lastReservationId = Number(
-        pageReservations[pageReservations.length - 1]?.id,
-      );
-
-      if (!Number.isFinite(lastReservationId) || lastReservationId <= 0) {
-        this.logger.warn(
-          'Hostaway no devolvio un id valido para continuar la paginacion. Se detiene en la pagina actual.',
-        );
-        break;
-      }
-
-      if (afterId === lastReservationId) {
-        this.logger.warn(
-          'Hostaway repitio el cursor afterId. Se detiene la paginacion para evitar un bucle infinito.',
-        );
-        break;
-      }
-
-      afterId = lastReservationId;
-    }
-
-    if (allReservations.length > 0 && allReservations.length % this.pageSize === 0) {
-      this.logger.warn(
-        `Se alcanzo un total multiplo del tamano de pagina (${this.pageSize}). Si faltan reservas, revisa rate limits o filtros de Hostaway.`,
-      );
-    }
-
-    return allReservations;
   }
 }
