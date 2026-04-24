@@ -7,7 +7,7 @@ import { AxiosRequestConfig } from 'axios';
 @Injectable()
 export class ContificoClient {
   private readonly logger = new Logger(ContificoClient.name);
-  private readonly baseUrl = 'https://api.contifico.com/sistema/api/v1';
+  private readonly baseUrl: string;
   private readonly apiKey: string;
 
   constructor(
@@ -15,6 +15,9 @@ export class ContificoClient {
     private readonly configService: ConfigService,
   ) {
     this.apiKey = this.configService.get<string>('CONTIFICO_API_KEY') ?? '';
+    this.baseUrl =
+      this.configService.get<string>('CONTIFICO_BASE_URL') ??
+      'https://api.contifico.com/sistema/api/v1';
   }
 
   private get authHeaders() {

@@ -8,7 +8,7 @@ import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { AxiosError, AxiosRequestConfig, AxiosResponse } from 'axios';
 import { firstValueFrom } from 'rxjs';
-import { getMockCheckouts, HostawayCheckoutsResponse } from './hostaway.mock';
+import { getMockCheckouts, HostawayCheckoutsResponse, HostawayBillingReservation } from './hostaway.mock';
 
 interface TokenCache {
   accessToken: string;
@@ -253,6 +253,96 @@ export class HostawayService {
       })),
       count: filtered.length,
     };
+  }
+
+  /**
+   * Obtiene reservaciones por arrivalDate para facturación diaria.
+   * Filtra por paymentStatus=Paid y status válidos.
+   * Usa cursor-based pagination con afterId para recorrer todos los resultados.
+   */
+  async getReservationsByArrivalDate(date: string): Promise<HostawayBillingReservation[]> {
+    const token = await this.getAccessToken();
+    const VALID_BILLING_STATUSES = ['new', 'modified', 'confirmed'];
+    const allReservations: HostawayBillingReservation[] = [];
+    let afterId: number | undefined = undefined;
+    let page = 1;
+
+    this.logger.log(`[Billing] Consultando reservaciones para facturar arrivalDate=${date}`);
+
+    do {
+      const params: Record<string, unknown> = {
+        arrivalStartDate: date,
+        arrivalEndDate: date,
+        limit: 100,
+        includeResources: 1,
+      };
+
+      if (afterId !== undefined) {
+        params.afterId = afterId;
+      }
+
+      const response = await this.performRequest<{
+        result?: unknown[];
+        count?: number;
+      }>(`Consulta billing Hostaway página ${page}`, () =>
+        firstValueFrom(
+          this.httpService.get('https://api.hostaway.com/v1/reservations', {
+            timeout: this.requestTimeoutMs,
+            headers: { Authorization: `Bearer ${token}` },
+            params,
+          }),
+        ),
+      );
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const rawBatch: any[] = response.data?.result ?? [];
+
+      const filtered = rawBatch.filter(
+        (r) =>
+          r.paymentStatus === 'Paid' &&
+          VALID_BILLING_STATUSES.includes(r.status ?? ''),
+      );
+
+      this.logger.log(
+        `[Billing] Página ${page}: ${rawBatch.length} recibidas → ${filtered.length} válidas para facturar`,
+      );
+
+      for (const r of filtered) {
+        allReservations.push({
+          hostawayReservationId: String(r.hostawayReservationId ?? r.id ?? ''),
+          guestName: r.guestFirstName
+            ? `${r.guestFirstName} ${r.guestLastName ?? ''}`.trim()
+            : (r.guestName ?? 'Huesped'),
+          guestPhone: r.phone ?? null,
+          guestEmail: r.guestEmail ?? null,
+          guestCountry: r.guestCountry ?? null,
+          listingMapId: String(r.listingMapId ?? ''),
+          listingName: r.listingName ?? '',
+          arrivalDate: r.arrivalDate ?? date,
+          departureDate: r.departureDate ?? '',
+          totalPrice: r.totalPrice ?? 0,
+          cleaningFee: r.cleaningFee ?? 0,
+          currency: r.currency ?? 'USD',
+          channelName: r.channelName ?? '',
+          confirmationCode: r.confirmationCode ?? '',
+          nights: r.nights ?? 1,
+        });
+      }
+
+      // Preparar cursor para siguiente página
+      if (rawBatch.length === 100) {
+        afterId = rawBatch[rawBatch.length - 1]?.id;
+        page++;
+      } else {
+        break; // Última página
+      }
+    } while (true);
+
+    this.logger.log(
+      `[Billing] Total reservaciones a facturar para ${date}: ${allReservations.length}`,
+    );
+
+    return allReservations;
   }
 
   /**

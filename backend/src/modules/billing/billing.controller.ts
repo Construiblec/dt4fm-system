@@ -5,29 +5,29 @@ import {
   HttpStatus,
   Logger,
   Post,
-  ValidationPipe,
+  Query,
 } from '@nestjs/common';
 import { BillingService } from './billing.service';
-import { HostawayWebhookDto } from './dto/hostaway-webhook.dto';
 
-@Controller('webhooks')
+@Controller('billing')
 export class BillingController {
   private readonly logger = new Logger(BillingController.name);
 
   constructor(private readonly billingService: BillingService) {}
 
   /**
-   * POST /webhooks/hostaway
-   * Hostaway llama a este endpoint cuando se crea o actualiza una reservación.
-   * Devuelve 200 siempre que recibe el payload para evitar reintentos innecesarios.
+   * POST /billing/run
+   * Disparo manual del proceso de facturacion diaria.
+   * Body opcional: { date: "2026-04-23" } — si no se pasa usa la fecha de hoy.
+   *
+   * El webhook /webhooks/hostaway fue desactivado.
+   * La facturacion ahora corre via scheduler a las 23:50 diariamente.
    */
-  @Post('hostaway')
+  @Post('run')
   @HttpCode(HttpStatus.OK)
-  async handleHostawayWebhook(
-    @Body(new ValidationPipe({ transform: true, whitelist: true }))
-    dto: HostawayWebhookDto,
-  ) {
-    this.logger.log(`[Webhook] Hostaway → action: ${dto.action}`);
-    return this.billingService.handleReservationWebhook(dto);
+  async runBilling(@Body() body?: { date?: string }) {
+    const date = body?.date ?? new Date().toISOString().split('T')[0];
+    this.logger.log(`[BillingController] Disparo manual para fecha: ${date}`);
+    return this.billingService.runDailyBilling(date);
   }
 }

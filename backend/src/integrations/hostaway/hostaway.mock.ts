@@ -15,6 +15,24 @@ export interface HostawayReservation {
   checkoutTime: string;
 }
 
+export interface HostawayBillingReservation {
+  hostawayReservationId: string;
+  guestName: string;
+  guestPhone: string | null;
+  guestEmail: string | null;
+  guestCountry: string | null;
+  listingMapId: string;
+  listingName: string;
+  arrivalDate: string;
+  departureDate: string;
+  totalPrice: number;
+  cleaningFee: number;
+  currency: string;
+  channelName: string;
+  confirmationCode: string;
+  nights: number;
+}
+
 export interface HostawayCheckoutsResponse {
   result: HostawayReservation[];
   count: number;

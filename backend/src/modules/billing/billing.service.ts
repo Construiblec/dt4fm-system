@@ -1,12 +1,22 @@
-import { Injectable, Logger, InternalServerErrorException } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ContificoService } from '../../integrations/contifico/contifico.service';
 import { OpenmaintClient } from '../../integrations/openmaint/openmaint.client';
 import { OpenmaintAuthService } from '../../integrations/openmaint/openmaint.auth.service';
+import { HostawayService } from '../../integrations/hostaway/hostaway.service';
+import { HostawayBillingReservation } from '../../integrations/hostaway/hostaway.mock';
 import { ContificoCreateDocumentoDto } from '../../integrations/contifico/contifico.types';
-import { HostawayWebhookDto } from './dto/hostaway-webhook.dto';
 
 const OPENMAINT_BILLING_CLASS = 'HostawayInvoice';
+
+export interface BillingRunResult {
+  date: string;
+  total: number;
+  invoiced: number;
+  skipped: number;
+  failed: number;
+  errors: string[];
+}
 
 @Injectable()
 export class BillingService {
@@ -16,72 +26,180 @@ export class BillingService {
     private readonly contificoService: ContificoService,
     private readonly openmaintClient: OpenmaintClient,
     private readonly openmaintAuthService: OpenmaintAuthService,
+    private readonly hostawayService: HostawayService,
     private readonly configService: ConfigService,
   ) {}
 
-  async handleReservationWebhook(dto: HostawayWebhookDto): Promise<{ ok: boolean }> {
-    const reservation = dto.data;
+  // ── Punto de entrada del scheduler ────────────────────────────────────────
 
-    if (reservation.status && !['confirmed', 'new'].includes(reservation.status)) {
-      this.logger.warn(`[Billing] Reservación ignorada por estado: ${reservation.status}`);
-      return { ok: true };
+  async runDailyBilling(date: string): Promise<BillingRunResult> {
+    this.logger.log(`[Billing] Iniciando facturacion diaria para ${date}`);
+
+    const result: BillingRunResult = {
+      date,
+      total: 0,
+      invoiced: 0,
+      skipped: 0,
+      failed: 0,
+      errors: [],
+    };
+
+    // 1. Obtener reservaciones del dia desde Hostaway
+    const reservations = await this.hostawayService.getReservationsByArrivalDate(date);
+    result.total = reservations.length;
+
+    if (reservations.length === 0) {
+      this.logger.log(`[Billing] Sin reservaciones para facturar el ${date}`);
+      return result;
     }
 
-    const reservationId = String(
-      reservation.hostawayReservationId ?? reservation.id ?? '',
+    // 2. Obtener sesion de openMAINT una sola vez para todo el proceso
+    const sessionId = await this.getOpenmaintSession();
+
+    // 3. Procesar cada reservacion secuencialmente
+    for (const reservation of reservations) {
+      try {
+        // Verificar si ya fue facturada (deduplicacion)
+        const alreadyInvoiced = await this.checkAlreadyInvoiced(
+          reservation.hostawayReservationId,
+          sessionId,
+        );
+
+        if (alreadyInvoiced) {
+          this.logger.log(
+            `[Billing] Reservacion ${reservation.hostawayReservationId} ya facturada - omitiendo`,
+          );
+          result.skipped++;
+          continue;
+        }
+
+        await this.processReservation(reservation, sessionId);
+        result.invoiced++;
+      } catch (error) {
+        const msg = `Reservacion ${reservation.hostawayReservationId}: ${error?.message ?? 'Error desconocido'}`;
+        this.logger.error(`[Billing] ${msg}`);
+        result.failed++;
+        result.errors.push(msg);
+      }
+    }
+
+    this.logger.log(
+      `[Billing] Completado ${date} -> total:${result.total} facturadas:${result.invoiced} omitidas:${result.skipped} fallidas:${result.failed}`,
     );
 
-    const guestName = reservation.guestFirstName
-      ? `${reservation.guestFirstName} ${reservation.guestLastName ?? ''}`.trim()
-      : (reservation.guestName ?? 'Huésped');
+    return result;
+  }
 
-    this.logger.log(`[Billing] Procesando reservación ${reservationId} - ${guestName}`);
+  // ── Procesar una reservacion individual ───────────────────────────────────
 
-    // ── 1. Construir payload Contifico ─────────────────────────────────────
-    const total = reservation.totalPrice ?? 0;
-    const subtotal0 = total;
-    const subtotal12 = 0;
-    const iva = 0;
+  private async processReservation(
+    reservation: HostawayBillingReservation,
+    sessionId: string,
+  ): Promise<void> {
+    const { hostawayReservationId, guestName, totalPrice } = reservation;
 
-    const productoId = this.configService.get<string>('CONTIFICO_PRODUCTO_ID') ?? '';
+    this.logger.log(
+      `[Billing] Procesando ${hostawayReservationId} - ${guestName} - $${totalPrice}`,
+    );
+
+    const payload = this.buildContificoPayload(reservation);
+
+    let contificoId = '';
+    let contificoDocumento = '';
+    let facturaError = '';
+
+    try {
+      const facturaResponse = await this.contificoService.createDocumento(payload);
+      contificoId = facturaResponse.id;
+      contificoDocumento = facturaResponse.documento;
+      this.logger.log(
+        `[Billing] Factura Contifico: ${contificoDocumento} (id: ${contificoId})`,
+      );
+    } catch (error) {
+      facturaError = error?.message ?? 'Error desconocido al crear factura';
+      this.logger.error(
+        `[Billing] Error Contifico para ${hostawayReservationId}: ${facturaError}`,
+      );
+    }
+
+    // Guardar en openMAINT siempre, incluso si fallo Contifico
+    await this.saveToOpenmaint(
+      {
+        reservationId: hostawayReservationId,
+        guestName,
+        listingName: reservation.listingName,
+        arrivalDate: reservation.arrivalDate,
+        departureDate: reservation.departureDate,
+        total: totalPrice,
+        currency: reservation.currency,
+        contificoId,
+        contificoDocumento,
+        facturaError,
+        channelName: reservation.channelName,
+      },
+      sessionId,
+    );
+
+    if (facturaError) {
+      throw new Error(facturaError);
+    }
+  }
+
+  // ── Builder del payload Contifico ─────────────────────────────────────────
+
+  private buildContificoPayload(
+    r: HostawayBillingReservation,
+  ): ContificoCreateDocumentoDto {
     const posToken = this.configService.get<string>('CONTIFICO_POS_TOKEN') ?? '';
+    const productoId = this.configService.get<string>('CONTIFICO_PRODUCTO_ID') ?? '';
 
-    const today = new Date().toLocaleDateString('es-EC', {
+    const fechaEmision = new Date().toLocaleDateString('es-EC', {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',
     });
 
-    const documentoPayload: ContificoCreateDocumentoDto = {
+    const total = r.totalPrice;
+    const subtotal0 = total;
+
+    const razonSocial = r.guestName?.trim() || 'Consumidor Final';
+    const telefonos = r.guestPhone?.replace(/[^\d+]/g, '') ?? '';
+    const email = r.guestEmail ?? this.getEmailFallbackByChannel(r.channelName);
+
+    // Numero de documento basado en reservationId
+    const docNumero = `001-001-${r.hostawayReservationId.padStart(9, '0')}`;
+
+    return {
       pos: posToken,
-      fecha_emision: today,
+      fecha_emision: fechaEmision,
       tipo_documento: 'FAC',
       tipo_registro: 'CLI',
-      documento: `001-001-${reservationId.padStart(9, '0')}`,
-      autorizacion: reservationId,
+      documento: docNumero,
+      autorizacion: r.confirmationCode || r.hostawayReservationId,
       estado: 'P',
       caja_id: null,
       cliente: {
         cedula: '9999999999',
-        razon_social: guestName,
+        razon_social: razonSocial,
         tipo: 'I',
-        email: reservation.guestEmail ?? '',
-        telefonos: reservation.guestPhone ?? '',
+        telefonos,
+        email,
+        direccion: 'Sin direccion',
         es_extranjero: true,
       },
-      descripcion: `Reservación Hostaway #${reservationId} - ${reservation.listingName ?? ''}`,
+      descripcion: `Hospedaje Hostaway #${r.hostawayReservationId}`,
       subtotal_0: subtotal0,
-      subtotal_12: subtotal12,
-      iva,
+      subtotal_12: 0,
+      iva: 0,
       ice: 0,
       servicio: 0,
       total,
-      adicional1: `Propiedad: ${reservation.listingName ?? ''}`,
-      adicional2: `Check-in: ${reservation.arrivalDate ?? ''} | Check-out: ${reservation.departureDate ?? ''}`,
+      adicional1: `Propiedad: ${r.listingName || r.listingMapId}`,
+      adicional2: `Check-in: ${r.arrivalDate} | Check-out: ${r.departureDate} | ${r.nights} noche(s) | Canal: ${r.channelName}`,
       detalles: [
         {
           producto_id: productoId,
-          cantidad: 1,
+          cantidad: r.nights || 1,
           precio: total,
           porcentaje_iva: 0,
           porcentaje_descuento: 0,
@@ -92,49 +210,18 @@ export class BillingService {
         },
       ],
     };
-
-    // ── 2. Crear factura en Contifico ──────────────────────────────────────
-    let contificoId = '';
-    let contificoDocumento = '';
-    let facturaError = '';
-
-    try {
-      const facturaResponse = await this.contificoService.createDocumento(documentoPayload);
-      contificoId = facturaResponse.id;
-      contificoDocumento = facturaResponse.documento;
-      this.logger.log(`[Billing] Factura creada en Contifico: ${contificoDocumento} (${contificoId})`);
-    } catch (error) {
-      facturaError = error?.message ?? 'Error desconocido';
-      this.logger.error(`[Billing] No se pudo crear la factura en Contifico: ${facturaError}`);
-    }
-
-    // ── 3. Guardar en openMAINT ────────────────────────────────────────────
-    try {
-      await this.saveToOpenmaint({
-        reservationId,
-        guestName,
-        listingName: reservation.listingName ?? '',
-        arrivalDate: reservation.arrivalDate ?? '',
-        departureDate: reservation.departureDate ?? '',
-        total,
-        currency: reservation.currency ?? 'USD',
-        contificoId,
-        contificoDocumento,
-        facturaError,
-        accion: dto.action,
-      });
-    } catch (omError) {
-      this.logger.error(`[Billing] No se pudo guardar en openMAINT: ${omError?.message}`);
-    }
-
-    if (facturaError) {
-      throw new InternalServerErrorException(`Factura no creada en Contifico: ${facturaError}`);
-    }
-
-    return { ok: true };
   }
 
   // ── Helpers ────────────────────────────────────────────────────────────────
+
+  private getEmailFallbackByChannel(channelName: string): string {
+    const map: Record<string, string> = {
+      airbnbOfficial: 'reservas.airbnb@noreply.com',
+      bookingcom: 'reservas.booking@noreply.com',
+      direct: 'reservas.directo@noreply.com',
+    };
+    return map[channelName] ?? 'reservas@noreply.com';
+  }
 
   private async getOpenmaintSession(): Promise<string> {
     const username = this.configService.get<string>('OPENMAINT_USERNAME') ?? '';
@@ -143,22 +230,50 @@ export class BillingService {
     return response?.data?._id ?? '';
   }
 
-  private async saveToOpenmaint(data: {
-    reservationId: string;
-    guestName: string;
-    listingName: string;
-    arrivalDate: string;
-    departureDate: string;
-    total: number;
-    currency: string;
-    contificoId: string;
-    contificoDocumento: string;
-    facturaError: string;
-    accion: string;
-  }): Promise<void> {
-    const sessionId = await this.getOpenmaintSession();
+  private async checkAlreadyInvoiced(
+    reservationId: string,
+    sessionId: string,
+  ): Promise<boolean> {
+    try {
+      const filter = encodeURIComponent(
+        JSON.stringify({
+          attribute: {
+            simple: {
+              attribute: 'ReservationId',
+              operator: 'equal',
+              value: reservationId,
+            },
+          },
+        }),
+      );
 
-    // Formato exacto capturado desde la UI de openMAINT
+      const response = (await this.openmaintClient.get(
+        `/classes/${OPENMAINT_BILLING_CLASS}/cards?filter=${filter}&limit=1`,
+        sessionId,
+      )) as { data?: unknown[] };
+
+      return (response?.data?.length ?? 0) > 0;
+    } catch {
+      return false;
+    }
+  }
+
+  private async saveToOpenmaint(
+    data: {
+      reservationId: string;
+      guestName: string;
+      listingName: string;
+      arrivalDate: string;
+      departureDate: string;
+      total: number;
+      currency: string;
+      contificoId: string;
+      contificoDocumento: string;
+      facturaError: string;
+      channelName: string;
+    },
+    sessionId: string,
+  ): Promise<void> {
     const card = {
       _type: OPENMAINT_BILLING_CLASS,
       _tenant: '',
@@ -174,23 +289,25 @@ export class BillingService {
       ContificoId: data.contificoId,
       ContificoDocumento: data.contificoDocumento,
       FacturaError: data.facturaError,
-      Accion: data.accion,
+      ChannelName: data.channelName,
       FechaProcesamiento: new Date().toISOString(),
       Estado: data.facturaError ? 'ERROR' : 'OK',
     };
 
-    const response = await this.openmaintClient.post(
+    const response = (await this.openmaintClient.post(
       `/classes/${OPENMAINT_BILLING_CLASS}/cards`,
       card,
       sessionId,
-    ) as { success?: boolean; data?: { _id?: number } };
+    )) as { success?: boolean; data?: { _id?: number } };
 
     if (!response?.success) {
-      throw new Error('openMAINT respondió success: false al crear el card');
+      this.logger.warn(
+        `[Billing] openMAINT success:false para reservacion ${data.reservationId}`,
+      );
+    } else {
+      this.logger.log(
+        `[Billing] openMAINT id=${response?.data?._id} para reservacion ${data.reservationId}`,
+      );
     }
-
-    this.logger.log(
-      `[Billing] Registro guardado en openMAINT id=${response?.data?._id}`,
-    );
   }
 }
