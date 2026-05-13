@@ -1,7 +1,6 @@
 import axios from "axios";
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
-import { useNavigate } from "react-router-dom";
 import { ChevronLeft, CheckCircle2 } from "lucide-react";
 import {
   getOwnerBuildings,
@@ -29,7 +28,6 @@ type Props = {
 };
 
 export const OwnerRegisterFlow = ({ onBack }: Props) => {
-  const navigate = useNavigate();
   const [step, setStep] = useState<Step>("verify");
   const [buildings, setBuildings] = useState<Building[]>([]);
   const [loadingBuildings, setLoadingBuildings] = useState(true);
