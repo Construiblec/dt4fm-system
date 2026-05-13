@@ -14,6 +14,20 @@ type EmployeeCardsResponse = {
   data?: EmployeeCard[];
 };
 
+type TenantCard = {
+  _id: number;
+  Description: string;
+  IDNumber: number;
+  Phone: number;
+  Email: string | null;
+  _OccupancyType_code: string;
+};
+
+type TenantCardsResponse = {
+  data?: TenantCard[];
+  meta?: { total: number };
+};
+
 type OpenmaintCreateIncidentBody = {
   _type: 'CorrectiveMaint';
   _activity: 'CM01-Opening';
@@ -53,6 +67,17 @@ type CompleteIncidentBody = {
   Action: 'CM03-Advance';
   Outcome: number;
   ProcessNotes: string | null;
+};
+
+type OpenmaintCreateUserBody = {
+  username: string;
+  password: string;
+  description: string;
+  email: string;
+  active: boolean;
+  defaultUserGroup: number;
+  // OpenMAINT requiere userGroups como array obligatorio
+  userGroups: { _id: number; name: string }[];
 };
 
 @Injectable()
@@ -221,6 +246,79 @@ export class OpenmaintService {
       return response.data?.[0]?._id ?? null;
     } catch {
       return null;
+    }
+  }
+
+  async findTenantByIdNumber(
+    idNumber: string,
+    buildingId: number,
+    sessionId: string,
+  ): Promise<TenantCard | null> {
+    const filter = {
+      attribute: {
+        simple: {
+          attribute: 'IDNumber',
+          operator: 'equal',
+          value: Number(idNumber),
+        },
+      },
+    };
+
+    const encodedFilter = encodeURIComponent(JSON.stringify(filter));
+
+    try {
+      const response = (await this.client.get(
+        `/classes/Tenant/cards?filter=${encodedFilter}&limit=10`,
+        sessionId,
+      )) as TenantCardsResponse;
+
+      const tenants = response.data ?? [];
+
+      const propietario = tenants.find(
+        (t) => t._OccupancyType_code === 'Propietario',
+      );
+
+      return propietario ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  async createOwnerUser(
+    body: OpenmaintCreateUserBody,
+    sessionId: string,
+  ): Promise<{ _id: number; username: string }> {
+    try {
+      console.log('[OpenMAINT] createOwnerUser - payload:', JSON.stringify({ ...body, password: '***' }));
+
+      const response = await this.client.post('/users', body, sessionId) as {
+        success?: boolean;
+        data?: { _id: number; username: string };
+      };
+
+      console.log('[OpenMAINT] createOwnerUser - response:', JSON.stringify(response));
+
+      if (!response?.data?._id) {
+        throw new InternalServerErrorException(
+          'OpenMAINT no pudo crear el usuario propietario',
+        );
+      }
+
+      return response.data;
+    } catch (error) {
+      if (error instanceof InternalServerErrorException) {
+        throw error;
+      }
+
+      console.error('[OpenMAINT] createOwnerUser - error:', {
+        status: error?.response?.status,
+        data: JSON.stringify(error?.response?.data),
+        message: error?.message,
+      });
+
+      throw new InternalServerErrorException(
+        'Error al crear usuario propietario en OpenMAINT',
+      );
     }
   }
 
