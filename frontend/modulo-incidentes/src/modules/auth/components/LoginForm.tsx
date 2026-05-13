@@ -2,7 +2,7 @@ import axios from "axios";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { useNavigate } from "react-router-dom";
-import { Briefcase, MapPin } from "lucide-react";
+import { Briefcase, MapPin, Building2 } from "lucide-react";
 import { VisitorInfoModal } from "@/modules/auth/components/VisitorInfoModal";
 import { login } from "@/services/api";
 
@@ -16,6 +16,11 @@ const userTypeOptions = [
     value: "team",
     label: "Equipo",
     icon: Briefcase,
+  },
+  {
+    value: "owner",
+    label: "Propietario",
+    icon: Building2,
   },
   {
     value: "visitor",
@@ -80,7 +85,7 @@ export const LoginForm = () => {
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-3 gap-2">
         {userTypeOptions.map((option) => {
           const Icon = option.icon;
           const isActive = userType === option.value;
@@ -95,9 +100,14 @@ export const LoginForm = () => {
                   return;
                 }
 
+                if (option.value === "owner") {
+                  navigate("/owner/auth");
+                  return;
+                }
+
                 setUserType("team");
               }}
-              className={`flex flex-col items-center justify-center gap-2 rounded-2xl border px-4 py-4 text-sm font-semibold transition ${
+              className={`flex flex-col items-center justify-center gap-2 rounded-2xl border px-2 py-4 text-sm font-semibold transition ${
                 isActive
                   ? "border-brand bg-brand/10 text-brand shadow-sm"
                   : "border-slate-200 bg-white text-slate-500"
@@ -114,8 +124,7 @@ export const LoginForm = () => {
                   }`}
                 />
               </div>
-
-              <span>{option.label}</span>
+              <span className="text-xs">{option.label}</span>
             </button>
           );
         })}
@@ -203,37 +212,13 @@ export const LoginForm = () => {
               }
             >
               {showPassword ? (
-                <svg
-                  viewBox="0 0 24 24"
-                  className="h-5 w-5 stroke-current"
-                  fill="none"
-                  strokeWidth="1.8"
-                  aria-hidden="true"
-                >
-                  <path
-                    d="m3 3 18 18M10.6 10.6A2 2 0 0 0 12 14a2 2 0 0 0 1.4-.6"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                  <path
-                    d="M9.9 4.2A10.9 10.9 0 0 1 12 4c5 0 9.3 3.1 11 8-1 2.9-3.1 5.2-5.8 6.5M6.6 6.6C4.4 8 2.8 9.8 2 12c1.7 4.9 6 8 10 8 1 0 2-.2 3-.5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
+                <svg viewBox="0 0 24 24" className="h-5 w-5 stroke-current" fill="none" strokeWidth="1.8" aria-hidden="true">
+                  <path d="m3 3 18 18M10.6 10.6A2 2 0 0 0 12 14a2 2 0 0 0 1.4-.6" strokeLinecap="round" strokeLinejoin="round" />
+                  <path d="M9.9 4.2A10.9 10.9 0 0 1 12 4c5 0 9.3 3.1 11 8-1 2.9-3.1 5.2-5.8 6.5M6.6 6.6C4.4 8 2.8 9.8 2 12c1.7 4.9 6 8 10 8 1 0 2-.2 3-.5" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
               ) : (
-                <svg
-                  viewBox="0 0 24 24"
-                  className="h-5 w-5 stroke-current"
-                  fill="none"
-                  strokeWidth="1.8"
-                  aria-hidden="true"
-                >
-                  <path
-                    d="M2 12s3.6-8 10-8 10 8 10 8-3.6 8-10 8S2 12 2 12Z"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
+                <svg viewBox="0 0 24 24" className="h-5 w-5 stroke-current" fill="none" strokeWidth="1.8" aria-hidden="true">
+                  <path d="M2 12s3.6-8 10-8 10 8 10 8-3.6 8-10 8S2 12 2 12Z" strokeLinecap="round" strokeLinejoin="round" />
                   <circle cx="12" cy="12" r="3" />
                 </svg>
               )}

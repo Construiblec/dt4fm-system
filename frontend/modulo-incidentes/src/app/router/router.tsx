@@ -7,46 +7,27 @@ import { IncidentDetailPage } from "@/modules/incidentes/pages/IncidentDetailPag
 import { ReportIncidentPage } from "@/modules/incidentes/pages/ReportIncidentPage";
 import { SupervisorDashboardPage } from "@/modules/supervisor/pages/SupervisorDashboardPage";
 import { SupervisorTaskDetailPage } from "@/modules/supervisor/pages/SupervisorTaskDetailPage";
+import { OwnerAuthPage } from "@/modules/owners/pages/OwnerAuthPage";
+import { OwnerDashboardPage } from "@/modules/owners/pages/OwnerDashboardPage";
+import { OwnerPaymentsPage } from "@/modules/owners/pages/OwnerPaymentsPage";
+import { OwnerReservationsPage } from "@/modules/owners/pages/OwnerReservationsPage";
+import { OwnerProfilePage } from "@/modules/owners/pages/OwnerProfilePage";
 
 export const router = createBrowserRouter([
-  {
-    path: "/",
-    element: <LoginPage />,
-  },
-  {
-    path: "/login",
-    element: <LoginPage />,
-  },
-  {
-    path: "/dashboard",
-    element: <DashboardPage />,
-  },
-  {
-    path: "/cleaning-tasks/:id/execute",
-    element: <CleaningTaskExecutionPage />,
-  },
-  {
-    path: "/visitor-form",
-    element: <VisitorFormPage />,
-  },
-  {
-    path: "/report-incident",
-    element: <ReportIncidentPage />,
-  },
-  {
-    path: "/incidents/:id",
-    element: <IncidentDetailPage />,
-  },
-  {
-    path: "/reportar-incidente",
-    element: <ReportIncidentPage />,
-  },
-  {
-    path: "/supervisor",
-    element: <SupervisorDashboardPage />,
-  },
-  {
-    path: "/supervisor/tasks/:id",
-    element: <SupervisorTaskDetailPage />,
-  },
+  { path: "/", element: <LoginPage /> },
+  { path: "/login", element: <LoginPage /> },
+  { path: "/dashboard", element: <DashboardPage /> },
+  { path: "/cleaning-tasks/:id/execute", element: <CleaningTaskExecutionPage /> },
+  { path: "/visitor-form", element: <VisitorFormPage /> },
+  { path: "/report-incident", element: <ReportIncidentPage /> },
+  { path: "/incidents/:id", element: <IncidentDetailPage /> },
+  { path: "/reportar-incidente", element: <ReportIncidentPage /> },
+  { path: "/supervisor", element: <SupervisorDashboardPage /> },
+  { path: "/supervisor/tasks/:id", element: <SupervisorTaskDetailPage /> },
+  // ── Propietarios ──────────────────────────────────────────────────────────
+  { path: "/owner/auth", element: <OwnerAuthPage /> },
+  { path: "/owner/dashboard", element: <OwnerDashboardPage /> },
+  { path: "/owner/payments", element: <OwnerPaymentsPage /> },
+  { path: "/owner/reservations", element: <OwnerReservationsPage /> },
+  { path: "/owner/profile", element: <OwnerProfilePage /> },
 ]);

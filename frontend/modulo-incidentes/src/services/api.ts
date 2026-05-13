@@ -9,6 +9,64 @@ export type LoginResponse = {
   cleaningEmployeeId?: string | number;
 };
 
+export type Building = {
+  id: number;
+  code: string;
+  name: string;
+  description: string;
+};
+
+export type VerifyOwnerResponse = {
+  found: boolean;
+  tenantId: number;
+  name: string;
+  idNumber: number;
+  phone: number | null;
+  email: string | null;
+};
+
+export type RegisterOwnerResponse = {
+  success: boolean;
+  username: string;
+  userId: number;
+  tenantId: number;
+  name: string;
+};
+
+export type OwnerLoginResponse = {
+  sessionId: string;
+  username: string;
+  role: string;
+  tenantId: number | null;
+  name: string;
+};
+
+export type OwnerUnit = {
+  nombre: string;
+  alicuotaUnidad: number;
+  alicuotaParqueadero: number;
+  alicuotaBodega: number;
+  alicuotaTotal: number;
+  valorExpensa: number;
+};
+
+export type OwnerPago = {
+  id: number;
+  unidad: string;
+  monto: number;
+  periodo: string;
+  estado: string;
+  estadoCodigo: string;
+  fechaPago: string | null;
+  tipo: string;
+};
+
+export type OwnerPaymentsResponse = {
+  alDia: boolean;
+  totalPendiente: number;
+  pagos: OwnerPago[];
+};
+
 const backendBaseUrl = env.VITE_API_URL.replace(/\/api\/?$/, "");
 
 const authApi = axios.create({
@@ -26,6 +84,59 @@ export const login = async (
     username,
     password,
   });
+  return data;
+};
 
+export const getOwnerBuildings = async (): Promise<Building[]> => {
+  const { data } = await authApi.get<Building[]>("/owners/buildings");
+  return data;
+};
+
+export const verifyOwner = async (
+  idNumber: string,
+  buildingId: string,
+): Promise<VerifyOwnerResponse> => {
+  const { data } = await authApi.post<VerifyOwnerResponse>("/owners/verify", {
+    idNumber,
+    buildingId,
+  });
+  return data;
+};
+
+export const registerOwner = async (
+  idNumber: string,
+  buildingId: string,
+  username: string,
+  password: string,
+): Promise<RegisterOwnerResponse> => {
+  const { data } = await authApi.post<RegisterOwnerResponse>(
+    "/owners/register",
+    { idNumber, buildingId, username, password },
+  );
+  return data;
+};
+
+export const loginOwner = async (
+  username: string,
+  password: string,
+): Promise<OwnerLoginResponse> => {
+  const { data } = await authApi.post<OwnerLoginResponse>("/owners/login", {
+    username,
+    password,
+  });
+  return data;
+};
+
+export const getOwnerUnits = async (tenantId: number): Promise<OwnerUnit[]> => {
+  const { data } = await authApi.get<OwnerUnit[]>(`/owners/${tenantId}/units`);
+  return data;
+};
+
+export const getOwnerPayments = async (
+  tenantId: number,
+): Promise<OwnerPaymentsResponse> => {
+  const { data } = await authApi.get<OwnerPaymentsResponse>(
+    `/owners/${tenantId}/payments`,
+  );
   return data;
 };
