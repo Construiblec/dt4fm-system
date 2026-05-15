@@ -38,6 +38,7 @@ export type OwnerLoginResponse = {
   username: string;
   role: string;
   tenantId: number | null;
+  userId: number | null;
   name: string;
 };
 
@@ -67,23 +68,57 @@ export type OwnerPaymentsResponse = {
   pagos: OwnerPago[];
 };
 
+export type OwnerProfile = {
+  userId: number;
+  username: string;
+  name: string;
+  email: string | null;
+};
+
+export type CommonArea = {
+  id: number;
+  code: string;
+  name: string;
+  notes: string | null;
+  estado: string;
+  estadoCodigo: string | null;
+  condicion: string | null;
+  edificio: string | null;
+  edificioId: number | null;
+  piso: string | null;
+  areaNeta: number | null;
+  precio: number | null;
+  fechaReservaInicio: string | null;
+  fechaReservaFin: string | null;
+};
+
+export type CreateReservationPayload = {
+  commonAreaId: string;
+  fechaInicio: string;
+  fechaFin: string;
+  notes?: string;
+};
+
+export type CreateReservationResponse = {
+  success: boolean;
+  message: string;
+  areaId: number;
+  fechaInicio: string;
+  fechaFin: string;
+  precio: number;
+};
+
 const backendBaseUrl = env.VITE_API_URL.replace(/\/api\/?$/, "");
 
 const authApi = axios.create({
   baseURL: backendBaseUrl,
-  headers: {
-    "Content-Type": "application/json",
-  },
+  headers: { "Content-Type": "application/json" },
 });
 
-export const login = async (
-  username: string,
-  password: string,
-): Promise<LoginResponse> => {
-  const { data } = await authApi.post<LoginResponse>("/auth/login", {
-    username,
-    password,
-  });
+// ─── Auth ─────────────────────────────────────────────────────────────────────
+
+export const login = async (username: string, password: string): Promise<LoginResponse> => {
+  const { data } = await authApi.post<LoginResponse>("/auth/login", { username, password });
   return data;
 };
 
@@ -92,51 +127,80 @@ export const getOwnerBuildings = async (): Promise<Building[]> => {
   return data;
 };
 
-export const verifyOwner = async (
-  idNumber: string,
-  buildingId: string,
-): Promise<VerifyOwnerResponse> => {
-  const { data } = await authApi.post<VerifyOwnerResponse>("/owners/verify", {
-    idNumber,
-    buildingId,
-  });
+export const verifyOwner = async (idNumber: string, buildingId: string): Promise<VerifyOwnerResponse> => {
+  const { data } = await authApi.post<VerifyOwnerResponse>("/owners/verify", { idNumber, buildingId });
   return data;
 };
 
 export const registerOwner = async (
-  idNumber: string,
-  buildingId: string,
-  username: string,
-  password: string,
+  idNumber: string, buildingId: string, username: string, password: string,
 ): Promise<RegisterOwnerResponse> => {
-  const { data } = await authApi.post<RegisterOwnerResponse>(
-    "/owners/register",
-    { idNumber, buildingId, username, password },
-  );
-  return data;
-};
-
-export const loginOwner = async (
-  username: string,
-  password: string,
-): Promise<OwnerLoginResponse> => {
-  const { data } = await authApi.post<OwnerLoginResponse>("/owners/login", {
-    username,
-    password,
+  const { data } = await authApi.post<RegisterOwnerResponse>("/owners/register", {
+    idNumber, buildingId, username, password,
   });
   return data;
 };
+
+export const loginOwner = async (username: string, password: string): Promise<OwnerLoginResponse> => {
+  const { data } = await authApi.post<OwnerLoginResponse>("/owners/login", { username, password });
+  return data;
+};
+
+// ─── Dashboard ────────────────────────────────────────────────────────────────
 
 export const getOwnerUnits = async (tenantId: number): Promise<OwnerUnit[]> => {
   const { data } = await authApi.get<OwnerUnit[]>(`/owners/${tenantId}/units`);
   return data;
 };
 
-export const getOwnerPayments = async (
-  tenantId: number,
-): Promise<OwnerPaymentsResponse> => {
-  const { data } = await authApi.get<OwnerPaymentsResponse>(
-    `/owners/${tenantId}/payments`,
+export const getOwnerPayments = async (tenantId: number): Promise<OwnerPaymentsResponse> => {
+  const { data } = await authApi.get<OwnerPaymentsResponse>(`/owners/${tenantId}/payments`);
+  return data;
+};
+
+// ─── Perfil ───────────────────────────────────────────────────────────────────
+
+export const getOwnerProfile = async (userId: number): Promise<OwnerProfile> => {
+  const { data } = await authApi.get<OwnerProfile>(`/owners/${userId}/profile`);
+  return data;
+};
+
+export const changeOwnerPassword = async (
+  userId: number, currentPassword: string, newPassword: string,
+): Promise<{ success: boolean; message: string }> => {
+  const { data } = await authApi.put<{ success: boolean; message: string }>(
+    `/owners/${userId}/password`, { currentPassword, newPassword },
+  );
+  return data;
+};
+
+export const contactAdmin = async (
+  tenantId: number, subject: string, message: string,
+): Promise<{ success: boolean; message: string }> => {
+  const { data } = await authApi.post<{ success: boolean; message: string }>(
+    `/owners/${tenantId}/contact`, { subject, message },
+  );
+  return data;
+};
+
+// ─── Áreas comunales ─────────────────────────────────────────────────────────
+
+export const getCommonAreas = async (buildingId?: number): Promise<CommonArea[]> => {
+  const params = buildingId ? `?buildingId=${buildingId}` : "";
+  const { data } = await authApi.get<CommonArea[]>(`/owners/common-areas${params}`);
+  return data;
+};
+
+export const getCommonAreaById = async (areaId: number): Promise<CommonArea> => {
+  const { data } = await authApi.get<CommonArea>(`/owners/common-areas/${areaId}`);
+  return data;
+};
+
+export const createReservation = async (
+  tenantId: number, payload: CreateReservationPayload,
+): Promise<CreateReservationResponse> => {
+  const { data } = await authApi.post<CreateReservationResponse>(
+    `/owners/${tenantId}/reservations`, payload,
   );
   return data;
 };

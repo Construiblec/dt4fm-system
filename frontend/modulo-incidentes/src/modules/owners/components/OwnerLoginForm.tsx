@@ -35,6 +35,9 @@ export const OwnerLoginForm = ({ onBack }: Props) => {
       if (response.tenantId) {
         localStorage.setItem("tenantId", String(response.tenantId));
       }
+      if (response.userId) {
+        localStorage.setItem("userId", String(response.userId));
+      }
       if (response.name) {
         localStorage.setItem("ownerName", response.name);
       }
@@ -42,8 +45,7 @@ export const OwnerLoginForm = ({ onBack }: Props) => {
       navigate("/owner/dashboard");
     } catch (error) {
       if (axios.isAxiosError(error)) {
-        const status = error.response?.status;
-        if (status === 401) {
+        if (error.response?.status === 401) {
           setErrorMessage("Usuario o contrase\u00f1a incorrectos");
           return;
         }

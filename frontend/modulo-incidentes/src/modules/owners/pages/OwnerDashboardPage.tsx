@@ -90,7 +90,6 @@ export const OwnerDashboardPage = () => {
   return (
     <AppLayout>
       <main className="min-h-screen bg-slate-50 px-4 py-6">
-
         {/* Header */}
         <div className="mb-6 flex items-center justify-between">
           <div>
@@ -160,7 +159,7 @@ export const OwnerDashboardPage = () => {
         {/* Accesos rápidos */}
         <section className="mb-6">
           <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-slate-500">
-            Accesos r\u00e1pidos
+            Accesos rapdidos
           </h2>
           <div className="grid grid-cols-3 gap-3">
             {quickActions.map((action) => {
@@ -223,7 +222,9 @@ export const OwnerDashboardPage = () => {
                   className="rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm"
                 >
                   <div className="mb-3 flex items-center justify-between">
-                    <p className="font-semibold text-slate-900">{unit.nombre}</p>
+                    <p className="font-semibold text-slate-900">
+                      {unit.nombre}
+                    </p>
                     <span className="rounded-full bg-brand/10 px-3 py-1 text-xs font-semibold text-brand">
                       ${unit.valorExpensa.toFixed(2)}/mes
                     </span>

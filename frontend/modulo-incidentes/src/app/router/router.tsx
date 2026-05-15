@@ -12,6 +12,7 @@ import { OwnerDashboardPage } from "@/modules/owners/pages/OwnerDashboardPage";
 import { OwnerPaymentsPage } from "@/modules/owners/pages/OwnerPaymentsPage";
 import { OwnerReservationsPage } from "@/modules/owners/pages/OwnerReservationsPage";
 import { OwnerProfilePage } from "@/modules/owners/pages/OwnerProfilePage";
+import { OwnerReservationDetailPage } from "@/modules/owners/pages/reservation/OwnerReservationDetailPage";
 
 export const router = createBrowserRouter([
   { path: "/", element: <LoginPage /> },
@@ -29,5 +30,6 @@ export const router = createBrowserRouter([
   { path: "/owner/dashboard", element: <OwnerDashboardPage /> },
   { path: "/owner/payments", element: <OwnerPaymentsPage /> },
   { path: "/owner/reservations", element: <OwnerReservationsPage /> },
+  { path: "/owner/reservations/:areaId", element: <OwnerReservationDetailPage /> },
   { path: "/owner/profile", element: <OwnerProfilePage /> },
 ]);
