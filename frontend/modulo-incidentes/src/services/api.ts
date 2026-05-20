@@ -68,6 +68,19 @@ export type OwnerPaymentsResponse = {
   pagos: OwnerPago[];
 };
 
+export type PayPaymentPayload = {
+  paymentIds: number[];
+  method: "transfer" | "card";
+  paymentDate: string;
+  notes?: string;
+};
+
+export type PayPaymentResponse = {
+  success: boolean;
+  message: string;
+  results: { id: number; success: boolean; error?: string }[];
+};
+
 export type OwnerProfile = {
   userId: number;
   username: string;
@@ -155,6 +168,33 @@ export const getOwnerUnits = async (tenantId: number): Promise<OwnerUnit[]> => {
 
 export const getOwnerPayments = async (tenantId: number): Promise<OwnerPaymentsResponse> => {
   const { data } = await authApi.get<OwnerPaymentsResponse>(`/owners/${tenantId}/payments`);
+  return data;
+};
+
+// ─── Pagos ────────────────────────────────────────────────────────────────────
+
+export const payPayments = async (
+  tenantId: number,
+  payload: PayPaymentPayload,
+): Promise<PayPaymentResponse> => {
+  const { data } = await authApi.post<PayPaymentResponse>(
+    `/owners/${tenantId}/payments/pay`,
+    payload,
+  );
+  return data;
+};
+
+export const uploadPaymentVoucher = async (
+  paymentId: number,
+  file: File,
+): Promise<{ success: boolean; message: string }> => {
+  const formData = new FormData();
+  formData.append("file", file);
+  const { data } = await axios.post<{ success: boolean; message: string }>(
+    `${backendBaseUrl}/owners/payments/${paymentId}/voucher`,
+    formData,
+    { headers: { "Content-Type": "multipart/form-data" } },
+  );
   return data;
 };
 
