@@ -65,7 +65,6 @@ export const OwnerPaymentsPage = () => {
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [payMethod, setPayMethod] = useState<"transfer" | "card" | null>(null);
   const [voucherFile, setVoucherFile] = useState<File | null>(null);
-  const [voucherPaymentId, setVoucherPaymentId] = useState<number | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState("");
