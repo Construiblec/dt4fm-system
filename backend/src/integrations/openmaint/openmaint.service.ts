@@ -251,35 +251,29 @@ export class OpenmaintService {
 
   async findTenantByIdNumber(
     idNumber: string,
-    buildingId: number,
     sessionId: string,
   ): Promise<TenantCard | null> {
-    const filter = {
-      attribute: {
-        simple: {
-          attribute: 'IDNumber',
-          operator: 'equal',
-          value: Number(idNumber),
+    const tenantFilter = encodeURIComponent(
+      JSON.stringify({
+        attribute: {
+          simple: {
+            attribute: 'IDNumber',
+            operator: 'equal',
+            value: Number(idNumber),
+          },
         },
-      },
-    };
-
-    const encodedFilter = encodeURIComponent(JSON.stringify(filter));
+      }),
+    );
 
     try {
-      const response = (await this.client.get(
-        `/classes/Tenant/cards?filter=${encodedFilter}&limit=10`,
+      const tenantResponse = (await this.client.get(
+        `/classes/Tenant/cards?filter=${tenantFilter}&limit=1`,
         sessionId,
       )) as TenantCardsResponse;
 
-      const tenants = response.data ?? [];
-
-      const propietario = tenants.find(
-        (t) => t._OccupancyType_code === 'Propietario',
-      );
-
-      return propietario ?? null;
-    } catch {
+      return tenantResponse.data?.[0] ?? null;
+    } catch (err) {
+      console.error('[findTenant] error:', err);
       return null;
     }
   }
@@ -316,9 +310,8 @@ export class OpenmaintService {
         message: error?.message,
       });
 
-      throw new InternalServerErrorException(
-        'Error al crear usuario propietario en OpenMAINT',
-      );
+      // Propagamos el error original para que el caller pueda inspeccionar el status
+      throw error;
     }
   }
 

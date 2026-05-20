@@ -4,8 +4,4 @@ export class VerifyOwnerDto {
   @IsString()
   @IsNotEmpty()
   idNumber: string;
-
-  @IsString()
-  @IsNotEmpty()
-  buildingId: string;
 }

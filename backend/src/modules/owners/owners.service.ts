@@ -127,14 +127,21 @@ export class OwnersService {
     const sessionId = await this.getAdminSessionId();
     const tenant = await this.openmaintService.findTenantByIdNumber(
       dto.idNumber,
-      Number(dto.buildingId),
       sessionId,
     );
     if (!tenant) {
       throw new BadRequestException(
-        'No se encontró un propietario con esa cédula en el edificio seleccionado',
+        'No se encontró un propietario con esa cédula',
       );
     }
+
+    const parts = (tenant.Description ?? '').trim().split(/\s+/);
+    const firstName = parts[0] ?? '';
+    const firstLastName = parts[1] ?? '';
+    const suggestedUsername = firstName && firstLastName
+      ? `${firstName}.${firstLastName}`.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      : firstName.toLowerCase();
+
     return {
       found: true,
       tenantId: tenant._id,
@@ -142,6 +149,7 @@ export class OwnersService {
       idNumber: tenant.IDNumber,
       phone: tenant.Phone ?? null,
       email: tenant.Email ?? null,
+      suggestedUsername,
     };
   }
 
@@ -149,7 +157,6 @@ export class OwnersService {
     const sessionId = await this.getAdminSessionId();
     const tenant = await this.openmaintService.findTenantByIdNumber(
       dto.idNumber,
-      Number(dto.buildingId),
       sessionId,
     );
     if (!tenant) {
@@ -178,10 +185,21 @@ export class OwnersService {
         name: tenant.Description,
       };
     } catch (error) {
-      const status = error?.response?.status ?? error?.status;
-      if (status === 409) {
+      const status =
+        error?.response?.status ??
+        error?.status ??
+        error?.getStatus?.();
+      const responseData: string = JSON.stringify(error?.response?.data ?? error?.message ?? '');
+      const isDuplicate =
+        status === 409 ||
+        status === 422 ||
+        responseData.includes('DuplicateKeyException') ||
+        responseData.includes('duplicate key') ||
+        responseData.includes('already exists');
+      if (isDuplicate) {
         throw new ConflictException('El nombre de usuario ya está en uso, elige otro');
       }
+      if (error instanceof ConflictException) throw error;
       throw new InternalServerErrorException(
         'No se pudo crear el usuario. Intenta de nuevo más tarde.',
       );

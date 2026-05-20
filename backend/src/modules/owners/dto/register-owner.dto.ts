@@ -7,10 +7,6 @@ export class RegisterOwnerDto {
 
   @IsString()
   @IsNotEmpty()
-  buildingId: string;
-
-  @IsString()
-  @IsNotEmpty()
   username: string;
 
   @IsString()
