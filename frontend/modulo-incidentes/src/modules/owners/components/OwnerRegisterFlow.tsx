@@ -1,12 +1,10 @@
 import axios from "axios";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { ChevronLeft, CheckCircle2 } from "lucide-react";
 import {
-  getOwnerBuildings,
   verifyOwner,
   registerOwner,
-  type Building,
   type VerifyOwnerResponse,
 } from "@/services/api";
 
@@ -14,7 +12,6 @@ type Step = "verify" | "credentials" | "success";
 
 type VerifyValues = {
   idNumber: string;
-  buildingId: string;
 };
 
 type CredentialsValues = {
@@ -29,8 +26,6 @@ type Props = {
 
 export const OwnerRegisterFlow = ({ onBack }: Props) => {
   const [step, setStep] = useState<Step>("verify");
-  const [buildings, setBuildings] = useState<Building[]>([]);
-  const [loadingBuildings, setLoadingBuildings] = useState(true);
   const [verifiedTenant, setVerifiedTenant] =
     useState<VerifyOwnerResponse | null>(null);
   const [registeredUsername, setRegisteredUsername] = useState<string>("");
@@ -39,32 +34,26 @@ export const OwnerRegisterFlow = ({ onBack }: Props) => {
   const [showConfirm, setShowConfirm] = useState(false);
 
   const verifyForm = useForm<VerifyValues>({
-    defaultValues: { idNumber: "", buildingId: "" },
+    defaultValues: { idNumber: "" },
   });
 
   const credentialsForm = useForm<CredentialsValues>({
     defaultValues: { username: "", password: "", confirmPassword: "" },
   });
 
-  useEffect(() => {
-    getOwnerBuildings()
-      .then(setBuildings)
-      .catch(() => setBuildings([]))
-      .finally(() => setLoadingBuildings(false));
-  }, []);
-
-  const onVerifySubmit = async ({ idNumber, buildingId }: VerifyValues) => {
+  const onVerifySubmit = async ({ idNumber }: VerifyValues) => {
     try {
       setErrorMessage(null);
-      const tenant = await verifyOwner(idNumber, buildingId);
+      const tenant = await verifyOwner(idNumber);
       setVerifiedTenant(tenant);
+      credentialsForm.setValue("username", tenant.suggestedUsername);
       setStep("credentials");
     } catch (error) {
       if (axios.isAxiosError(error)) {
         const status = error.response?.status;
         if (status === 400) {
           setErrorMessage(
-            "No encontramos un propietario con esa c\u00e9dula en el edificio seleccionado.",
+            "No encontramos un propietario con esa c\u00e9dula.",
           );
           return;
         }
@@ -90,7 +79,6 @@ export const OwnerRegisterFlow = ({ onBack }: Props) => {
 
       await registerOwner(
         verifyForm.getValues("idNumber"),
-        verifyForm.getValues("buildingId"),
         username,
         password,
       );
@@ -168,30 +156,6 @@ export const OwnerRegisterFlow = ({ onBack }: Props) => {
               {...verifyForm.register("idNumber", { required: true })}
             />
           </div>
-
-          <div className="space-y-2">
-            <label htmlFor="buildingId" className="text-sm font-medium text-slate-700">
-              Edificio
-            </label>
-            {loadingBuildings ? (
-              <div className="w-full rounded-xl border border-slate-200 bg-slate-50 py-4 pl-4 text-sm text-slate-400">
-                Cargando edificios...
-              </div>
-            ) : (
-              <select
-                id="buildingId"
-                className="w-full rounded-xl border border-slate-200 bg-white py-4 pl-4 pr-4 text-base text-slate-900 outline-none transition focus:border-brand focus:ring-4 focus:ring-brand/20"
-                {...verifyForm.register("buildingId", { required: true })}
-              >
-                <option value="">Selecciona tu edificio</option>
-                {buildings.map((b) => (
-                  <option key={b.id} value={String(b.id)}>
-                    {b.name}
-                  </option>
-                ))}
-              </select>
-            )}
-          </div>
         </div>
 
         {errorMessage ? (
@@ -202,7 +166,7 @@ export const OwnerRegisterFlow = ({ onBack }: Props) => {
 
         <button
           type="submit"
-          disabled={verifyForm.formState.isSubmitting || loadingBuildings}
+          disabled={verifyForm.formState.isSubmitting}
           className="w-full rounded-xl bg-brand py-4 text-center text-base font-semibold text-white shadow-md transition hover:bg-brand-hover focus:outline-none focus:ring-4 focus:ring-brand/20 disabled:cursor-not-allowed disabled:opacity-70"
         >
           {verifyForm.formState.isSubmitting ? "Verificando..." : "Verificar identidad"}
@@ -252,12 +216,12 @@ export const OwnerRegisterFlow = ({ onBack }: Props) => {
             <input
               id="reg-username"
               type="text"
-              placeholder="Ej. pablo.garcia"
-              autoComplete="username"
-              className="w-full rounded-xl border border-slate-200 bg-white py-4 pl-11 pr-4 text-base text-slate-900 outline-none transition focus:border-brand focus:ring-4 focus:ring-brand/20"
+              readOnly
+              className="w-full rounded-xl border border-slate-200 bg-slate-50 py-4 pl-11 pr-4 text-base text-slate-500 outline-none cursor-not-allowed"
               {...credentialsForm.register("username", { required: true })}
             />
           </div>
+          <p className="text-xs text-slate-400">Usuario asignado automáticamente según tu nombre.</p>
         </div>
 
         <div className="space-y-2">

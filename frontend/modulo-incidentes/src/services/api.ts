@@ -23,6 +23,7 @@ export type VerifyOwnerResponse = {
   idNumber: number;
   phone: number | null;
   email: string | null;
+  suggestedUsername: string;
 };
 
 export type RegisterOwnerResponse = {
@@ -140,16 +141,16 @@ export const getOwnerBuildings = async (): Promise<Building[]> => {
   return data;
 };
 
-export const verifyOwner = async (idNumber: string, buildingId: string): Promise<VerifyOwnerResponse> => {
-  const { data } = await authApi.post<VerifyOwnerResponse>("/owners/verify", { idNumber, buildingId });
+export const verifyOwner = async (idNumber: string): Promise<VerifyOwnerResponse> => {
+  const { data } = await authApi.post<VerifyOwnerResponse>("/owners/verify", { idNumber });
   return data;
 };
 
 export const registerOwner = async (
-  idNumber: string, buildingId: string, username: string, password: string,
+  idNumber: string, username: string, password: string,
 ): Promise<RegisterOwnerResponse> => {
   const { data } = await authApi.post<RegisterOwnerResponse>("/owners/register", {
-    idNumber, buildingId, username, password,
+    idNumber, username, password,
   });
   return data;
 };
