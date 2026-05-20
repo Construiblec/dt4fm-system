@@ -7,14 +7,25 @@ import {
   Post,
   Put,
   Query,
+  UploadedFile,
+  UseInterceptors,
+  BadRequestException,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { OwnersService } from './owners.service';
 import { VerifyOwnerDto } from './dto/verify-owner.dto';
 import { RegisterOwnerDto } from './dto/register-owner.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { ContactAdminDto } from './dto/contact-admin.dto';
 import { CreateReservationDto } from './dto/create-reservation.dto';
+import { PayPaymentDto } from './dto/pay-payment.dto';
 import { LoginDto } from '../auth/dto/login.dto';
+
+type UploadedFile = {
+  buffer: Buffer;
+  originalname: string;
+  mimetype: string;
+};
 
 @Controller('owners')
 export class OwnersController {
@@ -46,7 +57,6 @@ export class OwnersController {
 
   /**
    * GET /owners/common-areas?buildingId=xxx
-   * Lista todas las áreas comunales, opcionalmente filtradas por edificio.
    */
   @Get('common-areas')
   async getCommonAreas(@Query('buildingId') buildingId?: string) {
@@ -57,24 +67,10 @@ export class OwnersController {
 
   /**
    * GET /owners/common-areas/:areaId
-   * Detalle de un área comunal específica con precio y fechas.
    */
   @Get('common-areas/:areaId')
   async getCommonAreaById(@Param('areaId', ParseIntPipe) areaId: number) {
     return this.ownersService.getCommonAreaById(areaId);
-  }
-
-  /**
-   * POST /owners/:tenantId/reservations
-   * Crea una reserva para el propietario en el área especificada.
-   * Body: { commonAreaId, fechaInicio, fechaFin, notes? }
-   */
-  @Post(':tenantId/reservations')
-  async createReservation(
-    @Param('tenantId', ParseIntPipe) tenantId: number,
-    @Body() dto: CreateReservationDto,
-  ) {
-    return this.ownersService.createReservation(dto, tenantId);
   }
 
   // ─── Dashboard ────────────────────────────────────────────────────────────
@@ -87,6 +83,65 @@ export class OwnersController {
   @Get(':tenantId/payments')
   async getOwnerPayments(@Param('tenantId', ParseIntPipe) tenantId: number) {
     return this.ownersService.getOwnerPendingPayments(tenantId);
+  }
+
+  // ─── Pagos ────────────────────────────────────────────────────────────────
+
+  /**
+   * POST /owners/:tenantId/payments/pay
+   * Marca uno o varios pagos como Pagado en OpenMAINT.
+   * Body: { paymentIds: number[], method: string, paymentDate: string, notes?: string }
+   * Soporta pago individual (una unidad) o total (todas las pendientes).
+   */
+  @Post(':tenantId/payments/pay')
+  async payPayments(
+    @Param('tenantId', ParseIntPipe) _tenantId: number,
+    @Body() dto: PayPaymentDto,
+  ) {
+    return this.ownersService.payPayments(dto);
+  }
+
+  /**
+   * POST /owners/payments/:paymentId/voucher
+   * Sube el comprobante de pago como adjunto a la card de Pagos.
+   * Multipart/form-data con campo "file".
+   */
+  @Post('payments/:paymentId/voucher')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB
+      fileFilter: (_req, file, callback) => {
+        const allowed = /^(image\/(png|jpeg|jpg|webp)|application\/pdf)$/i.test(
+          file.mimetype,
+        );
+        callback(
+          allowed
+            ? null
+            : new BadRequestException('Solo se permiten imágenes o PDF'),
+          allowed,
+        );
+      },
+    }),
+  )
+  async uploadVoucher(
+    @Param('paymentId', ParseIntPipe) paymentId: number,
+    @UploadedFile() file: UploadedFile,
+  ) {
+    if (!file) throw new BadRequestException('Archivo requerido');
+    return this.ownersService.uploadPaymentVoucher(paymentId, file);
+  }
+
+  // ─── Reservas ─────────────────────────────────────────────────────────────
+
+  /**
+   * POST /owners/:tenantId/reservations
+   */
+  @Post(':tenantId/reservations')
+  async createReservation(
+    @Param('tenantId', ParseIntPipe) tenantId: number,
+    @Body() dto: CreateReservationDto,
+  ) {
+    return this.ownersService.createReservation(dto, tenantId);
   }
 
   // ─── Perfil ───────────────────────────────────────────────────────────────

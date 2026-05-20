@@ -14,13 +14,23 @@ import { RegisterOwnerDto } from './dto/register-owner.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { ContactAdminDto } from './dto/contact-admin.dto';
 import { CreateReservationDto } from './dto/create-reservation.dto';
+import { PayPaymentDto } from './dto/pay-payment.dto';
+import FormData from 'form-data';
 
 const PROPIETARIOS_GROUP = { _id: 3361541, name: 'Propietarios' };
 const OPENMAINT_PAYMENTS_CLASS = 'Pagos';
 const OPENMAINT_UNITS_VIEW = 'TenantAlicuotaSummary';
 const OPENMAINT_COMMON_AREAS_CLASS = 'CommonAreas';
-// Código del estado "Reservado" en OpenMAINT
 const STATE_RENT_CODE = 72122;
+
+// Lookup IDs de Estado (TipoPago)
+const ESTADO_PENDIENTE = 3166839;
+const ESTADO_PAGADO = 3166845;
+
+// Lookup IDs de MetodoPago
+const METODO_EFECTIVO = 3167095;
+const METODO_TRANSFERENCIA = 3167098;
+const METODO_TARJETA = 3167117;
 
 // ─── Tipos internos ────────────────────────────────────────────────────────────
 
@@ -47,6 +57,7 @@ type PagoRaw = {
   Periodo: string;
   Tipo: string;
   Unidad: string;
+  MetododoPago: number | null;
 };
 
 type OpenmaintUserResponse = {
@@ -80,6 +91,12 @@ type CommonAreaRaw = {
   Precio: number | null;
   FechaReservaInicio: string | null;
   FechaReservaFin: string | null;
+};
+
+type UploadedFile = {
+  buffer: Buffer;
+  originalname: string;
+  mimetype: string;
 };
 
 @Injectable()
@@ -252,19 +269,98 @@ export class OwnersService {
       return {
         alDia: pendientes.length === 0,
         totalPendiente: pendientes.reduce((acc, p) => acc + (p.Monto ?? 0), 0),
-        pagos: all.map((p) => ({
-          id: p._id,
-          unidad: p.Unidad,
-          monto: p.Monto,
-          periodo: p.Periodo,
-          estado: p._Estado_description,
-          estadoCodigo: p._Estado_code,
-          fechaPago: p.FechadePago ?? null,
-          tipo: p.Tipo,
-        })),
+        pagos: all.map((p) => this.mapPago(p)),
       };
     } catch {
       throw new InternalServerErrorException('No se pudieron obtener los pagos');
+    }
+  }
+
+  // ─── Pagos ─────────────────────────────────────────────────────────────────
+
+  /**
+   * Marca uno o varios pagos como Pagado en OpenMAINT.
+   * Actualiza Estado, FechadePago y MetododoPago en cada card de Pagos.
+   */
+  async payPayments(dto: PayPaymentDto) {
+    const sessionId = await this.getAdminSessionId();
+    const today = dto.paymentDate;
+    const metodoPago =
+      dto.method === 'card' ? METODO_TARJETA
+      : dto.method === 'cash' ? METODO_EFECTIVO
+      : METODO_TRANSFERENCIA;
+
+    const results: { id: number; success: boolean; error?: string }[] = [];
+
+    for (const paymentId of dto.paymentIds) {
+      try {
+        await this.openmaintClient.put(
+          `/classes/${OPENMAINT_PAYMENTS_CLASS}/cards/${paymentId}`,
+          {
+            Estado: ESTADO_PAGADO,
+            FechadePago: today,
+            MetododoPago: metodoPago,
+            Notes: dto.notes ?? null,
+          },
+          sessionId,
+        );
+        results.push({ id: paymentId, success: true });
+      } catch (error) {
+        console.error(`[owners] payPayment error for id ${paymentId}:`, {
+          status: error?.response?.status,
+          data: JSON.stringify(error?.response?.data),
+        });
+        results.push({ id: paymentId, success: false, error: 'No se pudo procesar' });
+      }
+    }
+
+    const allSuccess = results.every((r) => r.success);
+    return {
+      success: allSuccess,
+      results,
+      message: allSuccess
+        ? 'Pago(s) registrado(s) correctamente'
+        : 'Algunos pagos no pudieron procesarse',
+    };
+  }
+
+  /**
+   * Sube el comprobante de pago como adjunto a la card de Pagos en OpenMAINT.
+   * Usa multipart/form-data con los campos "file" y "attachment".
+   */
+  async uploadPaymentVoucher(paymentId: number, file: UploadedFile) {
+    const sessionId = await this.getAdminSessionId();
+
+    const formData = new FormData();
+    formData.append('file', file.buffer, {
+      filename: file.originalname,
+      contentType: file.mimetype,
+    });
+    formData.append(
+      'attachment',
+      JSON.stringify({
+        fileName: file.originalname,
+        category: '390625',
+        Code: 'Comprobante',
+        Description: 'Comprobante',
+        majorVersion: true,
+      }),
+    );
+
+    try {
+      await this.openmaintClient.post(
+        `/classes/${OPENMAINT_PAYMENTS_CLASS}/cards/${paymentId}/attachments`,
+        formData,
+        sessionId,
+        { headers: formData.getHeaders() },
+      );
+      return { success: true, message: 'Comprobante subido correctamente' };
+    } catch (error) {
+      console.error('[owners] uploadPaymentVoucher error:', {
+        status: error?.response?.status,
+        data: JSON.stringify(error?.response?.data),
+      });
+      throw new InternalServerErrorException('No se pudo subir el comprobante');
     }
   }
 
@@ -349,9 +445,7 @@ export class OwnersService {
         );
         path += `&filter=${filter}`;
       }
-      const response = (await this.openmaintClient.get(path, sessionId)) as {
-        data?: CommonAreaRaw[];
-      };
+      const response = (await this.openmaintClient.get(path, sessionId)) as { data?: CommonAreaRaw[] };
       const areas = (response.data ?? []).filter(
         (a) => a.Name && !a.Name.toLowerCase().includes('técnica'),
       );
@@ -376,29 +470,16 @@ export class OwnersService {
     }
   }
 
-  /**
-   * Crea una reserva actualizando los campos de la CommonArea:
-   * State → Reservado, FechaReservaInicio, FechaReservaFin, y opcionalmente Notes.
-   * OpenMAINT usa formato: yyyy-MM-ddTHH:mm:ss
-   */
   async createReservation(dto: CreateReservationDto, tenantId: number) {
     const sessionId = await this.getAdminSessionId();
     const areaId = Number(dto.commonAreaId);
-
-    // 1. Verificar que el área existe y está libre
     const areaRaw = (await this.openmaintClient.get(
       `/classes/${OPENMAINT_COMMON_AREAS_CLASS}/cards/${areaId}`,
       sessionId,
     )) as { data?: CommonAreaRaw };
-
     const area = areaRaw.data;
     if (!area) throw new BadRequestException('El área comunal no existe');
-
-    if (area._State_code === 'Rent') {
-      throw new ConflictException('El área ya está reservada en esas fechas');
-    }
-
-    // 2. Actualizar el área con los datos de la reserva
+    if (area._State_code === 'Rent') throw new ConflictException('El área ya está reservada');
     try {
       await this.openmaintClient.put(
         `/classes/${OPENMAINT_COMMON_AREAS_CLASS}/cards/${areaId}`,
@@ -410,7 +491,6 @@ export class OwnersService {
         },
         sessionId,
       );
-
       return {
         success: true,
         message: 'Reserva creada correctamente',
@@ -426,6 +506,19 @@ export class OwnersService {
   }
 
   // ─── Helpers ───────────────────────────────────────────────────────────────
+
+  private mapPago(p: PagoRaw) {
+    return {
+      id: p._id,
+      unidad: p.Unidad,
+      monto: p.Monto,
+      periodo: p.Periodo,
+      estado: p._Estado_description,
+      estadoCodigo: p._Estado_code,
+      fechaPago: p.FechadePago ?? null,
+      tipo: p.Tipo,
+    };
+  }
 
   private mapCommonArea(a: CommonAreaRaw) {
     return {
