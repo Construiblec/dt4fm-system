@@ -48,7 +48,7 @@ export const OwnerAuthPage = () => {
                   CONSTRUIBLEC
                 </p>
                 <h1 className="text-2xl font-bold tracking-tight text-slate-900">
-                  {mode === "select" ? "\u00c1rea de propietarios" : null}
+                  {mode === "select" ? "\u00c1rea de residentes" : null}
                   {mode === "login" ? "Inicia sesi\u00f3n" : null}
                   {mode === "register" ? "Crea tu cuenta" : null}
                 </h1>
@@ -57,7 +57,7 @@ export const OwnerAuthPage = () => {
                     ? "\u00bfYa tienes cuenta o necesitas registrarte?"
                     : null}
                   {mode === "login"
-                    ? "Ingresa tus credenciales de propietario"
+                    ? "Ingresa tus credenciales de residente"
                     : null}
                   {mode === "register"
                     ? "Verifica tu identidad para continuar"
@@ -73,7 +73,7 @@ export const OwnerAuthPage = () => {
                   {"Cuenta creada exitosamente \u2713"}
                 </p>
                 <p className="text-xs text-emerald-600">
-                  Ya puedes iniciar sesi\u00f3n con tus credenciales.
+                  Ya puedes iniciar sesión con tus credenciales.
                 </p>
               </div>
             ) : null}
@@ -86,7 +86,7 @@ export const OwnerAuthPage = () => {
                   onClick={() => setMode("login")}
                   className="w-full rounded-xl bg-brand py-4 text-center text-base font-semibold text-white shadow-md transition hover:bg-brand-hover focus:outline-none focus:ring-4 focus:ring-brand/20"
                 >
-                  Iniciar sesion
+                  Iniciar sesión
                 </button>
                 <button
                   type="button"

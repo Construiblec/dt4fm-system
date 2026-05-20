@@ -30,7 +30,7 @@ export const VisitorFormPage = () => {
       localStorage.setItem("visitorName", fullName);
       localStorage.setItem("visitorPhone", phone);
 
-      const response = await login("Invitado", "Invitado2026.");
+      const response = await login("usuario.invitado", "Invitado2026.");
 
       localStorage.setItem("sessionId", response.sessionId);
       localStorage.setItem("employeeId", response.employeeId);

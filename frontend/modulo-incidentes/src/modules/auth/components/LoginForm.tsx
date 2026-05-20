@@ -19,7 +19,7 @@ const userTypeOptions = [
   },
   {
     value: "owner",
-    label: "Propietario",
+    label: "Residente",
     icon: Building2,
   },
   {
@@ -74,12 +74,12 @@ export const LoginForm = () => {
         const status = error.response?.status;
 
         if (status === 401 || status === 500) {
-          setErrorMessage("Usuario o contrase\u00f1a incorrectos");
+          setErrorMessage("Usuario o contraseña incorrectos");
           return;
         }
       }
 
-      setErrorMessage("Usuario o contrase\u00f1a incorrectos");
+      setErrorMessage("Usuario o contraseña incorrectos");
     }
   };
 
@@ -172,7 +172,7 @@ export const LoginForm = () => {
             htmlFor="password"
             className="text-sm font-medium text-slate-700"
           >
-            {"Contrase\u00f1a"}
+            {"Contraseña"}
           </label>
 
           <div className="relative">
@@ -206,19 +206,41 @@ export const LoginForm = () => {
               onClick={() => setShowPassword(!showPassword)}
               className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 transition hover:text-slate-600"
               aria-label={
-                showPassword
-                  ? "Ocultar contrase\u00f1a"
-                  : "Mostrar contrase\u00f1a"
+                showPassword ? "Ocultar contraseña" : "Mostrar contraseña"
               }
             >
               {showPassword ? (
-                <svg viewBox="0 0 24 24" className="h-5 w-5 stroke-current" fill="none" strokeWidth="1.8" aria-hidden="true">
-                  <path d="m3 3 18 18M10.6 10.6A2 2 0 0 0 12 14a2 2 0 0 0 1.4-.6" strokeLinecap="round" strokeLinejoin="round" />
-                  <path d="M9.9 4.2A10.9 10.9 0 0 1 12 4c5 0 9.3 3.1 11 8-1 2.9-3.1 5.2-5.8 6.5M6.6 6.6C4.4 8 2.8 9.8 2 12c1.7 4.9 6 8 10 8 1 0 2-.2 3-.5" strokeLinecap="round" strokeLinejoin="round" />
+                <svg
+                  viewBox="0 0 24 24"
+                  className="h-5 w-5 stroke-current"
+                  fill="none"
+                  strokeWidth="1.8"
+                  aria-hidden="true"
+                >
+                  <path
+                    d="m3 3 18 18M10.6 10.6A2 2 0 0 0 12 14a2 2 0 0 0 1.4-.6"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                  <path
+                    d="M9.9 4.2A10.9 10.9 0 0 1 12 4c5 0 9.3 3.1 11 8-1 2.9-3.1 5.2-5.8 6.5M6.6 6.6C4.4 8 2.8 9.8 2 12c1.7 4.9 6 8 10 8 1 0 2-.2 3-.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
                 </svg>
               ) : (
-                <svg viewBox="0 0 24 24" className="h-5 w-5 stroke-current" fill="none" strokeWidth="1.8" aria-hidden="true">
-                  <path d="M2 12s3.6-8 10-8 10 8 10 8-3.6 8-10 8S2 12 2 12Z" strokeLinecap="round" strokeLinejoin="round" />
+                <svg
+                  viewBox="0 0 24 24"
+                  className="h-5 w-5 stroke-current"
+                  fill="none"
+                  strokeWidth="1.8"
+                  aria-hidden="true"
+                >
+                  <path
+                    d="M2 12s3.6-8 10-8 10 8 10 8-3.6 8-10 8S2 12 2 12Z"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
                   <circle cx="12" cy="12" r="3" />
                 </svg>
               )}
@@ -235,7 +257,7 @@ export const LoginForm = () => {
 
       {isSuccess ? (
         <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">
-          Inicio de sesi{"\u00f3"}n exitoso. Redirigiendo...
+          Inicio de sesión exitoso. Redirigiendo...
         </p>
       ) : null}
 
