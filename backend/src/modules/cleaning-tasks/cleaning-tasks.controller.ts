@@ -19,6 +19,16 @@ import {
 } from '@nestjs/common';
 import type { Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
+import {
+  ApiBody,
+  ApiConsumes,
+  ApiHeader,
+  ApiOperation,
+  ApiParam,
+  ApiQuery,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { CleaningTasksService } from './cleaning-tasks.service';
 import { CancelTaskDto } from './dto/cancel-task.dto';
 import { CompleteTaskDto } from './dto/complete-task.dto';
@@ -30,6 +40,7 @@ import { ReviewTaskDto } from './dto/review-task.dto';
 import { UpdateCleaningTaskDto } from './dto/update-cleaning-task.dto';
 import { UploadAttachmentDto } from './dto/upload-attachment.dto';
 
+@ApiTags('Tareas de Limpieza')
 @Controller('cleaning-tasks')
 export class CleaningTasksController {
   constructor(private readonly cleaningTasksService: CleaningTasksService) {}
@@ -41,6 +52,11 @@ export class CleaningTasksController {
    * Devuelve todas las tareas de limpieza. Solo accesible por SuperUser o Admin.
    */
   @Get('all')
+  @ApiOperation({ summary: 'Obtener todas las tareas de limpieza (Supervisor/Admin)' })
+  @ApiHeader({ name: 'x-session-token', description: 'Token de sesión', required: true })
+  @ApiHeader({ name: 'x-role', description: 'Rol del usuario (SuperUser / Admin)', required: true })
+  @ApiResponse({ status: 200, description: 'Listado completo de tareas.' })
+  @ApiResponse({ status: 403, description: 'Acceso no autorizado por rol.' })
   async getAllTasks(
     @Query(new ValidationPipe({ transform: true })) query: GetAllCleaningTasksQueryDto,
     @Headers('x-session-token') sessionToken: string,
@@ -65,6 +81,11 @@ export class CleaningTasksController {
    * Devuelve las tareas asignadas al empleado de limpieza autenticado.
    */
   @Get('mine')
+  @ApiOperation({ summary: 'Obtener tareas asignadas al empleado de limpieza autenticado' })
+  @ApiHeader({ name: 'x-session-token', description: 'Token de sesión', required: true })
+  @ApiHeader({ name: 'x-cleaning-employee-id', description: 'ID de empleado de limpieza', required: true })
+  @ApiResponse({ status: 200, description: 'Listado de tareas del empleado.' })
+  @ApiResponse({ status: 400, description: 'Cabeceras incorrectas o vacías.' })
   async getMyTasks(
     @Query(new ValidationPipe({ transform: true })) query: GetCleaningTasksQueryDto,
     @Headers('x-session-token') sessionToken: string,
@@ -84,6 +105,9 @@ export class CleaningTasksController {
   // ─── Hostaway checkouts (lectura) ─────────────────────────────────────────
 
   @Get('checkouts')
+  @ApiOperation({ summary: 'Obtener checkouts leídos desde Hostaway' })
+  @ApiQuery({ name: 'date', required: false, description: 'Fecha en formato YYYY-MM-DD', type: 'string' })
+  @ApiResponse({ status: 200, description: 'Listado de checkouts de la fecha especificada.' })
   async getCheckouts(@Query('date') date?: string) {
     return this.cleaningTasksService.getCheckouts(date);
   }
@@ -95,6 +119,8 @@ export class CleaningTasksController {
    * Sincroniza los checkouts del día actual.
    */
   @Post('sync/today')
+  @ApiOperation({ summary: 'Sincronizar checkouts del día actual desde Hostaway hacia OpenMAINT' })
+  @ApiResponse({ status: 201, description: 'Sincronización finalizada correctamente.' })
   async syncToday() {
     const today = new Date().toISOString().split('T')[0];
     return this.cleaningTasksService.syncFromHostaway(today, today);
@@ -105,6 +131,18 @@ export class CleaningTasksController {
    * Body: { dateFrom?: string, dateTo?: string }
    */
   @Post('sync')
+  @ApiOperation({ summary: 'Sincronizar checkouts de un rango de fechas desde Hostaway hacia OpenMAINT' })
+  @ApiBody({
+    required: false,
+    schema: {
+      type: 'object',
+      properties: {
+        dateFrom: { type: 'string', description: 'Fecha de inicio (YYYY-MM-DD)', example: '2026-06-01' },
+        dateTo: { type: 'string', description: 'Fecha de fin (YYYY-MM-DD)', example: '2026-06-03' },
+      },
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Sincronización de rango finalizada correctamente.' })
   async sync(@Body() body: { dateFrom?: string; dateTo?: string }) {
     const today = new Date().toISOString().split('T')[0];
     const dateFrom = body.dateFrom ?? today;
@@ -115,11 +153,16 @@ export class CleaningTasksController {
   // ─── Tareas de limpieza (CRUD — sistema) ──────────────────────────────────
 
   @Get()
+  @ApiOperation({ summary: 'Listar tareas de limpieza en OpenMAINT para una fecha específica' })
+  @ApiQuery({ name: 'date', required: false, description: 'Filtrar por fecha (YYYY-MM-DD)', type: 'string' })
+  @ApiResponse({ status: 200, description: 'Listado de tareas en OpenMAINT.' })
   async getCleaningTasks(@Query('date') date?: string) {
     return this.cleaningTasksService.getCleaningTasks(date);
   }
 
   @Post()
+  @ApiOperation({ summary: 'Crear una nueva tarea de limpieza manualmente' })
+  @ApiResponse({ status: 201, description: 'Tarea creada con éxito.' })
   async createCleaningTask(
     @Body(new ValidationPipe({ transform: true })) dto: CreateCleaningTaskDto,
   ) {
@@ -127,11 +170,37 @@ export class CleaningTasksController {
   }
 
   @Post('generate')
+  @ApiOperation({ summary: 'Generar múltiples tareas de limpieza a partir de checkouts' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        checkouts: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              hostawayReservationId: { type: 'string', example: '12345' },
+              listingName: { type: 'string', example: 'Suite Azul' },
+              listingId: { type: 'string', example: '999' },
+              checkoutDate: { type: 'string', example: '2026-06-03' },
+              checkoutTime: { type: 'string', example: '11:00' },
+              guestName: { type: 'string', example: 'Jane Doe' },
+            },
+          },
+        },
+      },
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Tareas generadas correctamente.' })
   async generateTasks(@Body() body: { checkouts: CreateCleaningTaskDto[] }) {
     return this.cleaningTasksService.generateTasksFromCheckouts(body.checkouts);
   }
 
   @Put(':id')
+  @ApiOperation({ summary: 'Actualizar campos de una tarea de limpieza por ID' })
+  @ApiParam({ name: 'id', description: 'ID de la tarea de limpieza', type: 'integer' })
+  @ApiResponse({ status: 200, description: 'Tarea actualizada correctamente.' })
   async updateCleaningTask(
     @Param('id', ParseIntPipe) id: number,
     @Body(new ValidationPipe({ transform: true })) dto: UpdateCleaningTaskDto,
@@ -150,6 +219,13 @@ export class CleaningTasksController {
    * - SuperUser/Admin: no requiere x-cleaning-employee-id, omite validación de ownership.
    */
   @Get(':taskId')
+  @ApiOperation({ summary: 'Obtener detalle completo de una tarea de limpieza por ID' })
+  @ApiParam({ name: 'taskId', description: 'ID de la tarea de limpieza', type: 'integer' })
+  @ApiHeader({ name: 'x-session-token', description: 'Token de sesión del usuario', required: true })
+  @ApiHeader({ name: 'x-cleaning-employee-id', description: 'ID del empleado (requerido para empleados)', required: false })
+  @ApiHeader({ name: 'x-role', description: 'Rol del usuario (SuperUser / Admin)', required: false })
+  @ApiResponse({ status: 200, description: 'Detalle de la tarea de limpieza con sus adjuntos y permisos.' })
+  @ApiResponse({ status: 403, description: 'La tarea no pertenece al empleado o no tiene privilegios.' })
   async getTaskDetail(
     @Param('taskId', ParseIntPipe) taskId: number,
     @Headers('x-session-token') sessionToken: string,
@@ -173,6 +249,11 @@ export class CleaningTasksController {
    * Transición Assigned → InExecution. Registra ActualStartTime.
    */
   @Patch(':taskId/start')
+  @ApiOperation({ summary: 'Iniciar la ejecución de una tarea de limpieza (Assigned → InExecution)' })
+  @ApiParam({ name: 'taskId', description: 'ID de la tarea', type: 'integer' })
+  @ApiHeader({ name: 'x-session-token', description: 'Token de sesión', required: true })
+  @ApiHeader({ name: 'x-cleaning-employee-id', description: 'ID de empleado de limpieza', required: true })
+  @ApiResponse({ status: 200, description: 'Tarea iniciada con éxito.' })
   async startTask(
     @Param('taskId', ParseIntPipe) taskId: number,
     @Headers('x-session-token') sessionToken: string,
@@ -189,6 +270,11 @@ export class CleaningTasksController {
    * Transición InExecution → Completed. Registra ActualEndTime y observaciones.
    */
   @Patch(':taskId/complete')
+  @ApiOperation({ summary: 'Marcar una tarea de limpieza como completada (InExecution → Completed)' })
+  @ApiParam({ name: 'taskId', description: 'ID de la tarea', type: 'integer' })
+  @ApiHeader({ name: 'x-session-token', description: 'Token de sesión', required: true })
+  @ApiHeader({ name: 'x-cleaning-employee-id', description: 'ID de empleado de limpieza', required: true })
+  @ApiResponse({ status: 200, description: 'Tarea completada exitosamente.' })
   async completeTask(
     @Param('taskId', ParseIntPipe) taskId: number,
     @Body(new ValidationPipe({ transform: true })) dto: CompleteTaskDto,
@@ -207,6 +293,11 @@ export class CleaningTasksController {
    * Solo para SuperUser/Admin.
    */
   @Patch(':taskId/review')
+  @ApiOperation({ summary: 'Revisar una tarea de limpieza completada (Aprobar/Rechazar)' })
+  @ApiParam({ name: 'taskId', description: 'ID de la tarea', type: 'integer' })
+  @ApiHeader({ name: 'x-session-token', description: 'Token de sesión del supervisor', required: true })
+  @ApiHeader({ name: 'x-role', description: 'Rol del usuario (SuperUser / Admin)', required: true })
+  @ApiResponse({ status: 200, description: 'Revisión registrada. La tarea pasa a Reviewed o retorna a InExecution.' })
   async reviewTask(
     @Param('taskId', ParseIntPipe) taskId: number,
     @Body(new ValidationPipe({ transform: true })) dto: ReviewTaskDto,
@@ -226,6 +317,11 @@ export class CleaningTasksController {
    * Body: { observations?: string }
    */
   @Patch(':taskId/reopen')
+  @ApiOperation({ summary: 'Reabrir una tarea de limpieza (Completed/Reviewed → InExecution)' })
+  @ApiParam({ name: 'taskId', description: 'ID de la tarea', type: 'integer' })
+  @ApiHeader({ name: 'x-session-token', description: 'Token de sesión del supervisor', required: true })
+  @ApiHeader({ name: 'x-role', description: 'Rol del usuario (SuperUser / Admin)', required: true })
+  @ApiResponse({ status: 200, description: 'Tarea reabierta y asignada nuevamente a ejecución.' })
   async reopenTask(
     @Param('taskId', ParseIntPipe) taskId: number,
     @Body(new ValidationPipe({ transform: true })) dto: ReopenTaskDto,
@@ -243,6 +339,11 @@ export class CleaningTasksController {
    * Solo para SuperUser/Admin.
    */
   @Patch(':taskId/cancel')
+  @ApiOperation({ summary: 'Cancelar una tarea de limpieza en curso o asignada' })
+  @ApiParam({ name: 'taskId', description: 'ID de la tarea', type: 'integer' })
+  @ApiHeader({ name: 'x-session-token', description: 'Token de sesión del supervisor', required: true })
+  @ApiHeader({ name: 'x-role', description: 'Rol del usuario (SuperUser / Admin)', required: true })
+  @ApiResponse({ status: 200, description: 'Tarea cancelada exitosamente.' })
   async cancelTask(
     @Param('taskId', ParseIntPipe) taskId: number,
     @Body(new ValidationPipe({ transform: true })) dto: CancelTaskDto,
@@ -262,6 +363,13 @@ export class CleaningTasksController {
    * - SuperUser/Admin: no requiere x-cleaning-employee-id, acceso directo.
    */
   @Get(':taskId/attachments')
+  @ApiOperation({ summary: 'Obtener el listado de archivos adjuntos de una tarea' })
+  @ApiParam({ name: 'taskId', description: 'ID de la tarea', type: 'integer' })
+  @ApiQuery({ name: 'category', required: false, description: 'Filtrar por categoría de adjunto', enum: ['Document', 'Image', 'Photo', 'Signature'] })
+  @ApiHeader({ name: 'x-session-token', description: 'Token de sesión', required: true })
+  @ApiHeader({ name: 'x-cleaning-employee-id', description: 'ID de empleado de limpieza (si aplica)', required: false })
+  @ApiHeader({ name: 'x-role', description: 'Rol de supervisor/administrador (si aplica)', required: false })
+  @ApiResponse({ status: 200, description: 'Lista de adjuntos obtenida.' })
   async getAttachments(
     @Param('taskId', ParseIntPipe) taskId: number,
     @Query('category') category?: string,
@@ -296,6 +404,13 @@ export class CleaningTasksController {
    * Acepta el token como query param para poder usarse en <img src>.
    */
   @Get(':taskId/attachments/:attachmentId/download')
+  @ApiOperation({ summary: 'Descargar el archivo binario de un adjunto' })
+  @ApiParam({ name: 'taskId', description: 'ID de la tarea de limpieza', type: 'integer' })
+  @ApiParam({ name: 'attachmentId', description: 'ID del archivo adjunto en OpenMAINT', type: 'string' })
+  @ApiQuery({ name: 'token', required: false, description: 'Token de sesión enviado por query param (para tags img)', type: 'string' })
+  @ApiHeader({ name: 'x-session-token', description: 'Token de sesión alternativo enviado por cabecera', required: false })
+  @ApiResponse({ status: 200, description: 'Flujo del archivo binario retornado.' })
+  @ApiResponse({ status: 401, description: 'Token de sesión no proveído.' })
   async downloadAttachment(
     @Param('taskId', ParseIntPipe) taskId: number,
     @Param('attachmentId') attachmentId: string,
@@ -323,6 +438,25 @@ export class CleaningTasksController {
    */
   @Post(':taskId/attachments')
   @UseInterceptors(FileInterceptor('file'))
+  @ApiOperation({ summary: 'Subir un archivo adjunto (ej. fotografía) a la tarea' })
+  @ApiParam({ name: 'taskId', description: 'ID de la tarea de limpieza', type: 'integer' })
+  @ApiHeader({ name: 'x-session-token', description: 'Token de sesión del usuario', required: true })
+  @ApiHeader({ name: 'x-cleaning-employee-id', description: 'ID del empleado de limpieza', required: true })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    description: 'Archivo y detalles de categoría',
+    schema: {
+      type: 'object',
+      properties: {
+        category: { type: 'string', enum: ['Document', 'Image', 'Photo', 'Signature'], default: 'Photo' },
+        description: { type: 'string', description: 'Descripción corta del adjunto' },
+        file: { type: 'string', format: 'binary', description: 'Archivo binario a subir' },
+      },
+      required: ['file'],
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Archivo subido y asociado correctamente' })
+  @ApiResponse({ status: 400, description: 'Entrada inválida o cabeceras faltantes' })
   async uploadAttachment(
     @Param('taskId', ParseIntPipe) taskId: number,
     @UploadedFile() file: { originalname: string; mimetype: string; size: number; buffer: Buffer },
