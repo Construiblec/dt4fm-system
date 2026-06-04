@@ -6,6 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { OpenmaintService } from '../../integrations/openmaint/openmaint.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { CompleteIncidentDto } from './dto/complete-incident.dto';
 import { CreateIncidentDto } from './dto/create-incident.dto';
 
@@ -84,7 +85,10 @@ type AttachmentPreviewResponse = {
 
 @Injectable()
 export class IncidentsService {
-  constructor(private readonly openmaintService: OpenmaintService) {}
+  constructor(
+    private readonly openmaintService: OpenmaintService,
+    private readonly notificationsService: NotificationsService,
+  ) {}
 
   async completeIncident(
     id: number,
@@ -272,6 +276,19 @@ export class IncidentsService {
 
     const attachmentsFailed = attachmentResults.length - attachmentsUploaded;
 
+    // Enviar notificación en segundo plano de manera asíncrona
+    this.sendIncidentNotificationInBackground(
+      incidentId,
+      employeeId,
+      dto,
+      sessionId,
+    ).catch((err) => {
+      console.error(
+        'Error no controlado al iniciar la notificación del incidente:',
+        err,
+      );
+    });
+
     return {
       incidentId,
       requester: employeeId,
@@ -279,6 +296,47 @@ export class IncidentsService {
       attachmentsUploaded,
       attachmentsFailed,
     };
+  }
+
+  private async sendIncidentNotificationInBackground(
+    incidentId: number,
+    employeeId: number,
+    dto: CreateIncidentDto,
+    sessionId: string,
+  ): Promise<void> {
+    try {
+      // 1. Obtener detalles del incidente para el número y nombre del edificio
+      const incidentDetail = await this.getIncidentDetail(
+        incidentId,
+        sessionId,
+      );
+      const incidentNumber = incidentDetail?.number || String(incidentId);
+      const locationName = incidentDetail?.location || '';
+      const buildingName = incidentDetail?.building || 'Edificio Desconocido';
+      const statusName = incidentDetail?.status || '';
+      const priorityName = incidentDetail?.priority || '';
+      const createdAt = incidentDetail?.createdAt || '';
+      const notes = incidentDetail?.notes || '';
+      const images = incidentDetail?.images || [];
+
+      // 3. Enviar notificación por correo
+      await this.notificationsService.notifyIncidentCreated(
+        incidentId,
+        incidentNumber,
+        locationName,
+        buildingName,
+        statusName,
+        priorityName,
+        createdAt,
+        notes,
+        images,
+      );
+    } catch (error) {
+      console.error(
+        'Error al enviar la notificación del incidente en segundo plano:',
+        error,
+      );
+    }
   }
 
   private extractNotes(register: string | null): string | null {

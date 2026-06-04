@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post } from '@nestjs/common';
+import { Body, Controller, Get, Post, Query } from '@nestjs/common';
 import { NotificationsService } from './notifications.service';
 import { SendBulkDto } from './dto/send-bulk.dto';
 

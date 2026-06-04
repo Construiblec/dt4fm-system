@@ -58,7 +58,21 @@ export class MailerService {
     const results: MailSendResult[] = [];
 
     for (const message of messages) {
-      const result = await this.sendOne(message);
+      // 🔥 Normalizar attachments (evita errores del provider)
+      const normalizedAttachments = (message.attachments || []).map((file) => ({
+        filename: file.filename,
+        content: file.content.replace(/^data:image\/\w+;base64,/, ''), // limpia prefix si existe
+        contentType: file.contentType || 'application/octet-stream',
+      }));
+
+      const normalizedMessage: MailMessage = {
+        ...message,
+        attachments: normalizedAttachments.length
+          ? normalizedAttachments
+          : undefined,
+      };
+
+      const result = await this.sendOne(normalizedMessage);
       results.push(result);
 
       if (this.throttleMs > 0) {

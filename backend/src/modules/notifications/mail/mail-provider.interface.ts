@@ -13,6 +13,11 @@
  *
  * Ningún otro archivo necesita cambiar.
  */
+export interface MailAttachment {
+  filename: string;
+  content: string; // base64 SIN "data:image/...;base64,"
+  contentType?: string;
+}
 
 export interface MailMessage {
   /** Destinatario único ya resuelto y validado. */
@@ -20,6 +25,8 @@ export interface MailMessage {
   subject: string;
   /** Cuerpo en HTML ya renderizado (variables reemplazadas). */
   html: string;
+  /** Atachemnts */
+  attachments?: MailAttachment[];
   /** Cuerpo en texto plano opcional (fallback para clientes sin HTML). */
   text?: string;
   /** Remitente opcional; si se omite, el proveedor usa su valor por defecto. */

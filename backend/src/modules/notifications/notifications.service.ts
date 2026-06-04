@@ -83,7 +83,9 @@ export class NotificationsService {
    *
    * Devuelve un resumen con enviados / fallidos.
    */
-  async sendBulk(dto: SendBulkDto): Promise<BulkSendSummary & { template: string }> {
+  async sendBulk(
+    dto: SendBulkDto,
+  ): Promise<BulkSendSummary & { template: string }> {
     const sessionId = await this.getAdminSessionId();
 
     const template = await this.getTemplate(dto.templateId, sessionId);
@@ -130,12 +132,168 @@ export class NotificationsService {
     };
   }
 
+  // ─── Caso de uso: Notificación de incidente creado ─────────────────────────
+
+  /**
+   * Envía un correo de notificación cuando se reporta un nuevo incidente.
+   * Se envía al empleado solicitante (si tiene email válido) y al correo administrativo/soporte configurado.
+   */
+  async notifyIncidentCreated(
+    incidentId: number,
+    incidentNumber: string,
+    incidentLocation: string,
+    incidentBuilding: string,
+    incidentStatus: string,
+    incidentPriority: string,
+    incidentCreatedAt: string,
+    incidentNotes: string,
+    incidentImages: string[],
+  ): Promise<void> {
+    const normalizePriority = (value: string) =>
+      (value || '').trim().toLowerCase();
+
+    const priorityMap: Record<string, { text: string; color: string }> = {
+      high: { text: 'Alta', color: '#c62828' },
+      medium: { text: 'Media', color: '#ef6c00' },
+      low: { text: 'Baja', color: '#2e7d32' },
+    };
+
+    const priority =
+      priorityMap[normalizePriority(incidentPriority)] ?? priorityMap['low'];
+
+    // 🔥 Separar descripción y visitante de forma limpia
+    const [rawDescription, visitorBlock] = incidentNotes.split(
+      '--- Datos del visitante ---',
+    );
+
+    const description = (rawDescription || '').trim();
+
+    const nameMatch = visitorBlock.match(/Nombre:\s*(.*?)\s*Tel[eé]fono:/i);
+    const phoneMatch = visitorBlock.match(/Tel[eé]fono:\s*(.*)/i);
+
+    const visitorHtml = `
+    <div style="margin-top:12px;font-size:13px;">
+      <strong>Datos del visitante</strong>
+      <div>Nombre: ${nameMatch?.[1]?.trim() ?? 'No disponible'}</div>
+      <div>Teléfono: ${phoneMatch?.[1]?.trim() ?? 'No disponible'}</div>
+    </div>
+  `;
+
+    const subject = `[INCIDENTE NUEVO] #${incidentNumber} - ${incidentBuilding}`;
+
+    const html = `
+    <div style="font-family:Arial,sans-serif;max-width:520px;margin:auto;padding:16px;border:1px solid #eee;border-radius:6px;">
+      
+      <h3 style="margin:0 0 10px 0;">
+        Incidente #${incidentNumber}
+      </h3>
+
+      <div style="font-size:13px;color:#555;">
+        <div><strong>Edificio:</strong> ${incidentBuilding}</div>
+        <div><strong>Ubicación:</strong> ${incidentLocation}</div>
+        <div>
+          <strong>Prioridad:</strong>
+          <span style="color:${priority.color};font-weight:bold;">
+            ${priority.text}
+          </span>
+        </div>
+        <div>
+          <strong>Fecha:</strong>
+          ${new Date(incidentCreatedAt).toLocaleString('es-EC')}
+        </div>
+      </div>
+
+      <hr style="margin:12px 0;" />
+
+      <div style="font-size:13px;">
+        <strong>Descripción</strong>
+        <p style="margin:6px 0;white-space:pre-wrap;">
+          ${description || 'Sin descripción'}
+        </p>
+      </div>
+
+      ${visitorHtml}
+
+      <div style="margin-top:16px;font-size:11px;color:#999;text-align:center;">
+        Sistema DT4FM - Notificación automática
+      </div>
+    </div>
+  `;
+
+    const attachments = (incidentImages || []).map((img, index) => ({
+      filename: `imagen-${index + 1}.jpg`,
+      content: img.replace(/^data:image\/\w+;base64,/, ''), // limpia prefijo si existe
+      contentType: 'image/jpeg',
+    }));
+
+    const recipients = ['daniel.cango@construiblec.com'];
+
+    const messages = recipients.map((to) => ({
+      to,
+      subject,
+      html,
+      attachments,
+    }));
+
+    try {
+      this.logger.log(
+        `Enviando incidente #${incidentNumber} a: ${recipients.join(', ')}`,
+      );
+
+      await this.mailerService.sendBulk(messages);
+    } catch (error) {
+      this.logger.error(`Error enviando incidente #${incidentNumber}`, error);
+    }
+  }
+
   // ─── Diagnóstico ──────────────────────────────────────────────────────────
 
   /** Verifica que el proveedor de correo configurado responda. */
   async verifyMailProvider(): Promise<{ ok: boolean }> {
     const ok = await this.mailerService.verifyProvider();
     return { ok };
+  }
+
+  /**
+   * Diagnóstico SMTP: muestra la config activa y hace una verificación de
+   * conexión. Útil para depurar problemas de entrega sin tocar el código.
+   * Nunca exponer en producción sin protección de auth.
+   */
+  async diagnoseSMTP(): Promise<Record<string, unknown>> {
+    const host = this.configService.get<string>('SMTP_HOST') ?? '(no definido)';
+    const port = this.configService.get<string>('SMTP_PORT') ?? '(no definido)';
+    const secure =
+      this.configService.get<string>('SMTP_SECURE') ?? '(no definido)';
+    const user = this.configService.get<string>('SMTP_USER') ?? '(no definido)';
+    const from = this.configService.get<string>('SMTP_FROM') ?? '(no definido)';
+
+    const config = { host, port, secure, user, from };
+
+    let connection: 'ok' | 'failed';
+    let connectionError: string | null = null;
+
+    try {
+      const ok = await this.mailerService.verifyProvider();
+      connection = ok ? 'ok' : 'failed';
+    } catch (err) {
+      connection = 'failed';
+      connectionError = err instanceof Error ? err.message : String(err);
+    }
+
+    return {
+      config,
+      connection,
+      ...(connectionError ? { connectionError } : {}),
+      hint:
+        connection === 'failed'
+          ? [
+              '1. Verifica que el puerto no esté bloqueado por el firewall o ISP.',
+              '2. Puerto 465 requiere SMTP_SECURE=true. Puerto 587 requiere SMTP_SECURE=false.',
+              '3. Asegúrate de que el dominio en SMTP_FROM esté verificado en Resend.',
+              '4. Prueba con SMTP_PORT=587 y SMTP_SECURE=false si 465 falla.',
+            ]
+          : 'Conexión SMTP establecida correctamente.',
+    };
   }
 
   // ─── Resolución de plantilla ──────────────────────────────────────────────

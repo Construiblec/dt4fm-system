@@ -55,14 +55,30 @@ export class SmtpMailProvider implements MailProvider {
     const user = this.configService.get<string>('SMTP_USER');
     const pass = this.configService.get<string>('SMTP_PASSWORD');
 
+    this.logger.log(
+      `[SMTP] Configurando transporter → host=${host} port=${port} secure=${secure} user=${user}`,
+    );
+
     this.transporter = nodemailer.createTransport({
       host,
       port,
       secure,
+      requireTLS: !secure, // STARTTLS obligatorio cuando no es SSL directo
+      connectionTimeout: 10_000, // 10 segundos para abrir la conexión TCP
+      greetingTimeout: 10_000,   // 10 segundos para recibir el greeting SMTP
+      socketTimeout: 15_000,     // 15 segundos de inactividad máxima
       auth: user && pass ? { user, pass } : undefined,
+      tls: {
+        rejectUnauthorized: false, // tolera certificados auto-firmados en dev
+      },
     });
 
     return this.transporter;
+  }
+
+  /** Invalida el transporter cacheado para forzar reconexión. */
+  private resetTransporter(): void {
+    this.transporter = null;
   }
 
   async send(message: MailMessage): Promise<MailSendResult> {
@@ -76,6 +92,8 @@ export class SmtpMailProvider implements MailProvider {
         replyTo: message.replyTo,
       });
 
+      this.logger.log(`[SMTP] Correo enviado correctamente a ${message.to} (messageId=${info.messageId})`);
+
       return {
         to: message.to,
         success: true,
@@ -84,7 +102,28 @@ export class SmtpMailProvider implements MailProvider {
     } catch (error) {
       const reason =
         error instanceof Error ? error.message : 'Error desconocido SMTP';
-      this.logger.error(`Fallo al enviar a ${message.to}: ${reason}`);
+
+      // Si es error de conexión/greeting, invalidar el transporter para forzar
+      // reconexión en el próximo intento con la config actualizada.
+      const isConnectionError =
+        reason.includes('Greeting never received') ||
+        reason.includes('connect ECONNREFUSED') ||
+        reason.includes('connect ETIMEDOUT') ||
+        reason.includes('ENOTFOUND');
+
+      if (isConnectionError) {
+        this.logger.warn(
+          `[SMTP] Error de conexión detectado ("${reason}"). ` +
+            `Verificar host=${this.configService.get('SMTP_HOST')} ` +
+            `port=${this.configService.get('SMTP_PORT')} ` +
+            `secure=${this.configService.get('SMTP_SECURE')}. ` +
+            `Reseteando transporter para próximo intento.`,
+        );
+        this.resetTransporter();
+      } else {
+        this.logger.error(`[SMTP] Fallo al enviar a ${message.to}: ${reason}`);
+      }
+
       return {
         to: message.to,
         success: false,
@@ -96,11 +135,18 @@ export class SmtpMailProvider implements MailProvider {
   async verify(): Promise<boolean> {
     try {
       await this.getTransporter().verify();
+      this.logger.log('[SMTP] Verificación de conexión exitosa.');
       return true;
     } catch (error) {
       const reason =
         error instanceof Error ? error.message : 'Error desconocido SMTP';
-      this.logger.error(`Verificación SMTP fallida: ${reason}`);
+      this.logger.error(
+        `[SMTP] Verificación fallida: ${reason}. ` +
+          `host=${this.configService.get('SMTP_HOST')} ` +
+          `port=${this.configService.get('SMTP_PORT')} ` +
+          `secure=${this.configService.get('SMTP_SECURE')}`,
+      );
+      this.resetTransporter();
       return false;
     }
   }

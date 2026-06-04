@@ -221,6 +221,18 @@ export class OpenmaintService {
     }
   }
 
+  async getEmployeeCard(
+    employeeId: number,
+    sessionId: string,
+  ): Promise<any> {
+    try {
+      return await this.client.get(`/classes/Employee/cards/${employeeId}`, sessionId);
+    } catch (error) {
+      console.error(`[OpenMAINT] Error al obtener ficha de empleado ${employeeId}:`, error?.message);
+      return null;
+    }
+  }
+
   async resolveCleaningEmployeeId(
     username: string,
     sessionId?: string,
