@@ -312,7 +312,7 @@ export class IncidentsService {
       );
       const incidentNumber = incidentDetail?.number || String(incidentId);
       const locationName = incidentDetail?.location || '';
-      const buildingName = incidentDetail?.building || 'Edificio Desconocido';
+      const buildingName = incidentDetail?.building || '';
       const statusName = incidentDetail?.status || '';
       const priorityName = incidentDetail?.priority || '';
       const createdAt = incidentDetail?.createdAt || '';

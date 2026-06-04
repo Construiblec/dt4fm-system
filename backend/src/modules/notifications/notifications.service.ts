@@ -173,7 +173,7 @@ export class NotificationsService {
 
     const visitorHtml = `
     <div style="margin-top:12px;font-size:13px;">
-      <strong>Datos del visitante</strong>
+      <strong>Reporta:</strong>
       <div>Nombre: ${nameMatch?.[1]?.trim() ?? 'No disponible'}</div>
       <div>Teléfono: ${phoneMatch?.[1]?.trim() ?? 'No disponible'}</div>
     </div>
@@ -226,7 +226,10 @@ export class NotificationsService {
       contentType: 'image/jpeg',
     }));
 
-    const recipients = ['daniel.cango@construiblec.com'];
+    const recipients =
+      process.env.INCIDENT_NOTIFICATION_EMAIL?.split(',')
+        .map((email) => email.trim())
+        .filter(Boolean) || [];
 
     const messages = recipients.map((to) => ({
       to,
