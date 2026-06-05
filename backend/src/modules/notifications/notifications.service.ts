@@ -335,6 +335,11 @@ export class NotificationsService {
   /**
    * Trae los Tenant según el alcance, filtra correos inválidos y
    * deduplica por email para no enviar dos veces al mismo destinatario.
+   *
+   * NOTA: openMAINT no acepta el parámetro ?attrs con array JSON en esta
+   * versión — rompe el SQL generado. Se traen todas las cards y se filtra
+   * por OccupancyType en memoria usando el campo _OccupancyType_code que
+   * openMAINT incluye automáticamente en la respuesta de cada card.
    */
   private async resolveRecipients(
     scope: RecipientScope,
@@ -359,10 +364,30 @@ export class NotificationsService {
     }
 
     const cards = response.data ?? [];
+
+    // Filtrar por tipo de ocupante en memoria cuando el scope no es ALL.
+    // openMAINT devuelve _OccupancyType_code con el código del lookup.
+    const occupancyCode = this.getOccupancyCode(scope);
+    const filtered =
+      scope === RecipientScope.ALL || !occupancyCode
+        ? cards
+        : cards.filter(
+            (card) =>
+              (card._OccupancyType_code ?? '').toLowerCase() ===
+              occupancyCode.toLowerCase(),
+          );
+
+    if (scope !== RecipientScope.ALL && !occupancyCode) {
+      this.logger.warn(
+        `No hay código de OccupancyType configurado para scope=${scope}; ` +
+          `se enviará a todos los Tenant.`,
+      );
+    }
+
     const seen = new Set<string>();
     const recipients: ResolvedRecipient[] = [];
 
-    for (const card of cards) {
+    for (const card of filtered) {
       const email = (card.Email ?? '').trim().toLowerCase();
       if (!this.isValidEmail(email) || seen.has(email)) {
         continue;
@@ -374,53 +399,43 @@ export class NotificationsService {
       });
     }
 
+    this.logger.log(
+      `Destinatarios resueltos: ${recipients.length} (scope=${scope}, total cards=${cards.length})`,
+    );
+
     return recipients;
   }
 
   /**
-   * Construye el path REST con el filtro CQL/JSON según el alcance.
-   *
-   * Los códigos de OccupancyType para propietarios/arrendatarios se leen
-   * de configuración (OPENMAINT_OCCUPANCY_OWNER_CODE /
-   * OPENMAINT_OCCUPANCY_TENANT_CODE) para no acoplar el código a IDs de
-   * lookup concretos de la instancia de openMAINT.
+   * Construye el path REST para traer todos los Tenant sin el parámetro
+   * ?attrs que rompe el SQL de openMAINT. El filtro por OccupancyType
+   * se aplica en memoria después de recibir la respuesta.
    */
-  private buildTenantPath(scope: RecipientScope): string {
-    const base = `/classes/Tenant/cards?attrs=${encodeURIComponent(
-      JSON.stringify(['Description', 'Email', 'OccupancyType']),
-    )}&limit=1000`;
+  private buildTenantPath(_scope: RecipientScope): string {
+    return `/classes/Tenant/cards?limit=1000`;
+  }
 
-    if (scope === RecipientScope.ALL) {
-      return base;
-    }
-
-    const occupancyCode =
-      scope === RecipientScope.OWNERS
-        ? this.configService.get<string>('OPENMAINT_OCCUPANCY_OWNER_CODE')
-        : this.configService.get<string>('OPENMAINT_OCCUPANCY_TENANT_CODE');
-
-    if (!occupancyCode) {
-      this.logger.warn(
-        `No hay código de OccupancyType configurado para scope=${scope}; ` +
-          `se enviará a todos los Tenant. Configure ` +
-          `OPENMAINT_OCCUPANCY_OWNER_CODE / OPENMAINT_OCCUPANCY_TENANT_CODE.`,
+  /**
+   * Devuelve el código de lookup según el scope.
+   * Los códigos reales de la instancia openMAINT son:
+   *   Propietario  → para owners
+   *   Arrendatario → para tenants
+   * Se pueden sobreescribir con variables de entorno.
+   */
+  private getOccupancyCode(scope: RecipientScope): string | null {
+    if (scope === RecipientScope.OWNERS) {
+      return (
+        this.configService.get<string>('OPENMAINT_OCCUPANCY_OWNER_CODE') ??
+        'Propietario'
       );
-      return base;
     }
-
-    const filter = encodeURIComponent(
-      JSON.stringify({
-        attribute: {
-          simple: {
-            attribute: 'OccupancyType',
-            operator: 'equal',
-            value: occupancyCode,
-          },
-        },
-      }),
-    );
-
-    return `${base}&filter=${filter}`;
+    if (scope === RecipientScope.TENANTS) {
+      return (
+        this.configService.get<string>('OPENMAINT_OCCUPANCY_TENANT_CODE') ??
+        'Arrendatario'
+      );
+    }
+    return null;
   }
 
   // ─── Helpers ──────────────────────────────────────────────────────────────
