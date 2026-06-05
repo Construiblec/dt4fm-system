@@ -166,6 +166,31 @@ export class OpenmaintClient {
     }
   }
 
+  async delete(path: string, sessionId?: string) {
+    const url = `${this.baseUrl}${path}`;
+
+    console.log(`[HTTP] DELETE ${url}`);
+
+    const headers = sessionId ? { 'Cmdbuild-authorization': sessionId } : {};
+
+    try {
+      const response = await firstValueFrom(
+        this.httpService.delete(url, { headers }),
+      );
+
+      console.log(`[HTTP] DELETE ${url} → ${response.status}`);
+
+      return response.data;
+    } catch (error) {
+      console.error(`[HTTP] DELETE ${url} → ERROR`, {
+        status: error?.response?.status,
+        data: JSON.stringify(error?.response?.data),
+        message: error?.message,
+      });
+      throw error;
+    }
+  }
+
   async put(
     path: string,
     body: any,
