@@ -12,6 +12,7 @@ import { type MailMessage } from './mail/mail-provider.interface';
 import { TemplateRenderer } from './template-renderer.service';
 import { RecipientScope } from './recipient-scope.enum';
 import { SendBulkDto } from './dto/send-bulk.dto';
+import { getTemplateCompleteIncident } from './html-templates';
 
 // ─── Nombre de la clase de plantillas en openMAINT ───────────────────────────
 // Se sobreescribe con la variable de entorno OPENMAINT_TEMPLATE_CLASS.
@@ -179,7 +180,7 @@ export class NotificationsService {
     </div>
   `;
 
-    const subject = `[INCIDENTE NUEVO] #${incidentNumber} - ${incidentBuilding}`;
+    const subject = `[INCIDENTE NUEVO] ${incidentNumber} - ${incidentBuilding}`;
 
     const html = `
     <div style="font-family:Arial,sans-serif;max-width:520px;margin:auto;padding:16px;border:1px solid #eee;border-radius:6px;">
@@ -230,6 +231,58 @@ export class NotificationsService {
       process.env.INCIDENT_NOTIFICATION_EMAIL?.split(',')
         .map((email) => email.trim())
         .filter(Boolean) || [];
+
+    const messages = recipients.map((to) => ({
+      to,
+      subject,
+      html,
+      attachments,
+    }));
+
+    try {
+      this.logger.log(
+        `Enviando incidente #${incidentNumber} a: ${recipients.join(', ')}`,
+      );
+
+      await this.mailerService.sendBulk(messages);
+    } catch (error) {
+      this.logger.error(`Error enviando incidente #${incidentNumber}`, error);
+    }
+  }
+
+  /**
+   * Envía un correo de notificación cuando se finaliza un incidente.
+   * Se envía al empleado solicitante y a contabilidad
+   */
+  async notifyIncidentFinished(
+    incidentId: number,
+    incidentNumber: string,
+    incidentLocation: string,
+    incidentBuilding: string,
+    incidentStatus: string,
+    incidentPriority: string,
+    incidentCreatedAt: string,
+    incidentNotes: string,
+    incidentImages: string[],
+  ): Promise<void> {
+    const subject = `[INCIDENTE RESUELTO] ${incidentNumber} - ${incidentBuilding}`;
+
+    const html = getTemplateCompleteIncident({
+      incidentNumber,
+      incidentLocation,
+      incidentBuilding,
+      incidentPriority,
+      incidentCreatedAt,
+      incidentNotes,
+    });
+
+    const attachments = (incidentImages || []).map((img, index) => ({
+      filename: `imagen-${index + 1}.jpg`,
+      content: img.replace(/^data:image\/\w+;base64,/, ''),
+      contentType: 'image/jpeg',
+    }));
+
+    const recipients = ['andersoncango09@gmail.com'];
 
     const messages = recipients.map((to) => ({
       to,
