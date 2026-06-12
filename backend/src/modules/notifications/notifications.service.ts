@@ -3,6 +3,7 @@ import {
   InternalServerErrorException,
   Logger,
   NotFoundException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { OpenmaintAuthService } from '../../integrations/openmaint/openmaint.auth.service';
@@ -96,13 +97,7 @@ export class NotificationsService {
       this.logger.warn(
         `Envío masivo sin destinatarios válidos (scope=${dto.scope})`,
       );
-      return {
-        total: 0,
-        sent: 0,
-        failed: 0,
-        results: [],
-        template: template.Code ?? String(template._id),
-      };
+      throw new NotFoundException('No hay destinatarios validos para enviar');
     }
 
     const messages: MailMessage[] = recipients.map((recipient) => {
@@ -126,10 +121,19 @@ export class NotificationsService {
     });
 
     const summary = await this.mailerService.sendBulk(messages);
+    const templateCode = template.Code ?? String(template._id);
+
+    if (summary.failed > 0 || summary.sent !== summary.total) {
+      throw new ServiceUnavailableException({
+        message: 'No se pudieron enviar todos los correos',
+        ...summary,
+        template: templateCode,
+      });
+    }
 
     return {
       ...summary,
-      template: template.Code ?? String(template._id),
+      template: templateCode,
     };
   }
 
@@ -307,6 +311,12 @@ export class NotificationsService {
   /** Verifica que el proveedor de correo configurado responda. */
   async verifyMailProvider(): Promise<{ ok: boolean }> {
     const ok = await this.mailerService.verifyProvider();
+    if (!ok) {
+      throw new ServiceUnavailableException({
+        ok,
+        message: 'El proveedor de correo no esta disponible',
+      });
+    }
     return { ok };
   }
 
