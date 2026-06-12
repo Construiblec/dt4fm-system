@@ -113,6 +113,16 @@ export class IncidentsService {
       }
     }
 
+    // Enviar notificación de cierre en segundo plano
+    this.sendIncidentFinishedNotificationInBackground(id, sessionId).catch(
+      (err) => {
+        console.error(
+          'Error enviando notificación de incidente finalizado:',
+          err,
+        );
+      },
+    );
+
     return {
       success: true,
       message: 'Incidente completado correctamente',
@@ -334,6 +344,44 @@ export class IncidentsService {
     } catch (error) {
       console.error(
         'Error al enviar la notificación del incidente en segundo plano:',
+        error,
+      );
+    }
+  }
+
+  // Nueva función para notificación al cerrar incidente
+  private async sendIncidentFinishedNotificationInBackground(
+    incidentId: number,
+    sessionId: string,
+  ): Promise<void> {
+    try {
+      const incidentDetail = await this.getIncidentDetail(
+        incidentId,
+        sessionId,
+      );
+      const incidentNumber = incidentDetail?.number || String(incidentId);
+      const locationName = incidentDetail?.location || '';
+      const buildingName = incidentDetail?.building || '';
+      const statusName = incidentDetail?.status || '';
+      const priorityName = incidentDetail?.priority || '';
+      const createdAt = incidentDetail?.createdAt || '';
+      const notes = incidentDetail?.notes || '';
+      const images = incidentDetail?.images || [];
+
+      await this.notificationsService.notifyIncidentFinished(
+        incidentId,
+        incidentNumber,
+        locationName,
+        buildingName,
+        statusName,
+        priorityName,
+        createdAt,
+        notes,
+        images,
+      );
+    } catch (error) {
+      console.error(
+        'Error al enviar la notificación de incidente finalizado en segundo plano:',
         error,
       );
     }

@@ -44,8 +44,10 @@ async function bootstrap() {
     .addApiKey({ type: 'apiKey', name: 'x-cleaning-employee-id', in: 'header', description: 'ID de empleado de limpieza' }, 'x-cleaning-employee-id')
     .build();
 
+  if (process.env.ENABLE_DOCS === 'true') {
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('api/docs', app, document);
+}
 
   await app.listen(3000, '0.0.0.0');
 }

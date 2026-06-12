@@ -15,6 +15,7 @@ import {
   isActiveCleaningTaskPhase,
   useCleaningTaskExecutionStore,
 } from "@/store/cleaningTaskExecutionStore";
+import { Pagination } from "../components/Pagination";
 
 type Tab = "maintenance" | "cleaning";
 
@@ -27,6 +28,11 @@ export const DashboardPage = () => {
     (state) => state.clearActiveTask,
   );
 
+  const ITEMS_PER_PAGE = 5;
+
+  const [maintenancePage, setMaintenancePage] = useState(1);
+  const [cleaningPage, setCleaningPage] = useState(1);
+
   // ── Tab activo ──────────────────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState<Tab>("maintenance");
 
@@ -37,7 +43,9 @@ export const DashboardPage = () => {
 
   // Filtros de mantenimiento
   const [priorityFilter, setPriorityFilter] = useState<string>("ALL");
-  const [statusFilter, setStatusFilter] = useState<"ALL" | "Ejecución" | "Otros">("ALL");
+  const [statusFilter, setStatusFilter] = useState<
+    "ALL" | "Ejecución" | "Otros"
+  >("ALL");
 
   // ── Estado: tareas de limpieza ─────────────────────────────────────────────
   const [cleaningTasks, setCleaningTasks] = useState<CleaningTask[]>([]);
@@ -46,6 +54,14 @@ export const DashboardPage = () => {
 
   // Filtros de limpieza
   const [phaseFilter, setPhaseFilter] = useState<string>("ALL");
+
+  useEffect(() => {
+    setMaintenancePage(1);
+  }, [priorityFilter, statusFilter]);
+
+  useEffect(() => {
+    setCleaningPage(1);
+  }, [phaseFilter]);
 
   // ── Carga de datos ─────────────────────────────────────────────────────────
   useEffect(() => {
@@ -112,7 +128,13 @@ export const DashboardPage = () => {
         backendActiveTask.unit?.description ?? backendActiveTask.description,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cleaningLoading, cleaningError, cleaningTasks, clearActiveTask, syncActiveTask]);
+  }, [
+    cleaningLoading,
+    cleaningError,
+    cleaningTasks,
+    clearActiveTask,
+    syncActiveTask,
+  ]);
 
   // ── Filtrado ───────────────────────────────────────────────────────────────
   const filteredIncidents = incidents.filter((incident) => {
@@ -128,6 +150,21 @@ export const DashboardPage = () => {
   const filteredCleaningTasks = cleaningTasks.filter((task) => {
     return phaseFilter === "ALL" || task.phase === phaseFilter;
   });
+
+  const maintenanceTotalPages = Math.max(
+    1,
+    Math.ceil(filteredIncidents.length / ITEMS_PER_PAGE),
+  );
+
+  const paginatedIncidents = filteredIncidents.slice(
+    (maintenancePage - 1) * ITEMS_PER_PAGE,
+    maintenancePage * ITEMS_PER_PAGE,
+  );
+
+  const paginatedCleaningTasks = filteredCleaningTasks.slice(
+    (cleaningPage - 1) * ITEMS_PER_PAGE,
+    cleaningPage * ITEMS_PER_PAGE,
+  );
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
@@ -234,11 +271,18 @@ export const DashboardPage = () => {
                 ) : null}
 
                 {!loading && !error && filteredIncidents.length > 0 ? (
-                  <div className="space-y-4">
-                    {filteredIncidents.map((incident) => (
-                      <TaskCard key={incident.id} {...incident} />
-                    ))}
-                  </div>
+                  <>
+                    <div className="space-y-4">
+                      {paginatedIncidents.map((incident) => (
+                        <TaskCard key={incident.id} {...incident} />
+                      ))}
+                    </div>
+                    <Pagination
+                      currentPage={maintenancePage}
+                      totalPages={maintenanceTotalPages}
+                      onChange={setMaintenancePage}
+                    />
+                  </>
                 ) : null}
               </>
             ) : null}
@@ -246,7 +290,9 @@ export const DashboardPage = () => {
             {/* ── Tab: Limpieza ──────────────────────────────────────────── */}
             {activeTab === "cleaning" ? (
               <>
-                {!cleaningLoading && !cleaningError && cleaningTasks.length > 0 ? (
+                {!cleaningLoading &&
+                !cleaningError &&
+                cleaningTasks.length > 0 ? (
                   <CleaningFilters
                     phaseFilter={phaseFilter}
                     onPhaseChange={setPhaseFilter}
@@ -266,7 +312,9 @@ export const DashboardPage = () => {
                   </div>
                 ) : null}
 
-                {!cleaningLoading && !cleaningError && cleaningTasks.length === 0 ? (
+                {!cleaningLoading &&
+                !cleaningError &&
+                cleaningTasks.length === 0 ? (
                   <div className="rounded-xl bg-white p-4 text-sm text-slate-500 shadow-sm">
                     No tienes tareas de limpieza asignadas
                   </div>
@@ -281,12 +329,21 @@ export const DashboardPage = () => {
                   </div>
                 ) : null}
 
-                {!cleaningLoading && !cleaningError && filteredCleaningTasks.length > 0 ? (
-                  <div className="space-y-4">
-                    {filteredCleaningTasks.map((task) => (
-                      <CleaningTaskCard key={task.id} {...task} />
-                    ))}
-                  </div>
+                {!cleaningLoading &&
+                !cleaningError &&
+                filteredCleaningTasks.length > 0 ? (
+                  <>
+                    <div className="space-y-4">
+                      {paginatedCleaningTasks.map((task) => (
+                        <CleaningTaskCard key={task.id} {...task} />
+                      ))}
+                    </div>
+                    <Pagination
+                      currentPage={maintenancePage}
+                      totalPages={maintenanceTotalPages}
+                      onChange={setMaintenancePage}
+                    />
+                  </>
                 ) : null}
               </>
             ) : null}
