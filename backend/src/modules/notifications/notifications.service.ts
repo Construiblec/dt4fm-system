@@ -11,6 +11,7 @@ import { MailerService, type BulkSendSummary } from './mail/mailer.service';
 import { type MailMessage } from './mail/mail-provider.interface';
 import { TemplateRenderer } from './template-renderer.service';
 import { SendBulkDto } from './dto/send-bulk.dto';
+import { MassSendDto } from './dto/mass-send.dto';
 import { getTemplateCompleteIncident } from './html-templates';
 
 const DEFAULT_TEMPLATE_CLASS = 'EmailTemplate';
@@ -26,6 +27,13 @@ type TemplateCard = {
 
 type TemplateCardResponse = {
   data?: TemplateCard;
+};
+
+// ─── Tipo de respuesta mass-send ─────────────────────────────────────────────
+
+export type MassSendSummary = BulkSendSummary & {
+  recipientsRequested: number;
+  recipientsDeduplicated: number;
 };
 
 @Injectable()
@@ -45,23 +53,14 @@ export class NotificationsService {
       DEFAULT_TEMPLATE_CLASS;
   }
 
-  // ─── Envío masivo ─────────────────────────────────────────────────────────
+  // ─── Envío masivo (legacy) ────────────────────────────────────────────────
 
-  /**
-   * Envía un comunicado masivo.
-   *
-   * La página personalizada de openMAINT resuelve los destinatarios
-   * (edificio + alcance: todos/propietarios/arrendatarios) y envía la
-   * lista de emails ya resuelta. El backend solo trae la plantilla,
-   * renderiza por destinatario y envía — sin conocer edificios ni Tenants.
-   */
   async sendBulk(
     dto: SendBulkDto,
   ): Promise<BulkSendSummary & { template: string }> {
     const sessionId = await this.getAdminSessionId();
     const template = await this.getTemplate(dto.templateId, sessionId);
 
-    // Deduplicar por si la página envió duplicados
     const seen = new Set<string>();
     const uniqueRecipients = dto.recipients.filter((email) => {
       const normalized = email.trim().toLowerCase();
@@ -102,6 +101,66 @@ export class NotificationsService {
     return {
       ...summary,
       template: template.Code ?? String(template._id),
+    };
+  }
+
+  // ─── Envío masivo openMAINT (mass-send) ───────────────────────────────────
+
+  /**
+   * La plantilla (Subject + Body) llega directamente en el body del request,
+   * tomada tal cual de la card EmailTemplate de openMAINT.
+   * La página personalizada construye el JSON y lo envía al backend.
+   */
+  async massSend(dto: MassSendDto): Promise<MassSendSummary> {
+    const recipientsRequested = dto.recipients.length;
+
+    // Deduplicar emails (case-insensitive)
+    const seen = new Set<string>();
+    const uniqueRecipients = dto.recipients.filter((email) => {
+      const normalized = email.trim().toLowerCase();
+      if (seen.has(normalized)) return false;
+      seen.add(normalized);
+      return true;
+    });
+
+    const recipientsDeduplicated = recipientsRequested - uniqueRecipients.length;
+
+    if (uniqueRecipients.length === 0) {
+      this.logger.warn('[mass-send] Sin destinatarios válidos tras deduplicar');
+      return {
+        total: 0,
+        sent: 0,
+        failed: 0,
+        results: [],
+        recipientsRequested,
+        recipientsDeduplicated,
+      };
+    }
+
+    // Construir un mensaje renderizado por destinatario
+    const messages: MailMessage[] = uniqueRecipients.map((email) => {
+      const variables: Record<string, string> = {
+        email: email.trim().toLowerCase(),
+        ...(dto.extraVars ?? {}),
+      };
+      return {
+        to: email.trim(),
+        subject: this.templateRenderer.render(dto.template.Subject, variables),
+        html: this.templateRenderer.render(dto.template.Body, variables),
+      };
+    });
+
+    const summary = await this.mailerService.sendBulk(messages);
+
+    this.logger.log(
+      `[mass-send] ${summary.sent}/${summary.total} enviados — ` +
+        `duplicados=${recipientsDeduplicated}`,
+    );
+
+    return {
+      ...summary,
+      recipientsRequested,
+      recipientsDeduplicated,
     };
   }
 
@@ -189,10 +248,6 @@ export class NotificationsService {
     }
   }
 
-  /**
-   * Envía un correo de notificación cuando se finaliza un incidente.
-   * Se envía al empleado solicitante y a contabilidad
-   */
   async notifyIncidentFinished(
     incidentId: number,
     incidentNumber: string,
@@ -234,7 +289,6 @@ export class NotificationsService {
       this.logger.log(
         `Enviando incidente #${incidentNumber} a: ${recipients.join(', ')}`,
       );
-
       await this.mailerService.sendBulk(messages);
     } catch (error) {
       this.logger.error(`Error enviando incidente #${incidentNumber}`, error);
@@ -272,7 +326,7 @@ export class NotificationsService {
     };
   }
 
-  // ─── Resolución de plantilla ──────────────────────────────────────────────
+  // ─── Resolución de plantilla (usado por sendBulk legacy) ─────────────────
 
   private async getTemplate(
     templateId: string,
