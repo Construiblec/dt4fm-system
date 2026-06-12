@@ -1,31 +1,35 @@
 import {
-  IsEnum,
+  IsArray,
+  IsEmail,
   IsNotEmpty,
   IsOptional,
-  IsString,
   IsObject,
+  IsString,
+  ArrayMinSize,
 } from 'class-validator';
-import { RecipientScope } from '../recipient-scope.enum';
 
 /**
  * Cuerpo para "enviar comunicado masivo ahora".
  * Lo consume la página personalizada de openMAINT.
  *
- * - scope:       a quién enviar (todos / propietarios / arrendatarios)
- * - templateId:  card de la clase de plantillas en openMAINT a utilizar
- * - extraVars:   variables adicionales globales para el render, opcionales
- *                (las variables por destinatario, como su nombre, las
- *                resuelve el backend a partir de cada Tenant)
+ * La página personalizada es responsable de resolver los destinatarios
+ * (edificio + alcance) y enviar la lista de emails ya resuelta.
+ * El backend solo renderiza la plantilla y envía — no conoce edificios
+ * ni relaciones de openMAINT.
+ *
+ * - templateId:  ID de la card EmailTemplate en openMAINT
+ * - recipients:  lista de emails ya resuelta por la página personalizada
+ * - extraVars:   variables globales adicionales para el render (opcional)
  */
 export class SendBulkDto {
-  @IsEnum(RecipientScope, {
-    message: 'scope debe ser uno de: all, owners, tenants',
-  })
-  scope: RecipientScope;
-
   @IsString()
   @IsNotEmpty()
   templateId: string;
+
+  @IsArray()
+  @ArrayMinSize(1, { message: 'Debe haber al menos un destinatario' })
+  @IsEmail({}, { each: true, message: 'Cada destinatario debe ser un email válido' })
+  recipients: string[];
 
   @IsOptional()
   @IsObject()

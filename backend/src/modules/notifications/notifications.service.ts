@@ -11,33 +11,14 @@ import { OpenmaintClient } from '../../integrations/openmaint/openmaint.client';
 import { MailerService, type BulkSendSummary } from './mail/mailer.service';
 import { type MailMessage } from './mail/mail-provider.interface';
 import { TemplateRenderer } from './template-renderer.service';
-import { RecipientScope } from './recipient-scope.enum';
 import { SendBulkDto } from './dto/send-bulk.dto';
+import { MassSendDto } from './dto/mass-send.dto';
 import { getTemplateCompleteIncident } from './html-templates';
 
-// ─── Nombre de la clase de plantillas en openMAINT ───────────────────────────
-// Se sobreescribe con la variable de entorno OPENMAINT_TEMPLATE_CLASS.
 const DEFAULT_TEMPLATE_CLASS = 'EmailTemplate';
 
-// ─── Tipos de openMAINT ──────────────────────────────────────────────────────
+// ─── Tipos internos ───────────────────────────────────────────────────────────
 
-type TenantCard = {
-  _id: number;
-  Description: string;
-  Email: string | null;
-  _OccupancyType_code?: string | null;
-};
-
-type TenantCardsResponse = {
-  data?: TenantCard[];
-  meta?: { total: number };
-};
-
-/**
- * Estructura esperada de una plantilla guardada en openMAINT.
- * Los nombres de atributo (Subject, Body...) deben coincidir con los
- * de la clase EmailTemplate que se defina en openMAINT.
- */
 type TemplateCard = {
   _id: number;
   Code?: string;
@@ -49,13 +30,12 @@ type TemplateCardResponse = {
   data?: TemplateCard;
 };
 
-/**
- * Destinatario ya normalizado y listo para render/envío.
- */
-interface ResolvedRecipient {
-  email: string;
-  name: string;
-}
+// ─── Tipo de respuesta mass-send ─────────────────────────────────────────────
+
+export type MassSendSummary = BulkSendSummary & {
+  recipientsRequested: number;
+  recipientsDeduplicated: number;
+};
 
 @Injectable()
 export class NotificationsService {
@@ -74,49 +54,40 @@ export class NotificationsService {
       DEFAULT_TEMPLATE_CLASS;
   }
 
-  // ─── Caso de uso principal: envío masivo ahora ────────────────────────────
+  // ─── Envío masivo (legacy) ────────────────────────────────────────────────
 
-  /**
-   * Envía un comunicado masivo:
-   *   1. Trae la plantilla desde openMAINT.
-   *   2. Resuelve los destinatarios (Tenant) según el alcance.
-   *   3. Renderiza asunto y cuerpo por destinatario (variables {{...}}).
-   *   4. Delega el envío al MailerService.
-   *
-   * Devuelve un resumen con enviados / fallidos.
-   */
   async sendBulk(
     dto: SendBulkDto,
   ): Promise<BulkSendSummary & { template: string }> {
     const sessionId = await this.getAdminSessionId();
-
     const template = await this.getTemplate(dto.templateId, sessionId);
-    const recipients = await this.resolveRecipients(dto.scope, sessionId);
+    const seen = new Set<string>();
+    const uniqueRecipients = dto.recipients.filter((email) => {
+      const normalized = email.trim().toLowerCase();
+      if (seen.has(normalized)) return false;
+      seen.add(normalized);
+      return true;
+    });
 
-    if (recipients.length === 0) {
+    if (uniqueRecipients.length === 0) {
       this.logger.warn(
-        `Envío masivo sin destinatarios válidos (scope=${dto.scope})`,
+        'Envio masivo sin destinatarios validos',
       );
       throw new NotFoundException('No hay destinatarios validos para enviar');
     }
 
-    const messages: MailMessage[] = recipients.map((recipient) => {
+    const messages: MailMessage[] = uniqueRecipients.map((email) => {
       const variables: Record<string, string> = {
-        nombre: recipient.name,
-        email: recipient.email,
+        email: email.trim().toLowerCase(),
         ...(dto.extraVars ?? {}),
       };
-
-      const subject = this.templateRenderer.render(
-        template.Subject ?? '',
-        variables,
-      );
-      const html = this.templateRenderer.render(template.Body ?? '', variables);
-
       return {
-        to: recipient.email,
-        subject,
-        html,
+        to: email.trim(),
+        subject: this.templateRenderer.render(
+          template.Subject ?? '',
+          variables,
+        ),
+        html: this.templateRenderer.render(template.Body ?? '', variables),
       };
     });
 
@@ -131,18 +102,88 @@ export class NotificationsService {
       });
     }
 
+    this.logger.log(
+      `Envío masivo: ${summary.sent}/${summary.total} — plantilla=${template.Code}`,
+    );
+
     return {
       ...summary,
       template: templateCode,
     };
   }
 
-  // ─── Caso de uso: Notificación de incidente creado ─────────────────────────
+  // ─── Envío masivo openMAINT (mass-send) ───────────────────────────────────
 
   /**
-   * Envía un correo de notificación cuando se reporta un nuevo incidente.
-   * Se envía al empleado solicitante (si tiene email válido) y al correo administrativo/soporte configurado.
+   * La plantilla (Subject + Body) llega directamente en el body del request,
+   * tomada tal cual de la card EmailTemplate de openMAINT.
+   * La página personalizada construye el JSON y lo envía al backend.
    */
+  async massSend(dto: MassSendDto): Promise<MassSendSummary> {
+    const recipientsRequested = dto.recipients.length;
+
+    // Deduplicar emails (case-insensitive)
+    const seen = new Set<string>();
+    const uniqueRecipients = dto.recipients.filter((email) => {
+      const normalized = email.trim().toLowerCase();
+      if (seen.has(normalized)) return false;
+      seen.add(normalized);
+      return true;
+    });
+
+    const recipientsDeduplicated =
+      recipientsRequested - uniqueRecipients.length;
+
+    if (uniqueRecipients.length === 0) {
+      this.logger.warn('[mass-send] Sin destinatarios válidos tras deduplicar');
+      return {
+        total: 0,
+        sent: 0,
+        failed: 0,
+        results: [],
+        recipientsRequested,
+        recipientsDeduplicated,
+      };
+    }
+
+    // Construir un mensaje renderizado por destinatario
+    const messages: MailMessage[] = uniqueRecipients.map((email) => {
+      const variables: Record<string, string> = {
+        email: email.trim().toLowerCase(),
+        ...(dto.extraVars ?? {}),
+      };
+      return {
+        to: email.trim(),
+        subject: this.templateRenderer.render(dto.template.Subject, variables),
+        html: this.templateRenderer.render(dto.template.Body, variables),
+      };
+    });
+
+    const summary = await this.mailerService.sendBulk(messages);
+
+    if (summary.failed > 0 || summary.sent !== summary.total) {
+      throw new ServiceUnavailableException({
+        message: 'No se pudieron enviar todos los correos',
+        ...summary,
+        recipientsRequested,
+        recipientsDeduplicated,
+      });
+    }
+
+    this.logger.log(
+      `[mass-send] ${summary.sent}/${summary.total} enviados — ` +
+        `duplicados=${recipientsDeduplicated}`,
+    );
+
+    return {
+      ...summary,
+      recipientsRequested,
+      recipientsDeduplicated,
+    };
+  }
+
+  // ─── Notificación de incidente creado ─────────────────────────────────────
+
   async notifyIncidentCreated(
     incidentId: number,
     incidentNumber: string,
@@ -166,74 +207,53 @@ export class NotificationsService {
     const priority =
       priorityMap[normalizePriority(incidentPriority)] ?? priorityMap['low'];
 
-    // 🔥 Separar descripción y visitante de forma limpia
     const [rawDescription, visitorBlock] = incidentNotes.split(
       '--- Datos del visitante ---',
     );
-
     const description = (rawDescription || '').trim();
-
-    const nameMatch = visitorBlock.match(/Nombre:\s*(.*?)\s*Tel[eé]fono:/i);
-    const phoneMatch = visitorBlock.match(/Tel[eé]fono:\s*(.*)/i);
+    const nameMatch = visitorBlock?.match(/Nombre:\s*(.*?)\s*Tel[eé]fono:/i);
+    const phoneMatch = visitorBlock?.match(/Tel[eé]fono:\s*(.*)/i);
 
     const visitorHtml = `
     <div style="margin-top:12px;font-size:13px;">
       <strong>Reporta:</strong>
       <div>Nombre: ${nameMatch?.[1]?.trim() ?? 'No disponible'}</div>
       <div>Teléfono: ${phoneMatch?.[1]?.trim() ?? 'No disponible'}</div>
-    </div>
-  `;
+    </div>`;
 
     const subject = `[INCIDENTE NUEVO] ${incidentNumber} - ${incidentBuilding}`;
 
     const html = `
     <div style="font-family:Arial,sans-serif;max-width:520px;margin:auto;padding:16px;border:1px solid #eee;border-radius:6px;">
-      
-      <h3 style="margin:0 0 10px 0;">
-        Incidente #${incidentNumber}
-      </h3>
-
+      <h3 style="margin:0 0 10px 0;">Incidente #${incidentNumber}</h3>
       <div style="font-size:13px;color:#555;">
         <div><strong>Edificio:</strong> ${incidentBuilding}</div>
         <div><strong>Ubicación:</strong> ${incidentLocation}</div>
-        <div>
-          <strong>Prioridad:</strong>
-          <span style="color:${priority.color};font-weight:bold;">
-            ${priority.text}
-          </span>
+        <div><strong>Prioridad:</strong>
+          <span style="color:${priority.color};font-weight:bold;">${priority.text}</span>
         </div>
-        <div>
-          <strong>Fecha:</strong>
-          ${new Date(incidentCreatedAt).toLocaleString('es-EC')}
-        </div>
+        <div><strong>Fecha:</strong> ${new Date(incidentCreatedAt).toLocaleString('es-EC')}</div>
       </div>
-
       <hr style="margin:12px 0;" />
-
       <div style="font-size:13px;">
         <strong>Descripción</strong>
-        <p style="margin:6px 0;white-space:pre-wrap;">
-          ${description || 'Sin descripción'}
-        </p>
+        <p style="margin:6px 0;white-space:pre-wrap;">${description || 'Sin descripción'}</p>
       </div>
-
       ${visitorHtml}
-
       <div style="margin-top:16px;font-size:11px;color:#999;text-align:center;">
         Sistema DT4FM - Notificación automática
       </div>
-    </div>
-  `;
+    </div>`;
 
     const attachments = (incidentImages || []).map((img, index) => ({
       filename: `imagen-${index + 1}.jpg`,
-      content: img.replace(/^data:image\/\w+;base64,/, ''), // limpia prefijo si existe
+      content: img.replace(/^data:image\/\w+;base64,/, ''),
       contentType: 'image/jpeg',
     }));
 
     const recipients =
       process.env.INCIDENT_NOTIFICATION_EMAIL?.split(',')
-        .map((email) => email.trim())
+        .map((e) => e.trim())
         .filter(Boolean) || [];
 
     const messages = recipients.map((to) => ({
@@ -247,17 +267,12 @@ export class NotificationsService {
       this.logger.log(
         `Enviando incidente #${incidentNumber} a: ${recipients.join(', ')}`,
       );
-
       await this.mailerService.sendBulk(messages);
     } catch (error) {
       this.logger.error(`Error enviando incidente #${incidentNumber}`, error);
     }
   }
 
-  /**
-   * Envía un correo de notificación cuando se finaliza un incidente.
-   * Se envía al empleado solicitante y a contabilidad
-   */
   async notifyIncidentFinished(
     incidentId: number,
     incidentNumber: string,
@@ -299,7 +314,6 @@ export class NotificationsService {
       this.logger.log(
         `Enviando incidente #${incidentNumber} a: ${recipients.join(', ')}`,
       );
-
       await this.mailerService.sendBulk(messages);
     } catch (error) {
       this.logger.error(`Error enviando incidente #${incidentNumber}`, error);
@@ -308,7 +322,6 @@ export class NotificationsService {
 
   // ─── Diagnóstico ──────────────────────────────────────────────────────────
 
-  /** Verifica que el proveedor de correo configurado responda. */
   async verifyMailProvider(): Promise<{ ok: boolean }> {
     const ok = await this.mailerService.verifyProvider();
     if (!ok) {
@@ -320,29 +333,23 @@ export class NotificationsService {
     return { ok };
   }
 
-  /**
-   * Diagnóstico SMTP: muestra la config activa y hace una verificación de
-   * conexión. Útil para depurar problemas de entrega sin tocar el código.
-   * Nunca exponer en producción sin protección de auth.
-   */
   async diagnoseSMTP(): Promise<Record<string, unknown>> {
-    const host = this.configService.get<string>('SMTP_HOST') ?? '(no definido)';
-    const port = this.configService.get<string>('SMTP_PORT') ?? '(no definido)';
-    const secure =
-      this.configService.get<string>('SMTP_SECURE') ?? '(no definido)';
-    const user = this.configService.get<string>('SMTP_USER') ?? '(no definido)';
-    const from = this.configService.get<string>('SMTP_FROM') ?? '(no definido)';
+    const config = {
+      host: this.configService.get<string>('SMTP_HOST') ?? '(no definido)',
+      port: this.configService.get<string>('SMTP_PORT') ?? '(no definido)',
+      secure: this.configService.get<string>('SMTP_SECURE') ?? '(no definido)',
+      user: this.configService.get<string>('SMTP_USER') ?? '(no definido)',
+      from: this.configService.get<string>('SMTP_FROM') ?? '(no definido)',
+    };
 
-    const config = { host, port, secure, user, from };
-
-    let connection: 'ok' | 'failed';
+    let connection: 'ok' | 'failed' = 'failed';
     let connectionError: string | null = null;
 
     try {
-      const ok = await this.mailerService.verifyProvider();
-      connection = ok ? 'ok' : 'failed';
+      connection = (await this.mailerService.verifyProvider())
+        ? 'ok'
+        : 'failed';
     } catch (err) {
-      connection = 'failed';
       connectionError = err instanceof Error ? err.message : String(err);
     }
 
@@ -350,19 +357,10 @@ export class NotificationsService {
       config,
       connection,
       ...(connectionError ? { connectionError } : {}),
-      hint:
-        connection === 'failed'
-          ? [
-              '1. Verifica que el puerto no esté bloqueado por el firewall o ISP.',
-              '2. Puerto 465 requiere SMTP_SECURE=true. Puerto 587 requiere SMTP_SECURE=false.',
-              '3. Asegúrate de que el dominio en SMTP_FROM esté verificado en Resend.',
-              '4. Prueba con SMTP_PORT=587 y SMTP_SECURE=false si 465 falla.',
-            ]
-          : 'Conexión SMTP establecida correctamente.',
     };
   }
 
-  // ─── Resolución de plantilla ──────────────────────────────────────────────
+  // ─── Resolución de plantilla (usado por sendBulk legacy) ─────────────────
 
   private async getTemplate(
     templateId: string,
@@ -380,9 +378,7 @@ export class NotificationsService {
 
       return response.data;
     } catch (error) {
-      if (error instanceof NotFoundException) {
-        throw error;
-      }
+      if (error instanceof NotFoundException) throw error;
       this.logger.error('Error al obtener la plantilla de openMAINT', {
         status: error?.response?.status,
         data: JSON.stringify(error?.response?.data),
@@ -393,127 +389,8 @@ export class NotificationsService {
     }
   }
 
-  // ─── Resolución de destinatarios ──────────────────────────────────────────
+  // ─── Sesión de servicio ───────────────────────────────────────────────────
 
-  /**
-   * Trae los Tenant según el alcance, filtra correos inválidos y
-   * deduplica por email para no enviar dos veces al mismo destinatario.
-   *
-   * NOTA: openMAINT no acepta el parámetro ?attrs con array JSON en esta
-   * versión — rompe el SQL generado. Se traen todas las cards y se filtra
-   * por OccupancyType en memoria usando el campo _OccupancyType_code que
-   * openMAINT incluye automáticamente en la respuesta de cada card.
-   */
-  private async resolveRecipients(
-    scope: RecipientScope,
-    sessionId: string,
-  ): Promise<ResolvedRecipient[]> {
-    const path = this.buildTenantPath(scope);
-
-    let response: TenantCardsResponse;
-    try {
-      response = (await this.openmaintClient.get(
-        path,
-        sessionId,
-      )) as TenantCardsResponse;
-    } catch (error) {
-      this.logger.error('Error al consultar Tenant en openMAINT', {
-        status: error?.response?.status,
-        data: JSON.stringify(error?.response?.data),
-      });
-      throw new InternalServerErrorException(
-        'No se pudieron obtener los destinatarios',
-      );
-    }
-
-    const cards = response.data ?? [];
-
-    // Filtrar por tipo de ocupante en memoria cuando el scope no es ALL.
-    // openMAINT devuelve _OccupancyType_code con el código del lookup.
-    const occupancyCode = this.getOccupancyCode(scope);
-    const filtered =
-      scope === RecipientScope.ALL || !occupancyCode
-        ? cards
-        : cards.filter(
-            (card) =>
-              (card._OccupancyType_code ?? '').toLowerCase() ===
-              occupancyCode.toLowerCase(),
-          );
-
-    if (scope !== RecipientScope.ALL && !occupancyCode) {
-      this.logger.warn(
-        `No hay código de OccupancyType configurado para scope=${scope}; ` +
-          `se enviará a todos los Tenant.`,
-      );
-    }
-
-    const seen = new Set<string>();
-    const recipients: ResolvedRecipient[] = [];
-
-    for (const card of filtered) {
-      const email = (card.Email ?? '').trim().toLowerCase();
-      if (!this.isValidEmail(email) || seen.has(email)) {
-        continue;
-      }
-      seen.add(email);
-      recipients.push({
-        email,
-        name: (card.Description ?? '').trim(),
-      });
-    }
-
-    this.logger.log(
-      `Destinatarios resueltos: ${recipients.length} (scope=${scope}, total cards=${cards.length})`,
-    );
-
-    return recipients;
-  }
-
-  /**
-   * Construye el path REST para traer todos los Tenant sin el parámetro
-   * ?attrs que rompe el SQL de openMAINT. El filtro por OccupancyType
-   * se aplica en memoria después de recibir la respuesta.
-   */
-  private buildTenantPath(_scope: RecipientScope): string {
-    return `/classes/Tenant/cards?limit=1000`;
-  }
-
-  /**
-   * Devuelve el código de lookup según el scope.
-   * Los códigos reales de la instancia openMAINT son:
-   *   Propietario  → para owners
-   *   Arrendatario → para tenants
-   * Se pueden sobreescribir con variables de entorno.
-   */
-  private getOccupancyCode(scope: RecipientScope): string | null {
-    if (scope === RecipientScope.OWNERS) {
-      return (
-        this.configService.get<string>('OPENMAINT_OCCUPANCY_OWNER_CODE') ??
-        'Propietario'
-      );
-    }
-    if (scope === RecipientScope.TENANTS) {
-      return (
-        this.configService.get<string>('OPENMAINT_OCCUPANCY_TENANT_CODE') ??
-        'Arrendatario'
-      );
-    }
-    return null;
-  }
-
-  // ─── Helpers ──────────────────────────────────────────────────────────────
-
-  private isValidEmail(email: string): boolean {
-    if (!email) {
-      return false;
-    }
-    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-  }
-
-  /**
-   * Obtiene una sesión de servicio con openMAINT usando las credenciales
-   * de administrador. Mismo patrón que OwnersService.
-   */
   private async getAdminSessionId(): Promise<string> {
     const username = this.configService.get<string>('OPENMAINT_USERNAME');
     const password = this.configService.get<string>('OPENMAINT_PASSWORD');
@@ -529,3 +406,4 @@ export class NotificationsService {
     return response.data._id;
   }
 }
+
