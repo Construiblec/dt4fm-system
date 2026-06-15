@@ -56,10 +56,7 @@ export class NotificationsController {
             subject: 'Aviso importante — Edificio Central',
             body: '<p>No va a haber agua el día de hoy. Disculpe las molestias.</p>',
           },
-          recipients: [
-            'propietario@ejemplo.com',
-            'arrendatario@ejemplo.com',
-          ],
+          recipients: ['propietario@ejemplo.com', 'arrendatario@ejemplo.com'],
         },
       },
       ejemplo_con_variables: {
@@ -69,10 +66,7 @@ export class NotificationsController {
             subject: 'Comunicado — {{nombre}}',
             body: '<p>Estimado residente de {{nombre}}, le informamos sobre el periodo {{periodo}}.</p><p>Correo: {{email}}</p>',
           },
-          recipients: [
-            'propietario@ejemplo.com',
-            'arrendatario@ejemplo.com',
-          ],
+          recipients: ['propietario@ejemplo.com', 'arrendatario@ejemplo.com'],
           extraVars: {
             nombre: 'Edificio Central',
             periodo: 'Junio 2025',

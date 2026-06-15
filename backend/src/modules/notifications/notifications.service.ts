@@ -154,8 +154,8 @@ export class NotificationsService {
       };
       return {
         to: email.trim(),
-        subject: this.templateRenderer.render(dto.template.Subject, variables),
-        html: this.templateRenderer.render(dto.template.Body, variables),
+        subject: this.templateRenderer.render(dto.template.subject, variables),
+        html: this.templateRenderer.render(dto.template.body, variables),
       };
     });
 

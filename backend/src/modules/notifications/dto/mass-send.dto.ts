@@ -13,20 +13,20 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class MassSendTemplateDto {
   @ApiProperty({
-    description: 'Asunto del correo. Campo "Subject" de la card EmailTemplate en openMAINT.',
+    description: 'Asunto del correo.',
     example: 'Notificacion Mantenimientos',
   })
   @IsString()
   @IsNotEmpty()
-  Subject: string;
+  subject: string;
 
   @ApiProperty({
-    description: 'Cuerpo del correo. Campo "Body" de la card EmailTemplate en openMAINT.',
+    description: 'Cuerpo HTML del correo.',
     example: 'Esto es una prueba de envio masivo masivo',
   })
   @IsString()
   @IsNotEmpty()
-  Body: string;
+  body: string;
 }
 
 /**
@@ -39,11 +39,11 @@ export class MassSendTemplateDto {
 export class MassSendDto {
   @ApiProperty({
     description:
-      'Plantilla con Subject y Body tomados directamente de la card EmailTemplate de openMAINT.',
+      'Plantilla con subject y body del comunicado a enviar.',
     type: MassSendTemplateDto,
     example: {
-      Subject: 'Notificacion Mantenimientos',
-      Body: 'Esto es una prueba de envio masivo masivo',
+      subject: 'Notificacion Mantenimientos',
+      body: 'Esto es una prueba de envio masivo masivo',
     },
   })
   @ValidateNested()
