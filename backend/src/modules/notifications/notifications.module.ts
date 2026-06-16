@@ -8,6 +8,7 @@ import { EmailTemplatesService } from './email-templates.service';
 import { MailerService } from './mail/mailer.service';
 import { TemplateRenderer } from './template-renderer.service';
 import { SmtpMailProvider } from './mail/smtp-mail.provider';
+import { ResendMailProvider } from './mail/resend-mail.provider';
 import {
   MAIL_PROVIDER,
   type MailProvider,
@@ -28,6 +29,8 @@ function mailProviderFactory(config: ConfigService): MailProvider {
   ).toLowerCase();
 
   switch (selected) {
+    case 'resend':
+      return new ResendMailProvider(config);
     case 'smtp':
     default:
       return new SmtpMailProvider(config);
