@@ -10,6 +10,7 @@ import { HealthModule } from './modules/health/health.module';
 import { PaymentsModule } from './modules/payments/payments.module';
 import { OwnersModule } from './modules/owners/owners.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
+import { MeetingRemindersModule } from './modules/meeting-reminders/meeting-reminders.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
     PaymentsModule,
     OwnersModule,
     NotificationsModule,
+    MeetingRemindersModule,
   ],
 })
 export class AppModule {}

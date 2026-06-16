@@ -51,6 +51,6 @@ function mailProviderFactory(config: ConfigService): MailProvider {
       inject: [ConfigService],
     },
   ],
-  exports: [NotificationsService],
+  exports: [NotificationsService, MailerService],
 })
 export class NotificationsModule {}
