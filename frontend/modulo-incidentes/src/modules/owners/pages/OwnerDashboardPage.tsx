@@ -249,6 +249,14 @@ export const OwnerDashboardPage = () => {
                       </p>
                     </div>
                   </div>
+                  <div className="mt-2 flex items-center justify-between rounded-xl bg-brand/5 px-3 py-2">
+                    <p className="text-xs font-medium text-slate-500">
+                      Alícuota total
+                    </p>
+                    <p className="text-sm font-bold text-brand">
+                      {unit.alicuotaTotal}%
+                    </p>
+                  </div>
                 </div>
               ))}
             </div>
