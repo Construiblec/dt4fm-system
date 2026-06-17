@@ -2,9 +2,12 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { OpenmaintClient } from '../../integrations/openmaint/openmaint.client';
 import { OpenmaintAuthService } from '../../integrations/openmaint/openmaint.auth.service';
+import { MailerService } from '../notifications/mail/mailer.service';
+import { type MailMessage } from '../notifications/mail/mail-provider.interface';
 
 const OPENMAINT_PAYMENTS_CLASS = 'Pagos';
 const OPENMAINT_TENANTS_VIEW = 'TenantAlicuotaSummary';
+const OPENMAINT_TENANT_CLASS = 'Tenant';
 const OPENMAINT_CONFIG_EXPENSA_CLASS = 'ConfigExpensa';
 const LOOKUP_ESTADO_PENDIENTE = 3166839;
 const TIPO_EXPENSA = 'Expensas';
@@ -37,12 +40,20 @@ export interface PaymentsGenerationResult {
   failed: number;
   errors: string[];
   skippedReason?: string;
+  emailsSent: number;
+  emailsFailed: number;
+  emailsSkipped: number;
 }
 
 interface PagoCard {
   Description: string;
   Propietario: number;
   Periodo: string;
+}
+
+interface TenantEmailRaw {
+  _id: number;
+  Email: string | null;
 }
 
 @Injectable()
@@ -53,6 +64,7 @@ export class PaymentsService {
     private readonly openmaintClient: OpenmaintClient,
     private readonly openmaintAuthService: OpenmaintAuthService,
     private readonly configService: ConfigService,
+    private readonly mailerService: MailerService,
   ) {}
 
   async generateMonthlyPayments(periodo: string): Promise<PaymentsGenerationResult> {
@@ -65,6 +77,9 @@ export class PaymentsService {
       skipped: 0,
       failed: 0,
       errors: [],
+      emailsSent: 0,
+      emailsFailed: 0,
+      emailsSkipped: 0,
     };
 
     const sessionId = await this.getOpenmaintSession();
@@ -103,6 +118,12 @@ export class PaymentsService {
     const pagosExistentes = await this.getPagosDelPeriodo(periodo, sessionId);
     this.logger.log(`[Payments] Pagos existentes para ${periodo}: ${pagosExistentes.length}`);
 
+    // Mapa propietarioId -> email para notificar los pagos recién creados.
+    const emailByTenant = await this.getTenantsEmailMap(sessionId);
+
+    // Solo notificamos los pagos creados en esta corrida (no los omitidos).
+    const notifications: MailMessage[] = [];
+
     for (const tenant of tenants) {
       try {
         const alreadyExists = pagosExistentes.some(
@@ -124,6 +145,16 @@ export class PaymentsService {
         this.logger.log(
           `[Payments] Pago creado - "${tenant.unidadNombre}" - ${tenant.propietarioNombre} - $${tenant.monto} - ${periodo}`,
         );
+
+        const email = emailByTenant.get(tenant.propietarioId)?.trim();
+        if (email) {
+          notifications.push(this.buildPaymentEmail(tenant, periodo, config, email));
+        } else {
+          result.emailsSkipped++;
+          this.logger.warn(
+            `[Payments] "${tenant.unidadNombre}" (${tenant.propietarioNombre}) sin email - no se notifica`,
+          );
+        }
       } catch (error) {
         const msg = `"${tenant.unidadNombre}" (${tenant.propietarioNombre}): ${error?.message ?? 'Error desconocido'}`;
         this.logger.error(`[Payments] ${msg}`);
@@ -132,8 +163,27 @@ export class PaymentsService {
       }
     }
 
+    // Envío de notificaciones (best-effort): NO debe afectar la generación.
+    if (notifications.length > 0) {
+      try {
+        const summary = await this.mailerService.sendBulk(notifications);
+        result.emailsSent = summary.sent;
+        result.emailsFailed = summary.failed;
+        this.logger.log(
+          `[Payments] Notificaciones -> enviadas:${summary.sent} fallidas:${summary.failed} de ${summary.total}`,
+        );
+      } catch (error) {
+        result.emailsFailed += notifications.length;
+        this.logger.error(
+          `[Payments] Error enviando notificaciones de pagos: ${(error as Error).message}`,
+        );
+      }
+    }
+
     this.logger.log(
-      `[Payments] Completado ${periodo} -> total:${result.total} creados:${result.created} omitidos:${result.skipped} fallidos:${result.failed}`,
+      `[Payments] Completado ${periodo} -> total:${result.total} creados:${result.created} ` +
+        `omitidos:${result.skipped} fallidos:${result.failed} ` +
+        `correos[enviados:${result.emailsSent} fallidos:${result.emailsFailed} sinEmail:${result.emailsSkipped}]`,
     );
 
     return result;
@@ -199,6 +249,96 @@ export class PaymentsService {
       this.logger.error('[Payments] Error al obtener tenants:', error?.message);
       throw error;
     }
+  }
+
+  /**
+   * Devuelve un mapa propietarioId -> email consultando la clase Tenant.
+   * El _id de la vista TenantAlicuotaSummary corresponde al _id del Tenant,
+   * por eso podemos cruzarlos directamente. Best-effort: ante un fallo
+   * devuelve un mapa vacío (no se notifica, pero los pagos sí se generan).
+   */
+  private async getTenantsEmailMap(
+    sessionId: string,
+  ): Promise<Map<number, string>> {
+    const map = new Map<number, string>();
+    try {
+      const response = (await this.openmaintClient.get(
+        `/classes/${OPENMAINT_TENANT_CLASS}/cards?onlyGridAttrs=true&start=0&limit=9999`,
+        sessionId,
+      )) as { data?: TenantEmailRaw[] };
+
+      for (const t of response?.data ?? []) {
+        const email = t.Email?.trim();
+        if (email) {
+          map.set(t._id, email);
+        }
+      }
+    } catch (error) {
+      this.logger.warn(
+        `[Payments] No se pudieron obtener emails de Tenant: ${(error as Error).message}`,
+      );
+    }
+    return map;
+  }
+
+  /**
+   * Arma el correo de aviso de expensa para una unidad/pago recién creado.
+   * La fecha de vencimiento se calcula con DiaVencimiento de ConfigExpensa.
+   */
+  private buildPaymentEmail(
+    tenant: TenantAlicuota,
+    periodo: string,
+    config: ConfigExpensa,
+    to: string,
+  ): MailMessage {
+    const montoFmt = this.formatMonto(tenant.monto);
+    const vencimiento = this.formatVencimiento(periodo, config.DiaVencimiento);
+
+    const subject = `Aviso de expensa ${periodo} — ${tenant.unidadNombre}`;
+
+    const html = `
+    <div style="font-family:Arial,sans-serif;max-width:520px;margin:auto;padding:16px;border:1px solid #eee;border-radius:6px;">
+      <h3 style="margin:0 0 10px 0;">Aviso de expensa</h3>
+      <div style="font-size:13px;color:#555;">
+        <div><strong>Propietario:</strong> ${tenant.propietarioNombre}</div>
+        <div><strong>Unidad:</strong> ${tenant.unidadNombre}</div>
+        <div><strong>Período:</strong> ${periodo}</div>
+        <div><strong>Monto:</strong> ${montoFmt}</div>
+        <div><strong>Fecha de vencimiento:</strong> ${vencimiento}</div>
+      </div>
+      <hr style="margin:12px 0;" />
+      <div style="font-size:13px;">
+        <p style="margin:6px 0;">
+          Se ha generado su expensa correspondiente al período ${periodo}.
+          Por favor realice el pago antes de la fecha de vencimiento.
+        </p>
+      </div>
+      <div style="margin-top:16px;font-size:11px;color:#999;text-align:center;">
+        Sistema DT4FM - Notificación automática
+      </div>
+    </div>`;
+
+    return { to, subject, html };
+  }
+
+  private formatMonto(monto: number): string {
+    if (typeof monto !== 'number' || Number.isNaN(monto)) return '$0.00';
+    return `$${monto.toFixed(2)}`;
+  }
+
+  /**
+   * Construye la fecha de vencimiento "DD/MM/YYYY" a partir del período
+   * (YYYY-MM) y el día configurado. Si el período es inválido, devuelve
+   * solo el día.
+   */
+  private formatVencimiento(periodo: string, diaVencimiento: number): string {
+    const [year, month] = periodo.split('-').map(Number);
+    if (!year || !month || !diaVencimiento) {
+      return diaVencimiento ? `Día ${diaVencimiento}` : 'Por confirmar';
+    }
+    const dd = String(diaVencimiento).padStart(2, '0');
+    const mm = String(month).padStart(2, '0');
+    return `${dd}/${mm}/${year}`;
   }
 
   private async createPaymentCard(
