@@ -15,6 +15,7 @@ import { ChangePasswordDto } from './dto/change-password.dto';
 import { ContactAdminDto } from './dto/contact-admin.dto';
 import { CreateReservationDto } from './dto/create-reservation.dto';
 import { PayPaymentDto } from './dto/pay-payment.dto';
+import { PaymentPaidNotifierService } from './payment-paid-notifier.service';
 import FormData from 'form-data';
 
 const PROPIETARIOS_GROUP = { _id: 3361541, name: 'Propietarios' };
@@ -106,6 +107,7 @@ export class OwnersService {
     private readonly openmaintAuthService: OpenmaintAuthService,
     private readonly openmaintService: OpenmaintService,
     private readonly openmaintClient: OpenmaintClient,
+    private readonly paidNotifier: PaymentPaidNotifierService,
   ) {}
 
   // ─── Auth ──────────────────────────────────────────────────────────────────
@@ -333,6 +335,19 @@ export class OwnersService {
     }
 
     const allSuccess = results.every((r) => r.success);
+
+    // Notificación al administrador (best-effort): NO debe afectar el pago.
+    const paidIds = results.filter((r) => r.success).map((r) => r.id);
+    if (paidIds.length > 0) {
+      try {
+        await this.paidNotifier.notifyPaidPayments(paidIds, sessionId);
+      } catch (error) {
+        console.error('[owners] notifyPaidPayments error:', {
+          message: (error as Error)?.message,
+        });
+      }
+    }
+
     return {
       success: allSuccess,
       results,

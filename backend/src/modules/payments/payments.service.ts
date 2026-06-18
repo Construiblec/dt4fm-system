@@ -1,36 +1,13 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { OpenmaintClient } from '../../integrations/openmaint/openmaint.client';
-import { OpenmaintAuthService } from '../../integrations/openmaint/openmaint.auth.service';
 import { MailerService } from '../notifications/mail/mailer.service';
 import { type MailMessage } from '../notifications/mail/mail-provider.interface';
-
-const OPENMAINT_PAYMENTS_CLASS = 'Pagos';
-const OPENMAINT_TENANTS_VIEW = 'TenantAlicuotaSummary';
-const OPENMAINT_TENANT_CLASS = 'Tenant';
-const OPENMAINT_CONFIG_EXPENSA_CLASS = 'ConfigExpensa';
-const LOOKUP_ESTADO_PENDIENTE = 3166839;
-const TIPO_EXPENSA = 'Expensas';
-
-export interface TenantAlicuotaRaw {
-  _id: number;
-  'Propietario': string;
-  'Unidad Inmobiliaria': string;
-  'Valor Expensa $': number;
-}
-
-export interface TenantAlicuota {
-  propietarioId: number;
-  propietarioNombre: string;
-  unidadNombre: string;
-  monto: number;
-}
-
-export interface ConfigExpensa {
-  DiaEmision: number;
-  DiaVencimiento: number;
-  Tiempo: number;
-}
+import {
+  ConfigExpensa,
+  LOOKUP_ESTADO_PENDIENTE,
+  PaymentsOpenmaintRepository,
+  TenantAlicuota,
+  TIPO_EXPENSA,
+} from './payments-openmaint.repository';
 
 export interface PaymentsGenerationResult {
   periodo: string;
@@ -45,29 +22,18 @@ export interface PaymentsGenerationResult {
   emailsSkipped: number;
 }
 
-interface PagoCard {
-  Description: string;
-  Propietario: number;
-  Periodo: string;
-}
-
-interface TenantEmailRaw {
-  _id: number;
-  Email: string | null;
-}
-
 @Injectable()
 export class PaymentsService {
   private readonly logger = new Logger(PaymentsService.name);
 
   constructor(
-    private readonly openmaintClient: OpenmaintClient,
-    private readonly openmaintAuthService: OpenmaintAuthService,
-    private readonly configService: ConfigService,
+    private readonly repo: PaymentsOpenmaintRepository,
     private readonly mailerService: MailerService,
   ) {}
 
-  async generateMonthlyPayments(periodo: string): Promise<PaymentsGenerationResult> {
+  async generateMonthlyPayments(
+    periodo: string,
+  ): Promise<PaymentsGenerationResult> {
     this.logger.log(`[Payments] Iniciando verificacion para periodo ${periodo}`);
 
     const result: PaymentsGenerationResult = {
@@ -82,9 +48,9 @@ export class PaymentsService {
       emailsSkipped: 0,
     };
 
-    const sessionId = await this.getOpenmaintSession();
+    const sessionId = await this.repo.getSession();
 
-    const config = await this.getConfigExpensa(sessionId);
+    const config = await this.repo.getConfigExpensa(sessionId);
 
     if (!config) {
       const msg = 'No se encontro configuracion en ConfigExpensa';
@@ -107,7 +73,7 @@ export class PaymentsService {
       `[Payments] DiaEmision coincide (dia ${config.DiaEmision}) - procediendo a generar pagos para ${periodo}`,
     );
 
-    const tenants = await this.getTenants(sessionId);
+    const tenants = await this.repo.getTenants(sessionId);
     result.total = tenants.length;
 
     if (tenants.length === 0) {
@@ -115,11 +81,13 @@ export class PaymentsService {
       return result;
     }
 
-    const pagosExistentes = await this.getPagosDelPeriodo(periodo, sessionId);
-    this.logger.log(`[Payments] Pagos existentes para ${periodo}: ${pagosExistentes.length}`);
+    const pagosExistentes = await this.repo.getPagosDelPeriodo(periodo, sessionId);
+    this.logger.log(
+      `[Payments] Pagos existentes para ${periodo}: ${pagosExistentes.length}`,
+    );
 
     // Mapa propietarioId -> email para notificar los pagos recién creados.
-    const emailByTenant = await this.getTenantsEmailMap(sessionId);
+    const emailByTenant = await this.repo.getTenantsEmailMap(sessionId);
 
     // Solo notificamos los pagos creados en esta corrida (no los omitidos).
     const notifications: MailMessage[] = [];
@@ -148,7 +116,9 @@ export class PaymentsService {
 
         const email = emailByTenant.get(tenant.propietarioId)?.trim();
         if (email) {
-          notifications.push(this.buildPaymentEmail(tenant, periodo, config, email));
+          notifications.push(
+            this.buildPaymentEmail(tenant, periodo, config, email),
+          );
         } else {
           result.emailsSkipped++;
           this.logger.warn(
@@ -156,7 +126,7 @@ export class PaymentsService {
           );
         }
       } catch (error) {
-        const msg = `"${tenant.unidadNombre}" (${tenant.propietarioNombre}): ${error?.message ?? 'Error desconocido'}`;
+        const msg = `"${tenant.unidadNombre}" (${tenant.propietarioNombre}): ${(error as Error)?.message ?? 'Error desconocido'}`;
         this.logger.error(`[Payments] ${msg}`);
         result.failed++;
         result.errors.push(msg);
@@ -187,98 +157,6 @@ export class PaymentsService {
     );
 
     return result;
-  }
-
-  private async getPagosDelPeriodo(periodo: string, sessionId: string): Promise<PagoCard[]> {
-    try {
-      const cql = encodeURIComponent(`Periodo = "${periodo}"`);
-
-      const response = (await this.openmaintClient.get(
-        `/classes/${OPENMAINT_PAYMENTS_CLASS}/cards?cql=${cql}&limit=9999`,
-        sessionId,
-      )) as { data?: PagoCard[] };
-
-      return response?.data ?? [];
-    } catch (error) {
-      this.logger.warn(`[Payments] No se pudieron obtener pagos existentes: ${error?.message}`);
-      return [];
-    }
-  }
-
-  private async getConfigExpensa(sessionId: string): Promise<ConfigExpensa | null> {
-    try {
-      const response = (await this.openmaintClient.get(
-        `/classes/${OPENMAINT_CONFIG_EXPENSA_CLASS}/cards?limit=1`,
-        sessionId,
-      )) as { data?: ConfigExpensa[] };
-
-      const record = response?.data?.[0];
-
-      if (!record) {
-        this.logger.warn('[Payments] ConfigExpensa no tiene registros');
-        return null;
-      }
-
-      this.logger.log(
-        `[Payments] ConfigExpensa -> DiaEmision:${record.DiaEmision} DiaVencimiento:${record.DiaVencimiento} Tiempo:${record.Tiempo}`,
-      );
-
-      return record;
-    } catch (error) {
-      this.logger.error('[Payments] Error al obtener ConfigExpensa:', error?.message);
-      return null;
-    }
-  }
-
-  private async getTenants(sessionId: string): Promise<TenantAlicuota[]> {
-    try {
-      const response = (await this.openmaintClient.get(
-        `/views/${OPENMAINT_TENANTS_VIEW}/cards`,
-        sessionId,
-      )) as { data?: TenantAlicuotaRaw[] };
-
-      const raw = response?.data ?? [];
-
-      return raw.map((r) => ({
-        propietarioId: r._id,
-        propietarioNombre: r['Propietario'],
-        unidadNombre: r['Unidad Inmobiliaria'],
-        monto: r['Valor Expensa $'],
-      }));
-    } catch (error) {
-      this.logger.error('[Payments] Error al obtener tenants:', error?.message);
-      throw error;
-    }
-  }
-
-  /**
-   * Devuelve un mapa propietarioId -> email consultando la clase Tenant.
-   * El _id de la vista TenantAlicuotaSummary corresponde al _id del Tenant,
-   * por eso podemos cruzarlos directamente. Best-effort: ante un fallo
-   * devuelve un mapa vacío (no se notifica, pero los pagos sí se generan).
-   */
-  private async getTenantsEmailMap(
-    sessionId: string,
-  ): Promise<Map<number, string>> {
-    const map = new Map<number, string>();
-    try {
-      const response = (await this.openmaintClient.get(
-        `/classes/${OPENMAINT_TENANT_CLASS}/cards?onlyGridAttrs=true&start=0&limit=9999`,
-        sessionId,
-      )) as { data?: TenantEmailRaw[] };
-
-      for (const t of response?.data ?? []) {
-        const email = t.Email?.trim();
-        if (email) {
-          map.set(t._id, email);
-        }
-      }
-    } catch (error) {
-      this.logger.warn(
-        `[Payments] No se pudieron obtener emails de Tenant: ${(error as Error).message}`,
-      );
-    }
-    return map;
   }
 
   /**
@@ -356,27 +234,10 @@ export class PaymentsService {
       Tipo: TIPO_EXPENSA,
     };
 
-    const response = (await this.openmaintClient.post(
-      `/classes/${OPENMAINT_PAYMENTS_CLASS}/cards`,
-      card,
-      sessionId,
-    )) as { success?: boolean; data?: { _id?: number } };
-
-    if (!response?.success) {
-      throw new Error(
-        `openMAINT retornó success:false para unidad "${tenant.unidadNombre}"`,
-      );
-    }
+    const id = await this.repo.createPaymentCard(card, sessionId);
 
     this.logger.log(
-      `[Payments] Card creada id=${response?.data?._id} - "${tenant.unidadNombre}" - ${tenant.propietarioNombre}`,
+      `[Payments] Card creada id=${id} - "${tenant.unidadNombre}" - ${tenant.propietarioNombre}`,
     );
-  }
-
-  private async getOpenmaintSession(): Promise<string> {
-    const username = this.configService.get<string>('OPENMAINT_USERNAME') ?? '';
-    const password = this.configService.get<string>('OPENMAINT_PASSWORD') ?? '';
-    const response = await this.openmaintAuthService.login(username, password);
-    return response?.data?._id ?? '';
   }
 }

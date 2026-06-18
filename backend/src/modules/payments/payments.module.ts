@@ -4,11 +4,18 @@ import { NotificationsModule } from '../notifications/notifications.module';
 import { PaymentsController } from './payments.controller';
 import { PaymentsService } from './payments.service';
 import { PaymentsSchedulerService } from './payments-scheduler.service';
+import { PaymentReminderService } from './payment-reminder.service';
+import { PaymentsOpenmaintRepository } from './payments-openmaint.repository';
 
 @Module({
   imports: [OpenmaintModule, NotificationsModule],
   controllers: [PaymentsController],
-  providers: [PaymentsService, PaymentsSchedulerService],
-  exports: [PaymentsService],
+  providers: [
+    PaymentsOpenmaintRepository,
+    PaymentsService,
+    PaymentReminderService,
+    PaymentsSchedulerService,
+  ],
+  exports: [PaymentsService, PaymentReminderService],
 })
 export class PaymentsModule {}

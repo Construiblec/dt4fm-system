@@ -9,6 +9,7 @@ import {
 import { ApiBody, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { PaymentsService } from './payments.service';
 import { PaymentsSchedulerService } from './payments-scheduler.service';
+import { PaymentReminderService } from './payment-reminder.service';
 
 @ApiTags('Pagos')
 @Controller('payments')
@@ -18,6 +19,7 @@ export class PaymentsController {
   constructor(
     private readonly paymentsService: PaymentsService,
     private readonly paymentsSchedulerService: PaymentsSchedulerService,
+    private readonly reminderService: PaymentReminderService,
   ) {}
 
   /**
@@ -68,5 +70,72 @@ export class PaymentsController {
     );
 
     return this.paymentsService.generateMonthlyPayments(periodo);
+  }
+
+  /**
+   * POST /payments/reminders
+   * Disparo manual del envío de recordatorios de vencimiento.
+   * Body opcional:
+   *   - periodo: "2026-06" — si no se pasa usa el mes actual.
+   *   - force: true — saltea la validación de fecha (DiaVencimiento − 1)
+   *     para poder probar el envío cualquier día.
+   */
+  @Post('reminders')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Enviar manualmente los recordatorios de vencimiento de pagos',
+  })
+  @ApiBody({
+    required: false,
+    schema: {
+      type: 'object',
+      properties: {
+        periodo: {
+          type: 'string',
+          description:
+            'Periodo de facturación (YYYY-MM). Si se omite, se usa el mes actual.',
+          example: '2026-06',
+        },
+        force: {
+          type: 'boolean',
+          description:
+            'Si es true, saltea la validación de fecha y envía igual (para pruebas).',
+          example: true,
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Resumen del resultado del envío de recordatorios.',
+    schema: {
+      type: 'object',
+      properties: {
+        periodo: { type: 'string', example: '2026-06' },
+        propietariosConPendientes: { type: 'integer', example: 8 },
+        propietariosNotificados: { type: 'integer', example: 7 },
+        emailsSent: { type: 'integer', example: 7 },
+        emailsFailed: { type: 'integer', example: 0 },
+        emailsSkipped: { type: 'integer', example: 1 },
+        errors: { type: 'array', items: { type: 'string' } },
+        skippedReason: {
+          type: 'string',
+          example: 'Hoy no coincide con el recordatorio',
+        },
+      },
+    },
+  })
+  async sendReminders(@Body() body?: { periodo?: string; force?: boolean }) {
+    const now = new Date();
+    const periodo =
+      body?.periodo ??
+      `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const force = body?.force === true;
+
+    this.logger.log(
+      `[PaymentsController] Disparo manual de recordatorios para periodo: ${periodo}${force ? ' (force)' : ''}`,
+    );
+
+    return this.reminderService.sendDueReminders(periodo, force);
   }
 }
