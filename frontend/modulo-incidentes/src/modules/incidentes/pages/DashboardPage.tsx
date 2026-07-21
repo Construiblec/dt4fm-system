@@ -127,7 +127,7 @@ export const DashboardPage = () => {
       unitDescription:
         backendActiveTask.unit?.description ?? backendActiveTask.description,
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [
     cleaningLoading,
     cleaningError,
