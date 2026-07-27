@@ -234,7 +234,7 @@ export class CleaningTasksController {
   ) {
     this.requireSessionToken(sessionToken);
 
-    const isSupervisor = role === 'SuperUser' || role === 'Admin' || role === 'Supervisor';
+    const isSupervisor = role === 'SuperUser' || role === 'Admin' || role === 'SupervisorLimpieza';
 
     if (isSupervisor) {
       return this.cleaningTasksService.getTaskDetailAsSupervisor(taskId, sessionToken);
