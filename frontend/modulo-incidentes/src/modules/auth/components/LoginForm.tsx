@@ -107,21 +107,18 @@ export const LoginForm = () => {
 
                 setUserType("team");
               }}
-              className={`flex flex-col items-center justify-center gap-2 rounded-2xl border px-2 py-4 text-sm font-semibold transition ${
-                isActive
+              className={`flex flex-col items-center justify-center gap-2 rounded-2xl border px-2 py-4 text-sm font-semibold transition ${isActive
                   ? "border-brand bg-brand/10 text-brand shadow-sm"
                   : "border-slate-200 bg-white text-slate-500"
-              }`}
+                }`}
             >
               <div
-                className={`flex h-10 w-10 items-center justify-center rounded-full ${
-                  isActive ? "bg-brand/20" : "bg-slate-100"
-                }`}
+                className={`flex h-10 w-10 items-center justify-center rounded-full ${isActive ? "bg-brand/20" : "bg-slate-100"
+                  }`}
               >
                 <Icon
-                  className={`h-5 w-5 ${
-                    isActive ? "text-brand" : "text-slate-500"
-                  }`}
+                  className={`h-5 w-5 ${isActive ? "text-brand" : "text-slate-500"
+                    }`}
                 />
               </div>
               <span className="text-xs">{option.label}</span>

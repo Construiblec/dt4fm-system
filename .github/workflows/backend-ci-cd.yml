@@ -43,7 +43,7 @@ jobs:
       - name: Construir la aplicación
         run: npm run build
 
-      - name: Disparar Webhook de Despliegue en Render
+      - name: Disparar Webhook de Despliegue en Render (Producción)
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         env:
           RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
@@ -52,6 +52,17 @@ jobs:
             echo "Error: RENDER_DEPLOY_HOOK no está configurado en GitHub Secrets."
             exit 1
           fi
-          
           curl -X POST "$RENDER_DEPLOY_HOOK"
-          echo "Despliegue disparado exitosamente en Render."
+          echo "Despliegue de producción disparado exitosamente en Render."
+
+      - name: Disparar Webhook de Despliegue en Render (Staging)
+        if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
+        env:
+          RENDER_DEPLOY_HOOK_STAGING: ${{ secrets.RENDER_DEPLOY_HOOK_STAGING }}
+        run: |
+          if [ -z "$RENDER_DEPLOY_HOOK_STAGING" ]; then
+            echo "Error: RENDER_DEPLOY_HOOK_STAGING no está configurado en GitHub Secrets."
+            exit 1
+          fi
+          curl -X POST "$RENDER_DEPLOY_HOOK_STAGING"
+          echo "Despliegue de staging disparado exitosamente en Render."
