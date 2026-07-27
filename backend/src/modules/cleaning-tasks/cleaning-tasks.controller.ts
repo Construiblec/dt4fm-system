@@ -43,7 +43,7 @@ import { UploadAttachmentDto } from './dto/upload-attachment.dto';
 @ApiTags('Tareas de Limpieza')
 @Controller('cleaning-tasks')
 export class CleaningTasksController {
-  constructor(private readonly cleaningTasksService: CleaningTasksService) {}
+  constructor(private readonly cleaningTasksService: CleaningTasksService) { }
 
   // ─── Todas las tareas (supervisor) ─────────────────────────────────────────
 
@@ -379,7 +379,7 @@ export class CleaningTasksController {
   ) {
     this.requireSessionToken(sessionToken);
 
-    const isSupervisor = role === 'SuperUser' || role === 'Admin' || role === 'SupervisorLimpieza';
+    const isSupervisor = role === 'SuperUser' || role === 'Admin' || role === 'Supervisor';
 
     if (isSupervisor) {
       return this.cleaningTasksService.getAttachmentsAsSupervisor(
