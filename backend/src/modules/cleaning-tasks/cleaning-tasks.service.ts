@@ -32,7 +32,7 @@ type UploadedFile = {
 
 const PHASE_LOOKUP = { Assigned: 'Assigned' };
 const SOURCE_LOOKUP = { Hostaway: 'Hostaway', Manual: 'Manual' };
-const SUPERVISOR_ROLES = ['SuperUser', 'Admin', 'Supervisor'];
+const SUPERVISOR_ROLES = ['SuperUser', 'Admin', 'SupervisorLimpieza'];
 const ALLOWED_UPLOAD_PHASES = ['InExecution', 'Completed'];
 const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/heic', 'image/heif'];
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
