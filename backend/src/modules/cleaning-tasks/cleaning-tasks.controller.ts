@@ -234,7 +234,7 @@ export class CleaningTasksController {
   ) {
     this.requireSessionToken(sessionToken);
 
-    const isSupervisor = role === 'SuperUser' || role === 'Admin';
+    const isSupervisor = role === 'SuperUser' || role === 'Admin' || role === 'SupervisorLimpieza';
 
     if (isSupervisor) {
       return this.cleaningTasksService.getTaskDetailAsSupervisor(taskId, sessionToken);
@@ -379,7 +379,7 @@ export class CleaningTasksController {
   ) {
     this.requireSessionToken(sessionToken);
 
-    const isSupervisor = role === 'SuperUser' || role === 'Admin';
+    const isSupervisor = role === 'SuperUser' || role === 'Admin' || role === 'SupervisorLimpieza';
 
     if (isSupervisor) {
       return this.cleaningTasksService.getAttachmentsAsSupervisor(
