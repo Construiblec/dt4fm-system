@@ -32,7 +32,7 @@ type UploadedFile = {
 
 const PHASE_LOOKUP = { Assigned: 'Assigned' };
 const SOURCE_LOOKUP = { Hostaway: 'Hostaway', Manual: 'Manual' };
-const SUPERVISOR_ROLES = ['SuperUser', 'Admin'];
+const SUPERVISOR_ROLES = ['SuperUser', 'Admin', 'Supervisor'];
 const ALLOWED_UPLOAD_PHASES = ['InExecution', 'Completed'];
 const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/heic', 'image/heif'];
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
@@ -411,7 +411,7 @@ export class CleaningTasksService {
   }
 
   private async buildAttachmentsList(taskId: number, sessionToken: string, category?: string) {
-    const response = await this.openmaintService.getAttachments(taskId, sessionToken);
+    const response = await this.openmaintService.getAttachments(taskId, sessionToken).catch(() => ({ data: [] }));
     let attachments = (response.data ?? []).map((a) => ({
       id: a._id,
       fileName: a.fileName,

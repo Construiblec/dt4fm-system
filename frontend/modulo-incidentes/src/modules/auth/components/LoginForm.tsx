@@ -62,7 +62,7 @@ export const LoginForm = () => {
       }
 
       setIsSuccess(true);
-      if (response.role === "SuperUser" || response.role === "Admin") {
+      if (response.role === "SuperUser" || response.role === "Admin" || response.role === "Supervisor") {
         navigate("/supervisor");
       } else {
         navigate("/dashboard");
