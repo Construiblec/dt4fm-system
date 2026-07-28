@@ -125,9 +125,11 @@ export class OpenmaintService {
 
     try {
       return await this.client.get(path, sessionId);
-    } catch {
+    } catch (error) {
+      const errorMsg = error.response?.data?.messages?.[0]?.message || error.response?.data?.message || error.message;
+      console.error(`Error al consultar incidentes en OpenMAINT: ${errorMsg}`);
       throw new BadGatewayException(
-        'Error al consultar incidentes en OpenMAINT',
+        `Error al consultar incidentes: ${errorMsg}`,
       );
     }
   }
