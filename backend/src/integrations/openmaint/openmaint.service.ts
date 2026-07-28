@@ -98,13 +98,12 @@ export class OpenmaintService {
       ]),
     );
     const searchFilter = {
-      clientFilter: {
+      attribute: {
         or: [
           {
             simple: {
               attribute: 'Requester',
               operator: 'equal',
-              parameterType: 'fixed',
               value: [employeeId],
             },
           },
@@ -112,7 +111,6 @@ export class OpenmaintService {
             simple: {
               attribute: 'Assignee',
               operator: 'equal',
-              parameterType: 'fixed',
               value: [employeeId],
             },
           },
