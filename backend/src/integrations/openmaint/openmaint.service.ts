@@ -97,8 +97,31 @@ export class OpenmaintService {
         },
       ]),
     );
+    const searchFilter = {
+      clientFilter: {
+        or: [
+          {
+            simple: {
+              attribute: 'Requester',
+              operator: 'equal',
+              parameterType: 'fixed',
+              value: [employeeId],
+            },
+          },
+          {
+            simple: {
+              attribute: 'Assignee',
+              operator: 'equal',
+              parameterType: 'fixed',
+              value: [employeeId],
+            },
+          },
+        ],
+      },
+    };
 
-    const path = `/processes/CorrectiveMaint/instances?include_tasklist=false&onlyGridAttrs=true&start=0&limit=50&sort=${encodedSort}`;
+    const encodedFilter = encodeURIComponent(JSON.stringify(searchFilter));
+    const path = `/processes/CorrectiveMaint/instances?include_tasklist=false&onlyGridAttrs=true&start=0&limit=50&sort=${encodedSort}&filter=${encodedFilter}`;
 
     try {
       return await this.client.get(path, sessionId);
