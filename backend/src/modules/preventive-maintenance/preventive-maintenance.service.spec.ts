@@ -1,4 +1,8 @@
-import { BadGatewayException, NotFoundException } from '@nestjs/common';
+import {
+  BadGatewayException,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { PM_STATUS_IDS } from './constants/preventive-maint.constants';
 import { PreventiveMaintenanceOpenmaintService } from './preventive-maintenance.openmaint.service';
@@ -138,6 +142,14 @@ describe('PreventiveMaintenanceService', () => {
         service.getMyPreventiveMaintenances(SESSION_ID, EMPLOYEE_ID, {}),
       ).rejects.toBeInstanceOf(BadGatewayException);
     });
+
+    it('propaga el 401 para que el frontend pueda redirigir al login', async () => {
+      openmaint.findByAssignee.mockRejectedValue({ response: { status: 401 } });
+
+      await expect(
+        service.getMyPreventiveMaintenances(SESSION_ID, EMPLOYEE_ID, {}),
+      ).rejects.toBeInstanceOf(UnauthorizedException);
+    });
   });
 
   describe('isOverdue', () => {
@@ -249,6 +261,14 @@ describe('PreventiveMaintenanceService', () => {
       await expect(
         service.getPreventiveMaintenanceDetail(SESSION_ID, 4370994),
       ).rejects.toBeInstanceOf(BadGatewayException);
+    });
+
+    it('propaga el 401 en lugar de tratarlo como id inexistente', async () => {
+      openmaint.findById.mockRejectedValue({ response: { status: 401 } });
+
+      await expect(
+        service.getPreventiveMaintenanceDetail(SESSION_ID, 4370994),
+      ).rejects.toBeInstanceOf(UnauthorizedException);
     });
   });
 });

@@ -2,6 +2,7 @@ import {
   BadGatewayException,
   Injectable,
   NotFoundException,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { extractRegisterNotes } from '../../common/utils/openmaint-register.util';
 import {
@@ -75,7 +76,9 @@ export class PreventiveMaintenanceService {
         offset,
         statusId,
       });
-    } catch {
+    } catch (error) {
+      this.throwIfSessionExpired(error);
+
       throw new BadGatewayException(
         'Error al consultar mantenimientos preventivos en OpenMAINT',
       );
@@ -101,6 +104,8 @@ export class PreventiveMaintenanceService {
       const response = await this.openmaint.findById(sessionId, id);
       card = response.data;
     } catch (error) {
+      this.throwIfSessionExpired(error);
+
       // El único dato que aporta el cliente es el id, así que un rechazo por
       // petición inválida sólo puede significar que ese id no existe o no es
       // accesible para la sesión.
@@ -210,6 +215,17 @@ export class PreventiveMaintenanceService {
           typeof result.value.data.dataUrl === 'string',
       )
       .map((result) => result.value.data!.dataUrl!);
+  }
+
+  /**
+   * Propaga el 401 de OpenMAINT tal cual en lugar de enmascararlo como 502.
+   * El frontend usa ese status para redirigir al login cuando la sesión caduca;
+   * si se traduce a 502 el usuario queda atascado con un error genérico.
+   */
+  private throwIfSessionExpired(error: unknown): void {
+    if (this.getErrorStatus(error) === 401) {
+      throw new UnauthorizedException('La sesión de OpenMAINT ha expirado');
+    }
   }
 
   private getErrorStatus(error: unknown): number | undefined {
