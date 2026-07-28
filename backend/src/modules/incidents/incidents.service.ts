@@ -5,6 +5,7 @@ import {
   InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
+import { extractRegisterNotes } from '../../common/utils/openmaint-register.util';
 import { OpenmaintService } from '../../integrations/openmaint/openmaint.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { CompleteIncidentDto } from './dto/complete-incident.dto';
@@ -200,7 +201,7 @@ export class IncidentsService {
       priority:
         incident._Priority_description ?? incident.Priority_description ?? null,
       createdAt: incident.OpeningDate ?? null,
-      notes: this.extractNotes(incident.Register ?? null),
+      notes: extractRegisterNotes(incident.Register ?? null),
       images,
     };
   }
@@ -385,28 +386,6 @@ export class IncidentsService {
         error,
       );
     }
-  }
-
-  private extractNotes(register: string | null): string | null {
-    if (!register) {
-      return null;
-    }
-
-    const regex = /<span[^>]*data-block="notes"[^>]*>([\s\S]*?)<\/span>/g;
-    const matches = [...register.matchAll(regex)];
-
-    if (!matches.length) {
-      return null;
-    }
-
-    const notes = matches.map((match) =>
-      match[1]
-        .replace(/<[^>]*>/g, '')
-        .replace(/\s+/g, ' ')
-        .trim(),
-    );
-
-    return notes[notes.length - 1] || null;
   }
 
   private async getActivityId(id: number, sessionId: string) {

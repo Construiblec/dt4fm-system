@@ -5,8 +5,13 @@ import { useLogout } from "@/modules/auth/hooks/useLogout";
 import { FloatingReportButton } from "@/modules/incidentes/components/FloatingReportButton";
 import { TaskCard } from "@/modules/incidentes/components/TaskCard";
 import { CleaningTaskCard } from "@/modules/incidentes/components/CleaningTaskCard";
+import { ListStateMessage } from "@/modules/incidentes/components/ListStateMessage";
 import { MaintenanceFilters } from "@/modules/incidentes/components/MaintenanceFilters";
 import { CleaningFilters } from "@/modules/incidentes/components/CleaningFilters";
+import { PreventiveFilters } from "@/modules/incidentes/components/PreventiveFilters";
+import { PreventiveMaintenanceCard } from "@/modules/incidentes/components/PreventiveMaintenanceCard";
+import { useListPagination } from "@/modules/incidentes/hooks/useListPagination";
+import { useMyPreventiveMaintenances } from "@/modules/incidentes/hooks/useMyPreventiveMaintenances";
 import { getMyIncidents } from "@/modules/incidentes/services/incidentsService";
 import { fetchMyCleaningTasks } from "@/modules/incidentes/services/cleaningTasksService";
 import type { Incident } from "@/modules/incidentes/types/Incident";
@@ -18,6 +23,9 @@ import {
 import { Pagination } from "../components/Pagination";
 
 type Tab = "maintenance" | "cleaning";
+type MaintenanceKind = "corrective" | "preventive";
+
+const ITEMS_PER_PAGE = 5;
 
 export const DashboardPage = () => {
   const logout = useLogout();
@@ -28,24 +36,33 @@ export const DashboardPage = () => {
     (state) => state.clearActiveTask,
   );
 
-  const ITEMS_PER_PAGE = 5;
-
-  const [maintenancePage, setMaintenancePage] = useState(1);
-  const [cleaningPage, setCleaningPage] = useState(1);
-
   // ── Tab activo ──────────────────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState<Tab>("maintenance");
+  const [maintenanceKind, setMaintenanceKind] =
+    useState<MaintenanceKind>("corrective");
 
-  // ── Estado: incidentes de mantenimiento ────────────────────────────────────
+  // ── Estado: incidentes de mantenimiento correctivo ─────────────────────────
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Filtros de mantenimiento
+  // Filtros de mantenimiento correctivo
   const [priorityFilter, setPriorityFilter] = useState<string>("ALL");
   const [statusFilter, setStatusFilter] = useState<
     "ALL" | "Ejecución" | "Otros"
   >("ALL");
+
+  // ── Estado: mantenimientos preventivos ─────────────────────────────────────
+  // Se cargan solo al abrir el sub-tab, no al montar el dashboard.
+  const {
+    maintenances: preventives,
+    loading: preventiveLoading,
+    error: preventiveError,
+  } = useMyPreventiveMaintenances(
+    activeTab === "maintenance" && maintenanceKind === "preventive",
+  );
+  const [preventiveStatusFilter, setPreventiveStatusFilter] =
+    useState<string>("ALL");
 
   // ── Estado: tareas de limpieza ─────────────────────────────────────────────
   const [cleaningTasks, setCleaningTasks] = useState<CleaningTask[]>([]);
@@ -54,14 +71,6 @@ export const DashboardPage = () => {
 
   // Filtros de limpieza
   const [phaseFilter, setPhaseFilter] = useState<string>("ALL");
-
-  useEffect(() => {
-    setMaintenancePage(1);
-  }, [priorityFilter, statusFilter]);
-
-  useEffect(() => {
-    setCleaningPage(1);
-  }, [phaseFilter]);
 
   // ── Carga de datos ─────────────────────────────────────────────────────────
   useEffect(() => {
@@ -127,7 +136,7 @@ export const DashboardPage = () => {
       unitDescription:
         backendActiveTask.unit?.description ?? backendActiveTask.description,
     });
-     
+
   }, [
     cleaningLoading,
     cleaningError,
@@ -147,23 +156,33 @@ export const DashboardPage = () => {
     return matchPriority && matchStatus;
   });
 
+  const filteredPreventives = preventives.filter(
+    (maintenance) =>
+      preventiveStatusFilter === "ALL" ||
+      maintenance.statusCode === preventiveStatusFilter,
+  );
+
   const filteredCleaningTasks = cleaningTasks.filter((task) => {
     return phaseFilter === "ALL" || task.phase === phaseFilter;
   });
 
-  const maintenanceTotalPages = Math.max(
-    1,
-    Math.ceil(filteredIncidents.length / ITEMS_PER_PAGE),
+  // ── Paginación ─────────────────────────────────────────────────────────────
+  const maintenancePagination = useListPagination(
+    filteredIncidents,
+    ITEMS_PER_PAGE,
+    `${priorityFilter}|${statusFilter}`,
   );
 
-  const paginatedIncidents = filteredIncidents.slice(
-    (maintenancePage - 1) * ITEMS_PER_PAGE,
-    maintenancePage * ITEMS_PER_PAGE,
+  const preventivePagination = useListPagination(
+    filteredPreventives,
+    ITEMS_PER_PAGE,
+    preventiveStatusFilter,
   );
 
-  const paginatedCleaningTasks = filteredCleaningTasks.slice(
-    (cleaningPage - 1) * ITEMS_PER_PAGE,
-    cleaningPage * ITEMS_PER_PAGE,
+  const cleaningPagination = useListPagination(
+    filteredCleaningTasks,
+    ITEMS_PER_PAGE,
+    phaseFilter,
   );
 
   // ── Render ─────────────────────────────────────────────────────────────────
@@ -230,58 +249,117 @@ export const DashboardPage = () => {
             {/* ── Tab: Mantenimiento ─────────────────────────────────────── */}
             {activeTab === "maintenance" ? (
               <>
-                {!loading && !error && incidents.length > 0 ? (
-                  <MaintenanceFilters
-                    priorityFilter={priorityFilter}
-                    statusFilter={statusFilter}
-                    onPriorityChange={setPriorityFilter}
-                    onStatusChange={setStatusFilter}
-                    onClear={() => {
-                      setPriorityFilter("ALL");
-                      setStatusFilter("ALL");
-                    }}
-                  />
-                ) : null}
+                {/* Sub-tabs: correctivo / preventivo */}
+                <div className="flex rounded-xl bg-white p-1 shadow-sm">
+                  <button
+                    type="button"
+                    onClick={() => setMaintenanceKind("corrective")}
+                    className={`flex-1 rounded-lg py-1.5 text-xs font-semibold transition ${
+                      maintenanceKind === "corrective"
+                        ? "bg-brand/10 text-brand"
+                        : "text-slate-500 hover:text-slate-700"
+                    }`}
+                  >
+                    Correctivo
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMaintenanceKind("preventive")}
+                    className={`flex-1 rounded-lg py-1.5 text-xs font-semibold transition ${
+                      maintenanceKind === "preventive"
+                        ? "bg-brand/10 text-brand"
+                        : "text-slate-500 hover:text-slate-700"
+                    }`}
+                  >
+                    Preventivo
+                  </button>
+                </div>
 
-                {loading ? (
-                  <div className="rounded-xl bg-white p-4 text-sm text-slate-500 shadow-sm">
-                    Cargando incidentes...
-                  </div>
-                ) : null}
-
-                {!loading && error ? (
-                  <div className="rounded-xl bg-white p-4 text-sm text-slate-500 shadow-sm">
-                    No tienes incidentes asignados
-                  </div>
-                ) : null}
-
-                {!loading && !error && incidents.length === 0 ? (
-                  <div className="rounded-xl bg-white p-4 text-sm text-slate-500 shadow-sm">
-                    No tienes incidentes asignados
-                  </div>
-                ) : null}
-
-                {!loading &&
-                !error &&
-                incidents.length > 0 &&
-                filteredIncidents.length === 0 ? (
-                  <div className="rounded-xl bg-white p-4 text-sm text-slate-500 shadow-sm">
-                    No hay incidentes que coincidan con los filtros
-                  </div>
-                ) : null}
-
-                {!loading && !error && filteredIncidents.length > 0 ? (
+                {/* ── Correctivo ─────────────────────────────────────────── */}
+                {maintenanceKind === "corrective" ? (
                   <>
-                    <div className="space-y-4">
-                      {paginatedIncidents.map((incident) => (
-                        <TaskCard key={incident.id} {...incident} />
-                      ))}
-                    </div>
-                    <Pagination
-                      currentPage={maintenancePage}
-                      totalPages={maintenanceTotalPages}
-                      onChange={setMaintenancePage}
+                    {!loading && !error && incidents.length > 0 ? (
+                      <MaintenanceFilters
+                        priorityFilter={priorityFilter}
+                        statusFilter={statusFilter}
+                        onPriorityChange={setPriorityFilter}
+                        onStatusChange={setStatusFilter}
+                        onClear={() => {
+                          setPriorityFilter("ALL");
+                          setStatusFilter("ALL");
+                        }}
+                      />
+                    ) : null}
+
+                    <ListStateMessage
+                      loading={loading}
+                      error={error}
+                      isEmpty={incidents.length === 0}
+                      hasNoMatches={filteredIncidents.length === 0}
+                      loadingMessage="Cargando incidentes..."
+                      emptyMessage="No tienes incidentes asignados"
+                      noMatchesMessage="No hay incidentes que coincidan con los filtros"
                     />
+
+                    {!loading && !error && filteredIncidents.length > 0 ? (
+                      <>
+                        <div className="space-y-4">
+                          {maintenancePagination.pageItems.map((incident) => (
+                            <TaskCard key={incident.id} {...incident} />
+                          ))}
+                        </div>
+                        <Pagination
+                          currentPage={maintenancePagination.page}
+                          totalPages={maintenancePagination.totalPages}
+                          onChange={maintenancePagination.setPage}
+                        />
+                      </>
+                    ) : null}
+                  </>
+                ) : null}
+
+                {/* ── Preventivo ─────────────────────────────────────────── */}
+                {maintenanceKind === "preventive" ? (
+                  <>
+                    {!preventiveLoading &&
+                    !preventiveError &&
+                    preventives.length > 0 ? (
+                      <PreventiveFilters
+                        statusFilter={preventiveStatusFilter}
+                        onStatusChange={setPreventiveStatusFilter}
+                        onClear={() => setPreventiveStatusFilter("ALL")}
+                      />
+                    ) : null}
+
+                    <ListStateMessage
+                      loading={preventiveLoading}
+                      error={preventiveError}
+                      isEmpty={preventives.length === 0}
+                      hasNoMatches={filteredPreventives.length === 0}
+                      loadingMessage="Cargando mantenimientos preventivos..."
+                      emptyMessage="No tienes mantenimientos preventivos asignados"
+                      noMatchesMessage="No hay mantenimientos que coincidan con los filtros"
+                    />
+
+                    {!preventiveLoading &&
+                    !preventiveError &&
+                    filteredPreventives.length > 0 ? (
+                      <>
+                        <div className="space-y-4">
+                          {preventivePagination.pageItems.map((maintenance) => (
+                            <PreventiveMaintenanceCard
+                              key={maintenance.id}
+                              {...maintenance}
+                            />
+                          ))}
+                        </div>
+                        <Pagination
+                          currentPage={preventivePagination.page}
+                          totalPages={preventivePagination.totalPages}
+                          onChange={preventivePagination.setPage}
+                        />
+                      </>
+                    ) : null}
                   </>
                 ) : null}
               </>
@@ -300,48 +378,29 @@ export const DashboardPage = () => {
                   />
                 ) : null}
 
-                {cleaningLoading ? (
-                  <div className="rounded-xl bg-white p-4 text-sm text-slate-500 shadow-sm">
-                    Cargando tareas de limpieza...
-                  </div>
-                ) : null}
-
-                {!cleaningLoading && cleaningError ? (
-                  <div className="rounded-xl bg-white p-4 text-sm text-slate-500 shadow-sm">
-                    No tienes tareas de limpieza asignadas
-                  </div>
-                ) : null}
-
-                {!cleaningLoading &&
-                !cleaningError &&
-                cleaningTasks.length === 0 ? (
-                  <div className="rounded-xl bg-white p-4 text-sm text-slate-500 shadow-sm">
-                    No tienes tareas de limpieza asignadas
-                  </div>
-                ) : null}
-
-                {!cleaningLoading &&
-                !cleaningError &&
-                cleaningTasks.length > 0 &&
-                filteredCleaningTasks.length === 0 ? (
-                  <div className="rounded-xl bg-white p-4 text-sm text-slate-500 shadow-sm">
-                    No hay tareas que coincidan con los filtros
-                  </div>
-                ) : null}
+                <ListStateMessage
+                  loading={cleaningLoading}
+                  error={cleaningError}
+                  isEmpty={cleaningTasks.length === 0}
+                  hasNoMatches={filteredCleaningTasks.length === 0}
+                  loadingMessage="Cargando tareas de limpieza..."
+                  emptyMessage="No tienes tareas de limpieza asignadas"
+                  noMatchesMessage="No hay tareas que coincidan con los filtros"
+                />
 
                 {!cleaningLoading &&
                 !cleaningError &&
                 filteredCleaningTasks.length > 0 ? (
                   <>
                     <div className="space-y-4">
-                      {paginatedCleaningTasks.map((task) => (
+                      {cleaningPagination.pageItems.map((task) => (
                         <CleaningTaskCard key={task.id} {...task} />
                       ))}
                     </div>
                     <Pagination
-                      currentPage={maintenancePage}
-                      totalPages={maintenanceTotalPages}
-                      onChange={setMaintenancePage}
+                      currentPage={cleaningPagination.page}
+                      totalPages={cleaningPagination.totalPages}
+                      onChange={cleaningPagination.setPage}
                     />
                   </>
                 ) : null}
