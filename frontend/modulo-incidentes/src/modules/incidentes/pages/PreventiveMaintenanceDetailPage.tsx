@@ -1,13 +1,9 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import {
-  AlertTriangle,
-  ArrowLeft,
-  Image as ImageIcon,
-  Wrench,
-} from "lucide-react";
+import { AlertTriangle, ArrowLeft, Image as ImageIcon } from "lucide-react";
 import { AppLayout } from "@/app/layout/AppLayout";
-import { getPreventiveMaintenanceById } from "@/modules/incidentes/services/preventiveMaintenanceService";
+import { getPreventiveStatusLabel } from "@/modules/incidentes/constants/preventiveStatus";
+import { startPreventiveMaintenance } from "@/modules/incidentes/services/preventiveMaintenanceService";
 import type { PreventiveMaintenanceDetail } from "@/modules/incidentes/types/PreventiveMaintenance";
 
 const statusStyles: Record<string, string> = {
@@ -67,7 +63,10 @@ export const PreventiveMaintenanceDetailPage = () => {
         setLoading(true);
         setError(null);
 
-        const data = await getPreventiveMaintenanceById(id);
+        // Abrir la tarjeta inicia la ejecución: si estaba en Asignación pasa a
+        // Ejecución también en OpenMAINT. La llamada es idempotente y devuelve
+        // el detalle ya actualizado.
+        const data = await startPreventiveMaintenance(id);
 
         if (isMounted) {
           setMaintenance(data);
@@ -121,7 +120,10 @@ export const PreventiveMaintenanceDetailPage = () => {
                   "bg-slate-100 text-slate-700"
                 }`}
               >
-                {maintenance.status ?? "Sin estado"}
+                {getPreventiveStatusLabel(
+                  maintenance.statusCode,
+                  maintenance.status,
+                )}
               </span>
             ) : null}
           </div>
@@ -148,9 +150,8 @@ export const PreventiveMaintenanceDetailPage = () => {
                     <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
                       Datos del mantenimiento
                     </p>
-                    <h2 className="mt-2 flex items-center gap-2 text-lg font-semibold text-slate-900">
-                      <Wrench className="h-5 w-5 shrink-0 text-slate-400" />
-                      {maintenance.equipment ?? "Equipo sin especificar"}
+                    <h2 className="mt-2 text-lg font-semibold text-slate-900">
+                      {maintenance.subject ?? "Mantenimiento preventivo"}
                     </h2>
                   </div>
 
@@ -163,11 +164,11 @@ export const PreventiveMaintenanceDetailPage = () => {
                 </div>
 
                 <div className="mt-5 space-y-2">
-                  <InfoRow label="Asunto" value={maintenance.subject} />
-                  <InfoRow label="Plan preventivo" value={maintenance.plan} />
+                  <InfoRow label="Equipo" value={maintenance.equipment} />
                   <InfoRow label="Sitio" value={maintenance.site} />
                   <InfoRow label="Equipo de trabajo" value={maintenance.team} />
                   <InfoRow label="Responsable" value={maintenance.assignee} />
+                  <InfoRow label="Plan preventivo" value={maintenance.plan} />
                 </div>
               </section>
 
