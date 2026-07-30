@@ -63,3 +63,23 @@ export const getPreventiveMaintenanceById = async (
     return handleUnauthorized(error);
   }
 };
+
+/**
+ * Abre el mantenimiento: si estaba en Asignación pasa a Ejecución también en
+ * OpenMAINT. Es idempotente, así que sirve como carga del detalle.
+ */
+export const startPreventiveMaintenance = async (
+  id: string,
+): Promise<PreventiveMaintenanceDetail> => {
+  try {
+    const { data } = await preventiveMaintenanceApi.post<DetailResponse>(
+      `/preventive-maintenance/${id}/start`,
+      null,
+      { headers: getAuthHeaders() },
+    );
+
+    return data.data;
+  } catch (error) {
+    return handleUnauthorized(error);
+  }
+};

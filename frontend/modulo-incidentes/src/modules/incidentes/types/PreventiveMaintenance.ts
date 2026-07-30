@@ -34,4 +34,6 @@ export type PreventiveMaintenance = {
 export type PreventiveMaintenanceDetail = PreventiveMaintenance & {
   notes: string | null;
   images: string[];
+  /** El mantenimiento está en ejecución y puede cerrarse */
+  canComplete: boolean;
 };

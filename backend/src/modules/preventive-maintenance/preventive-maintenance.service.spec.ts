@@ -1,10 +1,16 @@
 import {
   BadGatewayException,
+  BadRequestException,
+  ConflictException,
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
-import { PM_STATUS_IDS } from './constants/preventive-maint.constants';
+import {
+  PM_ACTIONS,
+  PM_OUTCOME_POSITIVE,
+  PM_STATUS_IDS,
+} from './constants/preventive-maint.constants';
 import { PreventiveMaintenanceOpenmaintService } from './preventive-maintenance.openmaint.service';
 import { PreventiveMaintenanceService } from './preventive-maintenance.service';
 
@@ -58,8 +64,17 @@ describe('PreventiveMaintenanceService', () => {
     const openmaintMock: OpenmaintGatewayMock = {
       findByAssignee: jest.fn(),
       findById: jest.fn(),
-      findAttachments: jest.fn(),
+      findWithTasklist: jest.fn(),
+      advance: jest.fn(),
+      findAttachments: jest.fn().mockResolvedValue({ data: [] }),
       findAttachmentPreview: jest.fn(),
+      uploadAttachment: jest.fn(),
+      getSessionRole: jest.fn(),
+      setSessionRole: jest.fn(),
+      // Se ejecuta la operación tal cual; la elevación de rol se prueba aparte
+      withTeamRole: jest.fn((_sessionId: string, operation: () => unknown) =>
+        operation(),
+      ),
     };
 
     const moduleRef = await Test.createTestingModule({
@@ -106,7 +121,23 @@ describe('PreventiveMaintenanceService', () => {
       });
     });
 
-    it('traduce el filtro de estado a su ID de lookup', async () => {
+    it('por defecto solo pide los estados activos (Aceptación y Ejecución)', async () => {
+      openmaint.findByAssignee.mockResolvedValue({ data: [] });
+
+      await service.getMyPreventiveMaintenances(SESSION_ID, EMPLOYEE_ID, {});
+
+      expect(openmaint.findByAssignee).toHaveBeenCalledWith(
+        SESSION_ID,
+        EMPLOYEE_ID,
+        {
+          limit: 50,
+          offset: 0,
+          statusIds: [PM_STATUS_IDS.ACCEPTANCE, PM_STATUS_IDS.EXECUTION],
+        },
+      );
+    });
+
+    it('traduce el filtro de estado explícito a su ID de lookup', async () => {
       openmaint.findByAssignee.mockResolvedValue({ data: [] });
 
       await service.getMyPreventiveMaintenances(SESSION_ID, EMPLOYEE_ID, {
@@ -118,7 +149,7 @@ describe('PreventiveMaintenanceService', () => {
       expect(openmaint.findByAssignee).toHaveBeenCalledWith(
         SESSION_ID,
         EMPLOYEE_ID,
-        { limit: 10, offset: 20, statusId: PM_STATUS_IDS.EXECUTION },
+        { limit: 10, offset: 20, statusIds: [PM_STATUS_IDS.EXECUTION] },
       );
     });
 
@@ -269,6 +300,217 @@ describe('PreventiveMaintenanceService', () => {
       await expect(
         service.getPreventiveMaintenanceDetail(SESSION_ID, 4370994),
       ).rejects.toBeInstanceOf(UnauthorizedException);
+    });
+  });
+
+  describe('startExecution', () => {
+    const acceptanceCard = {
+      ...openmaintCard,
+      ProcessStatus: PM_STATUS_IDS.ACCEPTANCE,
+      _ProcessStatus_code: 'PM-Assignment',
+      _tasklist: [{ _id: 'act-1', _definition: 'PM02-Assignment' }],
+    };
+
+    it('avanza de Aceptación a Ejecución con la acción PM02-Advance', async () => {
+      openmaint.findWithTasklist.mockResolvedValue({ data: acceptanceCard });
+      openmaint.findById.mockResolvedValue({ data: openmaintCard });
+
+      const { data } = await service.startExecution(SESSION_ID, 4370994);
+
+      expect(openmaint.advance).toHaveBeenCalledWith(SESSION_ID, 4370994, {
+        activityId: 'act-1',
+        action: PM_ACTIONS.START_EXECUTION,
+      });
+      // El detalle devuelto es el estado ya actualizado
+      expect(data.statusCode).toBe('Execution');
+      expect(data.canComplete).toBe(true);
+    });
+
+    it('eleva el rol a Team para poder avanzar el flujo', async () => {
+      openmaint.findWithTasklist.mockResolvedValue({ data: acceptanceCard });
+      openmaint.findById.mockResolvedValue({ data: openmaintCard });
+
+      await service.startExecution(SESSION_ID, 4370994);
+
+      expect(openmaint.withTeamRole).toHaveBeenCalled();
+    });
+
+    it('es idempotente: no avanza si ya está en ejecución', async () => {
+      openmaint.findWithTasklist.mockResolvedValue({ data: openmaintCard });
+      openmaint.findById.mockResolvedValue({ data: openmaintCard });
+
+      const { data } = await service.startExecution(SESSION_ID, 4370994);
+
+      expect(openmaint.advance).not.toHaveBeenCalled();
+      expect(data.statusCode).toBe('Execution');
+    });
+
+    it('no avanza un mantenimiento ya completado', async () => {
+      openmaint.findWithTasklist.mockResolvedValue({
+        data: {
+          ...openmaintCard,
+          ProcessStatus: PM_STATUS_IDS.COMPLETED,
+          _ProcessStatus_code: 'PM-Completed',
+          _FlowStatus_code: 'closed.completed',
+        },
+      });
+      openmaint.findById.mockResolvedValue({
+        data: {
+          ...openmaintCard,
+          ProcessStatus: PM_STATUS_IDS.COMPLETED,
+          _ProcessStatus_code: 'PM-Completed',
+          _FlowStatus_code: 'closed.completed',
+        },
+      });
+
+      const { data } = await service.startExecution(SESSION_ID, 4370994);
+
+      expect(openmaint.advance).not.toHaveBeenCalled();
+      expect(data.canComplete).toBe(false);
+    });
+
+    it('falla si la instancia no tiene actividad disponible', async () => {
+      openmaint.findWithTasklist.mockResolvedValue({
+        data: { ...acceptanceCard, _tasklist: [] },
+      });
+
+      await expect(
+        service.startExecution(SESSION_ID, 4370994),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+  });
+
+  describe('completePreventiveMaintenance', () => {
+    const executionCard = {
+      ...openmaintCard,
+      ProcessStatus: PM_STATUS_IDS.EXECUTION,
+      _tasklist: [{ _id: 'act-3', _definition: 'PM03-Execution' }],
+    };
+
+    const completedCard = {
+      ...openmaintCard,
+      ProcessStatus: PM_STATUS_IDS.COMPLETED,
+      _ProcessStatus_code: 'PM-Completed',
+      _FlowStatus_code: 'closed.completed',
+    };
+
+    /** Atributos obligatorios enviados en el último `advance`. */
+    const advancedFields = (): Record<string, string> => {
+      const [call] = openmaint.advance.mock.calls as unknown as [
+        [string, number, { fields?: Record<string, string> }],
+      ];
+
+      return call?.[2]?.fields ?? {};
+    };
+
+    beforeEach(() => {
+      openmaint.findWithTasklist.mockResolvedValue({ data: executionCard });
+      // La verificación posterior al avance ve el proceso ya cerrado
+      openmaint.findById.mockResolvedValue({ data: completedCard });
+    });
+
+    it('cierra con PM03-Advance, resultado positivo y notas', async () => {
+      const result = await service.completePreventiveMaintenance(
+        SESSION_ID,
+        4370994,
+        { notes: '  checklist ok  ' },
+      );
+
+      expect(openmaint.advance).toHaveBeenCalledWith(
+        SESSION_ID,
+        4370994,
+        expect.objectContaining({
+          activityId: 'act-3',
+          action: PM_ACTIONS.CONCLUDE,
+          outcome: PM_OUTCOME_POSITIVE,
+          notes: 'checklist ok',
+        }),
+      );
+      expect(result.success).toBe(true);
+    });
+
+    it('envía ExecStartDate y ExecEndDate, obligatorios en PM03', async () => {
+      await service.completePreventiveMaintenance(SESSION_ID, 4370994, {});
+
+      const fields = advancedFields();
+
+      // Conserva el inicio real ya registrado y cierra con la fecha actual
+      expect(fields.ExecStartDate).toBe(openmaintCard.ExecStartDate);
+      expect(Date.parse(fields.ExecEndDate)).not.toBeNaN();
+    });
+
+    it('usa la fecha actual como inicio si el proceso no lo tenía', async () => {
+      openmaint.findWithTasklist.mockResolvedValue({
+        data: { ...executionCard, ExecStartDate: null },
+      });
+
+      await service.completePreventiveMaintenance(SESSION_ID, 4370994, {});
+
+      const fields = advancedFields();
+
+      expect(Date.parse(fields.ExecStartDate)).not.toBeNaN();
+    });
+
+    it('falla si OpenMAINT acepta el avance pero no cambia el estado', async () => {
+      // OpenMAINT responde 200 y guarda atributos sin avanzar el flujo
+      openmaint.findById.mockResolvedValue({ data: executionCard });
+
+      await expect(
+        service.completePreventiveMaintenance(SESSION_ID, 4370994, {}),
+      ).rejects.toBeInstanceOf(BadGatewayException);
+    });
+
+    it('sube la evidencia cuando se adjunta una imagen', async () => {
+      const file = {
+        buffer: Buffer.from('x'),
+        originalname: 'evidencia.png',
+        mimetype: 'image/png',
+      };
+
+      await service.completePreventiveMaintenance(
+        SESSION_ID,
+        4370994,
+        {},
+        file,
+      );
+
+      expect(openmaint.uploadAttachment).toHaveBeenCalledWith(
+        SESSION_ID,
+        4370994,
+        file,
+      );
+    });
+
+    it('cierra igualmente aunque falle la subida de la evidencia', async () => {
+      openmaint.uploadAttachment.mockRejectedValue(new Error('boom'));
+
+      const result = await service.completePreventiveMaintenance(
+        SESSION_ID,
+        4370994,
+        {},
+        {
+          buffer: Buffer.from('x'),
+          originalname: 'e.png',
+          mimetype: 'image/png',
+        },
+      );
+
+      expect(result.success).toBe(true);
+    });
+
+    it('rechaza cerrar uno que no está en ejecución', async () => {
+      openmaint.findWithTasklist.mockResolvedValue({
+        data: {
+          ...openmaintCard,
+          ProcessStatus: PM_STATUS_IDS.ACCEPTANCE,
+          _tasklist: [{ _id: 'act-1' }],
+        },
+      });
+
+      await expect(
+        service.completePreventiveMaintenance(SESSION_ID, 4370994, {}),
+      ).rejects.toBeInstanceOf(ConflictException);
+      expect(openmaint.advance).not.toHaveBeenCalled();
     });
   });
 });

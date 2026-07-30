@@ -1,6 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
+import FormData from 'form-data';
 import { OpenmaintClient } from '../../integrations/openmaint/openmaint.client';
 import {
+  OPENMAINT_TEAM_ROLE,
   PmStatusId,
   PREVENTIVE_MAINT_PROCESS,
 } from './constants/preventive-maint.constants';
@@ -41,6 +43,16 @@ export type PreventiveMaintCard = {
   /** Bitácora en HTML. OpenMAINT la expone como `Register` y/o `_Register_html`. */
   Register?: string | null;
   _Register_html?: string | null;
+  /** Presente solo si se pide `include_tasklist=true` */
+  _tasklist?: PreventiveMaintTask[];
+};
+
+export type PreventiveMaintTask = {
+  _id: string;
+  _definition?: string;
+  description?: string;
+  writable?: boolean;
+  performer?: string;
 };
 
 export type PreventiveMaintCardsResponse = {
@@ -72,10 +84,36 @@ export type PreventiveMaintAttachmentPreviewResponse = {
   };
 };
 
+type SessionResponse = {
+  data?: { role?: string };
+};
+
+export type UploadedImage = {
+  buffer: Buffer;
+  originalname: string;
+  mimetype: string;
+};
+
 export type FindByAssigneeOptions = {
   limit: number;
   offset: number;
-  statusId?: PmStatusId;
+  /** Estados a incluir. Vacío o ausente = sin filtro por estado. */
+  statusIds?: PmStatusId[];
+};
+
+export type AdvanceOptions = {
+  /** `_id` de la tarea activa (`_tasklist[0]._id`) */
+  activityId: string;
+  /** Código del lookup `Process - Action`, p. ej. `PM02-Advance` */
+  action: string;
+  outcome?: number;
+  notes?: string | null;
+  /**
+   * Atributos obligatorios del paso. OpenMAINT responde 200 y guarda los
+   * atributos pero NO avanza el flujo si falta alguno (p. ej. `ExecEndDate`
+   * en PM03).
+   */
+  fields?: Record<string, unknown>;
 };
 
 const INSTANCES_PATH = `/processes/${PREVENTIVE_MAINT_PROCESS}/instances`;
@@ -98,7 +136,7 @@ export class PreventiveMaintenanceOpenmaintService {
   async findByAssignee(
     sessionId: string,
     employeeId: number,
-    { limit, offset, statusId }: FindByAssigneeOptions,
+    { limit, offset, statusIds }: FindByAssigneeOptions,
   ): Promise<PreventiveMaintCardsResponse> {
     const params = new URLSearchParams({
       include_tasklist: 'false',
@@ -106,12 +144,14 @@ export class PreventiveMaintenanceOpenmaintService {
       start: String(offset),
       limit: String(limit),
       sort: JSON.stringify([{ property: 'Sorting', direction: 'DESC' }]),
-      filter: JSON.stringify(this.buildAssigneeFilter(employeeId, statusId)),
+      filter: JSON.stringify(this.buildAssigneeFilter(employeeId, statusIds)),
     });
 
     this.logger.log(
       `Consultando mantenimientos preventivos de Assignee=${employeeId}` +
-        (statusId ? ` con ProcessStatus=${statusId}` : ''),
+        (statusIds?.length
+          ? ` con ProcessStatus in [${statusIds.join(',')}]`
+          : ''),
     );
 
     return (await this.client.get(
@@ -128,6 +168,43 @@ export class PreventiveMaintenanceOpenmaintService {
       `${INSTANCES_PATH}/${id}`,
       sessionId,
     )) as PreventiveMaintCardResponse;
+  }
+
+  /** Instancia junto a su tarea activa, necesaria para avanzar el flujo. */
+  async findWithTasklist(
+    sessionId: string,
+    id: number,
+  ): Promise<PreventiveMaintCardResponse> {
+    return (await this.client.get(
+      `${INSTANCES_PATH}/${id}?include_tasklist=true`,
+      sessionId,
+    )) as PreventiveMaintCardResponse;
+  }
+
+  /** Ejecuta una acción del flujo de trabajo sobre la tarea activa. */
+  async advance(
+    sessionId: string,
+    id: number,
+    { activityId, action, outcome, notes, fields }: AdvanceOptions,
+  ): Promise<unknown> {
+    const body: Record<string, unknown> = {
+      _id: id,
+      _type: PREVENTIVE_MAINT_PROCESS,
+      _activity: activityId,
+      _advance: true,
+      Action: action,
+      ...fields,
+    };
+
+    if (outcome !== undefined) {
+      body.Outcome = outcome;
+    }
+
+    if (notes !== undefined) {
+      body.ProcessNotes = notes;
+    }
+
+    return this.client.put(`${INSTANCES_PATH}/${id}`, body, sessionId);
   }
 
   async findAttachments(
@@ -151,15 +228,96 @@ export class PreventiveMaintenanceOpenmaintService {
     )) as PreventiveMaintAttachmentPreviewResponse;
   }
 
+  async uploadAttachment(
+    sessionId: string,
+    id: number,
+    file: UploadedImage,
+  ): Promise<unknown> {
+    const formData = new FormData();
+
+    formData.append('file', file.buffer, {
+      filename: file.originalname,
+      contentType: file.mimetype,
+    });
+    formData.append(
+      'attachment',
+      JSON.stringify({ fileName: file.originalname, majorVersion: true }),
+    );
+
+    return this.client.post(
+      `${INSTANCES_PATH}/${id}/attachments`,
+      formData,
+      sessionId,
+      { headers: formData.getHeaders() },
+    );
+  }
+
+  /** Rol activo de la sesión, para poder restaurarlo tras una elevación. */
+  async getSessionRole(sessionId: string): Promise<string | undefined> {
+    const response = (await this.client.get(
+      `/sessions/${sessionId}`,
+      sessionId,
+    )) as SessionResponse;
+
+    return response.data?.role;
+  }
+
+  async setSessionRole(sessionId: string, role: string): Promise<void> {
+    await this.client.put(`/sessions/${sessionId}`, { role }, sessionId);
+  }
+
+  /**
+   * Ejecuta una operación garantizando el rol `Team`, que es el `performer` de
+   * los pasos PM02/PM03. Si la sesión ya tiene ese rol no se toca nada; si no,
+   * se eleva y se restaura el rol original al terminar (también si falla).
+   */
+  async withTeamRole<T>(
+    sessionId: string,
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    let previousRole: string | undefined;
+
+    try {
+      previousRole = await this.getSessionRole(sessionId);
+    } catch {
+      // Si no se puede leer el rol, se intenta la operación tal cual
+      return operation();
+    }
+
+    if (previousRole === OPENMAINT_TEAM_ROLE) {
+      return operation();
+    }
+
+    this.logger.log(
+      `Elevando la sesión de rol "${previousRole ?? 'desconocido'}" a "${OPENMAINT_TEAM_ROLE}" para avanzar el flujo`,
+    );
+
+    await this.setSessionRole(sessionId, OPENMAINT_TEAM_ROLE);
+
+    try {
+      return await operation();
+    } finally {
+      if (previousRole) {
+        await this.setSessionRole(sessionId, previousRole).catch((error) => {
+          this.logger.error(
+            `No se pudo restaurar el rol "${previousRole}" de la sesión`,
+            error,
+          );
+        });
+      }
+    }
+  }
+
   /**
    * Filtro de OpenMAINT: una condición simple cuando solo hay `Assignee`, y un
    * `and` cuando además se filtra por estado.
    *
-   * Importante: en los endpoints de procesos el `and` va *dentro* de
-   * `attribute` (`{attribute:{and:[{simple}, {simple}]}}`). La forma inversa
-   * (`{and:[{attribute}]}`) devuelve un error 500 de CMDBuild.
+   * Importante: en los endpoints de procesos el `and`/`or` va *dentro* de
+   * `attribute` (`{attribute:{and:[{simple}, {or:[...]}]}}`). La forma inversa
+   * (`{and:[{attribute}]}`) devuelve un error 500 de CMDBuild, y `equal` con
+   * varios valores tampoco funciona como `IN`: hay que componer un `or`.
    */
-  private buildAssigneeFilter(employeeId: number, statusId?: PmStatusId) {
+  private buildAssigneeFilter(employeeId: number, statusIds?: PmStatusId[]) {
     const assignee = {
       simple: {
         attribute: 'Assignee',
@@ -168,17 +326,22 @@ export class PreventiveMaintenanceOpenmaintService {
       },
     };
 
-    if (!statusId) {
+    if (!statusIds?.length) {
       return { attribute: assignee };
     }
 
-    const status = {
+    const statusConditions = statusIds.map((statusId) => ({
       simple: {
         attribute: 'ProcessStatus',
         operator: 'equal',
         value: [String(statusId)],
       },
-    };
+    }));
+
+    const status =
+      statusConditions.length === 1
+        ? statusConditions[0]
+        : { or: statusConditions };
 
     return { attribute: { and: [assignee, status] } };
   }
