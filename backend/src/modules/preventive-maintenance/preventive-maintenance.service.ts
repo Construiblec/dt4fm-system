@@ -266,19 +266,13 @@ export class PreventiveMaintenanceService {
     return card;
   }
 
-  /**
-   * Avanza el flujo asegurando el rol `Team`, que es el `performer` de los
-   * pasos PM02/PM03. Sin él OpenMAINT marca la tarea como no editable.
-   */
   private async runAdvance(
     sessionId: string,
     id: number,
     options: Parameters<PreventiveMaintenanceOpenmaintService['advance']>[2],
   ): Promise<void> {
     try {
-      await this.openmaint.withTeamRole(sessionId, () =>
-        this.openmaint.advance(sessionId, id, options),
-      );
+      await this.openmaint.advance(sessionId, id, options);
     } catch (error) {
       this.throwIfSessionExpired(error);
 
@@ -314,6 +308,7 @@ export class PreventiveMaintenanceService {
     throw new BadGatewayException(reason);
   }
 
+  /** `_id` de la tarea activa del flujo, necesario para avanzarlo. */
   private requireActivityId(card: PreventiveMaintCard): string {
     const activityId = card._tasklist?.[0]?._id;
 

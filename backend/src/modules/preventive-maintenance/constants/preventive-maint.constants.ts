@@ -69,10 +69,3 @@ export const PM_ACTIONS = {
 
 /** Lookup `MaintProcess - Outcome`: cierre satisfactorio. */
 export const PM_OUTCOME_POSITIVE = 261326;
-
-/**
- * Rol de openMAINT que figura como `performer` de los pasos PM02/PM03. Las
- * sesiones de la app nacen con otro rol (p. ej. `MaintOffice`), que puede leer
- * el proceso pero no avanzarlo.
- */
-export const OPENMAINT_TEAM_ROLE = 'Team';

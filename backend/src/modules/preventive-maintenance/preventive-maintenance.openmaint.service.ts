@@ -2,7 +2,6 @@ import { Injectable, Logger } from '@nestjs/common';
 import FormData from 'form-data';
 import { OpenmaintClient } from '../../integrations/openmaint/openmaint.client';
 import {
-  OPENMAINT_TEAM_ROLE,
   PmStatusId,
   PREVENTIVE_MAINT_PROCESS,
 } from './constants/preventive-maint.constants';
@@ -82,10 +81,6 @@ export type PreventiveMaintAttachmentPreviewResponse = {
     hasPreview?: boolean;
     dataUrl?: string;
   };
-};
-
-type SessionResponse = {
-  data?: { role?: string };
 };
 
 export type UploadedImage = {
@@ -250,62 +245,6 @@ export class PreventiveMaintenanceOpenmaintService {
       sessionId,
       { headers: formData.getHeaders() },
     );
-  }
-
-  /** Rol activo de la sesión, para poder restaurarlo tras una elevación. */
-  async getSessionRole(sessionId: string): Promise<string | undefined> {
-    const response = (await this.client.get(
-      `/sessions/${sessionId}`,
-      sessionId,
-    )) as SessionResponse;
-
-    return response.data?.role;
-  }
-
-  async setSessionRole(sessionId: string, role: string): Promise<void> {
-    await this.client.put(`/sessions/${sessionId}`, { role }, sessionId);
-  }
-
-  /**
-   * Ejecuta una operación garantizando el rol `Team`, que es el `performer` de
-   * los pasos PM02/PM03. Si la sesión ya tiene ese rol no se toca nada; si no,
-   * se eleva y se restaura el rol original al terminar (también si falla).
-   */
-  async withTeamRole<T>(
-    sessionId: string,
-    operation: () => Promise<T>,
-  ): Promise<T> {
-    let previousRole: string | undefined;
-
-    try {
-      previousRole = await this.getSessionRole(sessionId);
-    } catch {
-      // Si no se puede leer el rol, se intenta la operación tal cual
-      return operation();
-    }
-
-    if (previousRole === OPENMAINT_TEAM_ROLE) {
-      return operation();
-    }
-
-    this.logger.log(
-      `Elevando la sesión de rol "${previousRole ?? 'desconocido'}" a "${OPENMAINT_TEAM_ROLE}" para avanzar el flujo`,
-    );
-
-    await this.setSessionRole(sessionId, OPENMAINT_TEAM_ROLE);
-
-    try {
-      return await operation();
-    } finally {
-      if (previousRole) {
-        await this.setSessionRole(sessionId, previousRole).catch((error) => {
-          this.logger.error(
-            `No se pudo restaurar el rol "${previousRole}" de la sesión`,
-            error,
-          );
-        });
-      }
-    }
   }
 
   /**

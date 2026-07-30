@@ -69,12 +69,6 @@ describe('PreventiveMaintenanceService', () => {
       findAttachments: jest.fn().mockResolvedValue({ data: [] }),
       findAttachmentPreview: jest.fn(),
       uploadAttachment: jest.fn(),
-      getSessionRole: jest.fn(),
-      setSessionRole: jest.fn(),
-      // Se ejecuta la operación tal cual; la elevación de rol se prueba aparte
-      withTeamRole: jest.fn((_sessionId: string, operation: () => unknown) =>
-        operation(),
-      ),
     };
 
     const moduleRef = await Test.createTestingModule({
@@ -324,15 +318,6 @@ describe('PreventiveMaintenanceService', () => {
       // El detalle devuelto es el estado ya actualizado
       expect(data.statusCode).toBe('Execution');
       expect(data.canComplete).toBe(true);
-    });
-
-    it('eleva el rol a Team para poder avanzar el flujo', async () => {
-      openmaint.findWithTasklist.mockResolvedValue({ data: acceptanceCard });
-      openmaint.findById.mockResolvedValue({ data: openmaintCard });
-
-      await service.startExecution(SESSION_ID, 4370994);
-
-      expect(openmaint.withTeamRole).toHaveBeenCalled();
     });
 
     it('es idempotente: no avanza si ya está en ejecución', async () => {
