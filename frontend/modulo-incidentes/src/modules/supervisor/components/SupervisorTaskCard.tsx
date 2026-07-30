@@ -54,7 +54,7 @@ export const SupervisorTaskCard = ({ task }: Props) => {
     badge: "bg-slate-100 text-slate-700",
     border: "border-slate-300",
   };
-  const canReview = task.phase === "Completed";
+
 
   return (
     <article
