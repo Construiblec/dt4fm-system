@@ -19,6 +19,11 @@ import {
 import { CompletePreventiveMaintenanceDto } from './dto/complete-preventive-maintenance.dto';
 import { GetMyPreventiveMaintenancesQueryDto } from './dto/get-my-preventive-maintenances-query.dto';
 import {
+  ChecklistAnswer,
+  PreventiveChecklistItem,
+  PreventiveChecklistService,
+} from './preventive-checklist.service';
+import {
   PreventiveMaintAttachment,
   PreventiveMaintAttachmentPreviewResponse,
   PreventiveMaintCard,
@@ -58,6 +63,8 @@ export type PreventiveMaintenanceDetail = PreventiveMaintenance & {
   images: string[];
   /** El técnico puede cerrarlo (está en ejecución) */
   canComplete: boolean;
+  /** Actividades a ejecutar; el cierre exige tenerlas todas resueltas */
+  checklist: PreventiveChecklistItem[];
 };
 
 @Injectable()
@@ -66,6 +73,7 @@ export class PreventiveMaintenanceService {
 
   constructor(
     private readonly openmaint: PreventiveMaintenanceOpenmaintService,
+    private readonly checklist: PreventiveChecklistService,
   ) {}
 
   async getMyPreventiveMaintenances(
@@ -152,6 +160,24 @@ export class PreventiveMaintenanceService {
     return { success: true, data: await this.toDetail(sessionId, updated) };
   }
 
+  /** Guarda las respuestas del checklist y devuelve su estado actualizado. */
+  async savePreventiveChecklist(
+    sessionId: string,
+    id: number,
+    answers: ChecklistAnswer[],
+  ) {
+    // Valida que el mantenimiento exista y sea accesible antes de escribir
+    await this.fetchCard(sessionId, id);
+
+    const checklist = await this.checklist.saveChecklist(
+      sessionId,
+      id,
+      answers,
+    );
+
+    return { success: true, data: { checklist } };
+  }
+
   /** Cierra el mantenimiento (Ejecución → Completado) con notas y evidencia. */
   async completePreventiveMaintenance(
     sessionId: string,
@@ -166,6 +192,11 @@ export class PreventiveMaintenanceService {
         'Solo se puede finalizar un mantenimiento preventivo en ejecución',
       );
     }
+
+    // OpenMAINT bloquea el cierre mientras queden actividades sin resolver, y
+    // lo hace respondiendo 200 sin avanzar. Comprobarlo antes permite dar un
+    // 409 accionable en lugar de un fallo opaco.
+    await this.checklist.assertComplete(sessionId, id);
 
     const activityId = this.requireActivityId(card);
     const now = new Date().toISOString();
@@ -327,11 +358,17 @@ export class PreventiveMaintenanceService {
     sessionId: string,
     card: PreventiveMaintCard,
   ): Promise<PreventiveMaintenanceDetail> {
+    const [images, checklist] = await Promise.all([
+      this.getAttachmentImages(sessionId, card._id),
+      this.checklist.getChecklist(sessionId, card._id),
+    ]);
+
     return {
       ...this.toPreventiveMaintenance(card),
       notes: extractRegisterNotes(card.Register ?? card._Register_html ?? null),
-      images: await this.getAttachmentImages(sessionId, card._id),
+      images,
       canComplete: card.ProcessStatus === PM_STATUS_IDS.EXECUTION,
+      checklist,
     };
   }
 

@@ -1,3 +1,5 @@
+import type { PreventiveChecklistItem } from "@/modules/incidentes/types/PreventiveChecklist";
+
 /** Identificadores estables de estado que devuelve el backend. */
 export type PreventiveMaintenanceStatusCode =
   | "Planning"
@@ -36,4 +38,6 @@ export type PreventiveMaintenanceDetail = PreventiveMaintenance & {
   images: string[];
   /** El mantenimiento está en ejecución y puede cerrarse */
   canComplete: boolean;
+  /** Actividades a ejecutar; el cierre exige tenerlas todas resueltas */
+  checklist: PreventiveChecklistItem[];
 };

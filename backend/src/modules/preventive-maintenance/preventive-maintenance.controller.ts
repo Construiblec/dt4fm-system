@@ -7,6 +7,7 @@ import {
   Param,
   ParseIntPipe,
   Post,
+  Put,
   Query,
   UploadedFile,
   UseInterceptors,
@@ -24,6 +25,7 @@ import {
 } from '@nestjs/swagger';
 import { CompletePreventiveMaintenanceDto } from './dto/complete-preventive-maintenance.dto';
 import { GetMyPreventiveMaintenancesQueryDto } from './dto/get-my-preventive-maintenances-query.dto';
+import { SaveChecklistDto } from './dto/save-checklist.dto';
 import type { UploadedImage } from './preventive-maintenance.openmaint.service';
 import { PreventiveMaintenanceService } from './preventive-maintenance.service';
 
@@ -136,6 +138,44 @@ export class PreventiveMaintenanceController {
     return this.preventiveMaintenanceService.startExecution(
       this.requireSessionId(sessionId),
       id,
+    );
+  }
+
+  @Put(':id/checklist')
+  @ApiOperation({
+    summary: 'Guardar las respuestas del checklist del mantenimiento',
+    description:
+      'Escribe los resultados de las actividades conservando el resto del ' +
+      'registro. Es requisito para poder finalizar el mantenimiento.',
+  })
+  @ApiParam({
+    name: 'id',
+    description: 'ID del mantenimiento preventivo',
+    type: 'integer',
+  })
+  @ApiHeader({
+    name: 'authorization',
+    description: 'Token de sesión de OpenMAINT',
+    required: true,
+  })
+  @ApiResponse({ status: 200, description: 'Checklist actualizado' })
+  @ApiResponse({
+    status: 400,
+    description: 'Cabecera de autorización faltante o respuestas inválidas',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'El mantenimiento no existe o no tiene checklist',
+  })
+  async saveChecklist(
+    @Param('id', ParseIntPipe) id: number,
+    @Headers('authorization') sessionId: string,
+    @Body(new ValidationPipe({ transform: true })) dto: SaveChecklistDto,
+  ) {
+    return this.preventiveMaintenanceService.savePreventiveChecklist(
+      this.requireSessionId(sessionId),
+      id,
+      dto.items,
     );
   }
 

@@ -2,6 +2,10 @@ import { Injectable, Logger } from '@nestjs/common';
 import FormData from 'form-data';
 import { OpenmaintClient } from '../../integrations/openmaint/openmaint.client';
 import {
+  PREV_MAINT_TASK_CLASS,
+  PREV_MAINT_TASKS_CLASS,
+} from './constants/checklist.constants';
+import {
   PmStatusId,
   PREVENTIVE_MAINT_PROCESS,
 } from './constants/preventive-maint.constants';
@@ -87,6 +91,61 @@ export type UploadedImage = {
   buffer: Buffer;
   originalname: string;
   mimetype: string;
+};
+
+/**
+ * Actividad del checklist tal como viaja dentro del campo `Data` (un string
+ * JSON) de la tarjeta `PrevMaintTasks`.
+ *
+ * El índice de firma preserva las claves que OpenMAINT añade y que la app no
+ * interpreta: al guardar hay que devolverlas intactas o el registro se rompe.
+ */
+export type ChecklistRawItem = {
+  TaskDef: number;
+  Type: number;
+  ExecOrder: number;
+  Outcome: string | number | null;
+  ND: boolean;
+  Modified: boolean;
+  _TaskDef_description?: string | null;
+  _CI_description?: string | null;
+  [key: string]: unknown;
+};
+
+export type ChecklistCard = {
+  _id: number;
+  MaintProcess?: number;
+  /** Array de `ChecklistRawItem` serializado */
+  Data?: string | null;
+};
+
+export type ChecklistCardsResponse = {
+  success?: boolean;
+  data?: ChecklistCard[];
+};
+
+export type TaskDefinitionResponse = {
+  success?: boolean;
+  data?: {
+    _id: number;
+    Type?: number | null;
+    LookupType?: number | null;
+    /** Nombre del lookup a consultar, p. ej. `COMMON - Currency` */
+    _LookupType_description?: string | null;
+  };
+};
+
+export type LookupValue = {
+  _id: number;
+  code?: string | null;
+  description?: string | null;
+  _description_translation?: string | null;
+  active?: boolean;
+};
+
+export type LookupValuesResponse = {
+  success?: boolean;
+  data?: LookupValue[];
 };
 
 export type FindByAssigneeOptions = {
@@ -245,6 +304,76 @@ export class PreventiveMaintenanceOpenmaintService {
       sessionId,
       { headers: formData.getHeaders() },
     );
+  }
+
+  // ── Checklist (clase PrevMaintTasks) ───────────────────────────────────────
+
+  /**
+   * Tarjeta de checklist asociada a una instancia del proceso.
+   *
+   * Ojo: el atributo de enlace se llama `MaintProcess`, no `PreventiveMaint`;
+   * filtrar por este último devuelve un 500 de CMDBuild.
+   */
+  async findChecklistCard(
+    sessionId: string,
+    processId: number,
+  ): Promise<ChecklistCardsResponse> {
+    const params = new URLSearchParams({
+      limit: '1',
+      filter: JSON.stringify({
+        attribute: {
+          simple: {
+            attribute: 'MaintProcess',
+            operator: 'equal',
+            value: [String(processId)],
+          },
+        },
+      }),
+    });
+
+    return (await this.client.get(
+      `/classes/${PREV_MAINT_TASKS_CLASS}/cards?${params.toString()}`,
+      sessionId,
+    )) as ChecklistCardsResponse;
+  }
+
+  /** Sobrescribe el array de actividades serializado en `Data`. */
+  async updateChecklistCard(
+    sessionId: string,
+    cardId: number,
+    items: ChecklistRawItem[],
+  ): Promise<unknown> {
+    return this.client.put(
+      `/classes/${PREV_MAINT_TASKS_CLASS}/cards/${cardId}`,
+      {
+        _id: cardId,
+        _type: PREV_MAINT_TASKS_CLASS,
+        Data: JSON.stringify(items),
+      },
+      sessionId,
+    );
+  }
+
+  /** Definición de una actividad, necesaria para saber su `LookupType`. */
+  async findTaskDefinition(
+    sessionId: string,
+    taskDefId: number,
+  ): Promise<TaskDefinitionResponse> {
+    return (await this.client.get(
+      `/classes/${PREV_MAINT_TASK_CLASS}/cards/${taskDefId}`,
+      sessionId,
+    )) as TaskDefinitionResponse;
+  }
+
+  /** Valores de un lookup, para poblar las opciones de un desplegable. */
+  async findLookupValues(
+    sessionId: string,
+    lookupName: string,
+  ): Promise<LookupValuesResponse> {
+    return (await this.client.get(
+      `/lookup_types/${encodeURIComponent(lookupName)}/values?limit=500`,
+      sessionId,
+    )) as LookupValuesResponse;
   }
 
   /**

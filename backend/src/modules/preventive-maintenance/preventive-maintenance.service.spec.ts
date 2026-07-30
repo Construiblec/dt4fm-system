@@ -11,6 +11,7 @@ import {
   PM_OUTCOME_POSITIVE,
   PM_STATUS_IDS,
 } from './constants/preventive-maint.constants';
+import { PreventiveChecklistService } from './preventive-checklist.service';
 import { PreventiveMaintenanceOpenmaintService } from './preventive-maintenance.openmaint.service';
 import { PreventiveMaintenanceService } from './preventive-maintenance.service';
 
@@ -56,9 +57,12 @@ type OpenmaintGatewayMock = Record<
   jest.Mock
 >;
 
+type ChecklistServiceMock = Record<keyof PreventiveChecklistService, jest.Mock>;
+
 describe('PreventiveMaintenanceService', () => {
   let service: PreventiveMaintenanceService;
   let openmaint: OpenmaintGatewayMock;
+  let checklist: ChecklistServiceMock;
 
   beforeEach(async () => {
     const openmaintMock: OpenmaintGatewayMock = {
@@ -69,6 +73,16 @@ describe('PreventiveMaintenanceService', () => {
       findAttachments: jest.fn().mockResolvedValue({ data: [] }),
       findAttachmentPreview: jest.fn(),
       uploadAttachment: jest.fn(),
+      findChecklistCard: jest.fn(),
+      updateChecklistCard: jest.fn(),
+      findTaskDefinition: jest.fn(),
+      findLookupValues: jest.fn(),
+    };
+
+    const checklistMock: ChecklistServiceMock = {
+      getChecklist: jest.fn().mockResolvedValue([]),
+      saveChecklist: jest.fn().mockResolvedValue([]),
+      assertComplete: jest.fn().mockResolvedValue(undefined),
     };
 
     const moduleRef = await Test.createTestingModule({
@@ -78,11 +92,13 @@ describe('PreventiveMaintenanceService', () => {
           provide: PreventiveMaintenanceOpenmaintService,
           useValue: openmaintMock,
         },
+        { provide: PreventiveChecklistService, useValue: checklistMock },
       ],
     }).compile();
 
     service = moduleRef.get(PreventiveMaintenanceService);
     openmaint = openmaintMock;
+    checklist = checklistMock;
   });
 
   describe('getMyPreventiveMaintenances', () => {
@@ -481,6 +497,19 @@ describe('PreventiveMaintenanceService', () => {
       );
 
       expect(result.success).toBe(true);
+    });
+
+    it('exige el checklist completo antes de intentar el avance', async () => {
+      checklist.assertComplete.mockRejectedValue(
+        new ConflictException('Faltan 3 actividades del checklist'),
+      );
+
+      await expect(
+        service.completePreventiveMaintenance(SESSION_ID, 4370994, {}),
+      ).rejects.toBeInstanceOf(ConflictException);
+
+      // No se molesta a OpenMAINT con un avance que rechazaría en silencio
+      expect(openmaint.advance).not.toHaveBeenCalled();
     });
 
     it('rechaza cerrar uno que no está en ejecución', async () => {

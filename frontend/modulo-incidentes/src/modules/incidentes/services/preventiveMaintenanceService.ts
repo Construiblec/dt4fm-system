@@ -1,6 +1,10 @@
 import axios from "axios";
 import { env } from "@/config/env";
 import type {
+  ChecklistAnswer,
+  PreventiveChecklistItem,
+} from "@/modules/incidentes/types/PreventiveChecklist";
+import type {
   PreventiveMaintenance,
   PreventiveMaintenanceDetail,
 } from "@/modules/incidentes/types/PreventiveMaintenance";
@@ -18,6 +22,11 @@ type ListResponse = {
 type DetailResponse = {
   success: boolean;
   data: PreventiveMaintenanceDetail;
+};
+
+type ChecklistResponse = {
+  success: boolean;
+  data: { checklist: PreventiveChecklistItem[] };
 };
 
 const getAuthHeaders = () => ({
@@ -61,6 +70,51 @@ export const getPreventiveMaintenanceById = async (
     return data.data;
   } catch (error) {
     return handleUnauthorized(error);
+  }
+};
+
+/** Guarda las respuestas del checklist y devuelve su estado actualizado. */
+export const savePreventiveChecklist = async (
+  id: string,
+  items: ChecklistAnswer[],
+): Promise<PreventiveChecklistItem[]> => {
+  try {
+    const { data } = await preventiveMaintenanceApi.put<ChecklistResponse>(
+      `/preventive-maintenance/${id}/checklist`,
+      { items },
+      { headers: getAuthHeaders() },
+    );
+
+    return data.data.checklist;
+  } catch (error) {
+    return handleUnauthorized(error);
+  }
+};
+
+/**
+ * Finaliza el mantenimiento. OpenMAINT solo lo permite con el checklist
+ * completo, así que hay que guardarlo antes.
+ */
+export const completePreventiveMaintenance = async (
+  id: string,
+  notes: string,
+): Promise<void> => {
+  const formData = new FormData();
+  formData.append("notes", notes);
+
+  try {
+    await preventiveMaintenanceApi.post(
+      `/preventive-maintenance/${id}/complete`,
+      formData,
+      {
+        headers: {
+          ...getAuthHeaders(),
+          "Content-Type": "multipart/form-data",
+        },
+      },
+    );
+  } catch (error) {
+    handleUnauthorized(error);
   }
 };
 
