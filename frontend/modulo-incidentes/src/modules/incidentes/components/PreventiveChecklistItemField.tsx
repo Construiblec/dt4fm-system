@@ -85,12 +85,32 @@ export const PreventiveChecklistItemField = ({
     text: "text",
   }[item.kind as "date" | "time" | "datetime" | "number" | "text"];
 
+  const usesNativePicker =
+    item.kind === "date" || item.kind === "time" || item.kind === "datetime";
+
+  /**
+   * Abre el calendario o el reloj del navegador al tocar el campo. Sin esto
+   * hay que acertar con el iconito y, si no, el valor se teclea a mano.
+   */
+  const openNativePicker = (input: HTMLInputElement) => {
+    if (!usesNativePicker || typeof input.showPicker !== "function") {
+      return;
+    }
+
+    try {
+      input.showPicker();
+    } catch {
+      // Algunos navegadores lo restringen; el input sigue siendo usable
+    }
+  };
+
   return (
     <input
       id={inputId}
       type={inputType ?? "text"}
       value={toInputValue(item.kind, value)}
       onChange={(event) => handleInput(event.target.value)}
+      onClick={(event) => openNativePicker(event.currentTarget)}
       placeholder={item.kind === "text" ? "Escribe el resultado" : undefined}
       step={item.kind === "number" ? "any" : undefined}
       className={FIELD_CLASS}

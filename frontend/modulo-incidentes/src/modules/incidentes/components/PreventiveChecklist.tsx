@@ -10,6 +10,18 @@ type Props = {
   disabled?: boolean;
 };
 
+/**
+ * OpenMAINT describe el equipo como `Código - Descripción`, y el código es un
+ * identificador autogenerado que no le dice nada al técnico.
+ */
+const stripLeadingCode = (description: string) => {
+  const separator = description.indexOf(" - ");
+
+  return separator === -1
+    ? description
+    : description.slice(separator + 3).trim();
+};
+
 export const PreventiveChecklist = ({
   items,
   answers,
@@ -19,6 +31,11 @@ export const PreventiveChecklist = ({
   const completedCount = items.filter((item) =>
     Boolean(answers[item.taskDefId]),
   ).length;
+
+  // Si todas las actividades son sobre el mismo equipo, repetirlo en cada una
+  // solo añade ruido: ya está en la cabecera del mantenimiento.
+  const showEquipment =
+    new Set(items.map((item) => item.equipment)).size > 1;
 
   const progressPercentage =
     items.length > 0 ? Math.round((completedCount / items.length) * 100) : 0;
@@ -74,8 +91,10 @@ export const PreventiveChecklist = ({
                 ) : null}
               </div>
 
-              {item.equipment ? (
-                <p className="mt-1 text-xs text-slate-500">{item.equipment}</p>
+              {showEquipment && item.equipment ? (
+                <p className="mt-1 text-xs text-slate-500">
+                  {stripLeadingCode(item.equipment)}
+                </p>
               ) : null}
 
               <div className="mt-3">
