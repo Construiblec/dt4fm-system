@@ -86,7 +86,7 @@ export const ReviewModal = ({ task, onClose, onSuccess }: Props) => {
             className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-600 transition hover:bg-red-100 disabled:opacity-50"
           >
             <XCircle className="h-4 w-4" />
-            Rechazar
+            Reabrir
           </button>
 
           <button
