@@ -22,9 +22,10 @@ const phaseStyles: Record<string, string> = {
 
 const actionablePhases = new Set(["Assigned", "InProgress", "InExecution"]);
 
-function calcDuration(start: string, end: string): string {
+function calcDuration(start?: string | null, end?: string | null): string {
+  if (!start || !end) return "—";
   const diffMs = new Date(end).getTime() - new Date(start).getTime();
-  if (diffMs <= 0) return "—";
+  if (isNaN(diffMs) || diffMs <= 0) return "—";
   const totalMinutes = Math.round(diffMs / 60_000);
   const hours = Math.floor(totalMinutes / 60);
   const minutes = totalMinutes % 60;
@@ -33,7 +34,8 @@ function calcDuration(start: string, end: string): string {
   return `${hours}h ${minutes}min`;
 }
 
-function formatAssignedDate(dateStr: string): string {
+function formatAssignedDate(dateStr?: string | null): string {
+  if (!dateStr) return "Sin asignar";
   return new Date(`${dateStr}T00:00:00`).toLocaleDateString(undefined, {
     weekday: "short",
     month: "short",
@@ -41,7 +43,8 @@ function formatAssignedDate(dateStr: string): string {
   });
 }
 
-function formatTime(isoStr: string): string {
+function formatTime(isoStr?: string | null): string {
+  if (!isoStr) return "—";
   return new Date(isoStr).toLocaleTimeString([], {
     hour: "2-digit",
     minute: "2-digit",
