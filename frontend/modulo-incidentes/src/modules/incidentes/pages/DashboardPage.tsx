@@ -201,9 +201,9 @@ export const DashboardPage = () => {
               <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-500">
                 Construiblec
               </p>
-              <h1 className="text-lg font-bold text-slate-900">
-                Mantenimiento y Limpieza
-              </h1>
+              <p className="text-base font-medium text-slate-900">
+                Bienvenido, {(localStorage.getItem("username") || "Usuario").split('.').map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(' ')}
+              </p>
             </div>
           </div>
 
@@ -218,29 +218,31 @@ export const DashboardPage = () => {
 
         <section className="flex-1 px-4 pb-32">
           <div className="mx-auto w-full max-w-sm space-y-5">
-            <h2 className="text-2xl font-bold text-slate-900">Mis tareas</h2>
+            <h1 className="text-center text-2xl font-bold text-slate-900">
+              Mantenimiento y Limpieza
+            </h1>
+
+            <h2 className="text-xl font-bold text-slate-900">Mis tareas</h2>
 
             {/* Tab switcher */}
             <div className="flex rounded-xl bg-white p-1 shadow-sm">
               <button
                 type="button"
                 onClick={() => setActiveTab("maintenance")}
-                className={`flex-1 rounded-lg py-2 text-sm font-semibold transition ${
-                  activeTab === "maintenance"
-                    ? "bg-slate-900 text-white"
-                    : "text-slate-500 hover:text-slate-700"
-                }`}
+                className={`flex-1 rounded-lg py-2 text-sm font-semibold transition ${activeTab === "maintenance"
+                  ? "bg-slate-900 text-white"
+                  : "text-slate-500 hover:text-slate-700"
+                  }`}
               >
                 Mantenimiento
               </button>
               <button
                 type="button"
                 onClick={() => setActiveTab("cleaning")}
-                className={`flex-1 rounded-lg py-2 text-sm font-semibold transition ${
-                  activeTab === "cleaning"
-                    ? "bg-slate-900 text-white"
-                    : "text-slate-500 hover:text-slate-700"
-                }`}
+                className={`flex-1 rounded-lg py-2 text-sm font-semibold transition ${activeTab === "cleaning"
+                  ? "bg-slate-900 text-white"
+                  : "text-slate-500 hover:text-slate-700"
+                  }`}
               >
                 Limpieza
               </button>
@@ -254,22 +256,20 @@ export const DashboardPage = () => {
                   <button
                     type="button"
                     onClick={() => setMaintenanceKind("corrective")}
-                    className={`flex-1 rounded-lg py-1.5 text-xs font-semibold transition ${
-                      maintenanceKind === "corrective"
-                        ? "bg-brand/10 text-brand"
-                        : "text-slate-500 hover:text-slate-700"
-                    }`}
+                    className={`flex-1 rounded-lg py-1.5 text-xs font-semibold transition ${maintenanceKind === "corrective"
+                      ? "bg-brand/10 text-brand"
+                      : "text-slate-500 hover:text-slate-700"
+                      }`}
                   >
                     Correctivo
                   </button>
                   <button
                     type="button"
                     onClick={() => setMaintenanceKind("preventive")}
-                    className={`flex-1 rounded-lg py-1.5 text-xs font-semibold transition ${
-                      maintenanceKind === "preventive"
-                        ? "bg-brand/10 text-brand"
-                        : "text-slate-500 hover:text-slate-700"
-                    }`}
+                    className={`flex-1 rounded-lg py-1.5 text-xs font-semibold transition ${maintenanceKind === "preventive"
+                      ? "bg-brand/10 text-brand"
+                      : "text-slate-500 hover:text-slate-700"
+                      }`}
                   >
                     Preventivo
                   </button>
@@ -322,8 +322,8 @@ export const DashboardPage = () => {
                 {maintenanceKind === "preventive" ? (
                   <>
                     {!preventiveLoading &&
-                    !preventiveError &&
-                    preventives.length > 0 ? (
+                      !preventiveError &&
+                      preventives.length > 0 ? (
                       <PreventiveFilters
                         statusFilter={preventiveStatusFilter}
                         onStatusChange={setPreventiveStatusFilter}
@@ -342,8 +342,8 @@ export const DashboardPage = () => {
                     />
 
                     {!preventiveLoading &&
-                    !preventiveError &&
-                    filteredPreventives.length > 0 ? (
+                      !preventiveError &&
+                      filteredPreventives.length > 0 ? (
                       <>
                         <div className="space-y-4">
                           {preventivePagination.pageItems.map((maintenance) => (
@@ -369,8 +369,8 @@ export const DashboardPage = () => {
             {activeTab === "cleaning" ? (
               <>
                 {!cleaningLoading &&
-                !cleaningError &&
-                cleaningTasks.length > 0 ? (
+                  !cleaningError &&
+                  cleaningTasks.length > 0 ? (
                   <CleaningFilters
                     phaseFilter={phaseFilter}
                     onPhaseChange={setPhaseFilter}
@@ -389,8 +389,8 @@ export const DashboardPage = () => {
                 />
 
                 {!cleaningLoading &&
-                !cleaningError &&
-                filteredCleaningTasks.length > 0 ? (
+                  !cleaningError &&
+                  filteredCleaningTasks.length > 0 ? (
                   <>
                     <div className="space-y-4">
                       {cleaningPagination.pageItems.map((task) => (
