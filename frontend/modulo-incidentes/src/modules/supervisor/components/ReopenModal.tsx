@@ -5,6 +5,7 @@ import { reopenCleaningTask } from "@/modules/supervisor/services/supervisorServ
 import { LoadingModal } from "@/shared/components/LoadingModal";
 import { ErrorModal } from "@/shared/components/ErrorModal";
 import type { CleaningTaskDetail } from "@/modules/supervisor/types/SupervisorTask";
+import { formatEmployeeName } from "@/shared/utils/nameUtils";
 
 type Props = {
   detail: CleaningTaskDetail;
@@ -61,7 +62,7 @@ export const ReopenModal = ({ detail, onClose, onSuccess }: Props) => {
         {/* Info */}
         <div className="mt-4 rounded-xl bg-slate-50 p-3 space-y-1 text-sm text-slate-700">
           <p className="font-semibold">{detail.unit?.description ?? detail.description}</p>
-          <p className="text-slate-500">{detail.employee?.name ?? "Sin asignar"}</p>
+          <p className="text-slate-500">{formatEmployeeName(detail.employee?.name)}</p>
           <p className="text-xs text-slate-400">
             Estado actual:{" "}
             <span className="font-medium text-slate-600">{detail.phase}</span>
@@ -74,6 +75,18 @@ export const ReopenModal = ({ detail, onClose, onSuccess }: Props) => {
             La tarea volverá a <strong>En ejecución</strong>. Los tiempos registrados se conservan.
           </p>
         </div>
+
+        {/* Observaciones anteriores */}
+        {detail.supervisionObserv && (
+          <div className="mt-4 space-y-1.5">
+            <label className="text-sm font-medium text-slate-700">
+              Observaciones de supervisión anteriores
+            </label>
+            <div className="w-full whitespace-pre-line rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
+              {detail.supervisionObserv}
+            </div>
+          </div>
+        )}
 
         {/* Observaciones */}
         <div className="mt-4 space-y-1.5">

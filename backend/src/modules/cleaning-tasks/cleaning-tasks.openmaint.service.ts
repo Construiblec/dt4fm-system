@@ -25,6 +25,8 @@ type CleaningTaskCard = {
   ActualStartTime?: string;
   ActualEndTime?: string;
   Observations?: string;
+  SupervisionObserv?: string;
+  TeamObservations?: string;
   Notes?: string;
   HostawayReservation?: string;
   CheckoutDate?: string;

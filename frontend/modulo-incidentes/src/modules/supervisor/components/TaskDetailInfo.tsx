@@ -1,5 +1,7 @@
 import { User, MapPin, Hash } from "lucide-react";
 import type { CleaningTaskDetail } from "@/modules/supervisor/types/SupervisorTask";
+import { formatEmployeeName } from "@/shared/utils/nameUtils";
+import { cleanObservationText } from "@/shared/utils/textUtils";
 
 const phaseStyles: Record<string, string> = {
   Assigned:    "bg-blue-100 text-blue-700",
@@ -73,7 +75,7 @@ export const TaskDetailInfo = ({ detail }: Props) => {
       {/* Employee */}
       <div className="flex items-center gap-2 text-sm text-slate-700">
         <User className="h-4 w-4 flex-shrink-0 text-slate-400" />
-        <span>{detail.employee?.name ?? "Sin asignar"}</span>
+        <span>{formatEmployeeName(detail.employee?.name)}</span>
       </div>
 
       {/* Dates */}
@@ -96,11 +98,27 @@ export const TaskDetailInfo = ({ detail }: Props) => {
         </div>
       </div>
 
-      {/* Observations */}
-      {detail.observations && (
+      {/* Task Observations */}
+      {detail.taskObservations && (
+        <div className="rounded-xl border border-blue-100 bg-blue-50 p-3">
+          <p className="mb-1 text-xs font-semibold text-blue-700">Observaciones de la tarea</p>
+          <p className="whitespace-pre-line text-sm text-blue-900 italic">"{cleanObservationText(detail.taskObservations)}"</p>
+        </div>
+      )}
+
+      {/* Supervision Observations */}
+      {detail.supervisionObserv && (
+        <div className="rounded-xl border border-violet-100 bg-violet-50 p-3">
+          <p className="mb-1 text-xs font-semibold text-violet-700">Observaciones de supervisión</p>
+          <p className="whitespace-pre-line text-sm text-violet-900 italic">"{cleanObservationText(detail.supervisionObserv)}"</p>
+        </div>
+      )}
+
+      {/* Team Observations */}
+      {detail.teamObservations && (
         <div className="rounded-xl border border-amber-100 bg-amber-50 p-3">
           <p className="mb-1 text-xs font-semibold text-amber-700">Observaciones del empleado</p>
-          <p className="text-sm text-amber-900 italic">"{detail.observations}"</p>
+          <p className="whitespace-pre-line text-sm text-amber-900 italic">"{cleanObservationText(detail.teamObservations)}"</p>
         </div>
       )}
     </section>
