@@ -87,8 +87,8 @@ export const SupervisorTaskDetailPage = () => {
                   </button>
                 )}
 
-                {/* Reabrir — si canReopen (Completed o Reviewed) */}
-                {detail.canReopen && (
+                {/* Reabrir — solo si está Revisada */}
+                {detail.canReopen && detail.phase === "Reviewed" && (
                   <button
                     type="button"
                     onClick={() => setShowReopenModal(true)}

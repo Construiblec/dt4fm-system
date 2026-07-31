@@ -36,7 +36,7 @@ function calcDuration(start?: string | null, end?: string | null): string {
 
 function formatAssignedDate(dateStr?: string | null): string {
   if (!dateStr) return "Sin asignar";
-  return new Date(`${dateStr}T00:00:00`).toLocaleDateString(undefined, {
+  return new Date(dateStr).toLocaleDateString(undefined, {
     weekday: "short",
     month: "short",
     day: "numeric",

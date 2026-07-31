@@ -45,16 +45,16 @@ function formatTime(iso: string | null): string {
 
 type Props = {
   task: CleaningTask;
-  onReview: (task: CleaningTask) => void;
+  onReview?: (task: CleaningTask) => void;
 };
 
-export const SupervisorTaskCard = ({ task, onReview }: Props) => {
+export const SupervisorTaskCard = ({ task }: Props) => {
   const navigate = useNavigate();
   const style = phaseStyles[task.phase] ?? {
     badge: "bg-slate-100 text-slate-700",
     border: "border-slate-300",
   };
-  const canReview = task.phase === "Completed";
+
 
   return (
     <article
@@ -118,19 +118,10 @@ export const SupervisorTaskCard = ({ task, onReview }: Props) => {
         <button
           type="button"
           onClick={() => navigate(`/supervisor/tasks/${task.id}`)}
-          className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-100"
+          className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-violet-700"
         >
-          Ver detalle
+          {task.phase === "Completed" ? "Revisar" : "Ver detalle"}
         </button>
-        {canReview && (
-          <button
-            type="button"
-            onClick={() => onReview(task)}
-            className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-violet-700"
-          >
-            Revisar
-          </button>
-        )}
       </div>
     </article>
   );
