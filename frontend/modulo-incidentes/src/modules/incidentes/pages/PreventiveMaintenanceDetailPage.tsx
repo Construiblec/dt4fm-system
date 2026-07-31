@@ -11,6 +11,7 @@ import {
   startPreventiveMaintenance,
 } from "@/modules/incidentes/services/preventiveMaintenanceService";
 import type { PreventiveMaintenanceDetail } from "@/modules/incidentes/types/PreventiveMaintenance";
+import { ConfirmModal } from "@/shared/components/ConfirmModal";
 import { ErrorModal } from "@/shared/components/ErrorModal";
 import { LoadingModal } from "@/shared/components/LoadingModal";
 import { SuccessModal } from "@/shared/components/SuccessModal";
@@ -63,6 +64,7 @@ export const PreventiveMaintenanceDetailPage = () => {
   const { answers, setAnswer, completedCount, totalCount, isComplete, payload } =
     usePreventiveChecklist(checklistItems);
   const [observations, setObservations] = useState("");
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [isCompleting, setIsCompleting] = useState(false);
   const [completeError, setCompleteError] = useState<string | null>(null);
   const [successOpen, setSuccessOpen] = useState(false);
@@ -75,12 +77,14 @@ export const PreventiveMaintenanceDetailPage = () => {
       ? `Completa todas las actividades del checklist (${completedCount}/${totalCount} resueltas)`
       : null;
 
-  const handleComplete = async () => {
+  const handleConfirmComplete = async () => {
     if (!canComplete || isCompleting) {
+      setShowConfirmModal(false);
       return;
     }
 
     try {
+      setShowConfirmModal(false);
       setIsCompleting(true);
       setCompleteError(null);
 
@@ -332,7 +336,7 @@ export const PreventiveMaintenanceDetailPage = () => {
 
                     <button
                       type="button"
-                      onClick={() => void handleComplete()}
+                      onClick={() => setShowConfirmModal(true)}
                       disabled={!canComplete || isCompleting}
                       className={`mt-4 w-full rounded-2xl px-4 py-4 text-sm font-semibold text-white shadow-sm transition ${
                         canComplete && !isCompleting
@@ -350,6 +354,14 @@ export const PreventiveMaintenanceDetailPage = () => {
             </>
           ) : null}
         </div>
+
+        <ConfirmModal
+          open={showConfirmModal}
+          title="Confirmar acción"
+          message="¿Está seguro que desea finalizar este mantenimiento preventivo? El checklist se guardará en OpenMAINT y no podrá modificarse."
+          onConfirm={() => void handleConfirmComplete()}
+          onCancel={() => setShowConfirmModal(false)}
+        />
 
         <LoadingModal
           open={isCompleting}
