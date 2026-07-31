@@ -49,7 +49,7 @@ export const PreventiveChecklist = ({
       <div className="flex items-center gap-2">
         <ClipboardList className="h-5 w-5 text-slate-500" />
         <h2 className="text-base font-semibold text-slate-900">
-          Checklist de actividades
+          Lista de operación
         </h2>
       </div>
 
@@ -80,7 +80,12 @@ export const PreventiveChecklist = ({
             >
               <div className="flex items-start justify-between gap-3">
                 <label
-                  htmlFor={`checklist-item-${item.taskDefId}`}
+                  // Los tipos de dos botones no tienen un campo al que apuntar
+                  htmlFor={
+                    item.options && item.kind !== "lookup"
+                      ? undefined
+                      : `checklist-item-${item.taskDefId}`
+                  }
                   className="text-sm font-medium leading-6 text-slate-800"
                 >
                   {item.order}. {item.label}

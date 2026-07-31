@@ -268,10 +268,13 @@ export class PreventiveChecklistService {
         const kind = CHECKLIST_FIELD_KINDS[item.Type];
         const allowed = FIXED_OPTION_IDS_BY_KIND[kind] ?? [];
 
+        // Se recorre `allowed` y no `values` para fijar el orden: el frontend
+        // pinta la primera opción como la afirmativa
         result.set(
           item.TaskDef,
-          values
-            .filter((value) => allowed.includes(value._id))
+          allowed
+            .map((id) => values.find((value) => value._id === id))
+            .filter((value) => value !== undefined)
             .map((value) => this.toOption(value)),
         );
       }

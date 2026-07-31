@@ -1,6 +1,7 @@
-import { CalendarDays, Clock } from "lucide-react";
+import { CalendarDays, Check, Clock, X } from "lucide-react";
 import type {
   ChecklistFieldKind,
+  ChecklistOption,
   PreventiveChecklistItem,
 } from "@/modules/incidentes/types/PreventiveChecklist";
 
@@ -59,6 +60,59 @@ const toOutcomeValue = (kind: ChecklistFieldKind, input: string): string => {
   return Number.isNaN(date.getTime()) ? "" : date.toISOString();
 };
 
+/** Tipos con dos opciones excluyentes, que se pintan como botones. */
+type ChoiceKind = "posneg" | "flag";
+
+/** OpenMAINT etiqueta el Flag «Hecho / Que hacer»; al técnico le dice más un sí/no. */
+const FLAG_LABELS = ["Sí", "No"];
+
+const SELECTED_CLASS = [
+  "border-emerald-600 bg-emerald-600 text-white",
+  "border-red-600 bg-red-600 text-white",
+];
+
+type ChoiceProps = {
+  kind: ChoiceKind;
+  options: ChecklistOption[];
+  value: string;
+  onChange: (value: string) => void;
+  label: string;
+};
+
+/** Dos opciones excluyentes como botones, en vez de un desplegable. */
+const ChecklistChoice = ({
+  kind,
+  options,
+  value,
+  onChange,
+  label,
+}: ChoiceProps) => (
+  <div role="group" aria-label={label} className="grid grid-cols-2 gap-2">
+    {options.map((option, index) => {
+      const isSelected = value === option.id;
+      const Icon = index === 0 ? Check : X;
+
+      return (
+        <button
+          key={option.id}
+          type="button"
+          aria-pressed={isSelected}
+          // Volver a pulsar la opción marcada la deselecciona
+          onClick={() => onChange(isSelected ? "" : option.id)}
+          className={`flex items-center justify-center gap-2 rounded-2xl border px-3 py-3 text-sm font-semibold transition ${
+            isSelected
+              ? SELECTED_CLASS[index]
+              : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50"
+          }`}
+        >
+          <Icon className="h-4 w-4 shrink-0" />
+          {kind === "flag" ? (FLAG_LABELS[index] ?? option.label) : option.label}
+        </button>
+      );
+    })}
+  </div>
+);
+
 export const PreventiveChecklistItemField = ({
   item,
   value,
@@ -68,6 +122,18 @@ export const PreventiveChecklistItemField = ({
 
   const handleInput = (next: string) =>
     onChange(toOutcomeValue(item.kind, next));
+
+  if (item.options && (item.kind === "posneg" || item.kind === "flag")) {
+    return (
+      <ChecklistChoice
+        kind={item.kind}
+        options={item.options}
+        value={value}
+        onChange={onChange}
+        label={item.label}
+      />
+    );
+  }
 
   if (item.options) {
     return (
