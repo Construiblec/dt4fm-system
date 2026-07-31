@@ -179,19 +179,21 @@ export const CleaningTaskCard = ({
       </div>
 
       {/* Footer */}
-      <div className="mt-4 flex justify-end">
-        <button
-          disabled={!isActionable}
-          onClick={handleStart}
-          className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${
-            isActionable
-              ? "bg-brand text-white hover:bg-brand-hover"
-              : "bg-slate-200 text-slate-400 cursor-not-allowed"
-          }`}
-        >
-          {isSameActiveTask || isTaskAlreadyInExecution ? "Continuar" : "Iniciar"}
-        </button>
-      </div>
+      {actionablePhases.has(phase) && (
+        <div className="mt-4 flex justify-end">
+          <button
+            disabled={!isActionable}
+            onClick={handleStart}
+            className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${
+              isActionable
+                ? "bg-brand text-white hover:bg-brand-hover"
+                : "bg-slate-200 text-slate-400 cursor-not-allowed"
+            }`}
+          >
+            {isSameActiveTask || isTaskAlreadyInExecution ? "Continuar" : "Iniciar"}
+          </button>
+        </div>
+      )}
 
       <LoadingModal open={startMutation.isPending} message="Iniciando tarea..." />
       <ErrorModal
