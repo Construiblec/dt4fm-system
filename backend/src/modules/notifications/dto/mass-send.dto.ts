@@ -38,8 +38,7 @@ export class MassSendTemplateDto {
  */
 export class MassSendDto {
   @ApiProperty({
-    description:
-      'Plantilla con subject y body del comunicado a enviar.',
+    description: 'Plantilla con subject y body del comunicado a enviar.',
     type: MassSendTemplateDto,
     example: {
       subject: 'Notificacion Mantenimientos',
@@ -59,7 +58,10 @@ export class MassSendDto {
   })
   @IsArray()
   @ArrayMinSize(1, { message: 'Debe haber al menos un destinatario' })
-  @IsEmail({}, { each: true, message: 'Cada destinatario debe ser un email válido' })
+  @IsEmail(
+    {},
+    { each: true, message: 'Cada destinatario debe ser un email válido' },
+  )
   recipients: string[];
 
   @ApiPropertyOptional({

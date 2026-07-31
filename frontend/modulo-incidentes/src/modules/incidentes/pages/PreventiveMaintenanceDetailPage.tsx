@@ -2,9 +2,19 @@ import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { AlertTriangle, ArrowLeft, Image as ImageIcon } from "lucide-react";
 import { AppLayout } from "@/app/layout/AppLayout";
+import { PreventiveChecklist } from "@/modules/incidentes/components/PreventiveChecklist";
 import { getPreventiveStatusLabel } from "@/modules/incidentes/constants/preventiveStatus";
-import { startPreventiveMaintenance } from "@/modules/incidentes/services/preventiveMaintenanceService";
+import { usePreventiveChecklist } from "@/modules/incidentes/hooks/usePreventiveChecklist";
+import {
+  completePreventiveMaintenance,
+  savePreventiveChecklist,
+  startPreventiveMaintenance,
+} from "@/modules/incidentes/services/preventiveMaintenanceService";
 import type { PreventiveMaintenanceDetail } from "@/modules/incidentes/types/PreventiveMaintenance";
+import { ConfirmModal } from "@/shared/components/ConfirmModal";
+import { ErrorModal } from "@/shared/components/ErrorModal";
+import { LoadingModal } from "@/shared/components/LoadingModal";
+import { SuccessModal } from "@/shared/components/SuccessModal";
 
 const statusStyles: Record<string, string> = {
   Planning: "bg-slate-100 text-slate-700",
@@ -48,6 +58,47 @@ export const PreventiveMaintenanceDetailPage = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
+
+  // ── Ejecución del checklist y cierre ────────────────────────────────────────
+  const checklistItems = maintenance?.checklist ?? [];
+  const { answers, setAnswer, completedCount, totalCount, isComplete, payload } =
+    usePreventiveChecklist(checklistItems);
+  const [observations, setObservations] = useState("");
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [isCompleting, setIsCompleting] = useState(false);
+  const [completeError, setCompleteError] = useState<string | null>(null);
+  const [successOpen, setSuccessOpen] = useState(false);
+
+  const canComplete = Boolean(maintenance?.canComplete) && isComplete;
+
+  const validationMessage = !maintenance?.canComplete
+    ? "Este mantenimiento no está en ejecución, no puede finalizarse."
+    : !isComplete
+      ? `Completa todas las actividades del checklist (${completedCount}/${totalCount} resueltas)`
+      : null;
+
+  const handleConfirmComplete = async () => {
+    if (!canComplete || isCompleting) {
+      setShowConfirmModal(false);
+      return;
+    }
+
+    try {
+      setShowConfirmModal(false);
+      setIsCompleting(true);
+      setCompleteError(null);
+
+      // OpenMAINT exige el checklist resuelto antes de permitir el cierre
+      await savePreventiveChecklist(id, payload);
+      await completePreventiveMaintenance(id, observations);
+
+      setSuccessOpen(true);
+    } catch {
+      setCompleteError("No se pudo finalizar el mantenimiento preventivo");
+    } finally {
+      setIsCompleting(false);
+    }
+  };
 
   useEffect(() => {
     let isMounted = true;
@@ -168,7 +219,6 @@ export const PreventiveMaintenanceDetailPage = () => {
                   <InfoRow label="Sitio" value={maintenance.site} />
                   <InfoRow label="Equipo de trabajo" value={maintenance.team} />
                   <InfoRow label="Responsable" value={maintenance.assignee} />
-                  <InfoRow label="Plan preventivo" value={maintenance.plan} />
                 </div>
               </section>
 
@@ -178,10 +228,6 @@ export const PreventiveMaintenanceDetailPage = () => {
                 </h2>
 
                 <div className="mt-4 space-y-2">
-                  <InfoRow
-                    label="Apertura"
-                    value={formatDateTime(maintenance.openingDate)}
-                  />
                   <InfoRow
                     label="Inicio previsto"
                     value={formatDateTime(maintenance.expectedStartDate)}
@@ -193,10 +239,6 @@ export const PreventiveMaintenanceDetailPage = () => {
                   <InfoRow
                     label="Inicio real"
                     value={formatDateTime(maintenance.execStartDate)}
-                  />
-                  <InfoRow
-                    label="Fin real"
-                    value={formatDateTime(maintenance.execEndDate)}
                   />
                 </div>
               </section>
@@ -244,9 +286,97 @@ export const PreventiveMaintenanceDetailPage = () => {
                   </p>
                 </section>
               ) : null}
+
+              <PreventiveChecklist
+                items={checklistItems}
+                answers={answers}
+                onAnswerChange={setAnswer}
+                disabled={isCompleting || !maintenance.canComplete}
+              />
+
+              {maintenance.canComplete ? (
+                <>
+                  <section className="rounded-3xl bg-white p-5 shadow-sm">
+                    <label
+                      htmlFor="observations"
+                      className="text-base font-semibold text-slate-900"
+                    >
+                      Observaciones
+                    </label>
+                    <textarea
+                      id="observations"
+                      rows={4}
+                      maxLength={1000}
+                      placeholder="Describe cualquier hallazgo del mantenimiento"
+                      value={observations}
+                      onChange={(event) => setObservations(event.target.value)}
+                      className="mt-3 w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-900 outline-none transition focus:border-brand focus:ring-4 focus:ring-brand/20"
+                    />
+                  </section>
+
+                  <section className="rounded-3xl bg-white p-5 shadow-sm">
+                    <div className="rounded-2xl bg-slate-50 p-4">
+                      <p className="text-sm font-semibold text-slate-900">
+                        {completedCount}/{totalCount} actividades resueltas
+                      </p>
+                      <p className="mt-2 text-sm text-slate-500">
+                        {validationMessage ??
+                          "Checklist completo. Ya puedes finalizar el mantenimiento."}
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirmModal(true)}
+                      disabled={!canComplete || isCompleting}
+                      className={`mt-4 w-full rounded-2xl px-4 py-4 text-sm font-semibold text-white shadow-sm transition ${
+                        canComplete && !isCompleting
+                          ? "bg-emerald-600 hover:bg-emerald-700 focus:outline-none focus:ring-4 focus:ring-emerald-200"
+                          : "cursor-not-allowed bg-slate-300"
+                      }`}
+                    >
+                      {isCompleting
+                        ? "Finalizando mantenimiento..."
+                        : "Finalizar mantenimiento"}
+                    </button>
+                  </section>
+                </>
+              ) : null}
             </>
           ) : null}
         </div>
+
+        <ConfirmModal
+          open={showConfirmModal}
+          title="Confirmar acción"
+          message="¿Está seguro que desea finalizar este mantenimiento preventivo? El checklist se guardará en OpenMAINT y no podrá modificarse."
+          onConfirm={() => void handleConfirmComplete()}
+          onCancel={() => setShowConfirmModal(false)}
+        />
+
+        <LoadingModal
+          open={isCompleting}
+          message="Finalizando mantenimiento..."
+        />
+
+        <SuccessModal
+          open={successOpen}
+          incidentId={maintenance?.id ?? null}
+          title="Mantenimiento completado"
+          message="El mantenimiento preventivo fue finalizado correctamente."
+          buttonLabel="Volver al Dashboard"
+          onClose={() => {
+            setSuccessOpen(false);
+            navigate("/dashboard");
+          }}
+        />
+
+        <ErrorModal
+          open={completeError !== null}
+          title="No se pudo finalizar el mantenimiento"
+          message={completeError ?? "No se pudo finalizar el mantenimiento"}
+          onClose={() => setCompleteError(null)}
+        />
 
         {selectedImage ? (
           <div

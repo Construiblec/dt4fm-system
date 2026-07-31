@@ -11,6 +11,7 @@ import {
   PM_OUTCOME_POSITIVE,
   PM_STATUS_IDS,
 } from './constants/preventive-maint.constants';
+import { PreventiveChecklistService } from './preventive-checklist.service';
 import { PreventiveMaintenanceOpenmaintService } from './preventive-maintenance.openmaint.service';
 import { PreventiveMaintenanceService } from './preventive-maintenance.service';
 
@@ -56,9 +57,12 @@ type OpenmaintGatewayMock = Record<
   jest.Mock
 >;
 
+type ChecklistServiceMock = Record<keyof PreventiveChecklistService, jest.Mock>;
+
 describe('PreventiveMaintenanceService', () => {
   let service: PreventiveMaintenanceService;
   let openmaint: OpenmaintGatewayMock;
+  let checklist: ChecklistServiceMock;
 
   beforeEach(async () => {
     const openmaintMock: OpenmaintGatewayMock = {
@@ -66,15 +70,20 @@ describe('PreventiveMaintenanceService', () => {
       findById: jest.fn(),
       findWithTasklist: jest.fn(),
       advance: jest.fn(),
+      saveFields: jest.fn(),
       findAttachments: jest.fn().mockResolvedValue({ data: [] }),
       findAttachmentPreview: jest.fn(),
       uploadAttachment: jest.fn(),
-      getSessionRole: jest.fn(),
-      setSessionRole: jest.fn(),
-      // Se ejecuta la operación tal cual; la elevación de rol se prueba aparte
-      withTeamRole: jest.fn((_sessionId: string, operation: () => unknown) =>
-        operation(),
-      ),
+      findChecklistCard: jest.fn(),
+      updateChecklistCard: jest.fn(),
+      findTaskDefinition: jest.fn(),
+      findLookupValues: jest.fn(),
+    };
+
+    const checklistMock: ChecklistServiceMock = {
+      getChecklist: jest.fn().mockResolvedValue([]),
+      saveChecklist: jest.fn().mockResolvedValue([]),
+      assertComplete: jest.fn().mockResolvedValue(undefined),
     };
 
     const moduleRef = await Test.createTestingModule({
@@ -84,11 +93,13 @@ describe('PreventiveMaintenanceService', () => {
           provide: PreventiveMaintenanceOpenmaintService,
           useValue: openmaintMock,
         },
+        { provide: PreventiveChecklistService, useValue: checklistMock },
       ],
     }).compile();
 
     service = moduleRef.get(PreventiveMaintenanceService);
     openmaint = openmaintMock;
+    checklist = checklistMock;
   });
 
   describe('getMyPreventiveMaintenances', () => {
@@ -311,9 +322,22 @@ describe('PreventiveMaintenanceService', () => {
       _tasklist: [{ _id: 'act-1', _definition: 'PM02-Assignment' }],
     };
 
-    it('avanza de Aceptación a Ejecución con la acción PM02-Advance', async () => {
-      openmaint.findWithTasklist.mockResolvedValue({ data: acceptanceCard });
+    /** La misma instancia una vez OpenMAINT la movió al paso PM03. */
+    const executingCard = {
+      ...openmaintCard,
+      _tasklist: [{ _id: 'act-3', _definition: 'PM03-Execution' }],
+    };
+
+    /** Deja la instancia en Aceptación y, tras el avance, en Ejecución. */
+    const mockAdvanceToExecution = () => {
+      openmaint.findWithTasklist
+        .mockResolvedValueOnce({ data: acceptanceCard })
+        .mockResolvedValueOnce({ data: executingCard });
       openmaint.findById.mockResolvedValue({ data: openmaintCard });
+    };
+
+    it('avanza de Aceptación a Ejecución con la acción PM02-Advance', async () => {
+      mockAdvanceToExecution();
 
       const { data } = await service.startExecution(SESSION_ID, 4370994);
 
@@ -326,13 +350,94 @@ describe('PreventiveMaintenanceService', () => {
       expect(data.canComplete).toBe(true);
     });
 
-    it('eleva el rol a Team para poder avanzar el flujo', async () => {
+    it('sella la hora real de inicio una vez el proceso está en Ejecución', async () => {
+      mockAdvanceToExecution();
+
+      const before = Date.now();
+      await service.startExecution(SESSION_ID, 4370994);
+      const after = Date.now();
+
+      const [call] = openmaint.saveFields.mock.calls as unknown as [
+        [
+          string,
+          number,
+          { activityId: string; fields: { ExecStartDate: string } },
+        ],
+      ];
+
+      expect(call[0]).toBe(SESSION_ID);
+      expect(call[1]).toBe(4370994);
+      // Sobre la tarea de PM03, único paso donde ExecStartDate es escribible
+      expect(call[2].activityId).toBe('act-3');
+
+      const stamped = new Date(call[2].fields.ExecStartDate).getTime();
+      expect(stamped).toBeGreaterThanOrEqual(before);
+      expect(stamped).toBeLessThanOrEqual(after);
+    });
+
+    it('no interrumpe al técnico si falla el sellado de la hora de inicio', async () => {
+      mockAdvanceToExecution();
+      openmaint.saveFields.mockRejectedValue(new Error('timeout'));
+
+      const { data } = await service.startExecution(SESSION_ID, 4370994);
+
+      expect(data.statusCode).toBe('Execution');
+    });
+
+    it('no falla si otra petición simultánea ya avanzó el mantenimiento', async () => {
       openmaint.findWithTasklist.mockResolvedValue({ data: acceptanceCard });
+      openmaint.advance.mockRejectedValue(new Error('lock was not aquired'));
       openmaint.findById.mockResolvedValue({ data: openmaintCard });
 
-      await service.startExecution(SESSION_ID, 4370994);
+      const { data } = await service.startExecution(SESSION_ID, 4370994);
 
-      expect(openmaint.withTeamRole).toHaveBeenCalled();
+      expect(data.statusCode).toBe('Execution');
+      // El sellado corre en la petición que sí avanzó, no en esta
+      expect(openmaint.saveFields).not.toHaveBeenCalled();
+    });
+
+    it('espera a que la petición ganadora confirme el avance', async () => {
+      openmaint.findWithTasklist.mockResolvedValue({ data: acceptanceCard });
+      openmaint.advance.mockRejectedValue(new Error('lock was not aquired'));
+      // El bloqueo sigue vigente en la primera relectura
+      openmaint.findById
+        .mockResolvedValueOnce({ data: acceptanceCard })
+        .mockResolvedValue({ data: openmaintCard });
+
+      const { data } = await service.startExecution(SESSION_ID, 4370994);
+
+      expect(data.statusCode).toBe('Execution');
+    });
+
+    it('propaga el fallo del avance si el mantenimiento sigue en Aceptación', async () => {
+      openmaint.findWithTasklist.mockResolvedValue({ data: acceptanceCard });
+      openmaint.advance.mockRejectedValue(new Error('ECONNREFUSED'));
+      openmaint.findById.mockResolvedValue({ data: acceptanceCard });
+
+      await expect(
+        service.startExecution(SESSION_ID, 4370994),
+      ).rejects.toBeInstanceOf(BadGatewayException);
+    });
+
+    it('propaga el 401 aunque el avance falle', async () => {
+      openmaint.findWithTasklist.mockResolvedValue({ data: acceptanceCard });
+      openmaint.advance.mockRejectedValue({ response: { status: 401 } });
+
+      await expect(
+        service.startExecution(SESSION_ID, 4370994),
+      ).rejects.toBeInstanceOf(UnauthorizedException);
+    });
+
+    it('falla si OpenMAINT acepta el avance pero no lo aplica', async () => {
+      openmaint.findWithTasklist
+        .mockResolvedValueOnce({ data: acceptanceCard })
+        .mockResolvedValueOnce({ data: acceptanceCard });
+
+      await expect(
+        service.startExecution(SESSION_ID, 4370994),
+      ).rejects.toBeInstanceOf(BadGatewayException);
+
+      expect(openmaint.saveFields).not.toHaveBeenCalled();
     });
 
     it('es idempotente: no avanza si ya está en ejecución', async () => {
@@ -496,6 +601,19 @@ describe('PreventiveMaintenanceService', () => {
       );
 
       expect(result.success).toBe(true);
+    });
+
+    it('exige el checklist completo antes de intentar el avance', async () => {
+      checklist.assertComplete.mockRejectedValue(
+        new ConflictException('Faltan 3 actividades del checklist'),
+      );
+
+      await expect(
+        service.completePreventiveMaintenance(SESSION_ID, 4370994, {}),
+      ).rejects.toBeInstanceOf(ConflictException);
+
+      // No se molesta a OpenMAINT con un avance que rechazaría en silencio
+      expect(openmaint.advance).not.toHaveBeenCalled();
     });
 
     it('rechaza cerrar uno que no está en ejecución', async () => {

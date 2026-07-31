@@ -37,7 +37,8 @@ export class PaymentsController {
       properties: {
         periodo: {
           type: 'string',
-          description: 'Periodo de facturación (YYYY-MM). Si se omite, se usa el mes actual.',
+          description:
+            'Periodo de facturación (YYYY-MM). Si se omite, se usa el mes actual.',
           example: '2026-06',
         },
       },
@@ -55,7 +56,10 @@ export class PaymentsController {
         skipped: { type: 'integer', example: 2 },
         failed: { type: 'integer', example: 0 },
         errors: { type: 'array', items: { type: 'string' } },
-        skippedReason: { type: 'string', example: 'Hoy no coincide con el DiaEmision' },
+        skippedReason: {
+          type: 'string',
+          example: 'Hoy no coincide con el DiaEmision',
+        },
       },
     },
   })

@@ -2,7 +2,10 @@ import { Injectable, Logger } from '@nestjs/common';
 import FormData from 'form-data';
 import { OpenmaintClient } from '../../integrations/openmaint/openmaint.client';
 import {
-  OPENMAINT_TEAM_ROLE,
+  PREV_MAINT_TASK_CLASS,
+  PREV_MAINT_TASKS_CLASS,
+} from './constants/checklist.constants';
+import {
   PmStatusId,
   PREVENTIVE_MAINT_PROCESS,
 } from './constants/preventive-maint.constants';
@@ -84,14 +87,65 @@ export type PreventiveMaintAttachmentPreviewResponse = {
   };
 };
 
-type SessionResponse = {
-  data?: { role?: string };
-};
-
 export type UploadedImage = {
   buffer: Buffer;
   originalname: string;
   mimetype: string;
+};
+
+/**
+ * Actividad del checklist tal como viaja dentro del campo `Data` (un string
+ * JSON) de la tarjeta `PrevMaintTasks`.
+ *
+ * El índice de firma preserva las claves que OpenMAINT añade y que la app no
+ * interpreta: al guardar hay que devolverlas intactas o el registro se rompe.
+ */
+export type ChecklistRawItem = {
+  TaskDef: number;
+  Type: number;
+  ExecOrder: number;
+  Outcome: string | number | null;
+  ND: boolean;
+  Modified: boolean;
+  _TaskDef_description?: string | null;
+  _CI_description?: string | null;
+  [key: string]: unknown;
+};
+
+export type ChecklistCard = {
+  _id: number;
+  MaintProcess?: number;
+  /** Array de `ChecklistRawItem` serializado */
+  Data?: string | null;
+};
+
+export type ChecklistCardsResponse = {
+  success?: boolean;
+  data?: ChecklistCard[];
+};
+
+export type TaskDefinitionResponse = {
+  success?: boolean;
+  data?: {
+    _id: number;
+    Type?: number | null;
+    LookupType?: number | null;
+    /** Nombre del lookup a consultar, p. ej. `COMMON - Currency` */
+    _LookupType_description?: string | null;
+  };
+};
+
+export type LookupValue = {
+  _id: number;
+  code?: string | null;
+  description?: string | null;
+  _description_translation?: string | null;
+  active?: boolean;
+};
+
+export type LookupValuesResponse = {
+  success?: boolean;
+  data?: LookupValue[];
 };
 
 export type FindByAssigneeOptions = {
@@ -114,6 +168,12 @@ export type AdvanceOptions = {
    * en PM03).
    */
   fields?: Record<string, unknown>;
+};
+
+export type SaveFieldsOptions = {
+  /** `_id` de la tarea activa (`_tasklist[0]._id`) */
+  activityId: string;
+  fields: Record<string, unknown>;
 };
 
 const INSTANCES_PATH = `/processes/${PREVENTIVE_MAINT_PROCESS}/instances`;
@@ -207,6 +267,28 @@ export class PreventiveMaintenanceOpenmaintService {
     return this.client.put(`${INSTANCES_PATH}/${id}`, body, sessionId);
   }
 
+  /**
+   * Guarda atributos del paso actual sin avanzar el flujo (el botón «Guardar»
+   * de OpenMAINT). Ignora en silencio los que el paso no declare escribibles.
+   */
+  async saveFields(
+    sessionId: string,
+    id: number,
+    { activityId, fields }: SaveFieldsOptions,
+  ): Promise<unknown> {
+    return this.client.put(
+      `${INSTANCES_PATH}/${id}`,
+      {
+        _id: id,
+        _type: PREVENTIVE_MAINT_PROCESS,
+        _activity: activityId,
+        _advance: false,
+        ...fields,
+      },
+      sessionId,
+    );
+  }
+
   async findAttachments(
     sessionId: string,
     id: number,
@@ -252,60 +334,74 @@ export class PreventiveMaintenanceOpenmaintService {
     );
   }
 
-  /** Rol activo de la sesión, para poder restaurarlo tras una elevación. */
-  async getSessionRole(sessionId: string): Promise<string | undefined> {
-    const response = (await this.client.get(
-      `/sessions/${sessionId}`,
-      sessionId,
-    )) as SessionResponse;
-
-    return response.data?.role;
-  }
-
-  async setSessionRole(sessionId: string, role: string): Promise<void> {
-    await this.client.put(`/sessions/${sessionId}`, { role }, sessionId);
-  }
+  // ── Checklist (clase PrevMaintTasks) ───────────────────────────────────────
 
   /**
-   * Ejecuta una operación garantizando el rol `Team`, que es el `performer` de
-   * los pasos PM02/PM03. Si la sesión ya tiene ese rol no se toca nada; si no,
-   * se eleva y se restaura el rol original al terminar (también si falla).
+   * Tarjeta de checklist asociada a una instancia del proceso.
+   *
+   * Ojo: el atributo de enlace se llama `MaintProcess`, no `PreventiveMaint`;
+   * filtrar por este último devuelve un 500 de CMDBuild.
    */
-  async withTeamRole<T>(
+  async findChecklistCard(
     sessionId: string,
-    operation: () => Promise<T>,
-  ): Promise<T> {
-    let previousRole: string | undefined;
+    processId: number,
+  ): Promise<ChecklistCardsResponse> {
+    const params = new URLSearchParams({
+      limit: '1',
+      filter: JSON.stringify({
+        attribute: {
+          simple: {
+            attribute: 'MaintProcess',
+            operator: 'equal',
+            value: [String(processId)],
+          },
+        },
+      }),
+    });
 
-    try {
-      previousRole = await this.getSessionRole(sessionId);
-    } catch {
-      // Si no se puede leer el rol, se intenta la operación tal cual
-      return operation();
-    }
+    return (await this.client.get(
+      `/classes/${PREV_MAINT_TASKS_CLASS}/cards?${params.toString()}`,
+      sessionId,
+    )) as ChecklistCardsResponse;
+  }
 
-    if (previousRole === OPENMAINT_TEAM_ROLE) {
-      return operation();
-    }
-
-    this.logger.log(
-      `Elevando la sesión de rol "${previousRole ?? 'desconocido'}" a "${OPENMAINT_TEAM_ROLE}" para avanzar el flujo`,
+  /** Sobrescribe el array de actividades serializado en `Data`. */
+  async updateChecklistCard(
+    sessionId: string,
+    cardId: number,
+    items: ChecklistRawItem[],
+  ): Promise<unknown> {
+    return this.client.put(
+      `/classes/${PREV_MAINT_TASKS_CLASS}/cards/${cardId}`,
+      {
+        _id: cardId,
+        _type: PREV_MAINT_TASKS_CLASS,
+        Data: JSON.stringify(items),
+      },
+      sessionId,
     );
+  }
 
-    await this.setSessionRole(sessionId, OPENMAINT_TEAM_ROLE);
+  /** Definición de una actividad, necesaria para saber su `LookupType`. */
+  async findTaskDefinition(
+    sessionId: string,
+    taskDefId: number,
+  ): Promise<TaskDefinitionResponse> {
+    return (await this.client.get(
+      `/classes/${PREV_MAINT_TASK_CLASS}/cards/${taskDefId}`,
+      sessionId,
+    )) as TaskDefinitionResponse;
+  }
 
-    try {
-      return await operation();
-    } finally {
-      if (previousRole) {
-        await this.setSessionRole(sessionId, previousRole).catch((error) => {
-          this.logger.error(
-            `No se pudo restaurar el rol "${previousRole}" de la sesión`,
-            error,
-          );
-        });
-      }
-    }
+  /** Valores de un lookup, para poblar las opciones de un desplegable. */
+  async findLookupValues(
+    sessionId: string,
+    lookupName: string,
+  ): Promise<LookupValuesResponse> {
+    return (await this.client.get(
+      `/lookup_types/${encodeURIComponent(lookupName)}/values?limit=500`,
+      sessionId,
+    )) as LookupValuesResponse;
   }
 
   /**

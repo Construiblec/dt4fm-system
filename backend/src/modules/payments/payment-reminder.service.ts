@@ -95,7 +95,9 @@ export class PaymentReminderService {
 
     const pendientes = await this.repo.getPendingPayments(sessionId);
     if (pendientes.length === 0) {
-      this.logger.log('[Reminders] No hay pagos pendientes - nada que notificar');
+      this.logger.log(
+        '[Reminders] No hay pagos pendientes - nada que notificar',
+      );
       return result;
     }
 
@@ -116,7 +118,9 @@ export class PaymentReminderService {
         continue;
       }
 
-      notifications.push(this.buildReminderEmail(grupo, periodo, config, email));
+      notifications.push(
+        this.buildReminderEmail(grupo, periodo, config, email),
+      );
       result.propietariosNotificados++;
     }
 
