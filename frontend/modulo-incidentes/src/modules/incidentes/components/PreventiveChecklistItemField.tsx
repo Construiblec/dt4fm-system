@@ -1,7 +1,17 @@
+import { CalendarDays, Clock } from "lucide-react";
 import type {
   ChecklistFieldKind,
   PreventiveChecklistItem,
 } from "@/modules/incidentes/types/PreventiveChecklist";
+
+/**
+ * `showPicker()` está en Chrome 99+ y Firefox 101+. Si no existe se deja el
+ * campo con el comportamiento nativo del navegador en lugar de ofrecer un
+ * botón que no haría nada.
+ */
+const SUPPORTS_SHOW_PICKER =
+  typeof HTMLInputElement !== "undefined" &&
+  typeof HTMLInputElement.prototype.showPicker === "function";
 
 type Props = {
   item: PreventiveChecklistItem;
@@ -88,32 +98,66 @@ export const PreventiveChecklistItemField = ({
   const usesNativePicker =
     item.kind === "date" || item.kind === "time" || item.kind === "datetime";
 
+  const showPickerButton = usesNativePicker && SUPPORTS_SHOW_PICKER;
+
   /**
-   * Abre el calendario o el reloj del navegador al tocar el campo. Sin esto
-   * hay que acertar con el iconito y, si no, el valor se teclea a mano.
+   * Abre el calendario o el reloj del navegador.
+   *
+   * Va en un botón aparte y no en el `onClick` del campo a propósito: al
+   * dispararlo en cada clic sobre el input, Firefox reabre el panel y roba el
+   * foco, con lo que el valor deja de poder teclearse.
    */
-  const openNativePicker = (input: HTMLInputElement) => {
-    if (!usesNativePicker || typeof input.showPicker !== "function") {
+  const openNativePicker = () => {
+    const input = document.getElementById(inputId);
+
+    if (!(input instanceof HTMLInputElement)) {
       return;
     }
 
     try {
       input.showPicker();
     } catch {
-      // Algunos navegadores lo restringen; el input sigue siendo usable
+      // Algunos navegadores lo restringen; el campo sigue siendo escribible
     }
   };
 
-  return (
+  const PickerIcon = item.kind === "time" ? Clock : CalendarDays;
+
+  const input = (
     <input
       id={inputId}
       type={inputType ?? "text"}
       value={toInputValue(item.kind, value)}
       onChange={(event) => handleInput(event.target.value)}
-      onClick={(event) => openNativePicker(event.currentTarget)}
       placeholder={item.kind === "text" ? "Escribe el resultado" : undefined}
       step={item.kind === "number" ? "any" : undefined}
-      className={FIELD_CLASS}
+      className={
+        showPickerButton
+          ? // Se oculta el icono nativo de Chrome para no duplicar el botón
+            `${FIELD_CLASS} pr-11 [&::-webkit-calendar-picker-indicator]:hidden`
+          : FIELD_CLASS
+      }
     />
+  );
+
+  if (!showPickerButton) {
+    return input;
+  }
+
+  return (
+    <div className="relative">
+      {input}
+
+      <button
+        type="button"
+        onClick={openNativePicker}
+        aria-label={
+          item.kind === "time" ? "Abrir selector de hora" : "Abrir calendario"
+        }
+        className="absolute right-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
+      >
+        <PickerIcon className="h-4 w-4" />
+      </button>
+    </div>
   );
 };
