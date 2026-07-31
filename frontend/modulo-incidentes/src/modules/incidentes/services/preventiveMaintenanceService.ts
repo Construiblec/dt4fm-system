@@ -119,21 +119,35 @@ export const completePreventiveMaintenance = async (
 };
 
 /**
+ * Aperturas en curso. Abrir avanza el flujo en OpenMAINT, que bloquea el
+ * proceso: dos peticiones a la vez compiten por ese bloqueo y una falla, así
+ * que la segunda se engancha a la primera. Ocurre con `StrictMode` y con un
+ * doble toque.
+ */
+const startRequests = new Map<string, Promise<PreventiveMaintenanceDetail>>();
+
+/**
  * Abre el mantenimiento: si estaba en Asignación pasa a Ejecución también en
  * OpenMAINT. Es idempotente, así que sirve como carga del detalle.
  */
-export const startPreventiveMaintenance = async (
+export const startPreventiveMaintenance = (
   id: string,
 ): Promise<PreventiveMaintenanceDetail> => {
-  try {
-    const { data } = await preventiveMaintenanceApi.post<DetailResponse>(
-      `/preventive-maintenance/${id}/start`,
-      null,
-      { headers: getAuthHeaders() },
-    );
+  const inFlight = startRequests.get(id);
 
-    return data.data;
-  } catch (error) {
-    return handleUnauthorized(error);
+  if (inFlight) {
+    return inFlight;
   }
+
+  const request = preventiveMaintenanceApi
+    .post<DetailResponse>(`/preventive-maintenance/${id}/start`, null, {
+      headers: getAuthHeaders(),
+    })
+    .then(({ data }) => data.data)
+    .catch(handleUnauthorized)
+    .finally(() => startRequests.delete(id));
+
+  startRequests.set(id, request);
+
+  return request;
 };

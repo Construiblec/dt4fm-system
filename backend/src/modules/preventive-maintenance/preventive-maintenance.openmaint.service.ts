@@ -268,9 +268,8 @@ export class PreventiveMaintenanceOpenmaintService {
   }
 
   /**
-   * Guarda atributos del paso actual sin avanzar el flujo, el equivalente al
-   * botón «Guardar» de OpenMAINT. Solo admite los atributos que el paso declara
-   * como escribibles; el resto se ignora en silencio.
+   * Guarda atributos del paso actual sin avanzar el flujo (el botón «Guardar»
+   * de OpenMAINT). Ignora en silencio los que el paso no declare escribibles.
    */
   async saveFields(
     sessionId: string,

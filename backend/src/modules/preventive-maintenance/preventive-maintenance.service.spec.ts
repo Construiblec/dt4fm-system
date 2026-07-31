@@ -384,6 +384,50 @@ describe('PreventiveMaintenanceService', () => {
       expect(data.statusCode).toBe('Execution');
     });
 
+    it('no falla si otra petición simultánea ya avanzó el mantenimiento', async () => {
+      openmaint.findWithTasklist.mockResolvedValue({ data: acceptanceCard });
+      openmaint.advance.mockRejectedValue(new Error('lock was not aquired'));
+      openmaint.findById.mockResolvedValue({ data: openmaintCard });
+
+      const { data } = await service.startExecution(SESSION_ID, 4370994);
+
+      expect(data.statusCode).toBe('Execution');
+      // El sellado corre en la petición que sí avanzó, no en esta
+      expect(openmaint.saveFields).not.toHaveBeenCalled();
+    });
+
+    it('espera a que la petición ganadora confirme el avance', async () => {
+      openmaint.findWithTasklist.mockResolvedValue({ data: acceptanceCard });
+      openmaint.advance.mockRejectedValue(new Error('lock was not aquired'));
+      // El bloqueo sigue vigente en la primera relectura
+      openmaint.findById
+        .mockResolvedValueOnce({ data: acceptanceCard })
+        .mockResolvedValue({ data: openmaintCard });
+
+      const { data } = await service.startExecution(SESSION_ID, 4370994);
+
+      expect(data.statusCode).toBe('Execution');
+    });
+
+    it('propaga el fallo del avance si el mantenimiento sigue en Aceptación', async () => {
+      openmaint.findWithTasklist.mockResolvedValue({ data: acceptanceCard });
+      openmaint.advance.mockRejectedValue(new Error('ECONNREFUSED'));
+      openmaint.findById.mockResolvedValue({ data: acceptanceCard });
+
+      await expect(
+        service.startExecution(SESSION_ID, 4370994),
+      ).rejects.toBeInstanceOf(BadGatewayException);
+    });
+
+    it('propaga el 401 aunque el avance falle', async () => {
+      openmaint.findWithTasklist.mockResolvedValue({ data: acceptanceCard });
+      openmaint.advance.mockRejectedValue({ response: { status: 401 } });
+
+      await expect(
+        service.startExecution(SESSION_ID, 4370994),
+      ).rejects.toBeInstanceOf(UnauthorizedException);
+    });
+
     it('falla si OpenMAINT acepta el avance pero no lo aplica', async () => {
       openmaint.findWithTasklist
         .mockResolvedValueOnce({ data: acceptanceCard })

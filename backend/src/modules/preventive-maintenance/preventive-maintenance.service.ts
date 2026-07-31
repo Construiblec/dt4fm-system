@@ -33,6 +33,9 @@ import {
 
 const IMAGE_FILE_REGEX = /\.(png|jpg|jpeg|webp)$/i;
 
+const LOCK_RETRIES = 3;
+const LOCK_RETRY_DELAY_MS = 300;
+
 /** Contrato público de un mantenimiento preventivo en el listado. */
 export type PreventiveMaintenance = {
   id: number;
@@ -142,22 +145,18 @@ export class PreventiveMaintenanceService {
         `Iniciando ejecución del mantenimiento preventivo ${card.Number ?? id}`,
       );
 
-      await this.runAdvance(sessionId, id, {
-        activityId,
-        action: PM_ACTIONS.START_EXECUTION,
-      });
+      if (await this.advanceToExecution(sessionId, id, activityId)) {
+        // La relectura valida el avance y da el `_activity` de PM03
+        const executing = await this.fetchCardWithTasklist(sessionId, id);
 
-      // Se relee con la tarea activa para validar el avance y, de paso, tener
-      // el `_activity` del nuevo paso con el que sellar la hora de inicio.
-      const executing = await this.fetchCardWithTasklist(sessionId, id);
+        this.assertStatus(
+          executing,
+          PM_STATUS_IDS.EXECUTION,
+          'OpenMAINT no aplicó el inicio de ejecución del mantenimiento preventivo',
+        );
 
-      this.assertStatus(
-        executing,
-        PM_STATUS_IDS.EXECUTION,
-        'OpenMAINT no aplicó el inicio de ejecución del mantenimiento preventivo',
-      );
-
-      await this.registerExecutionStart(sessionId, executing);
+        await this.registerExecutionStart(sessionId, executing);
+      }
     }
 
     const updated = await this.fetchCard(sessionId, id);
@@ -303,6 +302,64 @@ export class PreventiveMaintenanceService {
     return card;
   }
 
+  /**
+   * Avanza de Aceptación a Ejecución. Dos peticiones a la vez compiten por el
+   * bloqueo del proceso en OpenMAINT y una falla; si la otra ya dejó el
+   * mantenimiento en ejecución, el resultado buscado está conseguido.
+   *
+   * @returns `true` si fue esta petición la que avanzó, y por tanto la que debe
+   * sellar la hora de inicio.
+   */
+  private async advanceToExecution(
+    sessionId: string,
+    id: number,
+    activityId: string,
+  ): Promise<boolean> {
+    try {
+      await this.runAdvance(sessionId, id, {
+        activityId,
+        action: PM_ACTIONS.START_EXECUTION,
+      });
+
+      return true;
+    } catch (error) {
+      if (error instanceof UnauthorizedException) {
+        throw error;
+      }
+
+      if (!(await this.waitUntilExecuting(sessionId, id))) {
+        throw error;
+      }
+
+      this.logger.warn(
+        `El avance de ${id} falló pero otra petición simultánea ya lo dejó en ejecución`,
+      );
+
+      return false;
+    }
+  }
+
+  /**
+   * Espera a que la petición que ganó el bloqueo confirme el avance: cuando la
+   * nuestra falla, la suya todavía puede estar sin escribir.
+   */
+  private async waitUntilExecuting(
+    sessionId: string,
+    id: number,
+  ): Promise<boolean> {
+    for (let attempt = 0; attempt < LOCK_RETRIES; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, LOCK_RETRY_DELAY_MS));
+
+      const card = await this.fetchCard(sessionId, id);
+
+      if (card.ProcessStatus === PM_STATUS_IDS.EXECUTION) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
   private async runAdvance(
     sessionId: string,
     id: number,
@@ -356,17 +413,12 @@ export class PreventiveMaintenanceService {
   }
 
   /**
-   * Sella la hora real en la que el técnico empezó la actividad.
+   * Sella la hora real de inicio. `ExecStartDate` solo es escribible en PM03,
+   * así que no puede viajar con el avance: OpenMAINT lo rellena al entrar con
+   * la fecha *prevista* y aquí se sobrescribe con la real.
    *
-   * `ExecStartDate` no es escribible en el paso PM02, así que no puede viajar
-   * en el mismo PUT que el avance: OpenMAINT lo rellena por su cuenta al entrar
-   * en PM03 con la fecha *prevista* (`ExpExecStartDate`), que no sirve al
-   * supervisor. Por eso se sobrescribe justo después con un guardado sin
-   * avance, ya dentro de PM03, donde el atributo sí es escribible.
-   *
-   * Es un dato de bitácora: si el guardado falla no se interrumpe al técnico,
-   * que ya tiene el mantenimiento en ejecución. Queda el error en el log y el
-   * cierre volverá a enviar una fecha de inicio válida.
+   * Un fallo no interrumpe al técnico —el mantenimiento ya está en ejecución— y
+   * el cierre volverá a enviar una fecha de inicio válida.
    */
   private async registerExecutionStart(
     sessionId: string,
