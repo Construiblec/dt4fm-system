@@ -219,7 +219,6 @@ export const PreventiveMaintenanceDetailPage = () => {
                   <InfoRow label="Sitio" value={maintenance.site} />
                   <InfoRow label="Equipo de trabajo" value={maintenance.team} />
                   <InfoRow label="Responsable" value={maintenance.assignee} />
-                  <InfoRow label="Plan preventivo" value={maintenance.plan} />
                 </div>
               </section>
 
@@ -229,10 +228,6 @@ export const PreventiveMaintenanceDetailPage = () => {
                 </h2>
 
                 <div className="mt-4 space-y-2">
-                  <InfoRow
-                    label="Apertura"
-                    value={formatDateTime(maintenance.openingDate)}
-                  />
                   <InfoRow
                     label="Inicio previsto"
                     value={formatDateTime(maintenance.expectedStartDate)}
@@ -244,10 +239,6 @@ export const PreventiveMaintenanceDetailPage = () => {
                   <InfoRow
                     label="Inicio real"
                     value={formatDateTime(maintenance.execStartDate)}
-                  />
-                  <InfoRow
-                    label="Fin real"
-                    value={formatDateTime(maintenance.execEndDate)}
                   />
                 </div>
               </section>
