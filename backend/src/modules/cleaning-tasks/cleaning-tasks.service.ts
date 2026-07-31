@@ -76,7 +76,9 @@ export class CleaningTasksService {
         plannedEndTime: task.PlannedEndTime ?? null,
         actualStartTime: task.ActualStartTime ?? null,
         actualEndTime: task.ActualEndTime ?? null,
-        observations: task.Observations ?? null,
+        taskObservations: task.Observations ?? null,
+        supervisionObserv: task.SupervisionObserv ?? null,
+        teamObservations: task.TeamObservations ?? null,
         hostawayReservationId: task.HostawayReservation ?? null,
         checkoutDate: task.CheckoutDate ?? null,
         source: task._Source_description ?? task.Source ?? null,
@@ -166,7 +168,9 @@ export class CleaningTasksService {
       plannedEndTime: task.PlannedEndTime ?? null,
       actualStartTime: task.ActualStartTime ?? null,
       actualEndTime: task.ActualEndTime ?? null,
-      observations: task.Observations ?? null,
+      taskObservations: task.Observations ?? null,
+      supervisionObserv: task.SupervisionObserv ?? null,
+      teamObservations: task.TeamObservations ?? null,
       hostawayReservation: task.HostawayReservation ?? null,
       checkoutDate: task.CheckoutDate ?? null,
       source: task._Source_description ?? task.Source ?? null,
@@ -196,7 +200,9 @@ export class CleaningTasksService {
       plannedEndTime: task.PlannedEndTime ?? null,
       actualStartTime: task.ActualStartTime ?? null,
       actualEndTime: task.ActualEndTime ?? null,
-      observations: task.Observations ?? null,
+      taskObservations: task.Observations ?? null,
+      supervisionObserv: task.SupervisionObserv ?? null,
+      teamObservations: task.TeamObservations ?? null,
       hostawayReservation: task.HostawayReservation ?? null,
       checkoutDate: task.CheckoutDate ?? null,
       source: task._Source_description ?? task.Source ?? null,
@@ -252,7 +258,9 @@ export class CleaningTasksService {
         plannedEndTime: task.PlannedEndTime ?? null,
         actualStartTime: task.ActualStartTime ?? null,
         actualEndTime: task.ActualEndTime ?? null,
-        observations: task.Observations ?? null,
+        taskObservations: task.Observations ?? null,
+        supervisionObserv: task.SupervisionObserv ?? null,
+        teamObservations: task.TeamObservations ?? null,
         hostawayReservation: task.HostawayReservation ?? null,
         checkoutDate: task.CheckoutDate ?? null,
         source: task._Source_description ?? task.Source ?? null,
@@ -321,7 +329,9 @@ export class CleaningTasksService {
     if (!task.ActualStartTime) throw new BadRequestException('Task must be started before completing');
     const now = new Date().toISOString();
     const body: Record<string, unknown> = { phase: PHASE_IDS.COMPLETED, ActualEndTime: now };
-    if (dto.observations) body.Observations = dto.observations;
+    if (dto.observations) {
+      body.TeamObservations = this.appendNote(task.TeamObservations, dto.observations);
+    }
     const response = await this.openmaintService.updateTaskWithSession(taskId, body, sessionToken);
     return {
       success: true,
@@ -344,7 +354,12 @@ export class CleaningTasksService {
     if (phaseDesc !== 'Completed') throw new BadRequestException('Task must be in Completed state to review');
     const targetPhaseId = dto.approved ? PHASE_IDS.REVIEWED : PHASE_IDS.IN_EXECUTION;
     const body: Record<string, unknown> = { phase: targetPhaseId };
-    if (dto.reviewComments) body.Notes = dto.reviewComments;
+    if (dto.reviewComments) {
+      body.Notes = dto.reviewComments;
+      const prefix = dto.approved ? '[Aprobado]' : '[Reabierto]';
+      const newObs = `${prefix}: ${dto.reviewComments}`;
+      body.SupervisionObserv = this.appendNote(task.SupervisionObserv, newObs);
+    }
     const updated = await this.openmaintService.updateTaskWithSession(taskId, body, sessionToken);
     return {
       success: true,
@@ -370,7 +385,9 @@ export class CleaningTasksService {
       );
     }
     const body: Record<string, unknown> = { phase: PHASE_IDS.IN_EXECUTION };
-    if (dto.observations) body.Observations = dto.observations;
+    if (dto.observations) {
+      body.SupervisionObserv = this.appendNote(task.SupervisionObserv, dto.observations);
+    }
     const updated = await this.openmaintService.updateTaskWithSession(taskId, body, sessionToken);
     return {
       success: true,
@@ -477,6 +494,24 @@ export class CleaningTasksService {
 
   private calculateDurationMinutes(startIso: string, endIso: string): number {
     return Math.round((new Date(endIso).getTime() - new Date(startIso).getTime()) / 60_000);
+  }
+
+  private appendNote(existingText: string | null | undefined, newText: string): string {
+    const text = (existingText ?? '').trim();
+    const matches = [...text.matchAll(/^Nota (\d+)/gm)];
+    let nextNumber = 1;
+    if (matches.length > 0) {
+      const lastMatch = matches[matches.length - 1];
+      nextNumber = parseInt(lastMatch[1], 10) + 1;
+    }
+    
+    const noteBlock = `Nota ${nextNumber}\n${newText}`;
+    if (!text) {
+      return noteBlock.substring(0, 500);
+    }
+    
+    const combined = `${text}\n\n${noteBlock}`;
+    return combined.length > 500 ? combined.substring(combined.length - 500) : combined;
   }
 
   // ─── Actualización directa ────────────────────────────────────────────────

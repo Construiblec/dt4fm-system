@@ -2,6 +2,8 @@ import { MapPin, User, CalendarDays, Clock } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import type { CleaningTask } from "@/modules/incidentes/types/CleaningTask";
 
+import { formatEmployeeName } from "@/shared/utils/nameUtils";
+
 const phaseStyles: Record<string, { badge: string; border: string }> = {
   Assigned: { badge: "bg-blue-100 text-blue-700", border: "border-blue-400" },
   InExecution: {
@@ -86,7 +88,7 @@ export const SupervisorTaskCard = ({ task }: Props) => {
 
         <div className="flex items-center gap-2">
           <User className="h-4 w-4 flex-shrink-0 text-slate-400" />
-          <span>{task.employee?.name ?? "Sin asignar"}</span>
+          <span>{formatEmployeeName(task.employee?.name)}</span>
         </div>
 
         <div className="flex items-center gap-2">
@@ -106,11 +108,6 @@ export const SupervisorTaskCard = ({ task }: Props) => {
           </div>
         )}
 
-        {task.observations && (
-          <p className="mt-1 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500 italic">
-            "{task.observations}"
-          </p>
-        )}
       </div>
 
       {/* Footer — cualquier tarea puede abrirse en detalle */}

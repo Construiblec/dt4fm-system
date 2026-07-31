@@ -1,5 +1,5 @@
 import { Clock3 } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useActiveTaskTimer } from "@/modules/incidentes/hooks/useActiveTaskTimer";
 import {
   isActiveCleaningTaskPhase,
@@ -11,9 +11,7 @@ export const GlobalTaskIndicator = () => {
   const activeTask = useCleaningTaskExecutionStore((state) => state.activeTask);
   const { elapsedFormatted, isOvertime } = useActiveTaskTimer();
 
-  if (!activeTask || !isActiveCleaningTaskPhase(activeTask.phase)) {
-    return null;
-  }
+  if (!activeTask) return null;
 
   return (
     <div

@@ -8,6 +8,7 @@ import { ReviewModal } from "@/modules/supervisor/components/ReviewModal";
 import type { CleaningTask } from "@/modules/incidentes/types/CleaningTask";
 import logo from "@/shared/assets/images/construiblec-logo.png";
 import { ClipboardList } from "lucide-react";
+import { formatEmployeeName } from "@/shared/utils/nameUtils";
 
 export const SupervisorDashboardPage = () => {
   const logout = useLogout();
@@ -44,11 +45,11 @@ export const SupervisorDashboardPage = () => {
             />
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-500">
-                Supervisor
+                Construiblec
               </p>
-              <h1 className="text-lg font-bold text-slate-900">
-                Tareas de Limpieza
-              </h1>
+              <p className="text-base font-medium text-slate-900">
+                Bienvenido, {formatEmployeeName(localStorage.getItem("username"))}
+              </p>
             </div>
           </div>
 
@@ -63,6 +64,9 @@ export const SupervisorDashboardPage = () => {
 
         <section className="flex-1 px-4 pb-10">
           <div className="mx-auto w-full max-w-sm space-y-5">
+            <h1 className="text-center text-2xl font-bold text-slate-900">
+              Supervisor de Tareas de Limpieza
+            </h1>
 
             {/* Stats bar */}
             <div className="flex gap-3">
