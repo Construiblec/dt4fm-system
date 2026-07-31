@@ -1,10 +1,7 @@
 import { Clock3 } from "lucide-react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { useActiveTaskTimer } from "@/modules/incidentes/hooks/useActiveTaskTimer";
-import {
-  isActiveCleaningTaskPhase,
-  useCleaningTaskExecutionStore,
-} from "@/store/cleaningTaskExecutionStore";
+import { useCleaningTaskExecutionStore } from "@/store/cleaningTaskExecutionStore";
 
 export const GlobalTaskIndicator = () => {
   const navigate = useNavigate();
