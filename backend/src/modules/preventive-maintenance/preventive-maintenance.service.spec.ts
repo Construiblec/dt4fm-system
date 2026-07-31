@@ -70,6 +70,7 @@ describe('PreventiveMaintenanceService', () => {
       findById: jest.fn(),
       findWithTasklist: jest.fn(),
       advance: jest.fn(),
+      saveFields: jest.fn(),
       findAttachments: jest.fn().mockResolvedValue({ data: [] }),
       findAttachmentPreview: jest.fn(),
       uploadAttachment: jest.fn(),
@@ -321,9 +322,22 @@ describe('PreventiveMaintenanceService', () => {
       _tasklist: [{ _id: 'act-1', _definition: 'PM02-Assignment' }],
     };
 
-    it('avanza de Aceptación a Ejecución con la acción PM02-Advance', async () => {
-      openmaint.findWithTasklist.mockResolvedValue({ data: acceptanceCard });
+    /** La misma instancia una vez OpenMAINT la movió al paso PM03. */
+    const executingCard = {
+      ...openmaintCard,
+      _tasklist: [{ _id: 'act-3', _definition: 'PM03-Execution' }],
+    };
+
+    /** Deja la instancia en Aceptación y, tras el avance, en Ejecución. */
+    const mockAdvanceToExecution = () => {
+      openmaint.findWithTasklist
+        .mockResolvedValueOnce({ data: acceptanceCard })
+        .mockResolvedValueOnce({ data: executingCard });
       openmaint.findById.mockResolvedValue({ data: openmaintCard });
+    };
+
+    it('avanza de Aceptación a Ejecución con la acción PM02-Advance', async () => {
+      mockAdvanceToExecution();
 
       const { data } = await service.startExecution(SESSION_ID, 4370994);
 
@@ -334,6 +348,52 @@ describe('PreventiveMaintenanceService', () => {
       // El detalle devuelto es el estado ya actualizado
       expect(data.statusCode).toBe('Execution');
       expect(data.canComplete).toBe(true);
+    });
+
+    it('sella la hora real de inicio una vez el proceso está en Ejecución', async () => {
+      mockAdvanceToExecution();
+
+      const before = Date.now();
+      await service.startExecution(SESSION_ID, 4370994);
+      const after = Date.now();
+
+      const [call] = openmaint.saveFields.mock.calls as unknown as [
+        [
+          string,
+          number,
+          { activityId: string; fields: { ExecStartDate: string } },
+        ],
+      ];
+
+      expect(call[0]).toBe(SESSION_ID);
+      expect(call[1]).toBe(4370994);
+      // Sobre la tarea de PM03, único paso donde ExecStartDate es escribible
+      expect(call[2].activityId).toBe('act-3');
+
+      const stamped = new Date(call[2].fields.ExecStartDate).getTime();
+      expect(stamped).toBeGreaterThanOrEqual(before);
+      expect(stamped).toBeLessThanOrEqual(after);
+    });
+
+    it('no interrumpe al técnico si falla el sellado de la hora de inicio', async () => {
+      mockAdvanceToExecution();
+      openmaint.saveFields.mockRejectedValue(new Error('timeout'));
+
+      const { data } = await service.startExecution(SESSION_ID, 4370994);
+
+      expect(data.statusCode).toBe('Execution');
+    });
+
+    it('falla si OpenMAINT acepta el avance pero no lo aplica', async () => {
+      openmaint.findWithTasklist
+        .mockResolvedValueOnce({ data: acceptanceCard })
+        .mockResolvedValueOnce({ data: acceptanceCard });
+
+      await expect(
+        service.startExecution(SESSION_ID, 4370994),
+      ).rejects.toBeInstanceOf(BadGatewayException);
+
+      expect(openmaint.saveFields).not.toHaveBeenCalled();
     });
 
     it('es idempotente: no avanza si ya está en ejecución', async () => {

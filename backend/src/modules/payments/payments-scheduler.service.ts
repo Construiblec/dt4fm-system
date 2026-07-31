@@ -90,14 +90,19 @@ export class PaymentsSchedulerService implements OnModuleInit, OnModuleDestroy {
     const now = new Date();
     const periodo = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 
-    this.logger.log(`Ejecutando verificacion diaria de pagos para periodo ${periodo}...`);
+    this.logger.log(
+      `Ejecutando verificacion diaria de pagos para periodo ${periodo}...`,
+    );
 
     // 1) Generación de pagos (se activa solo en DiaEmision).
     try {
-      const result = await this.paymentsService.generateMonthlyPayments(periodo);
+      const result =
+        await this.paymentsService.generateMonthlyPayments(periodo);
 
       if (result.skippedReason) {
-        this.logger.log(`Verificacion de generacion finalizada: ${result.skippedReason}`);
+        this.logger.log(
+          `Verificacion de generacion finalizada: ${result.skippedReason}`,
+        );
       } else {
         this.logger.log(
           `Generacion completada -> ` +
@@ -112,7 +117,9 @@ export class PaymentsSchedulerService implements OnModuleInit, OnModuleDestroy {
         }
       }
     } catch (error) {
-      this.logger.error(`Verificacion de pagos fallida: ${(error as Error).message}`);
+      this.logger.error(
+        `Verificacion de pagos fallida: ${(error as Error).message}`,
+      );
     }
 
     // 2) Recordatorios de vencimiento (se activan solo un día antes del
@@ -122,7 +129,9 @@ export class PaymentsSchedulerService implements OnModuleInit, OnModuleDestroy {
       const reminder = await this.reminderService.sendDueReminders(periodo);
 
       if (reminder.skippedReason) {
-        this.logger.log(`Verificacion de recordatorios finalizada: ${reminder.skippedReason}`);
+        this.logger.log(
+          `Verificacion de recordatorios finalizada: ${reminder.skippedReason}`,
+        );
       } else {
         this.logger.log(
           `Recordatorios completados -> ` +
@@ -132,11 +141,15 @@ export class PaymentsSchedulerService implements OnModuleInit, OnModuleDestroy {
         );
 
         if (reminder.errors.length > 0) {
-          this.logger.warn(`Errores en recordatorios:\n${reminder.errors.join('\n')}`);
+          this.logger.warn(
+            `Errores en recordatorios:\n${reminder.errors.join('\n')}`,
+          );
         }
       }
     } catch (error) {
-      this.logger.error(`Verificacion de recordatorios fallida: ${(error as Error).message}`);
+      this.logger.error(
+        `Verificacion de recordatorios fallida: ${(error as Error).message}`,
+      );
     }
   }
 }

@@ -143,14 +143,20 @@ export class OpenmaintClient {
       );
 
       const contentType =
-        (response.headers['content-type'] as string) ?? 'application/octet-stream';
+        (response.headers['content-type'] as string) ??
+        'application/octet-stream';
 
       // Extrae el nombre del header Content-Disposition si existe
-      const disposition = (response.headers['content-disposition'] as string) ?? '';
-      const fileNameMatch = disposition.match(/filename[^;=\n]*=(['"]?)([^'"\n;]*?)\1/);
+      const disposition =
+        (response.headers['content-disposition'] as string) ?? '';
+      const fileNameMatch = disposition.match(
+        /filename[^;=\n]*=(['"]?)([^'"\n;]*?)\1/,
+      );
       const fileName = fileNameMatch?.[2]?.trim() ?? 'attachment';
 
-      console.log(`[HTTP] GET (buffer) ${url} → ${response.status} ${contentType}`);
+      console.log(
+        `[HTTP] GET (buffer) ${url} → ${response.status} ${contentType}`,
+      );
 
       return {
         data: Buffer.from(response.data as ArrayBuffer),

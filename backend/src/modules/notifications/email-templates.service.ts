@@ -95,9 +95,7 @@ export class EmailTemplatesService {
         status: error?.response?.status,
         data: JSON.stringify(error?.response?.data),
       });
-      throw new InternalServerErrorException(
-        'No se pudo obtener la plantilla',
-      );
+      throw new InternalServerErrorException('No se pudo obtener la plantilla');
     }
   }
 
@@ -126,9 +124,7 @@ export class EmailTemplatesService {
         status: error?.response?.status,
         data: JSON.stringify(error?.response?.data),
       });
-      throw new InternalServerErrorException(
-        'No se pudo crear la plantilla',
-      );
+      throw new InternalServerErrorException('No se pudo crear la plantilla');
     }
   }
 
@@ -206,7 +202,10 @@ export class EmailTemplatesService {
   private async getAdminSessionId(): Promise<string> {
     const username = this.configService.get<string>('OPENMAINT_USERNAME');
     const password = this.configService.get<string>('OPENMAINT_PASSWORD');
-    const response = await this.openmaintAuthService.login(username!, password!);
+    const response = await this.openmaintAuthService.login(
+      username!,
+      password!,
+    );
 
     if (!response?.data?._id) {
       throw new InternalServerErrorException(

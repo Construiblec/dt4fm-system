@@ -86,8 +86,7 @@ export class ResendMailProvider implements MailProvider {
       );
       return true;
     } catch (err) {
-      const reason =
-        err instanceof Error ? err.message : 'Error desconocido';
+      const reason = err instanceof Error ? err.message : 'Error desconocido';
       this.logger.error(`[Resend] Verificación fallida: ${reason}`);
       return false;
     }

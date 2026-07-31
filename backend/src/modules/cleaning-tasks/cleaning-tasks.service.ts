@@ -34,7 +34,12 @@ const PHASE_LOOKUP = { Assigned: 'Assigned' };
 const SOURCE_LOOKUP = { Hostaway: 'Hostaway', Manual: 'Manual' };
 const SUPERVISOR_ROLES = ['SuperUser', 'Admin', 'SupervisorLimpieza'];
 const ALLOWED_UPLOAD_PHASES = ['InExecution', 'Completed'];
-const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/heic', 'image/heif'];
+const ALLOWED_MIME_TYPES = [
+  'image/jpeg',
+  'image/png',
+  'image/heic',
+  'image/heif',
+];
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
 const MAX_ATTACHMENTS = 10;
 
@@ -86,9 +91,14 @@ export class CleaningTasksService {
   }
 
   async createCleaningTask(dto: CreateCleaningTaskDto) {
-    const exists = await this.openmaintService.taskExistsByReservationId(dto.hostawayReservationId);
+    const exists = await this.openmaintService.taskExistsByReservationId(
+      dto.hostawayReservationId,
+    );
     if (exists) {
-      return { created: false, message: `Ya existe una tarea para la reserva ${dto.hostawayReservationId}` };
+      return {
+        created: false,
+        message: `Ya existe una tarea para la reserva ${dto.hostawayReservationId}`,
+      };
     }
     const today = new Date().toISOString().split('T')[0];
     const body: Record<string, unknown> = {
@@ -111,15 +121,23 @@ export class CleaningTasksService {
         reservationId: dto.hostawayReservationId,
       };
     } catch {
-      throw new InternalServerErrorException(`Error al crear tarea para reserva ${dto.hostawayReservationId}`);
+      throw new InternalServerErrorException(
+        `Error al crear tarea para reserva ${dto.hostawayReservationId}`,
+      );
     }
   }
 
   async generateTasksFromCheckouts(checkouts: CreateCleaningTaskDto[]) {
-    const results = await Promise.allSettled(checkouts.map((c) => this.createCleaningTask(c)));
+    const results = await Promise.allSettled(
+      checkouts.map((c) => this.createCleaningTask(c)),
+    );
     return {
-      created: results.filter((r) => r.status === 'fulfilled' && r.value.created).length,
-      skipped: results.filter((r) => r.status === 'fulfilled' && !r.value.created).length,
+      created: results.filter(
+        (r) => r.status === 'fulfilled' && r.value.created,
+      ).length,
+      skipped: results.filter(
+        (r) => r.status === 'fulfilled' && !r.value.created,
+      ).length,
       failed: results.filter((r) => r.status === 'rejected').length,
       total: checkouts.length,
     };
@@ -139,20 +157,36 @@ export class CleaningTasksService {
         checkoutTime: r.checkoutTime,
         guestName: r.guestName,
       }));
-    return { dateFrom, dateTo, ...(await this.generateTasksFromCheckouts(checkouts)) };
+    return {
+      dateFrom,
+      dateTo,
+      ...(await this.generateTasksFromCheckouts(checkouts)),
+    };
   }
 
   // ─── Todas las tareas (supervisor) ────────────────────────────────────────
 
   async getAllTasks(
     sessionToken: string,
-    options: { limit?: number; offset?: number; phase?: string; date?: string; employeeId?: number } = {},
+    options: {
+      limit?: number;
+      offset?: number;
+      phase?: string;
+      date?: string;
+      employeeId?: number;
+    } = {},
   ) {
     const { limit = 50, offset = 0 } = options;
     const response = await this.openmaintService.getAllTasks(options);
     const rawTasks = response.data ?? [];
-    const uniqueUnitIds = [...new Set(rawTasks.map((t) => t.Unit).filter((u): u is number => u != null))];
-    const unitResults = await Promise.all(uniqueUnitIds.map((id) => this.fetchUnitInfo(id, sessionToken)));
+    const uniqueUnitIds = [
+      ...new Set(
+        rawTasks.map((t) => t.Unit).filter((u): u is number => u != null),
+      ),
+    ];
+    const unitResults = await Promise.all(
+      uniqueUnitIds.map((id) => this.fetchUnitInfo(id, sessionToken)),
+    );
     const unitMap = new Map(uniqueUnitIds.map((id, i) => [id, unitResults[i]]));
     const tasks = rawTasks.map((task) => ({
       id: task._id,
@@ -171,18 +205,40 @@ export class CleaningTasksService {
       checkoutDate: task.CheckoutDate ?? null,
       source: task._Source_description ?? task.Source ?? null,
       unit: task.Unit != null ? (unitMap.get(task.Unit) ?? null) : null,
-      employee: task.Employee ? { id: task.Employee, name: task._Employee_description ?? '' } : null,
+      employee: task.Employee
+        ? { id: task.Employee, name: task._Employee_description ?? '' }
+        : null,
     }));
-    return { success: true, data: tasks, meta: { total: response.meta?.total ?? tasks.length, limit, offset } };
+    return {
+      success: true,
+      data: tasks,
+      meta: { total: response.meta?.total ?? tasks.length, limit, offset },
+    };
   }
 
   // ─── Tareas por empleado ──────────────────────────────────────────────────
 
-  async getMyTasks(employeeId: number, sessionToken: string, limit = 50, offset = 0) {
-    const response = await this.openmaintService.getTasksByEmployee(employeeId, sessionToken, limit, offset);
+  async getMyTasks(
+    employeeId: number,
+    sessionToken: string,
+    limit = 50,
+    offset = 0,
+  ) {
+    const response = await this.openmaintService.getTasksByEmployee(
+      employeeId,
+      sessionToken,
+      limit,
+      offset,
+    );
     const rawTasks = response.data ?? [];
-    const uniqueUnitIds = [...new Set(rawTasks.map((t) => t.Unit).filter((u): u is number => u != null))];
-    const unitResults = await Promise.all(uniqueUnitIds.map((id) => this.fetchUnitInfo(id, sessionToken)));
+    const uniqueUnitIds = [
+      ...new Set(
+        rawTasks.map((t) => t.Unit).filter((u): u is number => u != null),
+      ),
+    ];
+    const unitResults = await Promise.all(
+      uniqueUnitIds.map((id) => this.fetchUnitInfo(id, sessionToken)),
+    );
     const unitMap = new Map(uniqueUnitIds.map((id, i) => [id, unitResults[i]]));
     const tasks = rawTasks.map((task) => ({
       id: task._id,
@@ -201,15 +257,28 @@ export class CleaningTasksService {
       checkoutDate: task.CheckoutDate ?? null,
       source: task._Source_description ?? task.Source ?? null,
       unit: task.Unit != null ? (unitMap.get(task.Unit) ?? null) : null,
-      employee: task.Employee ? { id: task.Employee, name: task._Employee_description ?? '' } : null,
+      employee: task.Employee
+        ? { id: task.Employee, name: task._Employee_description ?? '' }
+        : null,
     }));
-    return { success: true, data: tasks, meta: { total: response.meta?.total ?? tasks.length, limit, offset } };
+    return {
+      success: true,
+      data: tasks,
+      meta: { total: response.meta?.total ?? tasks.length, limit, offset },
+    };
   }
 
   // ─── Detalle de tarea ─────────────────────────────────────────────────────
 
-  async getTaskDetail(taskId: number, employeeId: number, sessionToken: string) {
-    const response = await this.openmaintService.getTaskById(taskId, sessionToken);
+  async getTaskDetail(
+    taskId: number,
+    employeeId: number,
+    sessionToken: string,
+  ) {
+    const response = await this.openmaintService.getTaskById(
+      taskId,
+      sessionToken,
+    );
     const task = response?.data;
     if (!task) throw new NotFoundException(`Tarea ${taskId} no encontrada`);
     this.validateOwnership(task.Employee, employeeId);
@@ -217,7 +286,10 @@ export class CleaningTasksService {
   }
 
   async getTaskDetailAsSupervisor(taskId: number, sessionToken: string) {
-    const response = await this.openmaintService.getTaskById(taskId, sessionToken);
+    const response = await this.openmaintService.getTaskById(
+      taskId,
+      sessionToken,
+    );
     const task = response?.data;
     if (!task) throw new NotFoundException(`Tarea ${taskId} no encontrada`);
     return this.buildTaskDetail(task, sessionToken);
@@ -227,9 +299,13 @@ export class CleaningTasksService {
     const phaseDesc = task._phase_description ?? String(task.phase);
     const phaseId = PHASE_DESC_TO_ID[phaseDesc] ?? null;
     const [attResponse, checklistDetail, unitInfo] = await Promise.all([
-      this.openmaintService.getAttachments(task._id, sessionToken).catch(() => null),
+      this.openmaintService
+        .getAttachments(task._id, sessionToken)
+        .catch(() => null),
       this.fetchChecklistDetail(task.CleaningChecklist),
-      task.Unit != null ? this.fetchUnitInfo(task.Unit, sessionToken) : Promise.resolve(null),
+      task.Unit != null
+        ? this.fetchUnitInfo(task.Unit, sessionToken)
+        : Promise.resolve(null),
     ]);
     const attachments = (attResponse?.data ?? []).map((a) => ({
       id: a._id,
@@ -257,7 +333,9 @@ export class CleaningTasksService {
         checkoutDate: task.CheckoutDate ?? null,
         source: task._Source_description ?? task.Source ?? null,
         unit: unitInfo,
-        employee: task.Employee ? { id: task.Employee, name: task._Employee_description ?? '' } : null,
+        employee: task.Employee
+          ? { id: task.Employee, name: task._Employee_description ?? '' }
+          : null,
         attachments,
         canStart: phaseDesc === 'Assigned',
         canComplete: phaseDesc === 'InExecution',
@@ -271,10 +349,18 @@ export class CleaningTasksService {
 
   private async fetchUnitInfo(unitId: number, sessionToken: string) {
     try {
-      const response = await this.openmaintService.getUnitById(unitId, sessionToken);
+      const response = await this.openmaintService.getUnitById(
+        unitId,
+        sessionToken,
+      );
       const unit = response?.data;
       if (!unit) return null;
-      return { id: unit._id, code: unit.Code ?? null, description: unit.Description ?? null, name: unit.Name ?? null };
+      return {
+        id: unit._id,
+        code: unit.Code ?? null,
+        description: unit.Description ?? null,
+        name: unit.Name ?? null,
+      };
     } catch {
       return null;
     }
@@ -283,7 +369,8 @@ export class CleaningTasksService {
   private async fetchChecklistDetail(activityId: number | null | undefined) {
     if (!activityId) return null;
     try {
-      const response = await this.openmaintService.getCleaningActivity(activityId);
+      const response =
+        await this.openmaintService.getCleaningActivity(activityId);
       const act = response?.data;
       if (!act) return null;
       return {
@@ -291,7 +378,11 @@ export class CleaningTasksService {
         code: act.Code ?? null,
         description: act.Description ?? null,
         templateName: act.NombrePlantilla ?? null,
-        activities: act.Detalle ? act.Detalle.split('\n').map((l) => l.trim()).filter(Boolean) : [],
+        activities: act.Detalle
+          ? act.Detalle.split('\n')
+              .map((l) => l.trim())
+              .filter(Boolean)
+          : [],
       };
     } catch {
       return null;
@@ -301,28 +392,55 @@ export class CleaningTasksService {
   // ─── Transiciones de fase ─────────────────────────────────────────────────
 
   async startTask(taskId: number, employeeId: number, sessionToken: string) {
-    const task = await this.fetchAndValidateOwnership(taskId, employeeId, sessionToken);
+    const task = await this.fetchAndValidateOwnership(
+      taskId,
+      employeeId,
+      sessionToken,
+    );
     const phaseDesc = task._phase_description ?? String(task.phase);
     this.validatePhaseTransition(phaseDesc, PHASE_IDS.IN_EXECUTION);
     const now = new Date().toISOString();
     const response = await this.openmaintService.updateTaskWithSession(
-      taskId, { phase: PHASE_IDS.IN_EXECUTION, ActualStartTime: now }, sessionToken,
+      taskId,
+      { phase: PHASE_IDS.IN_EXECUTION, ActualStartTime: now },
+      sessionToken,
     );
     return {
       success: true,
-      data: { id: response?.data?._id ?? taskId, phase: PHASE_NAMES[PHASE_IDS.IN_EXECUTION], actualStartTime: response?.data?.ActualStartTime ?? now },
+      data: {
+        id: response?.data?._id ?? taskId,
+        phase: PHASE_NAMES[PHASE_IDS.IN_EXECUTION],
+        actualStartTime: response?.data?.ActualStartTime ?? now,
+      },
     };
   }
 
-  async completeTask(taskId: number, employeeId: number, dto: CompleteTaskDto, sessionToken: string) {
-    const task = await this.fetchAndValidateOwnership(taskId, employeeId, sessionToken);
+  async completeTask(
+    taskId: number,
+    employeeId: number,
+    dto: CompleteTaskDto,
+    sessionToken: string,
+  ) {
+    const task = await this.fetchAndValidateOwnership(
+      taskId,
+      employeeId,
+      sessionToken,
+    );
     const phaseDesc = task._phase_description ?? String(task.phase);
     this.validatePhaseTransition(phaseDesc, PHASE_IDS.COMPLETED);
-    if (!task.ActualStartTime) throw new BadRequestException('Task must be started before completing');
+    if (!task.ActualStartTime)
+      throw new BadRequestException('Task must be started before completing');
     const now = new Date().toISOString();
-    const body: Record<string, unknown> = { phase: PHASE_IDS.COMPLETED, ActualEndTime: now };
+    const body: Record<string, unknown> = {
+      phase: PHASE_IDS.COMPLETED,
+      ActualEndTime: now,
+    };
     if (dto.observations) body.Observations = dto.observations;
-    const response = await this.openmaintService.updateTaskWithSession(taskId, body, sessionToken);
+    const response = await this.openmaintService.updateTaskWithSession(
+      taskId,
+      body,
+      sessionToken,
+    );
     return {
       success: true,
       data: {
@@ -335,20 +453,42 @@ export class CleaningTasksService {
     };
   }
 
-  async reviewTask(taskId: number, role: string, dto: ReviewTaskDto, sessionToken: string) {
-    if (!SUPERVISOR_ROLES.includes(role)) throw new ForbiddenException('Only supervisors can review tasks');
-    const response = await this.openmaintService.getTaskById(taskId, sessionToken);
+  async reviewTask(
+    taskId: number,
+    role: string,
+    dto: ReviewTaskDto,
+    sessionToken: string,
+  ) {
+    if (!SUPERVISOR_ROLES.includes(role))
+      throw new ForbiddenException('Only supervisors can review tasks');
+    const response = await this.openmaintService.getTaskById(
+      taskId,
+      sessionToken,
+    );
     const task = response?.data;
     if (!task) throw new NotFoundException(`Tarea ${taskId} no encontrada`);
     const phaseDesc = task._phase_description ?? String(task.phase);
-    if (phaseDesc !== 'Completed') throw new BadRequestException('Task must be in Completed state to review');
-    const targetPhaseId = dto.approved ? PHASE_IDS.REVIEWED : PHASE_IDS.IN_EXECUTION;
+    if (phaseDesc !== 'Completed')
+      throw new BadRequestException(
+        'Task must be in Completed state to review',
+      );
+    const targetPhaseId = dto.approved
+      ? PHASE_IDS.REVIEWED
+      : PHASE_IDS.IN_EXECUTION;
     const body: Record<string, unknown> = { phase: targetPhaseId };
     if (dto.reviewComments) body.Notes = dto.reviewComments;
-    const updated = await this.openmaintService.updateTaskWithSession(taskId, body, sessionToken);
+    const updated = await this.openmaintService.updateTaskWithSession(
+      taskId,
+      body,
+      sessionToken,
+    );
     return {
       success: true,
-      data: { id: updated?.data?._id ?? taskId, phase: PHASE_NAMES[targetPhaseId], reviewComments: dto.reviewComments ?? null },
+      data: {
+        id: updated?.data?._id ?? taskId,
+        phase: PHASE_NAMES[targetPhaseId],
+        reviewComments: dto.reviewComments ?? null,
+      },
     };
   }
 
@@ -358,9 +498,18 @@ export class CleaningTasksService {
    * Fases válidas: Completed, Reviewed.
    * Solo SuperUser/Admin.
    */
-  async reopenTask(taskId: number, role: string, dto: ReopenTaskDto, sessionToken: string) {
-    if (!SUPERVISOR_ROLES.includes(role)) throw new ForbiddenException('Only supervisors can reopen tasks');
-    const response = await this.openmaintService.getTaskById(taskId, sessionToken);
+  async reopenTask(
+    taskId: number,
+    role: string,
+    dto: ReopenTaskDto,
+    sessionToken: string,
+  ) {
+    if (!SUPERVISOR_ROLES.includes(role))
+      throw new ForbiddenException('Only supervisors can reopen tasks');
+    const response = await this.openmaintService.getTaskById(
+      taskId,
+      sessionToken,
+    );
     const task = response?.data;
     if (!task) throw new NotFoundException(`Tarea ${taskId} no encontrada`);
     const phaseDesc = task._phase_description ?? String(task.phase);
@@ -371,7 +520,11 @@ export class CleaningTasksService {
     }
     const body: Record<string, unknown> = { phase: PHASE_IDS.IN_EXECUTION };
     if (dto.observations) body.Observations = dto.observations;
-    const updated = await this.openmaintService.updateTaskWithSession(taskId, body, sessionToken);
+    const updated = await this.openmaintService.updateTaskWithSession(
+      taskId,
+      body,
+      sessionToken,
+    );
     return {
       success: true,
       data: {
@@ -383,35 +536,69 @@ export class CleaningTasksService {
     };
   }
 
-  async cancelTask(taskId: number, role: string, dto: CancelTaskDto, sessionToken: string) {
-    if (!SUPERVISOR_ROLES.includes(role)) throw new ForbiddenException('Only supervisors can cancel tasks');
-    const response = await this.openmaintService.getTaskById(taskId, sessionToken);
+  async cancelTask(
+    taskId: number,
+    role: string,
+    dto: CancelTaskDto,
+    sessionToken: string,
+  ) {
+    if (!SUPERVISOR_ROLES.includes(role))
+      throw new ForbiddenException('Only supervisors can cancel tasks');
+    const response = await this.openmaintService.getTaskById(
+      taskId,
+      sessionToken,
+    );
     const task = response?.data;
     if (!task) throw new NotFoundException(`Tarea ${taskId} no encontrada`);
     const phaseDesc = task._phase_description ?? String(task.phase);
     if (!['Assigned', 'InExecution'].includes(phaseDesc)) {
-      throw new BadRequestException('Only tasks in Assigned or InExecution state can be cancelled');
+      throw new BadRequestException(
+        'Only tasks in Assigned or InExecution state can be cancelled',
+      );
     }
-    const updated = await this.openmaintService.updateTaskWithSession(taskId, { phase: PHASE_IDS.CANCELLED, Notes: dto.reason }, sessionToken);
+    const updated = await this.openmaintService.updateTaskWithSession(
+      taskId,
+      { phase: PHASE_IDS.CANCELLED, Notes: dto.reason },
+      sessionToken,
+    );
     return {
       success: true,
-      data: { id: updated?.data?._id ?? taskId, phase: PHASE_NAMES[PHASE_IDS.CANCELLED], cancelReason: dto.reason },
+      data: {
+        id: updated?.data?._id ?? taskId,
+        phase: PHASE_NAMES[PHASE_IDS.CANCELLED],
+        cancelReason: dto.reason,
+      },
     };
   }
 
   // ─── Attachments ──────────────────────────────────────────────────────────
 
-  async getAttachments(taskId: number, employeeId: number, sessionToken: string, category?: string) {
+  async getAttachments(
+    taskId: number,
+    employeeId: number,
+    sessionToken: string,
+    category?: string,
+  ) {
     await this.fetchAndValidateOwnership(taskId, employeeId, sessionToken);
     return this.buildAttachmentsList(taskId, sessionToken, category);
   }
 
-  async getAttachmentsAsSupervisor(taskId: number, sessionToken: string, category?: string) {
+  async getAttachmentsAsSupervisor(
+    taskId: number,
+    sessionToken: string,
+    category?: string,
+  ) {
     return this.buildAttachmentsList(taskId, sessionToken, category);
   }
 
-  private async buildAttachmentsList(taskId: number, sessionToken: string, category?: string) {
-    const response = await this.openmaintService.getAttachments(taskId, sessionToken).catch(() => ({ data: [] }));
+  private async buildAttachmentsList(
+    taskId: number,
+    sessionToken: string,
+    category?: string,
+  ) {
+    const response = await this.openmaintService
+      .getAttachments(taskId, sessionToken)
+      .catch(() => ({ data: [] }));
     let attachments = (response.data ?? []).map((a) => ({
       id: a._id,
       fileName: a.fileName,
@@ -422,30 +609,81 @@ export class CleaningTasksService {
     if (category && category !== 'all') {
       attachments = attachments.filter((a) => a.category === category);
     }
-    return { success: true, data: attachments, meta: { total: attachments.length } };
-  }
-
-  async uploadAttachment(taskId: number, employeeId: number, file: UploadedFile, dto: UploadAttachmentDto, sessionToken: string) {
-    const task = await this.fetchAndValidateOwnership(taskId, employeeId, sessionToken);
-    const phaseDesc = task._phase_description ?? String(task.phase);
-    if (!ALLOWED_UPLOAD_PHASES.includes(phaseDesc)) throw new BadRequestException('Photos can only be uploaded when task is InExecution or Completed');
-    if (!ALLOWED_MIME_TYPES.includes(file.mimetype)) throw new BadRequestException('Only jpg, jpeg, png, heic files are allowed');
-    if (file.size > MAX_FILE_SIZE_BYTES) throw new BadRequestException('File size must not exceed 10MB');
-    const existing = await this.openmaintService.getAttachments(taskId, sessionToken);
-    if ((existing.data?.length ?? 0) >= MAX_ATTACHMENTS) throw new BadRequestException(`Maximum ${MAX_ATTACHMENTS} photos allowed per task`);
-    const categoryCode = dto.category ?? 'Photo';
-    const ext = file.originalname.includes('.') ? file.originalname.split('.').pop() : 'jpg';
-    const uniqueName = `${Date.now()}_${Math.random().toString(36).slice(2, 7)}.${ext}`;
-    const response = await this.openmaintService.uploadAttachment(taskId, file.buffer, uniqueName, file.mimetype, categoryCode, sessionToken);
-    const att = response?.data;
     return {
       success: true,
-      data: { id: att?._id ?? null, fileName: att?.fileName ?? uniqueName, category: categoryCode, uploadDate: att?.created ?? new Date().toISOString() },
+      data: attachments,
+      meta: { total: attachments.length },
     };
   }
 
-  async streamAttachment(taskId: number, attachmentId: string, sessionToken: string, res: any): Promise<void> {
-    const { data, contentType, fileName } = await this.openmaintService.downloadAttachment(taskId, attachmentId, sessionToken);
+  async uploadAttachment(
+    taskId: number,
+    employeeId: number,
+    file: UploadedFile,
+    dto: UploadAttachmentDto,
+    sessionToken: string,
+  ) {
+    const task = await this.fetchAndValidateOwnership(
+      taskId,
+      employeeId,
+      sessionToken,
+    );
+    const phaseDesc = task._phase_description ?? String(task.phase);
+    if (!ALLOWED_UPLOAD_PHASES.includes(phaseDesc))
+      throw new BadRequestException(
+        'Photos can only be uploaded when task is InExecution or Completed',
+      );
+    if (!ALLOWED_MIME_TYPES.includes(file.mimetype))
+      throw new BadRequestException(
+        'Only jpg, jpeg, png, heic files are allowed',
+      );
+    if (file.size > MAX_FILE_SIZE_BYTES)
+      throw new BadRequestException('File size must not exceed 10MB');
+    const existing = await this.openmaintService.getAttachments(
+      taskId,
+      sessionToken,
+    );
+    if ((existing.data?.length ?? 0) >= MAX_ATTACHMENTS)
+      throw new BadRequestException(
+        `Maximum ${MAX_ATTACHMENTS} photos allowed per task`,
+      );
+    const categoryCode = dto.category ?? 'Photo';
+    const ext = file.originalname.includes('.')
+      ? file.originalname.split('.').pop()
+      : 'jpg';
+    const uniqueName = `${Date.now()}_${Math.random().toString(36).slice(2, 7)}.${ext}`;
+    const response = await this.openmaintService.uploadAttachment(
+      taskId,
+      file.buffer,
+      uniqueName,
+      file.mimetype,
+      categoryCode,
+      sessionToken,
+    );
+    const att = response?.data;
+    return {
+      success: true,
+      data: {
+        id: att?._id ?? null,
+        fileName: att?.fileName ?? uniqueName,
+        category: categoryCode,
+        uploadDate: att?.created ?? new Date().toISOString(),
+      },
+    };
+  }
+
+  async streamAttachment(
+    taskId: number,
+    attachmentId: string,
+    sessionToken: string,
+    res: any,
+  ): Promise<void> {
+    const { data, contentType, fileName } =
+      await this.openmaintService.downloadAttachment(
+        taskId,
+        attachmentId,
+        sessionToken,
+      );
     res.setHeader('Content-Type', contentType);
     res.setHeader('Content-Disposition', `inline; filename="${fileName}"`);
     res.setHeader('Cache-Control', 'private, max-age=3600');
@@ -454,29 +692,50 @@ export class CleaningTasksService {
 
   // ─── Helpers privados ─────────────────────────────────────────────────────
 
-  private async fetchAndValidateOwnership(taskId: number, employeeId: number, sessionToken: string) {
-    const response = await this.openmaintService.getTaskById(taskId, sessionToken);
+  private async fetchAndValidateOwnership(
+    taskId: number,
+    employeeId: number,
+    sessionToken: string,
+  ) {
+    const response = await this.openmaintService.getTaskById(
+      taskId,
+      sessionToken,
+    );
     const task = response?.data;
     if (!task) throw new NotFoundException(`Tarea ${taskId} no encontrada`);
     this.validateOwnership(task.Employee, employeeId);
     return task;
   }
 
-  private validateOwnership(taskEmployee: number | undefined, employeeId: number): void {
-    if (taskEmployee !== employeeId) throw new ForbiddenException('This task is not assigned to you');
+  private validateOwnership(
+    taskEmployee: number | undefined,
+    employeeId: number,
+  ): void {
+    if (taskEmployee !== employeeId)
+      throw new ForbiddenException('This task is not assigned to you');
   }
 
-  private validatePhaseTransition(currentPhaseDesc: string, targetPhaseId: PhaseId): void {
+  private validatePhaseTransition(
+    currentPhaseDesc: string,
+    targetPhaseId: PhaseId,
+  ): void {
     const currentPhaseId = PHASE_DESC_TO_ID[currentPhaseDesc];
-    if (!currentPhaseId) throw new BadRequestException(`Unknown current phase: ${currentPhaseDesc}`);
+    if (!currentPhaseId)
+      throw new BadRequestException(
+        `Unknown current phase: ${currentPhaseDesc}`,
+      );
     const allowed = PHASE_TRANSITIONS[currentPhaseId] ?? [];
     if (!allowed.includes(targetPhaseId)) {
-      throw new BadRequestException(`Invalid phase transition from ${currentPhaseDesc} to ${PHASE_NAMES[targetPhaseId]}`);
+      throw new BadRequestException(
+        `Invalid phase transition from ${currentPhaseDesc} to ${PHASE_NAMES[targetPhaseId]}`,
+      );
     }
   }
 
   private calculateDurationMinutes(startIso: string, endIso: string): number {
-    return Math.round((new Date(endIso).getTime() - new Date(startIso).getTime()) / 60_000);
+    return Math.round(
+      (new Date(endIso).getTime() - new Date(startIso).getTime()) / 60_000,
+    );
   }
 
   // ─── Actualización directa ────────────────────────────────────────────────
@@ -491,7 +750,10 @@ export class CleaningTasksService {
     if (dto.actualEndTime) body.ActualEndTime = dto.actualEndTime;
     if (dto.observations) body.Observations = dto.observations;
     if (dto.employeeId) body.AssignedDateTime = new Date().toISOString();
-    const response = await this.openmaintService.updateCleaningTask(taskId, body);
+    const response = await this.openmaintService.updateCleaningTask(
+      taskId,
+      body,
+    );
     return { updated: true, taskId: response.data?._id ?? taskId };
   }
 }

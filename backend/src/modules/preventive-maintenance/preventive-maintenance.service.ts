@@ -147,12 +147,17 @@ export class PreventiveMaintenanceService {
         action: PM_ACTIONS.START_EXECUTION,
       });
 
-      await this.assertReachedStatus(
-        sessionId,
-        id,
+      // Se relee con la tarea activa para validar el avance y, de paso, tener
+      // el `_activity` del nuevo paso con el que sellar la hora de inicio.
+      const executing = await this.fetchCardWithTasklist(sessionId, id);
+
+      this.assertStatus(
+        executing,
         PM_STATUS_IDS.EXECUTION,
         'OpenMAINT no aplicó el inicio de ejecución del mantenimiento preventivo',
       );
+
+      await this.registerExecutionStart(sessionId, executing);
     }
 
     const updated = await this.fetchCard(sessionId, id);
@@ -207,7 +212,8 @@ export class PreventiveMaintenanceService {
       outcome: PM_OUTCOME_POSITIVE,
       notes: dto.notes?.trim() || null,
       // PM03 exige ambas fechas; sin ellas OpenMAINT responde 200, guarda los
-      // atributos y deja el proceso en ejecución sin avisar.
+      // atributos y deja el proceso en ejecución sin avisar. La de inicio es la
+      // que se selló al abrir la tarjeta; la de fin es este mismo instante.
       fields: {
         ExecStartDate: card.ExecStartDate ?? now,
         ExecEndDate: now,
@@ -325,18 +331,58 @@ export class PreventiveMaintenanceService {
     expectedStatus: number,
     reason: string,
   ): Promise<void> {
-    const card = await this.fetchCard(sessionId, id);
+    this.assertStatus(
+      await this.fetchCard(sessionId, id),
+      expectedStatus,
+      reason,
+    );
+  }
 
+  private assertStatus(
+    card: PreventiveMaintCard,
+    expectedStatus: number,
+    reason: string,
+  ): void {
     if (card.ProcessStatus === expectedStatus) {
       return;
     }
 
     this.logger.error(
-      `OpenMAINT aceptó el avance de ${card.Number ?? id} pero el proceso sigue en ` +
+      `OpenMAINT aceptó el avance de ${card.Number ?? card._id} pero el proceso sigue en ` +
         `${card._ProcessStatus_code ?? card.ProcessStatus}`,
     );
 
     throw new BadGatewayException(reason);
+  }
+
+  /**
+   * Sella la hora real en la que el técnico empezó la actividad.
+   *
+   * `ExecStartDate` no es escribible en el paso PM02, así que no puede viajar
+   * en el mismo PUT que el avance: OpenMAINT lo rellena por su cuenta al entrar
+   * en PM03 con la fecha *prevista* (`ExpExecStartDate`), que no sirve al
+   * supervisor. Por eso se sobrescribe justo después con un guardado sin
+   * avance, ya dentro de PM03, donde el atributo sí es escribible.
+   *
+   * Es un dato de bitácora: si el guardado falla no se interrumpe al técnico,
+   * que ya tiene el mantenimiento en ejecución. Queda el error en el log y el
+   * cierre volverá a enviar una fecha de inicio válida.
+   */
+  private async registerExecutionStart(
+    sessionId: string,
+    card: PreventiveMaintCard,
+  ): Promise<void> {
+    try {
+      await this.openmaint.saveFields(sessionId, card._id, {
+        activityId: this.requireActivityId(card),
+        fields: { ExecStartDate: new Date().toISOString() },
+      });
+    } catch (error) {
+      this.logger.error(
+        `No se pudo registrar la hora de inicio del mantenimiento ${card.Number ?? card._id}`,
+        error,
+      );
+    }
   }
 
   /** `_id` de la tarea activa del flujo, necesario para avanzarlo. */

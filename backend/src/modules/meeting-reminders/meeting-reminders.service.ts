@@ -165,7 +165,9 @@ export class MeetingRemindersService {
       this.logger.log(
         `[meeting-reminders] Reunión #${meeting._id} ("${meeting.Asunto}") → ` +
           `${recipients.length} destinatario(s)` +
-          (dryRun ? ' [dryRun, sin envío]' : ` — enviados:${sent} fallidos:${failed}`),
+          (dryRun
+            ? ' [dryRun, sin envío]'
+            : ` — enviados:${sent} fallidos:${failed}`),
       );
 
       details.push({

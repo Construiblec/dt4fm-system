@@ -70,9 +70,7 @@ export class NotificationsService {
     });
 
     if (uniqueRecipients.length === 0) {
-      this.logger.warn(
-        'Envio masivo sin destinatarios validos',
-      );
+      this.logger.warn('Envio masivo sin destinatarios validos');
       throw new NotFoundException('No hay destinatarios validos para enviar');
     }
 
@@ -406,4 +404,3 @@ export class NotificationsService {
     return response.data._id;
   }
 }
-

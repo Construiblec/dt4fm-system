@@ -28,7 +28,10 @@ export class SendBulkDto {
 
   @IsArray()
   @ArrayMinSize(1, { message: 'Debe haber al menos un destinatario' })
-  @IsEmail({}, { each: true, message: 'Cada destinatario debe ser un email válido' })
+  @IsEmail(
+    {},
+    { each: true, message: 'Cada destinatario debe ser un email válido' },
+  )
   recipients: string[];
 
   @IsOptional()

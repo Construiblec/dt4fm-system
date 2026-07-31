@@ -65,8 +65,8 @@ export class SmtpMailProvider implements MailProvider {
       secure,
       requireTLS: !secure, // STARTTLS obligatorio cuando no es SSL directo
       connectionTimeout: 10_000, // 10 segundos para abrir la conexión TCP
-      greetingTimeout: 10_000,   // 10 segundos para recibir el greeting SMTP
-      socketTimeout: 15_000,     // 15 segundos de inactividad máxima
+      greetingTimeout: 10_000, // 10 segundos para recibir el greeting SMTP
+      socketTimeout: 15_000, // 15 segundos de inactividad máxima
       auth: user && pass ? { user, pass } : undefined,
       tls: {
         rejectUnauthorized: false, // tolera certificados auto-firmados en dev
@@ -92,7 +92,9 @@ export class SmtpMailProvider implements MailProvider {
         replyTo: message.replyTo,
       });
 
-      this.logger.log(`[SMTP] Correo enviado correctamente a ${message.to} (messageId=${info.messageId})`);
+      this.logger.log(
+        `[SMTP] Correo enviado correctamente a ${message.to} (messageId=${info.messageId})`,
+      );
 
       return {
         to: message.to,

@@ -170,6 +170,12 @@ export type AdvanceOptions = {
   fields?: Record<string, unknown>;
 };
 
+export type SaveFieldsOptions = {
+  /** `_id` de la tarea activa (`_tasklist[0]._id`) */
+  activityId: string;
+  fields: Record<string, unknown>;
+};
+
 const INSTANCES_PATH = `/processes/${PREVENTIVE_MAINT_PROCESS}/instances`;
 
 /**
@@ -259,6 +265,29 @@ export class PreventiveMaintenanceOpenmaintService {
     }
 
     return this.client.put(`${INSTANCES_PATH}/${id}`, body, sessionId);
+  }
+
+  /**
+   * Guarda atributos del paso actual sin avanzar el flujo, el equivalente al
+   * botón «Guardar» de OpenMAINT. Solo admite los atributos que el paso declara
+   * como escribibles; el resto se ignora en silencio.
+   */
+  async saveFields(
+    sessionId: string,
+    id: number,
+    { activityId, fields }: SaveFieldsOptions,
+  ): Promise<unknown> {
+    return this.client.put(
+      `${INSTANCES_PATH}/${id}`,
+      {
+        _id: id,
+        _type: PREVENTIVE_MAINT_PROCESS,
+        _activity: activityId,
+        _advance: false,
+        ...fields,
+      },
+      sessionId,
+    );
   }
 
   async findAttachments(

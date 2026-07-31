@@ -8,7 +8,11 @@ import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { AxiosError, AxiosRequestConfig, AxiosResponse } from 'axios';
 import { firstValueFrom } from 'rxjs';
-import { getMockCheckouts, HostawayCheckoutsResponse, HostawayBillingReservation } from './hostaway.mock';
+import {
+  getMockCheckouts,
+  HostawayCheckoutsResponse,
+  HostawayBillingReservation,
+} from './hostaway.mock';
 
 interface TokenCache {
   accessToken: string;
@@ -64,7 +68,11 @@ export class HostawayService {
       axiosError.response?.data?.error_description ??
       axiosError.response?.data?.message;
 
-    return [status ? `status=${status}` : null, code ? `code=${code}` : null, apiMessage]
+    return [
+      status ? `status=${status}` : null,
+      code ? `code=${code}` : null,
+      apiMessage,
+    ]
       .filter(Boolean)
       .join(' | ');
   }
@@ -124,7 +132,9 @@ export class HostawayService {
     }
 
     const rawClientId = this.configService.get<string>('HOSTAWAY_CLIENT_ID');
-    const rawClientSecret = this.configService.get<string>('HOSTAWAY_CLIENT_SECRET');
+    const rawClientSecret = this.configService.get<string>(
+      'HOSTAWAY_CLIENT_SECRET',
+    );
     const clientId = rawClientId?.trim();
     const clientSecret = rawClientSecret?.trim();
 
@@ -193,7 +203,8 @@ export class HostawayService {
     dateFrom: string,
     dateTo: string,
   ): Promise<HostawayCheckoutsResponse> {
-    const useMock = this.configService.get<string>('HOSTAWAY_USE_MOCK') === 'true';
+    const useMock =
+      this.configService.get<string>('HOSTAWAY_USE_MOCK') === 'true';
 
     if (useMock) {
       this.logger.warn('[MOCK] Usando datos de prueba de Hostaway');
@@ -202,7 +213,9 @@ export class HostawayService {
 
     const token = await this.getAccessToken();
 
-    this.logger.log(`Consultando checkouts Hostaway [${dateFrom} -> ${dateTo}]`);
+    this.logger.log(
+      `Consultando checkouts Hostaway [${dateFrom} -> ${dateTo}]`,
+    );
 
     const response = await this.performRequest<{
       result?: unknown[];
@@ -222,7 +235,6 @@ export class HostawayService {
       ),
     );
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const rawReservations: any[] = response.data?.result ?? [];
 
     // Filtro 1: solo reservas cuya departureDate esté en el rango solicitado
@@ -260,14 +272,18 @@ export class HostawayService {
    * Filtra por paymentStatus=Paid y status válidos.
    * Usa cursor-based pagination con afterId para recorrer todos los resultados.
    */
-  async getReservationsByArrivalDate(date: string): Promise<HostawayBillingReservation[]> {
+  async getReservationsByArrivalDate(
+    date: string,
+  ): Promise<HostawayBillingReservation[]> {
     const token = await this.getAccessToken();
     const VALID_BILLING_STATUSES = ['new', 'modified', 'confirmed'];
     const allReservations: HostawayBillingReservation[] = [];
     let afterId: number | undefined = undefined;
     let page = 1;
 
-    this.logger.log(`[Billing] Consultando reservaciones para facturar arrivalDate=${date}`);
+    this.logger.log(
+      `[Billing] Consultando reservaciones para facturar arrivalDate=${date}`,
+    );
 
     do {
       const params: Record<string, unknown> = {
@@ -294,7 +310,6 @@ export class HostawayService {
         ),
       );
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const rawBatch: any[] = response.data?.result ?? [];
 
       const filtered = rawBatch.filter(
