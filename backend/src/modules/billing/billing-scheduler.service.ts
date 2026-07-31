@@ -93,7 +93,9 @@ export class BillingSchedulerService implements OnModuleInit, OnModuleDestroy {
         this.logger.warn(`Errores encontrados:\n${result.errors.join('\n')}`);
       }
     } catch (error) {
-      this.logger.error(`Facturacion diaria fallida: ${(error as Error).message}`);
+      this.logger.error(
+        `Facturacion diaria fallida: ${(error as Error).message}`,
+      );
     }
   }
 }

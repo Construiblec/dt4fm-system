@@ -124,7 +124,10 @@ export class OpenmaintService {
     try {
       return await this.client.get(path, sessionId);
     } catch (error) {
-      const errorMsg = error.response?.data?.messages?.[0]?.message || error.response?.data?.message || error.message;
+      const errorMsg =
+        error.response?.data?.messages?.[0]?.message ||
+        error.response?.data?.message ||
+        error.message;
       console.error(`Error al consultar incidentes en OpenMAINT: ${errorMsg}`);
       throw new BadGatewayException(
         `Error al consultar incidentes: ${errorMsg}`,
@@ -244,14 +247,17 @@ export class OpenmaintService {
     }
   }
 
-  async getEmployeeCard(
-    employeeId: number,
-    sessionId: string,
-  ): Promise<any> {
+  async getEmployeeCard(employeeId: number, sessionId: string): Promise<any> {
     try {
-      return await this.client.get(`/classes/Employee/cards/${employeeId}`, sessionId);
+      return await this.client.get(
+        `/classes/Employee/cards/${employeeId}`,
+        sessionId,
+      );
     } catch (error) {
-      console.error(`[OpenMAINT] Error al obtener ficha de empleado ${employeeId}:`, error?.message);
+      console.error(
+        `[OpenMAINT] Error al obtener ficha de empleado ${employeeId}:`,
+        error?.message,
+      );
       return null;
     }
   }
@@ -318,14 +324,20 @@ export class OpenmaintService {
     sessionId: string,
   ): Promise<{ _id: number; username: string }> {
     try {
-      console.log('[OpenMAINT] createOwnerUser - payload:', JSON.stringify({ ...body, password: '***' }));
+      console.log(
+        '[OpenMAINT] createOwnerUser - payload:',
+        JSON.stringify({ ...body, password: '***' }),
+      );
 
-      const response = await this.client.post('/users', body, sessionId) as {
+      const response = (await this.client.post('/users', body, sessionId)) as {
         success?: boolean;
         data?: { _id: number; username: string };
       };
 
-      console.log('[OpenMAINT] createOwnerUser - response:', JSON.stringify(response));
+      console.log(
+        '[OpenMAINT] createOwnerUser - response:',
+        JSON.stringify(response),
+      );
 
       if (!response?.data?._id) {
         throw new InternalServerErrorException(

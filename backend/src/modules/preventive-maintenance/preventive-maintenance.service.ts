@@ -1,23 +1,40 @@
 import {
   BadGatewayException,
+  BadRequestException,
+  ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { extractRegisterNotes } from '../../common/utils/openmaint-register.util';
 import {
+  PM_ACTIONS,
+  PM_ACTIVE_STATUS_IDS,
+  PM_OUTCOME_POSITIVE,
   PM_STATUS_CODE_TO_NAME,
+  PM_STATUS_IDS,
   PM_STATUS_NAME_TO_ID,
 } from './constants/preventive-maint.constants';
+import { CompletePreventiveMaintenanceDto } from './dto/complete-preventive-maintenance.dto';
 import { GetMyPreventiveMaintenancesQueryDto } from './dto/get-my-preventive-maintenances-query.dto';
+import {
+  ChecklistAnswer,
+  PreventiveChecklistItem,
+  PreventiveChecklistService,
+} from './preventive-checklist.service';
 import {
   PreventiveMaintAttachment,
   PreventiveMaintAttachmentPreviewResponse,
   PreventiveMaintCard,
   PreventiveMaintenanceOpenmaintService,
+  UploadedImage,
 } from './preventive-maintenance.openmaint.service';
 
 const IMAGE_FILE_REGEX = /\.(png|jpg|jpeg|webp)$/i;
+
+const LOCK_RETRIES = 3;
+const LOCK_RETRY_DELAY_MS = 300;
 
 /** Contrato público de un mantenimiento preventivo en el listado. */
 export type PreventiveMaintenance = {
@@ -47,12 +64,19 @@ export type PreventiveMaintenance = {
 export type PreventiveMaintenanceDetail = PreventiveMaintenance & {
   notes: string | null;
   images: string[];
+  /** El técnico puede cerrarlo (está en ejecución) */
+  canComplete: boolean;
+  /** Actividades a ejecutar; el cierre exige tenerlas todas resueltas */
+  checklist: PreventiveChecklistItem[];
 };
 
 @Injectable()
 export class PreventiveMaintenanceService {
+  private readonly logger = new Logger(PreventiveMaintenanceService.name);
+
   constructor(
     private readonly openmaint: PreventiveMaintenanceOpenmaintService,
+    private readonly checklist: PreventiveChecklistService,
   ) {}
 
   async getMyPreventiveMaintenances(
@@ -62,9 +86,12 @@ export class PreventiveMaintenanceService {
   ) {
     const limit = query.limit ?? 50;
     const offset = query.offset ?? 0;
-    const statusId = query.status
-      ? PM_STATUS_NAME_TO_ID[query.status]
-      : undefined;
+
+    // Sin filtro explícito se muestran solo los pendientes de atender; los
+    // completados y cancelados desaparecen del dashboard por sí solos.
+    const statusIds = query.status
+      ? [PM_STATUS_NAME_TO_ID[query.status]]
+      : PM_ACTIVE_STATUS_IDS;
 
     let response: Awaited<
       ReturnType<PreventiveMaintenanceOpenmaintService['findByAssignee']>
@@ -74,7 +101,7 @@ export class PreventiveMaintenanceService {
       response = await this.openmaint.findByAssignee(sessionId, employeeId, {
         limit,
         offset,
-        statusId,
+        statusIds,
       });
     } catch (error) {
       this.throwIfSessionExpired(error);
@@ -98,10 +125,160 @@ export class PreventiveMaintenanceService {
   }
 
   async getPreventiveMaintenanceDetail(sessionId: string, id: number) {
+    const card = await this.fetchCard(sessionId, id);
+
+    return { success: true, data: await this.toDetail(sessionId, card) };
+  }
+
+  /**
+   * Abre el mantenimiento para el técnico: si está en Aceptación lo avanza a
+   * Ejecución en OpenMAINT. Es idempotente — si ya está en ejecución o cerrado
+   * simplemente devuelve el detalle sin tocar el flujo.
+   */
+  async startExecution(sessionId: string, id: number) {
+    const card = await this.fetchCardWithTasklist(sessionId, id);
+
+    if (card.ProcessStatus === PM_STATUS_IDS.ACCEPTANCE) {
+      const activityId = this.requireActivityId(card);
+
+      this.logger.log(
+        `Iniciando ejecución del mantenimiento preventivo ${card.Number ?? id}`,
+      );
+
+      if (await this.advanceToExecution(sessionId, id, activityId)) {
+        // La relectura valida el avance y da el `_activity` de PM03
+        const executing = await this.fetchCardWithTasklist(sessionId, id);
+
+        this.assertStatus(
+          executing,
+          PM_STATUS_IDS.EXECUTION,
+          'OpenMAINT no aplicó el inicio de ejecución del mantenimiento preventivo',
+        );
+
+        await this.registerExecutionStart(sessionId, executing);
+      }
+    }
+
+    const updated = await this.fetchCard(sessionId, id);
+
+    return { success: true, data: await this.toDetail(sessionId, updated) };
+  }
+
+  /** Guarda las respuestas del checklist y devuelve su estado actualizado. */
+  async savePreventiveChecklist(
+    sessionId: string,
+    id: number,
+    answers: ChecklistAnswer[],
+  ) {
+    // Valida que el mantenimiento exista y sea accesible antes de escribir
+    await this.fetchCard(sessionId, id);
+
+    const checklist = await this.checklist.saveChecklist(
+      sessionId,
+      id,
+      answers,
+    );
+
+    return { success: true, data: { checklist } };
+  }
+
+  /** Cierra el mantenimiento (Ejecución → Completado) con notas y evidencia. */
+  async completePreventiveMaintenance(
+    sessionId: string,
+    id: number,
+    dto: CompletePreventiveMaintenanceDto,
+    file?: UploadedImage,
+  ) {
+    const card = await this.fetchCardWithTasklist(sessionId, id);
+
+    if (card.ProcessStatus !== PM_STATUS_IDS.EXECUTION) {
+      throw new ConflictException(
+        'Solo se puede finalizar un mantenimiento preventivo en ejecución',
+      );
+    }
+
+    // OpenMAINT bloquea el cierre mientras queden actividades sin resolver, y
+    // lo hace respondiendo 200 sin avanzar. Comprobarlo antes permite dar un
+    // 409 accionable en lugar de un fallo opaco.
+    await this.checklist.assertComplete(sessionId, id);
+
+    const activityId = this.requireActivityId(card);
+    const now = new Date().toISOString();
+
+    await this.runAdvance(sessionId, id, {
+      activityId,
+      action: PM_ACTIONS.CONCLUDE,
+      outcome: PM_OUTCOME_POSITIVE,
+      notes: dto.notes?.trim() || null,
+      // PM03 exige ambas fechas; sin ellas OpenMAINT responde 200, guarda los
+      // atributos y deja el proceso en ejecución sin avisar. La de inicio es la
+      // que se selló al abrir la tarjeta; la de fin es este mismo instante.
+      fields: {
+        ExecStartDate: card.ExecStartDate ?? now,
+        ExecEndDate: now,
+      },
+    });
+
+    // OpenMAINT bloquea el cierre mientras queden actividades del checklist
+    // (`PrevMaintTasks.Data`) sin resultado, y lo hace respondiendo 200 sin
+    // avanzar. Hasta que la app permita rellenar el checklist, ese es el
+    // motivo más probable de que el cierre no se aplique.
+    await this.assertReachedStatus(
+      sessionId,
+      id,
+      PM_STATUS_IDS.COMPLETED,
+      'OpenMAINT no aplicó el cierre. Revisa que el checklist del ' +
+        'mantenimiento tenga todas sus actividades resueltas.',
+    );
+
+    // La evidencia es complementaria: si falla, el cierre ya está registrado.
+    if (file) {
+      try {
+        await this.openmaint.uploadAttachment(sessionId, id, file);
+      } catch (error) {
+        this.logger.error(
+          `No se pudo subir la evidencia del mantenimiento ${id}`,
+          error,
+        );
+      }
+    }
+
+    return {
+      success: true,
+      message: 'Mantenimiento preventivo completado correctamente',
+    };
+  }
+
+  // ── Acceso a OpenMAINT ─────────────────────────────────────────────────────
+
+  private async fetchCard(
+    sessionId: string,
+    id: number,
+  ): Promise<PreventiveMaintCard> {
+    return this.unwrapCard(
+      () => this.openmaint.findById(sessionId, id),
+      'Error al consultar el mantenimiento preventivo en OpenMAINT',
+    );
+  }
+
+  private async fetchCardWithTasklist(
+    sessionId: string,
+    id: number,
+  ): Promise<PreventiveMaintCard> {
+    return this.unwrapCard(
+      () => this.openmaint.findWithTasklist(sessionId, id),
+      'Error al obtener la actividad actual del mantenimiento en OpenMAINT',
+    );
+  }
+
+  private async unwrapCard(
+    fetch: () => Promise<{ data?: PreventiveMaintCard }>,
+    gatewayMessage: string,
+  ): Promise<PreventiveMaintCard> {
     let card: PreventiveMaintCard | undefined;
 
     try {
-      const response = await this.openmaint.findById(sessionId, id);
+      const response = await fetch();
       card = response.data;
     } catch (error) {
       this.throwIfSessionExpired(error);
@@ -115,22 +292,182 @@ export class PreventiveMaintenanceService {
         throw new NotFoundException('Mantenimiento preventivo no encontrado');
       }
 
-      throw new BadGatewayException(
-        'Error al consultar el mantenimiento preventivo en OpenMAINT',
-      );
+      throw new BadGatewayException(gatewayMessage);
     }
 
     if (!card) {
       throw new NotFoundException('Mantenimiento preventivo no encontrado');
     }
 
-    const detail: PreventiveMaintenanceDetail = {
+    return card;
+  }
+
+  /**
+   * Avanza de Aceptación a Ejecución. Dos peticiones a la vez compiten por el
+   * bloqueo del proceso en OpenMAINT y una falla; si la otra ya dejó el
+   * mantenimiento en ejecución, el resultado buscado está conseguido.
+   *
+   * @returns `true` si fue esta petición la que avanzó, y por tanto la que debe
+   * sellar la hora de inicio.
+   */
+  private async advanceToExecution(
+    sessionId: string,
+    id: number,
+    activityId: string,
+  ): Promise<boolean> {
+    try {
+      await this.runAdvance(sessionId, id, {
+        activityId,
+        action: PM_ACTIONS.START_EXECUTION,
+      });
+
+      return true;
+    } catch (error) {
+      if (error instanceof UnauthorizedException) {
+        throw error;
+      }
+
+      if (!(await this.waitUntilExecuting(sessionId, id))) {
+        throw error;
+      }
+
+      this.logger.warn(
+        `El avance de ${id} falló pero otra petición simultánea ya lo dejó en ejecución`,
+      );
+
+      return false;
+    }
+  }
+
+  /**
+   * Espera a que la petición que ganó el bloqueo confirme el avance: cuando la
+   * nuestra falla, la suya todavía puede estar sin escribir.
+   */
+  private async waitUntilExecuting(
+    sessionId: string,
+    id: number,
+  ): Promise<boolean> {
+    for (let attempt = 0; attempt < LOCK_RETRIES; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, LOCK_RETRY_DELAY_MS));
+
+      const card = await this.fetchCard(sessionId, id);
+
+      if (card.ProcessStatus === PM_STATUS_IDS.EXECUTION) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  private async runAdvance(
+    sessionId: string,
+    id: number,
+    options: Parameters<PreventiveMaintenanceOpenmaintService['advance']>[2],
+  ): Promise<void> {
+    try {
+      await this.openmaint.advance(sessionId, id, options);
+    } catch (error) {
+      this.throwIfSessionExpired(error);
+
+      throw new BadGatewayException(
+        'Error al avanzar el mantenimiento preventivo en OpenMAINT',
+      );
+    }
+  }
+
+  /**
+   * OpenMAINT responde 200 a un `_advance` aunque no avance (por ejemplo si
+   * falta un atributo obligatorio del paso): guarda los atributos y deja el
+   * proceso donde estaba. Sin esta comprobación le diríamos al técnico que su
+   * mantenimiento quedó cerrado cuando en realidad sigue abierto.
+   */
+  private async assertReachedStatus(
+    sessionId: string,
+    id: number,
+    expectedStatus: number,
+    reason: string,
+  ): Promise<void> {
+    this.assertStatus(
+      await this.fetchCard(sessionId, id),
+      expectedStatus,
+      reason,
+    );
+  }
+
+  private assertStatus(
+    card: PreventiveMaintCard,
+    expectedStatus: number,
+    reason: string,
+  ): void {
+    if (card.ProcessStatus === expectedStatus) {
+      return;
+    }
+
+    this.logger.error(
+      `OpenMAINT aceptó el avance de ${card.Number ?? card._id} pero el proceso sigue en ` +
+        `${card._ProcessStatus_code ?? card.ProcessStatus}`,
+    );
+
+    throw new BadGatewayException(reason);
+  }
+
+  /**
+   * Sella la hora real de inicio. `ExecStartDate` solo es escribible en PM03,
+   * así que no puede viajar con el avance: OpenMAINT lo rellena al entrar con
+   * la fecha *prevista* y aquí se sobrescribe con la real.
+   *
+   * Un fallo no interrumpe al técnico —el mantenimiento ya está en ejecución— y
+   * el cierre volverá a enviar una fecha de inicio válida.
+   */
+  private async registerExecutionStart(
+    sessionId: string,
+    card: PreventiveMaintCard,
+  ): Promise<void> {
+    try {
+      await this.openmaint.saveFields(sessionId, card._id, {
+        activityId: this.requireActivityId(card),
+        fields: { ExecStartDate: new Date().toISOString() },
+      });
+    } catch (error) {
+      this.logger.error(
+        `No se pudo registrar la hora de inicio del mantenimiento ${card.Number ?? card._id}`,
+        error,
+      );
+    }
+  }
+
+  /** `_id` de la tarea activa del flujo, necesario para avanzarlo. */
+  private requireActivityId(card: PreventiveMaintCard): string {
+    const activityId = card._tasklist?.[0]?._id;
+
+    if (!activityId) {
+      throw new BadRequestException(
+        'El mantenimiento preventivo no tiene una actividad disponible',
+      );
+    }
+
+    return activityId;
+  }
+
+  // ── Mapeo al contrato público ──────────────────────────────────────────────
+
+  private async toDetail(
+    sessionId: string,
+    card: PreventiveMaintCard,
+  ): Promise<PreventiveMaintenanceDetail> {
+    const [images, checklist] = await Promise.all([
+      this.getAttachmentImages(sessionId, card._id),
+      this.checklist.getChecklist(sessionId, card._id),
+    ]);
+
+    return {
       ...this.toPreventiveMaintenance(card),
       notes: extractRegisterNotes(card.Register ?? card._Register_html ?? null),
-      images: await this.getAttachmentImages(sessionId, id),
+      images,
+      canComplete: card.ProcessStatus === PM_STATUS_IDS.EXECUTION,
+      checklist,
     };
-
-    return { success: true, data: detail };
   }
 
   /** Traduce una instancia de OpenMAINT al contrato público del módulo. */
@@ -216,6 +553,8 @@ export class PreventiveMaintenanceService {
       )
       .map((result) => result.value.data!.dataUrl!);
   }
+
+  // ── Errores ────────────────────────────────────────────────────────────────
 
   /**
    * Propaga el 401 de OpenMAINT tal cual en lugar de enmascararlo como 502.

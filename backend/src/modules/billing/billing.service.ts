@@ -45,7 +45,8 @@ export class BillingService {
     };
 
     // 1. Obtener reservaciones del dia desde Hostaway
-    const reservations = await this.hostawayService.getReservationsByArrivalDate(date);
+    const reservations =
+      await this.hostawayService.getReservationsByArrivalDate(date);
     result.total = reservations.length;
 
     if (reservations.length === 0) {
@@ -109,7 +110,8 @@ export class BillingService {
     let facturaError = '';
 
     try {
-      const facturaResponse = await this.contificoService.createDocumento(payload);
+      const facturaResponse =
+        await this.contificoService.createDocumento(payload);
       contificoId = facturaResponse.id;
       contificoDocumento = facturaResponse.documento;
       this.logger.log(
@@ -150,8 +152,10 @@ export class BillingService {
   private buildContificoPayload(
     r: HostawayBillingReservation,
   ): ContificoCreateDocumentoDto {
-    const posToken = this.configService.get<string>('CONTIFICO_POS_TOKEN') ?? '';
-    const productoId = this.configService.get<string>('CONTIFICO_PRODUCTO_ID') ?? '';
+    const posToken =
+      this.configService.get<string>('CONTIFICO_POS_TOKEN') ?? '';
+    const productoId =
+      this.configService.get<string>('CONTIFICO_PRODUCTO_ID') ?? '';
 
     const fechaEmision = new Date().toLocaleDateString('es-EC', {
       day: '2-digit',

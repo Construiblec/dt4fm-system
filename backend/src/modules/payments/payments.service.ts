@@ -34,7 +34,9 @@ export class PaymentsService {
   async generateMonthlyPayments(
     periodo: string,
   ): Promise<PaymentsGenerationResult> {
-    this.logger.log(`[Payments] Iniciando verificacion para periodo ${periodo}`);
+    this.logger.log(
+      `[Payments] Iniciando verificacion para periodo ${periodo}`,
+    );
 
     const result: PaymentsGenerationResult = {
       periodo,
@@ -81,7 +83,10 @@ export class PaymentsService {
       return result;
     }
 
-    const pagosExistentes = await this.repo.getPagosDelPeriodo(periodo, sessionId);
+    const pagosExistentes = await this.repo.getPagosDelPeriodo(
+      periodo,
+      sessionId,
+    );
     this.logger.log(
       `[Payments] Pagos existentes para ${periodo}: ${pagosExistentes.length}`,
     );

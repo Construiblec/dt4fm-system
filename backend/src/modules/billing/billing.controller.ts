@@ -23,7 +23,9 @@ export class BillingController {
    */
   @Post('run')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Iniciar manualmente el proceso de facturación diaria' })
+  @ApiOperation({
+    summary: 'Iniciar manualmente el proceso de facturación diaria',
+  })
   @ApiBody({
     required: false,
     schema: {
@@ -31,7 +33,8 @@ export class BillingController {
       properties: {
         date: {
           type: 'string',
-          description: 'Fecha a facturar (YYYY-MM-DD). Por defecto se utiliza la fecha actual.',
+          description:
+            'Fecha a facturar (YYYY-MM-DD). Por defecto se utiliza la fecha actual.',
           example: '2026-06-03',
         },
       },

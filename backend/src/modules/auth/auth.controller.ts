@@ -10,7 +10,11 @@ export class AuthController {
 
   @Post('login')
   @ApiOperation({ summary: 'Iniciar sesión' })
-  @ApiResponse({ status: 200, description: 'Autenticación exitosa. Retorna el token de sesión y datos básicos del usuario.' })
+  @ApiResponse({
+    status: 200,
+    description:
+      'Autenticación exitosa. Retorna el token de sesión y datos básicos del usuario.',
+  })
   @ApiResponse({ status: 401, description: 'Credenciales incorrectas.' })
   async login(@Body() dto: LoginDto) {
     return this.authService.login(dto);

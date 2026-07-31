@@ -1,5 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
+import FormData from 'form-data';
 import { OpenmaintClient } from '../../integrations/openmaint/openmaint.client';
+import {
+  PREV_MAINT_TASK_CLASS,
+  PREV_MAINT_TASKS_CLASS,
+} from './constants/checklist.constants';
 import {
   PmStatusId,
   PREVENTIVE_MAINT_PROCESS,
@@ -41,6 +46,16 @@ export type PreventiveMaintCard = {
   /** Bitácora en HTML. OpenMAINT la expone como `Register` y/o `_Register_html`. */
   Register?: string | null;
   _Register_html?: string | null;
+  /** Presente solo si se pide `include_tasklist=true` */
+  _tasklist?: PreventiveMaintTask[];
+};
+
+export type PreventiveMaintTask = {
+  _id: string;
+  _definition?: string;
+  description?: string;
+  writable?: boolean;
+  performer?: string;
 };
 
 export type PreventiveMaintCardsResponse = {
@@ -72,10 +87,93 @@ export type PreventiveMaintAttachmentPreviewResponse = {
   };
 };
 
+export type UploadedImage = {
+  buffer: Buffer;
+  originalname: string;
+  mimetype: string;
+};
+
+/**
+ * Actividad del checklist tal como viaja dentro del campo `Data` (un string
+ * JSON) de la tarjeta `PrevMaintTasks`.
+ *
+ * El índice de firma preserva las claves que OpenMAINT añade y que la app no
+ * interpreta: al guardar hay que devolverlas intactas o el registro se rompe.
+ */
+export type ChecklistRawItem = {
+  TaskDef: number;
+  Type: number;
+  ExecOrder: number;
+  Outcome: string | number | null;
+  ND: boolean;
+  Modified: boolean;
+  _TaskDef_description?: string | null;
+  _CI_description?: string | null;
+  [key: string]: unknown;
+};
+
+export type ChecklistCard = {
+  _id: number;
+  MaintProcess?: number;
+  /** Array de `ChecklistRawItem` serializado */
+  Data?: string | null;
+};
+
+export type ChecklistCardsResponse = {
+  success?: boolean;
+  data?: ChecklistCard[];
+};
+
+export type TaskDefinitionResponse = {
+  success?: boolean;
+  data?: {
+    _id: number;
+    Type?: number | null;
+    LookupType?: number | null;
+    /** Nombre del lookup a consultar, p. ej. `COMMON - Currency` */
+    _LookupType_description?: string | null;
+  };
+};
+
+export type LookupValue = {
+  _id: number;
+  code?: string | null;
+  description?: string | null;
+  _description_translation?: string | null;
+  active?: boolean;
+};
+
+export type LookupValuesResponse = {
+  success?: boolean;
+  data?: LookupValue[];
+};
+
 export type FindByAssigneeOptions = {
   limit: number;
   offset: number;
-  statusId?: PmStatusId;
+  /** Estados a incluir. Vacío o ausente = sin filtro por estado. */
+  statusIds?: PmStatusId[];
+};
+
+export type AdvanceOptions = {
+  /** `_id` de la tarea activa (`_tasklist[0]._id`) */
+  activityId: string;
+  /** Código del lookup `Process - Action`, p. ej. `PM02-Advance` */
+  action: string;
+  outcome?: number;
+  notes?: string | null;
+  /**
+   * Atributos obligatorios del paso. OpenMAINT responde 200 y guarda los
+   * atributos pero NO avanza el flujo si falta alguno (p. ej. `ExecEndDate`
+   * en PM03).
+   */
+  fields?: Record<string, unknown>;
+};
+
+export type SaveFieldsOptions = {
+  /** `_id` de la tarea activa (`_tasklist[0]._id`) */
+  activityId: string;
+  fields: Record<string, unknown>;
 };
 
 const INSTANCES_PATH = `/processes/${PREVENTIVE_MAINT_PROCESS}/instances`;
@@ -98,7 +196,7 @@ export class PreventiveMaintenanceOpenmaintService {
   async findByAssignee(
     sessionId: string,
     employeeId: number,
-    { limit, offset, statusId }: FindByAssigneeOptions,
+    { limit, offset, statusIds }: FindByAssigneeOptions,
   ): Promise<PreventiveMaintCardsResponse> {
     const params = new URLSearchParams({
       include_tasklist: 'false',
@@ -106,12 +204,14 @@ export class PreventiveMaintenanceOpenmaintService {
       start: String(offset),
       limit: String(limit),
       sort: JSON.stringify([{ property: 'Sorting', direction: 'DESC' }]),
-      filter: JSON.stringify(this.buildAssigneeFilter(employeeId, statusId)),
+      filter: JSON.stringify(this.buildAssigneeFilter(employeeId, statusIds)),
     });
 
     this.logger.log(
       `Consultando mantenimientos preventivos de Assignee=${employeeId}` +
-        (statusId ? ` con ProcessStatus=${statusId}` : ''),
+        (statusIds?.length
+          ? ` con ProcessStatus in [${statusIds.join(',')}]`
+          : ''),
     );
 
     return (await this.client.get(
@@ -128,6 +228,65 @@ export class PreventiveMaintenanceOpenmaintService {
       `${INSTANCES_PATH}/${id}`,
       sessionId,
     )) as PreventiveMaintCardResponse;
+  }
+
+  /** Instancia junto a su tarea activa, necesaria para avanzar el flujo. */
+  async findWithTasklist(
+    sessionId: string,
+    id: number,
+  ): Promise<PreventiveMaintCardResponse> {
+    return (await this.client.get(
+      `${INSTANCES_PATH}/${id}?include_tasklist=true`,
+      sessionId,
+    )) as PreventiveMaintCardResponse;
+  }
+
+  /** Ejecuta una acción del flujo de trabajo sobre la tarea activa. */
+  async advance(
+    sessionId: string,
+    id: number,
+    { activityId, action, outcome, notes, fields }: AdvanceOptions,
+  ): Promise<unknown> {
+    const body: Record<string, unknown> = {
+      _id: id,
+      _type: PREVENTIVE_MAINT_PROCESS,
+      _activity: activityId,
+      _advance: true,
+      Action: action,
+      ...fields,
+    };
+
+    if (outcome !== undefined) {
+      body.Outcome = outcome;
+    }
+
+    if (notes !== undefined) {
+      body.ProcessNotes = notes;
+    }
+
+    return this.client.put(`${INSTANCES_PATH}/${id}`, body, sessionId);
+  }
+
+  /**
+   * Guarda atributos del paso actual sin avanzar el flujo (el botón «Guardar»
+   * de OpenMAINT). Ignora en silencio los que el paso no declare escribibles.
+   */
+  async saveFields(
+    sessionId: string,
+    id: number,
+    { activityId, fields }: SaveFieldsOptions,
+  ): Promise<unknown> {
+    return this.client.put(
+      `${INSTANCES_PATH}/${id}`,
+      {
+        _id: id,
+        _type: PREVENTIVE_MAINT_PROCESS,
+        _activity: activityId,
+        _advance: false,
+        ...fields,
+      },
+      sessionId,
+    );
   }
 
   async findAttachments(
@@ -151,15 +310,110 @@ export class PreventiveMaintenanceOpenmaintService {
     )) as PreventiveMaintAttachmentPreviewResponse;
   }
 
+  async uploadAttachment(
+    sessionId: string,
+    id: number,
+    file: UploadedImage,
+  ): Promise<unknown> {
+    const formData = new FormData();
+
+    formData.append('file', file.buffer, {
+      filename: file.originalname,
+      contentType: file.mimetype,
+    });
+    formData.append(
+      'attachment',
+      JSON.stringify({ fileName: file.originalname, majorVersion: true }),
+    );
+
+    return this.client.post(
+      `${INSTANCES_PATH}/${id}/attachments`,
+      formData,
+      sessionId,
+      { headers: formData.getHeaders() },
+    );
+  }
+
+  // ── Checklist (clase PrevMaintTasks) ───────────────────────────────────────
+
+  /**
+   * Tarjeta de checklist asociada a una instancia del proceso.
+   *
+   * Ojo: el atributo de enlace se llama `MaintProcess`, no `PreventiveMaint`;
+   * filtrar por este último devuelve un 500 de CMDBuild.
+   */
+  async findChecklistCard(
+    sessionId: string,
+    processId: number,
+  ): Promise<ChecklistCardsResponse> {
+    const params = new URLSearchParams({
+      limit: '1',
+      filter: JSON.stringify({
+        attribute: {
+          simple: {
+            attribute: 'MaintProcess',
+            operator: 'equal',
+            value: [String(processId)],
+          },
+        },
+      }),
+    });
+
+    return (await this.client.get(
+      `/classes/${PREV_MAINT_TASKS_CLASS}/cards?${params.toString()}`,
+      sessionId,
+    )) as ChecklistCardsResponse;
+  }
+
+  /** Sobrescribe el array de actividades serializado en `Data`. */
+  async updateChecklistCard(
+    sessionId: string,
+    cardId: number,
+    items: ChecklistRawItem[],
+  ): Promise<unknown> {
+    return this.client.put(
+      `/classes/${PREV_MAINT_TASKS_CLASS}/cards/${cardId}`,
+      {
+        _id: cardId,
+        _type: PREV_MAINT_TASKS_CLASS,
+        Data: JSON.stringify(items),
+      },
+      sessionId,
+    );
+  }
+
+  /** Definición de una actividad, necesaria para saber su `LookupType`. */
+  async findTaskDefinition(
+    sessionId: string,
+    taskDefId: number,
+  ): Promise<TaskDefinitionResponse> {
+    return (await this.client.get(
+      `/classes/${PREV_MAINT_TASK_CLASS}/cards/${taskDefId}`,
+      sessionId,
+    )) as TaskDefinitionResponse;
+  }
+
+  /** Valores de un lookup, para poblar las opciones de un desplegable. */
+  async findLookupValues(
+    sessionId: string,
+    lookupName: string,
+  ): Promise<LookupValuesResponse> {
+    return (await this.client.get(
+      `/lookup_types/${encodeURIComponent(lookupName)}/values?limit=500`,
+      sessionId,
+    )) as LookupValuesResponse;
+  }
+
   /**
    * Filtro de OpenMAINT: una condición simple cuando solo hay `Assignee`, y un
    * `and` cuando además se filtra por estado.
    *
-   * Importante: en los endpoints de procesos el `and` va *dentro* de
-   * `attribute` (`{attribute:{and:[{simple}, {simple}]}}`). La forma inversa
-   * (`{and:[{attribute}]}`) devuelve un error 500 de CMDBuild.
+   * Importante: en los endpoints de procesos el `and`/`or` va *dentro* de
+   * `attribute` (`{attribute:{and:[{simple}, {or:[...]}]}}`). La forma inversa
+   * (`{and:[{attribute}]}`) devuelve un error 500 de CMDBuild, y `equal` con
+   * varios valores tampoco funciona como `IN`: hay que componer un `or`.
    */
-  private buildAssigneeFilter(employeeId: number, statusId?: PmStatusId) {
+  private buildAssigneeFilter(employeeId: number, statusIds?: PmStatusId[]) {
     const assignee = {
       simple: {
         attribute: 'Assignee',
@@ -168,17 +422,22 @@ export class PreventiveMaintenanceOpenmaintService {
       },
     };
 
-    if (!statusId) {
+    if (!statusIds?.length) {
       return { attribute: assignee };
     }
 
-    const status = {
+    const statusConditions = statusIds.map((statusId) => ({
       simple: {
         attribute: 'ProcessStatus',
         operator: 'equal',
         value: [String(statusId)],
       },
-    };
+    }));
+
+    const status =
+      statusConditions.length === 1
+        ? statusConditions[0]
+        : { or: statusConditions };
 
     return { attribute: { and: [assignee, status] } };
   }
