@@ -43,6 +43,10 @@ export type PreventiveMaintCard = {
   DueExecEndDate?: string | null;
   ExecStartDate?: string | null;
   ExecEndDate?: string | null;
+  /** Motivo de la suspensión; solo tiene valor mientras el proceso está en PM04 */
+  SuspensionReason?: number | null;
+  _SuspensionReason_description?: string | null;
+  _SuspensionReason_description_translation?: string | null;
   /** Bitácora en HTML. OpenMAINT la expone como `Register` y/o `_Register_html`. */
   Register?: string | null;
   _Register_html?: string | null;
@@ -158,8 +162,8 @@ export type FindByAssigneeOptions = {
 export type AdvanceOptions = {
   /** `_id` de la tarea activa (`_tasklist[0]._id`) */
   activityId: string;
-  /** Código del lookup `Process - Action`, p. ej. `PM02-Advance` */
-  action: string;
+  /** ID (no código) del lookup `Process - Action` */
+  action: number;
   outcome?: number;
   notes?: string | null;
   /**

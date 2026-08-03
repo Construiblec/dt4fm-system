@@ -15,9 +15,12 @@ import {
   PM_STATUS_CODE_TO_NAME,
   PM_STATUS_IDS,
   PM_STATUS_NAME_TO_ID,
+  PM_SUSPENSION_REASON_ATTR,
+  PM_SUSPENSION_REASON_LOOKUP,
 } from './constants/preventive-maint.constants';
 import { CompletePreventiveMaintenanceDto } from './dto/complete-preventive-maintenance.dto';
 import { GetMyPreventiveMaintenancesQueryDto } from './dto/get-my-preventive-maintenances-query.dto';
+import { SuspendPreventiveMaintenanceDto } from './dto/suspend-preventive-maintenance.dto';
 import {
   ChecklistAnswer,
   PreventiveChecklistItem,
@@ -30,6 +33,7 @@ import {
   PreventiveMaintenanceOpenmaintService,
   UploadedImage,
 } from './preventive-maintenance.openmaint.service';
+import { LookupOption, toLookupOption } from './utils/lookup-option.util';
 
 const IMAGE_FILE_REGEX = /\.(png|jpg|jpeg|webp)$/i;
 
@@ -66,6 +70,10 @@ export type PreventiveMaintenanceDetail = PreventiveMaintenance & {
   images: string[];
   /** El técnico puede cerrarlo (está en ejecución) */
   canComplete: boolean;
+  /** El técnico puede suspenderlo; a diferencia del cierre no exige checklist */
+  canSuspend: boolean;
+  /** Motivo con el que se suspendió, si lo está */
+  suspensionReason: string | null;
   /** Actividades a ejecutar; el cierre exige tenerlas todas resueltas */
   checklist: PreventiveChecklistItem[];
 };
@@ -132,30 +140,43 @@ export class PreventiveMaintenanceService {
 
   /**
    * Abre el mantenimiento para el técnico: si está en Aceptación lo avanza a
-   * Ejecución en OpenMAINT. Es idempotente — si ya está en ejecución o cerrado
-   * simplemente devuelve el detalle sin tocar el flujo.
+   * Ejecución, y si está suspendido lo reanuda. Es idempotente — si ya está en
+   * ejecución o cerrado simplemente devuelve el detalle sin tocar el flujo.
    */
   async startExecution(sessionId: string, id: number) {
     const card = await this.fetchCardWithTasklist(sessionId, id);
+    const isSuspended = card.ProcessStatus === PM_STATUS_IDS.SUSPENSION;
+    const action = isSuspended
+      ? PM_ACTIONS.RESUME
+      : card.ProcessStatus === PM_STATUS_IDS.ACCEPTANCE
+        ? PM_ACTIONS.START_EXECUTION
+        : null;
 
-    if (card.ProcessStatus === PM_STATUS_IDS.ACCEPTANCE) {
+    if (action !== null) {
       const activityId = this.requireActivityId(card);
 
       this.logger.log(
-        `Iniciando ejecución del mantenimiento preventivo ${card.Number ?? id}`,
+        `${isSuspended ? 'Reanudando' : 'Iniciando ejecución de'} el ` +
+          `mantenimiento preventivo ${card.Number ?? id}`,
       );
 
-      if (await this.advanceToExecution(sessionId, id, activityId)) {
+      if (await this.advanceToExecution(sessionId, id, activityId, action)) {
         // La relectura valida el avance y da el `_activity` de PM03
         const executing = await this.fetchCardWithTasklist(sessionId, id);
 
         this.assertStatus(
           executing,
           PM_STATUS_IDS.EXECUTION,
-          'OpenMAINT no aplicó el inicio de ejecución del mantenimiento preventivo',
+          isSuspended
+            ? 'OpenMAINT no aplicó la reanudación del mantenimiento preventivo'
+            : 'OpenMAINT no aplicó el inicio de ejecución del mantenimiento preventivo',
         );
 
-        await this.registerExecutionStart(sessionId, executing);
+        if (isSuspended) {
+          await this.clearNotDoneOnResume(sessionId, id);
+        } else {
+          await this.registerExecutionStart(sessionId, executing);
+        }
       }
     }
 
@@ -249,6 +270,84 @@ export class PreventiveMaintenanceService {
     };
   }
 
+  /** Suspende el mantenimiento (Ejecución → Suspensión) con motivo y notas. */
+  async suspendPreventiveMaintenance(
+    sessionId: string,
+    id: number,
+    dto: SuspendPreventiveMaintenanceDto,
+  ) {
+    const card = await this.fetchCardWithTasklist(sessionId, id);
+
+    if (card.ProcessStatus === PM_STATUS_IDS.SUSPENSION) {
+      throw new ConflictException(
+        'El mantenimiento preventivo ya está suspendido',
+      );
+    }
+
+    if (card.ProcessStatus !== PM_STATUS_IDS.EXECUTION) {
+      throw new ConflictException(
+        'Solo se puede suspender un mantenimiento preventivo en ejecución',
+      );
+    }
+
+    // El checklist no se autoguarda: lo que el técnico llevaba escrito solo
+    // existe en su navegador y viaja en esta misma petición.
+    if (dto.items?.length) {
+      await this.checklist.saveChecklist(sessionId, id, dto.items);
+    }
+
+    // Antes del avance: PM03 no deja salir mientras queden actividades sin
+    // resolver, y lo hace respondiendo 200 sin avanzar.
+    const notDone = await this.checklist.markPendingAsNotDone(sessionId, id);
+
+    await this.runAdvance(sessionId, id, {
+      activityId: this.requireActivityId(card),
+      action: PM_ACTIONS.SUSPEND,
+      notes: dto.notes?.trim() || null,
+      fields: { [PM_SUSPENSION_REASON_ATTR]: dto.reasonId },
+    });
+
+    await this.assertReachedStatus(
+      sessionId,
+      id,
+      PM_STATUS_IDS.SUSPENSION,
+      'OpenMAINT no aplicó la suspensión. Revisa que el motivo enviado sea válido.',
+    );
+
+    this.logger.log(
+      `Mantenimiento ${card.Number ?? id} suspendido con ${notDone} actividades marcadas como N.D.`,
+    );
+
+    return {
+      success: true,
+      message: 'Mantenimiento preventivo suspendido correctamente',
+    };
+  }
+
+  /** Opciones del desplegable "Motivo de suspensión". */
+  async getSuspensionReasons(sessionId: string) {
+    let reasons: LookupOption[];
+
+    try {
+      const response = await this.openmaint.findLookupValues(
+        sessionId,
+        PM_SUSPENSION_REASON_LOOKUP,
+      );
+
+      reasons = (response.data ?? [])
+        .filter((value) => value.active !== false)
+        .map((value) => toLookupOption(value));
+    } catch (error) {
+      this.throwIfSessionExpired(error);
+
+      throw new BadGatewayException(
+        'Error al consultar los motivos de suspensión en OpenMAINT',
+      );
+    }
+
+    return { success: true, data: reasons };
+  }
+
   // ── Acceso a OpenMAINT ─────────────────────────────────────────────────────
 
   private async fetchCard(
@@ -303,23 +402,21 @@ export class PreventiveMaintenanceService {
   }
 
   /**
-   * Avanza de Aceptación a Ejecución. Dos peticiones a la vez compiten por el
-   * bloqueo del proceso en OpenMAINT y una falla; si la otra ya dejó el
-   * mantenimiento en ejecución, el resultado buscado está conseguido.
+   * Lleva el mantenimiento a Ejecución, ya venga de Aceptación o de Suspensión.
+   * Dos peticiones a la vez compiten por el bloqueo del proceso en OpenMAINT y
+   * una falla; si la otra ya lo dejó en ejecución, el resultado está conseguido.
    *
    * @returns `true` si fue esta petición la que avanzó, y por tanto la que debe
-   * sellar la hora de inicio.
+   * sellar la hora de inicio o limpiar el N.D.
    */
   private async advanceToExecution(
     sessionId: string,
     id: number,
     activityId: string,
+    action: number,
   ): Promise<boolean> {
     try {
-      await this.runAdvance(sessionId, id, {
-        activityId,
-        action: PM_ACTIONS.START_EXECUTION,
-      });
+      await this.runAdvance(sessionId, id, { activityId, action });
 
       return true;
     } catch (error) {
@@ -437,6 +534,29 @@ export class PreventiveMaintenanceService {
     }
   }
 
+  /**
+   * Devuelve a pendientes las actividades que se marcaron N.D. al suspender.
+   * Un fallo no interrumpe al técnico —ya está en ejecución— pero dejaría esas
+   * actividades contando como resueltas.
+   */
+  private async clearNotDoneOnResume(
+    sessionId: string,
+    id: number,
+  ): Promise<void> {
+    try {
+      const cleared = await this.checklist.clearNotDone(sessionId, id);
+
+      this.logger.log(
+        `Reanudado ${id}: ${cleared} actividades vuelven a estar por completar`,
+      );
+    } catch (error) {
+      this.logger.error(
+        `No se pudo limpiar el N.D. del checklist del mantenimiento ${id}`,
+        error,
+      );
+    }
+  }
+
   /** `_id` de la tarea activa del flujo, necesario para avanzarlo. */
   private requireActivityId(card: PreventiveMaintCard): string {
     const activityId = card._tasklist?.[0]?._id;
@@ -466,6 +586,11 @@ export class PreventiveMaintenanceService {
       notes: extractRegisterNotes(card.Register ?? card._Register_html ?? null),
       images,
       canComplete: card.ProcessStatus === PM_STATUS_IDS.EXECUTION,
+      canSuspend: card.ProcessStatus === PM_STATUS_IDS.EXECUTION,
+      suspensionReason:
+        card._SuspensionReason_description_translation ??
+        card._SuspensionReason_description ??
+        null,
       checklist,
     };
   }

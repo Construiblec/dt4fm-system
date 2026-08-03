@@ -1,28 +1,13 @@
 import { AlertTriangle, CalendarClock, MapPin, Wrench } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { getPreventiveStatusLabel } from "@/modules/incidentes/constants/preventiveStatus";
+import {
+  getPreventiveStatusLabel,
+  PREVENTIVE_STATUS_BADGE_CLASSES,
+  PREVENTIVE_STATUS_BORDER_CLASSES,
+} from "@/modules/incidentes/constants/preventiveStatus";
 import type { PreventiveMaintenance } from "@/modules/incidentes/types/PreventiveMaintenance";
 
 type Props = PreventiveMaintenance;
-
-/** Color del borde izquierdo según el estado del mantenimiento. */
-const borderByStatus: Record<string, string> = {
-  Planning: "border-slate-400",
-  Acceptance: "border-amber-500",
-  Execution: "border-blue-500",
-  Suspension: "border-violet-500",
-  Completed: "border-emerald-500",
-  Canceled: "border-slate-300",
-};
-
-const badgeByStatus: Record<string, string> = {
-  Planning: "bg-slate-100 text-slate-700",
-  Acceptance: "bg-amber-100 text-amber-700",
-  Execution: "bg-blue-100 text-blue-700",
-  Suspension: "bg-violet-100 text-violet-700",
-  Completed: "bg-emerald-100 text-emerald-700",
-  Canceled: "bg-red-100 text-red-700",
-};
 
 const formatShortDate = (value: string | null) => {
   if (!value) {
@@ -51,7 +36,8 @@ export const PreventiveMaintenanceCard = ({
 
   const border = isOverdue
     ? "border-red-500"
-    : (borderByStatus[statusCode ?? ""] ?? "border-slate-300");
+    : (PREVENTIVE_STATUS_BORDER_CLASSES[statusCode ?? ""] ??
+      "border-slate-300");
 
   return (
     <article className={`rounded-xl border-l-4 bg-white p-4 shadow-sm ${border}`}>
@@ -76,7 +62,8 @@ export const PreventiveMaintenanceCard = ({
       <div className="mt-2 flex flex-wrap items-center gap-2">
         <span
           className={`inline-block rounded-md px-2 py-1 text-xs font-semibold ${
-            badgeByStatus[statusCode ?? ""] ?? "bg-slate-100 text-slate-700"
+            PREVENTIVE_STATUS_BADGE_CLASSES[statusCode ?? ""] ??
+            "bg-slate-100 text-slate-700"
           }`}
         >
           {getPreventiveStatusLabel(statusCode, status)}
@@ -108,7 +95,7 @@ export const PreventiveMaintenanceCard = ({
         </div>
       </div>
 
-      {/* Footer */}
+      {/* Footer. Abrir mueve el flujo: arranca la ejecución o reanuda un suspendido */}
       <div className="mt-4 flex justify-end">
         <button
           type="button"

@@ -26,6 +26,7 @@ import {
 import { CompletePreventiveMaintenanceDto } from './dto/complete-preventive-maintenance.dto';
 import { GetMyPreventiveMaintenancesQueryDto } from './dto/get-my-preventive-maintenances-query.dto';
 import { SaveChecklistDto } from './dto/save-checklist.dto';
+import { SuspendPreventiveMaintenanceDto } from './dto/suspend-preventive-maintenance.dto';
 import type { UploadedImage } from './preventive-maintenance.openmaint.service';
 import { PreventiveMaintenanceService } from './preventive-maintenance.service';
 
@@ -68,6 +69,25 @@ export class PreventiveMaintenanceController {
       this.requireSessionId(sessionId),
       this.parseEmployeeId(employeeIdHeader),
       query,
+    );
+  }
+
+  // Antes de `:id`: Nest resuelve por orden de declaración y `ParseIntPipe`
+  // rechazaría la ruta literal con un 400 confuso.
+  @Get('suspension-reasons')
+  @ApiOperation({
+    summary: 'Obtener los motivos de suspensión disponibles',
+  })
+  @ApiHeader({
+    name: 'authorization',
+    description: 'Token de sesión de OpenMAINT',
+    required: true,
+  })
+  @ApiResponse({ status: 200, description: 'Motivos obtenidos con éxito' })
+  @ApiResponse({ status: 502, description: 'OpenMAINT no respondió' })
+  async getSuspensionReasons(@Headers('authorization') sessionId: string) {
+    return this.preventiveMaintenanceService.getSuspensionReasons(
+      this.requireSessionId(sessionId),
     );
   }
 
@@ -243,6 +263,45 @@ export class PreventiveMaintenanceController {
       id,
       dto,
       file,
+    );
+  }
+
+  @Post(':id/suspend')
+  @ApiOperation({
+    summary: 'Suspender un mantenimiento preventivo',
+    description:
+      'Guarda las respuestas recibidas, marca como N.D. las actividades que ' +
+      'sigan sin resolver y pasa el mantenimiento a Suspensión.',
+  })
+  @ApiParam({
+    name: 'id',
+    description: 'ID del mantenimiento preventivo',
+    type: 'integer',
+  })
+  @ApiHeader({
+    name: 'authorization',
+    description: 'Token de sesión de OpenMAINT',
+    required: true,
+  })
+  @ApiResponse({ status: 201, description: 'Mantenimiento suspendido' })
+  @ApiResponse({
+    status: 400,
+    description: 'Cabecera de autorización faltante o motivo inválido',
+  })
+  @ApiResponse({
+    status: 409,
+    description: 'El mantenimiento no está en ejecución o ya está suspendido',
+  })
+  async suspendPreventiveMaintenance(
+    @Param('id', ParseIntPipe) id: number,
+    @Headers('authorization') sessionId: string,
+    @Body(new ValidationPipe({ transform: true }))
+    dto: SuspendPreventiveMaintenanceDto,
+  ) {
+    return this.preventiveMaintenanceService.suspendPreventiveMaintenance(
+      this.requireSessionId(sessionId),
+      id,
+      dto,
     );
   }
 

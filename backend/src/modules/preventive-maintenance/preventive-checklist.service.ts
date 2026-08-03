@@ -17,11 +17,9 @@ import {
   LookupValue,
   PreventiveMaintenanceOpenmaintService,
 } from './preventive-maintenance.openmaint.service';
+import { LookupOption, toLookupOption } from './utils/lookup-option.util';
 
-export type ChecklistOption = {
-  id: string;
-  label: string;
-};
+export type ChecklistOption = LookupOption;
 
 /** Contrato público de una actividad del checklist. */
 export type PreventiveChecklistItem = {
@@ -127,6 +125,30 @@ export class PreventiveChecklistService {
   }
 
   /**
+   * Marca como N.D. las actividades que siguen sin resultado y devuelve
+   * cuántas cambiaron. Es lo que permite salir de PM03 al suspender: mientras
+   * quede alguna sin resolver, OpenMAINT responde 200 sin avanzar.
+   */
+  async markPendingAsNotDone(
+    sessionId: string,
+    processId: number,
+  ): Promise<number> {
+    return this.updateItems(sessionId, processId, (item) =>
+      this.isResolved(item) ? null : { ...item, ND: true, Modified: true },
+    );
+  }
+
+  /**
+   * Quita la marca N.D. conservando `Outcome`: al reanudar, las actividades
+   * que quedaron sin dato vuelven a aparecer por completar.
+   */
+  async clearNotDone(sessionId: string, processId: number): Promise<number> {
+    return this.updateItems(sessionId, processId, (item) =>
+      item.ND === true ? { ...item, ND: false, Modified: true } : null,
+    );
+  }
+
+  /**
    * Falla con 409 si queda alguna actividad sin resolver, para poder avisar
    * antes de intentar un avance que OpenMAINT rechazaría en silencio.
    */
@@ -152,6 +174,56 @@ export class PreventiveChecklistService {
   }
 
   // ── Acceso a OpenMAINT ─────────────────────────────────────────────────────
+
+  /**
+   * Aplica una transformación a `Data` conservando las claves que la app no
+   * interpreta. `transform` devuelve `null` para dejar el elemento intacto; si
+   * ninguno cambia no se escribe nada.
+   */
+  private async updateItems(
+    sessionId: string,
+    processId: number,
+    transform: (item: ChecklistRawItem) => ChecklistRawItem | null,
+  ): Promise<number> {
+    const card = await this.findCard(sessionId, processId);
+
+    if (!card) {
+      return 0;
+    }
+
+    let changed = 0;
+
+    const merged = this.parseItems(card).map((item) => {
+      const next = transform(item);
+
+      if (!next) {
+        return item;
+      }
+
+      changed += 1;
+
+      return next;
+    });
+
+    if (changed === 0) {
+      return 0;
+    }
+
+    try {
+      await this.openmaint.updateChecklistCard(sessionId, card._id, merged);
+    } catch (error) {
+      this.logger.error(
+        `No se pudo actualizar el checklist del mantenimiento ${processId}`,
+        error,
+      );
+
+      throw new BadGatewayException(
+        'Error al guardar el checklist en OpenMAINT',
+      );
+    }
+
+    return changed;
+  }
 
   private async findCard(
     sessionId: string,
@@ -348,14 +420,7 @@ export class PreventiveChecklistService {
   }
 
   private toOption(value: LookupValue): ChecklistOption {
-    return {
-      id: String(value._id),
-      label:
-        value._description_translation ??
-        value.description ??
-        value.code ??
-        String(value._id),
-    };
+    return toLookupOption(value);
   }
 
   private hasFixedOptions(kind: ChecklistFieldKind | undefined): boolean {

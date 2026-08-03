@@ -92,6 +92,7 @@ describe('PreventiveChecklistService', () => {
       findById: jest.fn(),
       findWithTasklist: jest.fn(),
       advance: jest.fn(),
+      saveFields: jest.fn(),
       findAttachments: jest.fn(),
       findAttachmentPreview: jest.fn(),
       uploadAttachment: jest.fn(),
@@ -301,6 +302,116 @@ describe('PreventiveChecklistService', () => {
         .calls[0] as unknown as [string, number, Record<string, unknown>[]];
 
       expect(items[1]).toMatchObject({ Outcome: null, Modified: false });
+    });
+  });
+
+  /** Actividades escritas en el último `updateChecklistCard`. */
+  const savedItems = (): Record<string, unknown>[] => {
+    const [, , items] = openmaint.updateChecklistCard.mock
+      .calls[0] as unknown as [string, number, Record<string, unknown>[]];
+
+    return items;
+  };
+
+  describe('markPendingAsNotDone', () => {
+    it('marca N.D. solo las actividades sin resultado', async () => {
+      openmaint.findChecklistCard.mockResolvedValue({
+        data: [
+          card([
+            rawItem(1, T.TEXT, 10, { Outcome: 'sin novedades' }),
+            rawItem(2, T.TEXT, 20),
+          ]),
+        ],
+      });
+
+      const changed = await service.markPendingAsNotDone(
+        SESSION_ID,
+        PROCESS_ID,
+      );
+
+      expect(changed).toBe(1);
+      expect(savedItems()[0]).toMatchObject({
+        Outcome: 'sin novedades',
+        ND: false,
+      });
+      expect(savedItems()[1]).toMatchObject({ ND: true, Modified: true });
+    });
+
+    it('conserva las claves que OpenMAINT necesita', async () => {
+      openmaint.findChecklistCard.mockResolvedValue({
+        data: [card([rawItem(1, T.TEXT, 10)])],
+      });
+
+      await service.markPendingAsNotDone(SESSION_ID, PROCESS_ID);
+
+      expect(savedItems()[0]).toMatchObject({
+        CI: 4804473,
+        Site: 1456213,
+        ExecOrder: 1,
+        _TaskDef_description: 'Actividad 1',
+      });
+    });
+
+    it('no escribe si no queda ninguna actividad pendiente', async () => {
+      openmaint.findChecklistCard.mockResolvedValue({
+        data: [
+          card([
+            rawItem(1, T.TEXT, 10, { Outcome: 'hecho' }),
+            rawItem(2, T.TEXT, 20, { ND: true }),
+          ]),
+        ],
+      });
+
+      const changed = await service.markPendingAsNotDone(
+        SESSION_ID,
+        PROCESS_ID,
+      );
+
+      expect(changed).toBe(0);
+      expect(openmaint.updateChecklistCard).not.toHaveBeenCalled();
+    });
+
+    it('no falla si el mantenimiento no tiene checklist', async () => {
+      openmaint.findChecklistCard.mockResolvedValue({ data: [] });
+
+      await expect(
+        service.markPendingAsNotDone(SESSION_ID, PROCESS_ID),
+      ).resolves.toBe(0);
+      expect(openmaint.updateChecklistCard).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('clearNotDone', () => {
+    it('quita el N.D. conservando el resultado ya registrado', async () => {
+      openmaint.findChecklistCard.mockResolvedValue({
+        data: [
+          card([
+            rawItem(1, T.TEXT, 10, { Outcome: 'sin novedades', ND: true }),
+            rawItem(2, T.TEXT, 20, { ND: true }),
+          ]),
+        ],
+      });
+
+      const changed = await service.clearNotDone(SESSION_ID, PROCESS_ID);
+
+      expect(changed).toBe(2);
+      expect(savedItems()[0]).toMatchObject({
+        Outcome: 'sin novedades',
+        ND: false,
+      });
+      // Vuelve a estar por completar
+      expect(savedItems()[1]).toMatchObject({ Outcome: null, ND: false });
+    });
+
+    it('no escribe si ninguna actividad está marcada como N.D.', async () => {
+      openmaint.findChecklistCard.mockResolvedValue({
+        data: [card([rawItem(1, T.TEXT, 10, { Outcome: 'hecho' })])],
+      });
+
+      const changed = await service.clearNotDone(SESSION_ID, PROCESS_ID);
+
+      expect(changed).toBe(0);
+      expect(openmaint.updateChecklistCard).not.toHaveBeenCalled();
     });
   });
 
