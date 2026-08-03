@@ -1,4 +1,8 @@
-import { Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  InternalServerErrorException,
+  Logger,
+} from '@nestjs/common';
 import { OpenmaintClient } from '../../integrations/openmaint/openmaint.client';
 import { CleaningTasksSessionService } from './cleaning-tasks.session.service';
 import {
@@ -15,12 +19,14 @@ type CleaningTaskCard = {
   phase: string | number;
   _phase_description?: string;
   GeneratedDate: string;
-  AssignedDate?: string;
+  AssignedDateTime?: string;
   PlannedStartTime?: string;
   PlannedEndTime?: string;
   ActualStartTime?: string;
   ActualEndTime?: string;
   Observations?: string;
+  SupervisionObserv?: string;
+  TeamObservations?: string;
   Notes?: string;
   HostawayReservation?: string;
   CheckoutDate?: string;
@@ -110,16 +116,18 @@ export class CleaningTasksOpenmaintService {
     } catch (error) {
       // Si es error 401, refrescar sesión y reintentar UNA vez
       if (error.response?.status === 401 || error.status === 401) {
-        this.logger.warn(`⚠️ Error 401 en ${operationName}, refrescando sesión y reintentando...`);
-        
+        this.logger.warn(
+          `⚠️ Error 401 en ${operationName}, refrescando sesión y reintentando...`,
+        );
+
         // Forzar refresco de sesión
         await this.sessionService.refreshSession();
-        
+
         // Reintentar operación
         const newSessionId = await this.session();
         return await operation(newSessionId);
       }
-      
+
       // Si no es 401, lanzar error original
       throw error;
     }
@@ -151,7 +159,9 @@ export class CleaningTasksOpenmaintService {
     });
   }
 
-  async createCleaningTask(body: Record<string, unknown>): Promise<OpenmaintCardResponse> {
+  async createCleaningTask(
+    body: Record<string, unknown>,
+  ): Promise<OpenmaintCardResponse> {
     return this.executeWithRetry(async (sessionId) => {
       return (await this.client.post(
         '/classes/CleaningTask/cards',
@@ -265,7 +275,10 @@ export class CleaningTasksOpenmaintService {
   /**
    * Obtiene el detalle de una Unit usando el session token del usuario.
    */
-  async getUnitById(unitId: number, _sessionToken: string): Promise<UnitResponse> {
+  async getUnitById(
+    unitId: number,
+    _sessionToken: string,
+  ): Promise<UnitResponse> {
     return this.executeWithRetry(async (sessionId) => {
       return (await this.client.get(
         `/classes/Unit/cards/${unitId}`,
@@ -314,7 +327,10 @@ export class CleaningTasksOpenmaintService {
         sessionToken,
       )) as OpenmaintAttachmentsResponse;
     } catch (error) {
-      this.logger.error(`Error al obtener attachments de tarea ${taskId}:`, error.message);
+      this.logger.error(
+        `Error al obtener attachments de tarea ${taskId}:`,
+        error.message,
+      );
       throw new InternalServerErrorException(
         'Error al obtener attachments de OpenMAINT',
       );
@@ -359,7 +375,10 @@ export class CleaningTasksOpenmaintService {
         sessionToken,
       );
     } catch (error) {
-      this.logger.error(`Error al subir attachment a tarea ${taskId}:`, error.message);
+      this.logger.error(
+        `Error al subir attachment a tarea ${taskId}:`,
+        error.message,
+      );
       throw new InternalServerErrorException(
         'Error al subir archivo a OpenMAINT',
       );
@@ -451,8 +470,13 @@ export class CleaningTasksOpenmaintService {
       const response = await this.client.getBuffer(path, sessionToken);
       return response;
     } catch (error) {
-      this.logger.error(`Error al descargar attachment ${attachmentId}:`, error.message);
-      throw new InternalServerErrorException('Error al descargar el archivo desde OpenMAINT');
+      this.logger.error(
+        `Error al descargar attachment ${attachmentId}:`,
+        error.message,
+      );
+      throw new InternalServerErrorException(
+        'Error al descargar el archivo desde OpenMAINT',
+      );
     }
   }
 
@@ -470,8 +494,11 @@ export class CleaningTasksOpenmaintService {
         };
 
         const path = `/classes/CleaningTask/cards?filter=${encodeURIComponent(JSON.stringify(filter))}&limit=1`;
-        const response = (await this.client.get(path, sessionId)) as OpenmaintCardsResponse;
-        
+        const response = (await this.client.get(
+          path,
+          sessionId,
+        )) as OpenmaintCardsResponse;
+
         return (response.data?.length ?? 0) > 0;
       }, 'taskExistsByReservationId');
     } catch (error) {

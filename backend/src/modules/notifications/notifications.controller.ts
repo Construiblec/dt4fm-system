@@ -1,10 +1,12 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Post } from '@nestjs/common';
 import {
-  ApiOperation,
-  ApiBody,
-  ApiResponse,
-  ApiTags,
-} from '@nestjs/swagger';
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Post,
+} from '@nestjs/common';
+import { ApiOperation, ApiBody, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { NotificationsService } from './notifications.service';
 import { SendBulkDto } from './dto/send-bulk.dto';
 import { MassSendDto } from './dto/mass-send.dto';
@@ -27,7 +29,10 @@ export class NotificationsController {
   @ApiBody({ type: SendBulkDto })
   @ApiResponse({ status: 200, description: 'Resumen del envío.' })
   @ApiResponse({ status: 400, description: 'Body inválido.' })
-  @ApiResponse({ status: 404, description: 'Plantilla no encontrada en openMAINT.' })
+  @ApiResponse({
+    status: 404,
+    description: 'Plantilla no encontrada en openMAINT.',
+  })
   @ApiResponse({ status: 500, description: 'Error interno.' })
   async sendBulk(@Body() dto: SendBulkDto) {
     return this.notificationsService.sendBulk(dto);
@@ -84,16 +89,31 @@ export class NotificationsController {
         sent: 2,
         failed: 0,
         results: [
-          { to: 'propietario@ejemplo.com', success: true, messageId: '<abc@smtp.resend.com>' },
-          { to: 'arrendatario@ejemplo.com', success: true, messageId: '<def@smtp.resend.com>' },
+          {
+            to: 'propietario@ejemplo.com',
+            success: true,
+            messageId: '<abc@smtp.resend.com>',
+          },
+          {
+            to: 'arrendatario@ejemplo.com',
+            success: true,
+            messageId: '<def@smtp.resend.com>',
+          },
         ],
         recipientsRequested: 3,
         recipientsDeduplicated: 1,
       },
     },
   })
-  @ApiResponse({ status: 400, description: 'Body inválido: template incompleto, recipients vacío o email con formato incorrecto.' })
-  @ApiResponse({ status: 500, description: 'Error interno al invocar el proveedor SMTP.' })
+  @ApiResponse({
+    status: 400,
+    description:
+      'Body inválido: template incompleto, recipients vacío o email con formato incorrecto.',
+  })
+  @ApiResponse({
+    status: 500,
+    description: 'Error interno al invocar el proveedor SMTP.',
+  })
   async massSend(@Body() dto: MassSendDto) {
     return this.notificationsService.massSend(dto);
   }
@@ -103,7 +123,8 @@ export class NotificationsController {
   @Get('mail/health')
   @ApiOperation({
     summary: 'Health check del proveedor SMTP',
-    description: 'Verifica que el backend pueda conectarse al servidor SMTP configurado.',
+    description:
+      'Verifica que el backend pueda conectarse al servidor SMTP configurado.',
   })
   @ApiResponse({
     status: 200,

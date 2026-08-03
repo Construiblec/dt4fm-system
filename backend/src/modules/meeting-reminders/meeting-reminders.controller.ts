@@ -49,7 +49,8 @@ export class MeetingRemindersController {
   })
   @ApiResponse({
     status: 200,
-    description: 'Resumen del recordatorio (reuniones evaluadas y destinatarios).',
+    description:
+      'Resumen del recordatorio (reuniones evaluadas y destinatarios).',
   })
   async run(
     @Query('days', new ParseIntPipe({ optional: true })) days?: number,

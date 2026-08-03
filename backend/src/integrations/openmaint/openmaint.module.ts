@@ -6,15 +6,7 @@ import { OpenmaintAuthService } from './openmaint.auth.service';
 
 @Module({
   imports: [HttpModule],
-  providers: [
-    OpenmaintClient,
-    OpenmaintService,
-    OpenmaintAuthService,
-  ],
-  exports: [
-    OpenmaintClient,
-    OpenmaintService,
-    OpenmaintAuthService,
-  ],
+  providers: [OpenmaintClient, OpenmaintService, OpenmaintAuthService],
+  exports: [OpenmaintClient, OpenmaintService, OpenmaintAuthService],
 })
 export class OpenmaintModule {}

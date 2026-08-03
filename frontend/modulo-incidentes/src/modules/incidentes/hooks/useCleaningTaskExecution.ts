@@ -86,8 +86,8 @@ export const useCleaningTaskExecution = (taskId: number) => {
     const totalActivities = taskDetail.checklistDetail?.activities.length ?? 0;
     initializeChecklist(totalActivities);
 
-    if (!observations && taskDetail.observations) {
-      setObservations(taskDetail.observations);
+    if (!observations && taskDetail.taskObservations) {
+      setObservations(taskDetail.taskObservations);
     }
 
     if (!photoUploaded) {

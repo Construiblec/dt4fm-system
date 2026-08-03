@@ -1,5 +1,5 @@
 import axios from "axios";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   ChevronLeft,
@@ -69,7 +69,7 @@ export const OwnerPaymentsPage = () => {
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState("");
 
-  const fetchPayments = () => {
+  const fetchPayments = useCallback(() => {
     if (!tenantId) return;
     setLoading(true);
     getOwnerPayments(tenantId)
@@ -80,11 +80,11 @@ export const OwnerPaymentsPage = () => {
       })
       .catch(() => setPagos([]))
       .finally(() => setLoading(false));
-  };
+  }, [tenantId]);
 
   useEffect(() => {
     fetchPayments();
-  }, [tenantId]);
+  }, [fetchPayments]);
 
   const pendientes = pagos.filter((p) => p.estadoCodigo === "Pendiente");
   const pagados = pagos.filter((p) => p.estadoCodigo === "Pagado");

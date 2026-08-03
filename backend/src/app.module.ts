@@ -11,6 +11,7 @@ import { PaymentsModule } from './modules/payments/payments.module';
 import { OwnersModule } from './modules/owners/owners.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { MeetingRemindersModule } from './modules/meeting-reminders/meeting-reminders.module';
+import { PreventiveMaintenanceModule } from './modules/preventive-maintenance/preventive-maintenance.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { MeetingRemindersModule } from './modules/meeting-reminders/meeting-remi
     OpenmaintModule,
     AuthModule,
     IncidentsModule,
+    PreventiveMaintenanceModule,
     BuildingsModule,
     CleaningTasksModule,
     BillingModule,

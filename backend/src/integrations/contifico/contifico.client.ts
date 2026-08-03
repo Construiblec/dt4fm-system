@@ -24,7 +24,10 @@ export class ContificoClient {
     return { Authorization: this.apiKey };
   }
 
-  async get<T = unknown>(path: string, config?: AxiosRequestConfig): Promise<T> {
+  async get<T = unknown>(
+    path: string,
+    config?: AxiosRequestConfig,
+  ): Promise<T> {
     const url = `${this.baseUrl}${path}`;
     this.logger.log(`[HTTP] GET ${url}`);
 
@@ -47,7 +50,11 @@ export class ContificoClient {
     }
   }
 
-  async post<T = unknown>(path: string, body: unknown, config?: AxiosRequestConfig): Promise<T> {
+  async post<T = unknown>(
+    path: string,
+    body: unknown,
+    config?: AxiosRequestConfig,
+  ): Promise<T> {
     const url = `${this.baseUrl}${path}`;
     this.logger.log(`[HTTP] POST ${url}`);
 

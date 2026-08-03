@@ -37,7 +37,7 @@ const METODO_TARJETA = 3167117;
 
 type UnitRaw = {
   _id: number;
-  'Propietario': string;
+  Propietario: string;
   'Unidad Inmobiliaria': string;
   '% Alícuota Unidad': number;
   '% Alícuota Parqueadero': number;
@@ -50,11 +50,11 @@ type PagoRaw = {
   _id: number;
   Description: string;
   Propietario: number;
-  '_Propietario_description': string;
+  _Propietario_description: string;
   Monto: number;
   FechadePago: string | null;
-  '_Estado_code': string;
-  '_Estado_description': string;
+  _Estado_code: string;
+  _Estado_description: string;
   Periodo: string;
   Tipo: string;
   Unidad: string;
@@ -77,14 +77,14 @@ type CommonAreaRaw = {
   Name: string;
   Description: string | null;
   Notes: string | null;
-  '_State_code': string | null;
-  '_State_description': string | null;
-  '_State_description_translation': string | null;
-  '_Condition_code': string | null;
-  '_Condition_description': string | null;
-  '_Building_code': string | null;
-  '_Building_description': string | null;
-  '_Floor_description': string | null;
+  _State_code: string | null;
+  _State_description: string | null;
+  _State_description_translation: string | null;
+  _Condition_code: string | null;
+  _Condition_description: string | null;
+  _Building_code: string | null;
+  _Building_description: string | null;
+  _Floor_description: string | null;
   TotalNetArea: number | null;
   CoveredArea: number | null;
   Building: number | null;
@@ -114,7 +114,7 @@ export class OwnersService {
 
   async getBuildings() {
     const sessionId = await this.getAdminSessionId();
-    const response = await this.openmaintService.getBuildings(sessionId) as {
+    const response = (await this.openmaintService.getBuildings(sessionId)) as {
       data?: { _id: number; Code: string; Name: string; Description: string }[];
     };
     return (response.data ?? []).map((b) => ({
@@ -140,9 +140,13 @@ export class OwnersService {
     const parts = (tenant.Description ?? '').trim().split(/\s+/);
     const firstName = parts[0] ?? '';
     const firstLastName = parts[1] ?? '';
-    const suggestedUsername = firstName && firstLastName
-      ? `${firstName}.${firstLastName}`.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-      : firstName.toLowerCase();
+    const suggestedUsername =
+      firstName && firstLastName
+        ? `${firstName}.${firstLastName}`
+            .toLowerCase()
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+        : firstName.toLowerCase();
 
     return {
       found: true,
@@ -188,10 +192,10 @@ export class OwnersService {
       };
     } catch (error) {
       const status =
-        error?.response?.status ??
-        error?.status ??
-        error?.getStatus?.();
-      const responseData: string = JSON.stringify(error?.response?.data ?? error?.message ?? '');
+        error?.response?.status ?? error?.status ?? error?.getStatus?.();
+      const responseData: string = JSON.stringify(
+        error?.response?.data ?? error?.message ?? '',
+      );
       const isDuplicate =
         status === 409 ||
         status === 422 ||
@@ -199,7 +203,9 @@ export class OwnersService {
         responseData.includes('duplicate key') ||
         responseData.includes('already exists');
       if (isDuplicate) {
-        throw new ConflictException('El nombre de usuario ya está en uso, elige otro');
+        throw new ConflictException(
+          'El nombre de usuario ya está en uso, elige otro',
+        );
       }
       if (error instanceof ConflictException) throw error;
       throw new InternalServerErrorException(
@@ -209,7 +215,10 @@ export class OwnersService {
   }
 
   async loginOwner(username: string, password: string) {
-    const loginResponse = await this.openmaintAuthService.login(username, password);
+    const loginResponse = await this.openmaintAuthService.login(
+      username,
+      password,
+    );
     if (!loginResponse?.data?._id) {
       throw new UnauthorizedException('Usuario o contraseña incorrectos');
     }
@@ -217,7 +226,9 @@ export class OwnersService {
     const role: string = loginResponse.data.role ?? '';
     const userId: number = loginResponse.data.userId;
     if (!role.toLowerCase().includes('propietario')) {
-      throw new UnauthorizedException('El usuario no tiene permisos de propietario');
+      throw new UnauthorizedException(
+        'El usuario no tiene permisos de propietario',
+      );
     }
     const adminSessionId = await this.getAdminSessionId();
     let tenantId: number | null = null;
@@ -231,7 +242,11 @@ export class OwnersService {
       const filter = encodeURIComponent(
         JSON.stringify({
           attribute: {
-            simple: { attribute: 'Description', operator: 'equal', value: ownerName },
+            simple: {
+              attribute: 'Description',
+              operator: 'equal',
+              value: ownerName,
+            },
           },
         }),
       );
@@ -266,7 +281,9 @@ export class OwnersService {
         valorExpensa: u['Valor Expensa $'],
       }));
     } catch {
-      throw new InternalServerErrorException('No se pudieron obtener las unidades');
+      throw new InternalServerErrorException(
+        'No se pudieron obtener las unidades',
+      );
     }
   }
 
@@ -275,7 +292,11 @@ export class OwnersService {
     const filter = encodeURIComponent(
       JSON.stringify({
         attribute: {
-          simple: { attribute: 'Propietario', operator: 'equal', value: tenantId },
+          simple: {
+            attribute: 'Propietario',
+            operator: 'equal',
+            value: tenantId,
+          },
         },
       }),
     );
@@ -292,7 +313,9 @@ export class OwnersService {
         pagos: all.map((p) => this.mapPago(p)),
       };
     } catch {
-      throw new InternalServerErrorException('No se pudieron obtener los pagos');
+      throw new InternalServerErrorException(
+        'No se pudieron obtener los pagos',
+      );
     }
   }
 
@@ -306,9 +329,11 @@ export class OwnersService {
     const sessionId = await this.getAdminSessionId();
     const today = dto.paymentDate;
     const metodoPago =
-      dto.method === 'card' ? METODO_TARJETA
-      : dto.method === 'cash' ? METODO_EFECTIVO
-      : METODO_TRANSFERENCIA;
+      dto.method === 'card'
+        ? METODO_TARJETA
+        : dto.method === 'cash'
+          ? METODO_EFECTIVO
+          : METODO_TRANSFERENCIA;
 
     const results: { id: number; success: boolean; error?: string }[] = [];
 
@@ -330,7 +355,11 @@ export class OwnersService {
           status: error?.response?.status,
           data: JSON.stringify(error?.response?.data),
         });
-        results.push({ id: paymentId, success: false, error: 'No se pudo procesar' });
+        results.push({
+          id: paymentId,
+          success: false,
+          error: 'No se pudo procesar',
+        });
       }
     }
 
@@ -407,8 +436,14 @@ export class OwnersService {
         adminSessionId,
       )) as OpenmaintUserResponse;
       const user = response?.data;
-      if (!user) throw new InternalServerErrorException('No se encontró el perfil');
-      return { userId: user._id, username: user.username, name: user.description, email: user.email ?? null };
+      if (!user)
+        throw new InternalServerErrorException('No se encontró el perfil');
+      return {
+        userId: user._id,
+        username: user.username,
+        name: user.description,
+        email: user.email ?? null,
+      };
     } catch (error) {
       if (error instanceof InternalServerErrorException) throw error;
       throw new InternalServerErrorException('No se pudo obtener el perfil');
@@ -422,7 +457,10 @@ export class OwnersService {
       adminSessionId,
     )) as OpenmaintUserResponse;
     const user = profileResponse?.data;
-    if (!user?.username) throw new InternalServerErrorException('No se pudo identificar el usuario');
+    if (!user?.username)
+      throw new InternalServerErrorException(
+        'No se pudo identificar el usuario',
+      );
     try {
       await this.openmaintAuthService.login(user.username, dto.currentPassword);
     } catch {
@@ -444,8 +482,12 @@ export class OwnersService {
       );
       return { success: true, message: 'Contraseña actualizada correctamente' };
     } catch (error) {
-      console.error('[owners] changeOwnerPassword error:', { status: error?.response?.status });
-      throw new InternalServerErrorException('No se pudo actualizar la contraseña');
+      console.error('[owners] changeOwnerPassword error:', {
+        status: error?.response?.status,
+      });
+      throw new InternalServerErrorException(
+        'No se pudo actualizar la contraseña',
+      );
     }
   }
 
@@ -454,12 +496,21 @@ export class OwnersService {
     try {
       await this.openmaintClient.post(
         `/classes/Tenant/cards/${tenantId}/emails`,
-        { subject: `[Contacto Propietario] ${dto.subject}`, body: dto.message, status: 'draft' },
+        {
+          subject: `[Contacto Propietario] ${dto.subject}`,
+          body: dto.message,
+          status: 'draft',
+        },
         adminSessionId,
       );
-      return { success: true, message: 'Tu mensaje fue enviado al administrador correctamente' };
+      return {
+        success: true,
+        message: 'Tu mensaje fue enviado al administrador correctamente',
+      };
     } catch (error) {
-      console.error('[owners] contactAdmin error:', { status: error?.response?.status });
+      console.error('[owners] contactAdmin error:', {
+        status: error?.response?.status,
+      });
       throw new InternalServerErrorException('No se pudo enviar el mensaje.');
     }
   }
@@ -473,18 +524,28 @@ export class OwnersService {
       if (buildingId) {
         const filter = encodeURIComponent(
           JSON.stringify({
-            attribute: { simple: { attribute: 'Building', operator: 'equal', value: buildingId } },
+            attribute: {
+              simple: {
+                attribute: 'Building',
+                operator: 'equal',
+                value: buildingId,
+              },
+            },
           }),
         );
         path += `&filter=${filter}`;
       }
-      const response = (await this.openmaintClient.get(path, sessionId)) as { data?: CommonAreaRaw[] };
+      const response = (await this.openmaintClient.get(path, sessionId)) as {
+        data?: CommonAreaRaw[];
+      };
       const areas = (response.data ?? []).filter(
         (a) => a.Name && !a.Name.toLowerCase().includes('técnica'),
       );
       return areas.map((a) => this.mapCommonArea(a));
     } catch {
-      throw new InternalServerErrorException('No se pudieron obtener las áreas comunales');
+      throw new InternalServerErrorException(
+        'No se pudieron obtener las áreas comunales',
+      );
     }
   }
 
@@ -495,11 +556,14 @@ export class OwnersService {
         `/classes/${OPENMAINT_COMMON_AREAS_CLASS}/cards/${areaId}`,
         sessionId,
       )) as { data?: CommonAreaRaw };
-      if (!response.data) throw new InternalServerErrorException('Área no encontrada');
+      if (!response.data)
+        throw new InternalServerErrorException('Área no encontrada');
       return this.mapCommonArea(response.data);
     } catch (error) {
       if (error instanceof InternalServerErrorException) throw error;
-      throw new InternalServerErrorException('No se pudo obtener el área comunal');
+      throw new InternalServerErrorException(
+        'No se pudo obtener el área comunal',
+      );
     }
   }
 
@@ -512,7 +576,8 @@ export class OwnersService {
     )) as { data?: CommonAreaRaw };
     const area = areaRaw.data;
     if (!area) throw new BadRequestException('El área comunal no existe');
-    if (area._State_code === 'Rent') throw new ConflictException('El área ya está reservada');
+    if (area._State_code === 'Rent')
+      throw new ConflictException('El área ya está reservada');
     try {
       await this.openmaintClient.put(
         `/classes/${OPENMAINT_COMMON_AREAS_CLASS}/cards/${areaId}`,
@@ -533,7 +598,9 @@ export class OwnersService {
         precio: area.Precio ?? 0,
       };
     } catch (error) {
-      console.error('[owners] createReservation error:', { status: error?.response?.status });
+      console.error('[owners] createReservation error:', {
+        status: error?.response?.status,
+      });
       throw new InternalServerErrorException('No se pudo crear la reserva');
     }
   }
@@ -574,18 +641,26 @@ export class OwnersService {
 
   private mapAreaState(stateCode: string | null): string {
     switch (stateCode) {
-      case 'Vacant': return 'Libre';
-      case 'Rent': return 'Reservado';
-      default: return 'Disponible';
+      case 'Vacant':
+        return 'Libre';
+      case 'Rent':
+        return 'Reservado';
+      default:
+        return 'Disponible';
     }
   }
 
   private async getAdminSessionId(): Promise<string> {
     const username = this.configService.get<string>('OPENMAINT_USERNAME');
     const password = this.configService.get<string>('OPENMAINT_PASSWORD');
-    const response = await this.openmaintAuthService.login(username!, password!);
+    const response = await this.openmaintAuthService.login(
+      username!,
+      password!,
+    );
     if (!response?.data?._id) {
-      throw new InternalServerErrorException('No se pudo obtener sesión de servicio con OpenMAINT');
+      throw new InternalServerErrorException(
+        'No se pudo obtener sesión de servicio con OpenMAINT',
+      );
     }
     return response.data._id;
   }

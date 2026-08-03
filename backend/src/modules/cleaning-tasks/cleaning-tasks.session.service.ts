@@ -28,13 +28,13 @@ export class CleaningTasksSessionService implements OnModuleInit {
    */
   async getSessionId(): Promise<string> {
     const now = Date.now();
-    
+
     // Si no hay sesión o expiró, refrescar
     if (!this.sessionId || now >= this.sessionExpiresAt) {
       this.logger.warn('⚠️ Sesión expirada o inválida, refrescando...');
       await this.refreshSession();
     }
-    
+
     return this.sessionId || '';
   }
 
@@ -42,28 +42,37 @@ export class CleaningTasksSessionService implements OnModuleInit {
    * Fuerza el refresco de la sesión
    */
   async refreshSession(): Promise<void> {
-    const username = this.configService.get<string>('OPENMAINT_USERNAME') || 'admin';
-    const password = this.configService.get<string>('OPENMAINT_PASSWORD') || 'admin';
+    const username =
+      this.configService.get<string>('OPENMAINT_USERNAME') || 'admin';
+    const password =
+      this.configService.get<string>('OPENMAINT_PASSWORD') || 'admin';
 
     try {
       this.logger.log('🔄 Solicitando nueva sesión a OpenMAINT...');
-      
+
       const response = await this.client.post(
         '/sessions?scope=service&returnId=true',
         { username, password },
-      ) as any;
+      );
 
       this.sessionId = response?.data?._id ?? null;
       this.sessionExpiresAt = Date.now() + this.SESSION_DURATION_MS;
-      
+
       if (this.sessionId) {
-        this.logger.log(`✅ Sesión iniciada: ${this.sessionId.substring(0, 10)}...`);
-        this.logger.log(`⏰ Sesión válida hasta: ${new Date(this.sessionExpiresAt).toLocaleTimeString()}`);
+        this.logger.log(
+          `✅ Sesión iniciada: ${this.sessionId.substring(0, 10)}...`,
+        );
+        this.logger.log(
+          `⏰ Sesión válida hasta: ${new Date(this.sessionExpiresAt).toLocaleTimeString()}`,
+        );
       } else {
         this.logger.error('❌ No se pudo obtener session ID de OpenMAINT');
       }
     } catch (error) {
-      this.logger.error('❌ Error al iniciar sesión con OpenMAINT:', error.message);
+      this.logger.error(
+        '❌ Error al iniciar sesión con OpenMAINT:',
+        error.message,
+      );
       this.sessionId = null;
       this.sessionExpiresAt = 0;
     }

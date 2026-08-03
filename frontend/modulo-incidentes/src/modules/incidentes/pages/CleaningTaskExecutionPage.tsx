@@ -9,6 +9,7 @@ import { useCleaningTaskExecution } from "@/modules/incidentes/hooks/useCleaning
 import { ErrorModal } from "@/shared/components/ErrorModal";
 import { LoadingModal } from "@/shared/components/LoadingModal";
 import { SuccessModal } from "@/shared/components/SuccessModal";
+import { cleanObservationText } from "@/shared/utils/textUtils";
 
 export const CleaningTaskExecutionPage = () => {
   const navigate = useNavigate();
@@ -56,10 +57,37 @@ export const CleaningTaskExecutionPage = () => {
 
           {taskDetail ? (
             <>
+              {(taskDetail.taskObservations || taskDetail.supervisionObserv || taskDetail.teamObservations) && (
+                <section className="rounded-3xl bg-white p-5 shadow-sm space-y-4">
+                  {taskDetail.taskObservations && (
+                    <div className="rounded-xl border border-blue-100 bg-blue-50 p-3">
+                      <p className="mb-1 text-xs font-semibold text-blue-700">Observaciones de la tarea</p>
+                      <p className="whitespace-pre-line text-sm text-blue-900 italic">"{cleanObservationText(taskDetail.taskObservations)}"</p>
+                    </div>
+                  )}
+
+                  {taskDetail.supervisionObserv && (
+                    <div className="rounded-xl border border-violet-100 bg-violet-50 p-3">
+                      <p className="mb-1 text-xs font-semibold text-violet-700">Observaciones de supervisión</p>
+                      <p className="whitespace-pre-line text-sm text-violet-900 italic">"{cleanObservationText(taskDetail.supervisionObserv)}"</p>
+                    </div>
+                  )}
+
+                  {taskDetail.teamObservations && (
+                    <div className="rounded-xl border border-amber-100 bg-amber-50 p-3">
+                      <p className="mb-1 text-xs font-semibold text-amber-700">Observaciones del empleado</p>
+                      <p className="whitespace-pre-line text-sm text-amber-900 italic">"{cleanObservationText(taskDetail.teamObservations)}"</p>
+                    </div>
+                  )}
+                </section>
+              )}
+
               <CleaningTaskTimer />
               <CleaningTaskChecklist
                 activities={taskDetail.checklistDetail?.activities ?? []}
               />
+
+
               <CleaningTaskObservations />
               <CleaningTaskPhotoUpload taskId={taskId} onError={setErrorMessage} />
 

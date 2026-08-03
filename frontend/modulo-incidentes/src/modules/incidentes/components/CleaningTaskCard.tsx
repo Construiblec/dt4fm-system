@@ -22,9 +22,10 @@ const phaseStyles: Record<string, string> = {
 
 const actionablePhases = new Set(["Assigned", "InProgress", "InExecution"]);
 
-function calcDuration(start: string, end: string): string {
+function calcDuration(start?: string | null, end?: string | null): string {
+  if (!start || !end) return "—";
   const diffMs = new Date(end).getTime() - new Date(start).getTime();
-  if (diffMs <= 0) return "—";
+  if (isNaN(diffMs) || diffMs <= 0) return "—";
   const totalMinutes = Math.round(diffMs / 60_000);
   const hours = Math.floor(totalMinutes / 60);
   const minutes = totalMinutes % 60;
@@ -33,15 +34,17 @@ function calcDuration(start: string, end: string): string {
   return `${hours}h ${minutes}min`;
 }
 
-function formatAssignedDate(dateStr: string): string {
-  return new Date(`${dateStr}T00:00:00`).toLocaleDateString(undefined, {
+function formatAssignedDate(dateStr?: string | null): string {
+  if (!dateStr) return "Sin asignar";
+  return new Date(dateStr).toLocaleDateString(undefined, {
     weekday: "short",
     month: "short",
     day: "numeric",
   });
 }
 
-function formatTime(isoStr: string): string {
+function formatTime(isoStr?: string | null): string {
+  if (!isoStr) return "—";
   return new Date(isoStr).toLocaleTimeString([], {
     hour: "2-digit",
     minute: "2-digit",
@@ -176,19 +179,21 @@ export const CleaningTaskCard = ({
       </div>
 
       {/* Footer */}
-      <div className="mt-4 flex justify-end">
-        <button
-          disabled={!isActionable}
-          onClick={handleStart}
-          className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${
-            isActionable
-              ? "bg-brand text-white hover:bg-brand-hover"
-              : "bg-slate-200 text-slate-400 cursor-not-allowed"
-          }`}
-        >
-          {isSameActiveTask || isTaskAlreadyInExecution ? "Continuar" : "Iniciar"}
-        </button>
-      </div>
+      {actionablePhases.has(phase) && (
+        <div className="mt-4 flex justify-end">
+          <button
+            disabled={!isActionable}
+            onClick={handleStart}
+            className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${
+              isActionable
+                ? "bg-brand text-white hover:bg-brand-hover"
+                : "bg-slate-200 text-slate-400 cursor-not-allowed"
+            }`}
+          >
+            {isSameActiveTask || isTaskAlreadyInExecution ? "Continuar" : "Iniciar"}
+          </button>
+        </div>
+      )}
 
       <LoadingModal open={startMutation.isPending} message="Iniciando tarea..." />
       <ErrorModal

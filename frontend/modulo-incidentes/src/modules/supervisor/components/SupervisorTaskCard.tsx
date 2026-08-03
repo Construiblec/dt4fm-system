@@ -2,6 +2,8 @@ import { MapPin, User, CalendarDays, Clock } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import type { CleaningTask } from "@/modules/incidentes/types/CleaningTask";
 
+import { formatEmployeeName } from "@/shared/utils/nameUtils";
+
 const phaseStyles: Record<string, { badge: string; border: string }> = {
   Assigned: { badge: "bg-blue-100 text-blue-700", border: "border-blue-400" },
   InExecution: {
@@ -45,16 +47,16 @@ function formatTime(iso: string | null): string {
 
 type Props = {
   task: CleaningTask;
-  onReview: (task: CleaningTask) => void;
+  onReview?: (task: CleaningTask) => void;
 };
 
-export const SupervisorTaskCard = ({ task, onReview }: Props) => {
+export const SupervisorTaskCard = ({ task }: Props) => {
   const navigate = useNavigate();
   const style = phaseStyles[task.phase] ?? {
     badge: "bg-slate-100 text-slate-700",
     border: "border-slate-300",
   };
-  const canReview = task.phase === "Completed";
+
 
   return (
     <article
@@ -86,7 +88,7 @@ export const SupervisorTaskCard = ({ task, onReview }: Props) => {
 
         <div className="flex items-center gap-2">
           <User className="h-4 w-4 flex-shrink-0 text-slate-400" />
-          <span>{task.employee?.name ?? "Sin asignar"}</span>
+          <span>{formatEmployeeName(task.employee?.name)}</span>
         </div>
 
         <div className="flex items-center gap-2">
@@ -106,11 +108,6 @@ export const SupervisorTaskCard = ({ task, onReview }: Props) => {
           </div>
         )}
 
-        {task.observations && (
-          <p className="mt-1 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500 italic">
-            "{task.observations}"
-          </p>
-        )}
       </div>
 
       {/* Footer — cualquier tarea puede abrirse en detalle */}
@@ -118,19 +115,10 @@ export const SupervisorTaskCard = ({ task, onReview }: Props) => {
         <button
           type="button"
           onClick={() => navigate(`/supervisor/tasks/${task.id}`)}
-          className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-semibold text-slate-600 transition hover:bg-slate-100"
+          className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-violet-700"
         >
-          Ver detalle
+          {task.phase === "Completed" ? "Revisar" : "Ver detalle"}
         </button>
-        {canReview && (
-          <button
-            type="button"
-            onClick={() => onReview(task)}
-            className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-violet-700"
-          >
-            Revisar
-          </button>
-        )}
       </div>
     </article>
   );

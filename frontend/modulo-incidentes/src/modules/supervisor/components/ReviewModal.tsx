@@ -5,6 +5,8 @@ import { reviewCleaningTask } from "@/modules/supervisor/services/supervisorServ
 import { LoadingModal } from "@/shared/components/LoadingModal";
 import { ErrorModal } from "@/shared/components/ErrorModal";
 import type { CleaningTask } from "@/modules/incidentes/types/CleaningTask";
+import { formatEmployeeName } from "@/shared/utils/nameUtils";
+import { cleanObservationText } from "@/shared/utils/textUtils";
 
 type Props = {
   task: CleaningTask;
@@ -57,9 +59,9 @@ export const ReviewModal = ({ task, onClose, onSuccess }: Props) => {
         {/* Task info */}
         <div className="mt-4 rounded-xl bg-slate-50 p-3 space-y-1 text-sm text-slate-700">
           <p className="font-semibold">{task.unit?.description ?? task.description}</p>
-          <p className="text-slate-500">{task.employee?.name ?? "Sin asignar"}</p>
-          {task.observations && (
-            <p className="italic text-slate-400">"{task.observations}"</p>
+          <p className="text-slate-500">{formatEmployeeName(task.employee?.name)}</p>
+          {task.teamObservations && (
+            <p className="italic whitespace-pre-line text-slate-400">"{cleanObservationText(task.teamObservations)}"</p>
           )}
         </div>
 
@@ -86,7 +88,7 @@ export const ReviewModal = ({ task, onClose, onSuccess }: Props) => {
             className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-600 transition hover:bg-red-100 disabled:opacity-50"
           >
             <XCircle className="h-4 w-4" />
-            Rechazar
+            Reabrir
           </button>
 
           <button

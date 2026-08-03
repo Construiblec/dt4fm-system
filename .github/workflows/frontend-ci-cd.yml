@@ -1,0 +1,79 @@
+name: Frontend CI
+
+# Gate de calidad (lint + typecheck + build). El deploy real lo hace
+# Vercel de forma nativa via su integracion de Git (preview en cada PR,
+# produccion en cada push a main) - este workflow no despliega nada.
+# Modelo trunk-based: feature/xxx --PR--> develop --PR--> main
+# Solo se ejecuta cuando cambia el frontend (o el propio workflow).
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'frontend/modulo-incidentes/**'
+      - '.github/workflows/frontend-ci-cd.yml'
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'frontend/modulo-incidentes/**'
+      - '.github/workflows/frontend-ci-cd.yml'
+  workflow_dispatch:
+
+# Si se empuja dos veces seguidas a la misma rama, cancela la corrida anterior.
+concurrency:
+  group: frontend-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '22'
+
+defaults:
+  run:
+    working-directory: frontend/modulo-incidentes
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/modulo-incidentes/package-lock.json
+
+      - run: npm ci
+
+      # TODO: quitar `continue-on-error` cuando se corrijan los 3 errores
+      # de react-hooks/preserve-manual-memoization existentes en src/.
+      - name: ESLint
+        continue-on-error: true
+        run: npm run lint
+
+  build:
+    name: Typecheck & Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/modulo-incidentes/package-lock.json
+
+      - run: npm ci
+
+      # `npm run build` = tsc -b && vite build (typecheck + bundle).
+      - name: Build
+        run: npm run build
+        env:
+          VITE_API_URL: ${{ vars.VITE_API_URL || 'http://localhost:3000/api' }}
+
+      - name: Subir artefacto de build
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/modulo-incidentes/dist
+          retention-days: 7

@@ -22,7 +22,9 @@ export type CleaningTask = {
   plannedEndTime: string;
   actualStartTime: string | null;
   actualEndTime: string | null;
-  observations: string | null;
+  taskObservations: string | null;
+  supervisionObserv: string | null;
+  teamObservations: string | null;
   hostawayReservation: string | null;
   checkoutDate: string | null;
   source: string;
