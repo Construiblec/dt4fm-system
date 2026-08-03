@@ -1,5 +1,6 @@
-import { AlertTriangle, CalendarClock, ClipboardList, MapPin } from "lucide-react";
+import { AlertTriangle, CalendarClock, MapPin, Wrench } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { getPreventiveStatusLabel } from "@/modules/incidentes/constants/preventiveStatus";
 import type { PreventiveMaintenance } from "@/modules/incidentes/types/PreventiveMaintenance";
 
 type Props = PreventiveMaintenance;
@@ -31,18 +32,19 @@ const formatShortDate = (value: string | null) => {
   return new Date(value).toLocaleDateString("es-EC", {
     day: "numeric",
     month: "short",
+    year: "numeric",
   });
 };
 
 export const PreventiveMaintenanceCard = ({
   id,
   number,
+  subject,
   statusCode,
   status,
   isOverdue,
   site,
   equipment,
-  plan,
   dueDate,
 }: Props) => {
   const navigate = useNavigate();
@@ -53,15 +55,15 @@ export const PreventiveMaintenanceCard = ({
 
   return (
     <article className={`rounded-xl border-l-4 bg-white p-4 shadow-sm ${border}`}>
-      {/* Header */}
+      {/* Identidad de la instancia: número + breve descripción */}
       <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-xs font-bold uppercase tracking-wide text-slate-500">
+        <div className="min-w-0">
+          <p className="text-xs font-bold uppercase tracking-wide text-brand">
             {number ?? "Preventivo"}
           </p>
 
           <h3 className="mt-1 text-base font-semibold text-slate-900">
-            {equipment ?? "Equipo sin especificar"}
+            {subject ?? "Mantenimiento preventivo"}
           </h3>
         </div>
 
@@ -77,7 +79,7 @@ export const PreventiveMaintenanceCard = ({
             badgeByStatus[statusCode ?? ""] ?? "bg-slate-100 text-slate-700"
           }`}
         >
-          {status ?? "Sin estado"}
+          {getPreventiveStatusLabel(statusCode, status)}
         </span>
 
         {isOverdue ? (
@@ -91,8 +93,8 @@ export const PreventiveMaintenanceCard = ({
       {/* Cuerpo */}
       <div className="mt-3 space-y-2 text-sm text-slate-600">
         <div className="flex items-center gap-2">
-          <ClipboardList className="h-4 w-4 shrink-0" />
-          <span>{plan ?? "Sin plan asociado"}</span>
+          <Wrench className="h-4 w-4 shrink-0" />
+          <span>{equipment ?? "Equipo sin especificar"}</span>
         </div>
 
         <div className="flex items-center gap-2">
@@ -102,7 +104,7 @@ export const PreventiveMaintenanceCard = ({
 
         <div className="flex items-center gap-2">
           <CalendarClock className="h-4 w-4 shrink-0" />
-          <span>Vence: {formatShortDate(dueDate)}</span>
+          <span>Fecha final de ejecución: {formatShortDate(dueDate)}</span>
         </div>
       </div>
 

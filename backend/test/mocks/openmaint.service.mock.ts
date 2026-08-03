@@ -18,7 +18,9 @@ export const mockOpenmaintService = {
     },
   }),
   getIncidentAttachments: jest.fn().mockResolvedValue({ data: [] }),
-  getAttachmentPreview: jest.fn().mockResolvedValue({ data: { hasPreview: false } }),
+  getAttachmentPreview: jest
+    .fn()
+    .mockResolvedValue({ data: { hasPreview: false } }),
   getIncidentWithTask: jest.fn().mockResolvedValue({
     data: {
       _tasklist: [{ _id: 'TASK-123', writable: true }],

@@ -49,8 +49,12 @@ describe('IncidentsController (e2e)', () => {
         .expect((res) => {
           expect(res.body.incidentId).toBe(12345);
           expect(res.body.requester).toBe(999);
-          expect(mockOpenmaintService.createCorrectiveMaintIncident).toHaveBeenCalled();
-          expect(mockNotificationsService.notifyIncidentCreated).toHaveBeenCalled();
+          expect(
+            mockOpenmaintService.createCorrectiveMaintIncident,
+          ).toHaveBeenCalled();
+          expect(
+            mockNotificationsService.notifyIncidentCreated,
+          ).toHaveBeenCalled();
         });
     });
 
@@ -78,7 +82,10 @@ describe('IncidentsController (e2e)', () => {
         .expect(201) // NestJS POST devuelve 201 por defecto a menos que se cambie con @HttpCode
         .expect((res) => {
           expect(res.body.success).toBe(true);
-          expect(mockOpenmaintService.getIncidentWithTask).toHaveBeenCalledWith(12345, 'mock-session-id');
+          expect(mockOpenmaintService.getIncidentWithTask).toHaveBeenCalledWith(
+            12345,
+            'mock-session-id',
+          );
           expect(mockOpenmaintService.completeIncident).toHaveBeenCalled();
         });
     });

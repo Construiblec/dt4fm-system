@@ -1,4 +1,8 @@
 import { Eraser } from "lucide-react";
+import {
+  PREVENTIVE_ACTIVE_STATUSES,
+  PREVENTIVE_STATUS_LABELS,
+} from "@/modules/incidentes/constants/preventiveStatus";
 
 type Props = {
   statusFilter: string;
@@ -6,15 +10,15 @@ type Props = {
   onClear: () => void;
 };
 
-/** Opciones de estado: el valor es el `statusCode` estable del backend. */
-const statusOptions = [
-  { value: "Planning", label: "Planificación" },
-  { value: "Acceptance", label: "Aceptación" },
-  { value: "Execution", label: "Ejecución" },
-  { value: "Suspension", label: "Suspensión" },
-  { value: "Completed", label: "Completado" },
-  { value: "Canceled", label: "Cancelado" },
-] as const;
+/**
+ * Solo los estados que el dashboard puede contener: el backend ya limita el
+ * listado a Asignación y Ejecución, y al completarse el mantenimiento
+ * desaparece. El valor es el `statusCode` estable del backend.
+ */
+const statusOptions = PREVENTIVE_ACTIVE_STATUSES.map((value) => ({
+  value,
+  label: PREVENTIVE_STATUS_LABELS[value],
+}));
 
 export const PreventiveFilters = ({
   statusFilter,

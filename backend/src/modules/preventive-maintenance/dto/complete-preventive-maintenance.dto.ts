@@ -1,10 +1,10 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { IsOptional, IsString } from 'class-validator';
 
-export class CompleteIncidentDto {
+export class CompletePreventiveMaintenanceDto {
   @ApiPropertyOptional({
-    description: 'Notas u observaciones del cierre del incidente',
-    example: 'Trabajo finalizado, fuga sellada y área limpia.',
+    description: 'Notas u observaciones del cierre del mantenimiento',
+    example: 'Checklist completado, sensor calibrado y sin novedades.',
   })
   @IsOptional()
   @IsString()

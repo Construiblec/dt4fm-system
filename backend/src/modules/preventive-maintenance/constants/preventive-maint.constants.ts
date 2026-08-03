@@ -49,3 +49,23 @@ export const PM_STATUS_CODE_TO_NAME: Record<string, string> = {
 
 /** Valores aceptados por el filtro `status` de la API. */
 export const VALID_PM_STATUSES = Object.values(PM_STATUS_NAMES);
+
+/**
+ * Estados que el técnico ve en su dashboard: los que tiene pendientes de
+ * atender. Al completarse, el mantenimiento sale de la lista por sí solo.
+ */
+export const PM_ACTIVE_STATUS_IDS: PmStatusId[] = [
+  PM_STATUS_IDS.ACCEPTANCE,
+  PM_STATUS_IDS.EXECUTION,
+];
+
+/** Códigos del lookup `Process - Action` que hacen avanzar el flujo PM. */
+export const PM_ACTIONS = {
+  /** PM02 Aceptación → PM03 Ejecución ("Iniciar ejecución") */
+  START_EXECUTION: 'PM02-Advance',
+  /** PM03 Ejecución → Completado ("Terminar actividad") */
+  CONCLUDE: 'PM03-Advance',
+} as const;
+
+/** Lookup `MaintProcess - Outcome`: cierre satisfactorio. */
+export const PM_OUTCOME_POSITIVE = 261326;
