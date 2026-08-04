@@ -9,6 +9,8 @@ import {
   Post,
   Put,
   Query,
+  Res,
+  UnauthorizedException,
   UploadedFile,
   UseInterceptors,
   ValidationPipe,
@@ -20,10 +22,13 @@ import {
   ApiHeader,
   ApiOperation,
   ApiParam,
+  ApiQuery,
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
+import type { Response } from 'express';
 import { CompletePreventiveMaintenanceDto } from './dto/complete-preventive-maintenance.dto';
+import { GetHistoryQueryDto } from './dto/get-history-query.dto';
 import { GetMyPreventiveMaintenancesQueryDto } from './dto/get-my-preventive-maintenances-query.dto';
 import { SaveChecklistDto } from './dto/save-checklist.dto';
 import { SuspendPreventiveMaintenanceDto } from './dto/suspend-preventive-maintenance.dto';
@@ -121,6 +126,113 @@ export class PreventiveMaintenanceController {
     return this.preventiveMaintenanceService.getPreventiveMaintenanceDetail(
       this.requireSessionId(sessionId),
       id,
+    );
+  }
+
+  @Get(':id/history')
+  @ApiOperation({
+    summary: 'Obtener los mantenimientos anteriores del mismo equipo',
+    description:
+      'Devuelve los preventivos ya completados sobre el equipo del ' +
+      'mantenimiento indicado, excluyéndolo a él. Si el mantenimiento no ' +
+      'tiene equipo asociado devuelve una lista vacía.',
+  })
+  @ApiParam({
+    name: 'id',
+    description: 'ID del mantenimiento preventivo',
+    type: 'integer',
+  })
+  @ApiHeader({
+    name: 'authorization',
+    description: 'Token de sesión de OpenMAINT',
+    required: true,
+  })
+  @ApiResponse({ status: 200, description: 'Historial obtenido con éxito' })
+  @ApiResponse({
+    status: 404,
+    description: 'Mantenimiento preventivo no encontrado',
+  })
+  @ApiResponse({ status: 502, description: 'OpenMAINT no respondió' })
+  async getEquipmentHistory(
+    @Param('id', ParseIntPipe) id: number,
+    @Headers('authorization') sessionId: string,
+    @Query() query: GetHistoryQueryDto,
+  ) {
+    return this.preventiveMaintenanceService.getEquipmentHistory(
+      this.requireSessionId(sessionId),
+      id,
+      query,
+    );
+  }
+
+  @Get(':id/attachments')
+  @ApiOperation({
+    summary: 'Listar los archivos adjuntos de un mantenimiento preventivo',
+  })
+  @ApiParam({
+    name: 'id',
+    description: 'ID del mantenimiento preventivo',
+    type: 'integer',
+  })
+  @ApiHeader({
+    name: 'authorization',
+    description: 'Token de sesión de OpenMAINT',
+    required: true,
+  })
+  @ApiResponse({ status: 200, description: 'Adjuntos obtenidos con éxito' })
+  @ApiResponse({
+    status: 404,
+    description: 'Mantenimiento preventivo no encontrado',
+  })
+  async getAttachments(
+    @Param('id', ParseIntPipe) id: number,
+    @Headers('authorization') sessionId: string,
+  ) {
+    return this.preventiveMaintenanceService.getAttachments(
+      this.requireSessionId(sessionId),
+      id,
+    );
+  }
+
+  @Get(':id/attachments/:attachmentId/download')
+  @ApiOperation({
+    summary: 'Descargar el binario de un adjunto',
+    description:
+      'Acepta el token de sesión por cabecera o por query. Lo segundo es lo ' +
+      'que permite usar la URL directamente en un `<a href>` o un `<img src>`.',
+  })
+  @ApiParam({
+    name: 'id',
+    description: 'ID del mantenimiento preventivo',
+    type: 'integer',
+  })
+  @ApiParam({ name: 'attachmentId', description: 'ID del adjunto' })
+  @ApiQuery({
+    name: 'token',
+    description: 'Token de sesión, alternativa a la cabecera `authorization`',
+    required: false,
+  })
+  @ApiResponse({ status: 200, description: 'Binario del archivo' })
+  @ApiResponse({ status: 401, description: 'Token de sesión no proveído' })
+  @ApiResponse({ status: 404, description: 'Adjunto no encontrado' })
+  async downloadAttachment(
+    @Param('id', ParseIntPipe) id: number,
+    @Param('attachmentId') attachmentId: string,
+    @Headers('authorization') sessionIdFromHeader: string,
+    @Query('token') tokenFromQuery: string | undefined,
+    @Res() res: Response,
+  ) {
+    const sessionId = sessionIdFromHeader || tokenFromQuery;
+
+    if (!sessionId) {
+      throw new UnauthorizedException('Session token is required');
+    }
+
+    return this.preventiveMaintenanceService.streamAttachment(
+      sessionId,
+      id,
+      attachmentId,
+      res,
     );
   }
 

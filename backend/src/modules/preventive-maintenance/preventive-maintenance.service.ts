@@ -7,6 +7,7 @@ import {
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { extractRegisterNotes } from '../../common/utils/openmaint-register.util';
 import {
   PM_ACTIONS,
@@ -19,6 +20,7 @@ import {
   PM_SUSPENSION_REASON_LOOKUP,
 } from './constants/preventive-maint.constants';
 import { CompletePreventiveMaintenanceDto } from './dto/complete-preventive-maintenance.dto';
+import { GetHistoryQueryDto } from './dto/get-history-query.dto';
 import { GetMyPreventiveMaintenancesQueryDto } from './dto/get-my-preventive-maintenances-query.dto';
 import { SuspendPreventiveMaintenanceDto } from './dto/suspend-preventive-maintenance.dto';
 import {
@@ -29,7 +31,9 @@ import {
 import {
   PreventiveMaintAttachment,
   PreventiveMaintAttachmentPreviewResponse,
+  PreventiveMaintAttachmentsResponse,
   PreventiveMaintCard,
+  PreventiveMaintCardsResponse,
   PreventiveMaintenanceOpenmaintService,
   UploadedImage,
 } from './preventive-maintenance.openmaint.service';
@@ -76,6 +80,22 @@ export type PreventiveMaintenanceDetail = PreventiveMaintenance & {
   suspensionReason: string | null;
   /** Actividades a ejecutar; el cierre exige tenerlas todas resueltas */
   checklist: PreventiveChecklistItem[];
+};
+
+/** Mantenimiento ya cerrado sobre el mismo equipo. */
+export type PreventiveMaintenanceHistoryEntry = PreventiveMaintenance & {
+  /** Cuántos archivos dejó; alimenta la etiqueta «Informe generado» */
+  attachmentCount: number;
+};
+
+export type PreventiveMaintenanceAttachment = {
+  id: string;
+  fileName: string;
+  category: string | null;
+  uploadDate: string | null;
+  /** Ruta de este mismo backend, no de OpenMAINT */
+  downloadUrl: string;
+  isImage: boolean;
 };
 
 @Injectable()
@@ -349,6 +369,156 @@ export class PreventiveMaintenanceService {
     }
 
     return { success: true, data: reasons };
+  }
+
+  /**
+   * Mantenimientos preventivos ya completados sobre el mismo equipo, para dar
+   * contexto de lo que se hizo antes. Excluye el mantenimiento consultado.
+   */
+  async getEquipmentHistory(
+    sessionId: string,
+    id: number,
+    query: GetHistoryQueryDto,
+  ) {
+    const limit = query.limit ?? 10;
+    const card = await this.fetchCard(sessionId, id);
+
+    // `CISubset` es el equipo concreto; `CI` es el respaldo cuando el plan se
+    // definió sobre el activo genérico.
+    const equipmentAttr = card.CISubset != null ? 'CISubset' : 'CI';
+    const equipmentId = card.CISubset ?? card.CI ?? null;
+    const equipment =
+      card._CISubset_description ?? card._CI_description ?? null;
+
+    if (equipmentId === null) {
+      return { success: true, data: [], meta: { total: 0, equipment: null } };
+    }
+
+    let response: PreventiveMaintCardsResponse;
+
+    try {
+      response = await this.openmaint.findByEquipment(sessionId, {
+        equipmentAttr,
+        equipmentId,
+        // Uno de más: el propio mantenimiento puede caer dentro de la página
+        limit: limit + 1,
+        offset: 0,
+        statusIds: [PM_STATUS_IDS.COMPLETED],
+      });
+    } catch (error) {
+      this.throwIfSessionExpired(error);
+
+      throw new BadGatewayException(
+        'Error al consultar el historial del equipo en OpenMAINT',
+      );
+    }
+
+    const cards = (response.data ?? [])
+      .filter((previous) => previous._id !== id)
+      .slice(0, limit);
+
+    const attachments = await Promise.allSettled(
+      cards.map((previous) =>
+        this.openmaint.findAttachments(sessionId, previous._id),
+      ),
+    );
+
+    return {
+      success: true,
+      data: cards.map((previous, index) => ({
+        ...this.toPreventiveMaintenance(previous),
+        attachmentCount: this.countAttachments(attachments[index]),
+      })),
+      meta: { total: cards.length, equipment },
+    };
+  }
+
+  /** Archivos adjuntos de un mantenimiento, con su ruta de descarga. */
+  async getAttachments(sessionId: string, id: number) {
+    // Valida que el mantenimiento exista y sea accesible para la sesión
+    await this.fetchCard(sessionId, id);
+
+    let attachments: PreventiveMaintAttachment[];
+
+    try {
+      const response = await this.openmaint.findAttachments(sessionId, id);
+      attachments = response.data ?? [];
+    } catch (error) {
+      this.throwIfSessionExpired(error);
+
+      // Los adjuntos son complementarios: la vista sigue siendo útil sin ellos
+      return { success: true, data: [], meta: { total: 0 } };
+    }
+
+    const data: PreventiveMaintenanceAttachment[] = attachments.map(
+      (attachment) => {
+        const fileName = attachment.fileName ?? attachment.name ?? 'adjunto';
+
+        return {
+          id: attachment._id,
+          fileName,
+          category:
+            attachment._category_description ?? attachment.category ?? null,
+          uploadDate: attachment.created ?? attachment.modified ?? null,
+          downloadUrl: `/preventive-maintenance/${id}/attachments/${attachment._id}/download`,
+          isImage: IMAGE_FILE_REGEX.test(fileName),
+        };
+      },
+    );
+
+    return { success: true, data, meta: { total: data.length } };
+  }
+
+  /** Reenvía el binario de un adjunto al navegador. */
+  async streamAttachment(
+    sessionId: string,
+    id: number,
+    attachmentId: string,
+    res: Response,
+  ): Promise<void> {
+    let file: Awaited<
+      ReturnType<PreventiveMaintenanceOpenmaintService['downloadAttachment']>
+    >;
+
+    try {
+      file = await this.openmaint.downloadAttachment(
+        sessionId,
+        id,
+        attachmentId,
+      );
+    } catch (error) {
+      this.throwIfSessionExpired(error);
+
+      const status = this.getErrorStatus(error);
+
+      if (status === 404 || status === 400) {
+        throw new NotFoundException('Adjunto no encontrado');
+      }
+
+      throw new BadGatewayException(
+        'Error al descargar el adjunto desde OpenMAINT',
+      );
+    }
+
+    res.setHeader('Content-Type', file.contentType);
+    res.setHeader(
+      'Content-Disposition',
+      `inline; filename="${this.decodeFileName(file.fileName)}"`,
+    );
+    res.setHeader('Cache-Control', 'private, max-age=3600');
+    res.send(file.data);
+  }
+
+  /**
+   * OpenMAINT devuelve el nombre form-encoded en el `Content-Disposition`, así
+   * que sin esto el navegador guarda «Informe+de+actividades.pdf».
+   */
+  private decodeFileName(fileName: string): string {
+    try {
+      return decodeURIComponent(fileName.replace(/\+/g, ' '));
+    } catch {
+      return fileName;
+    }
   }
 
   // ── Acceso a OpenMAINT ─────────────────────────────────────────────────────
@@ -680,6 +850,13 @@ export class PreventiveMaintenanceService {
           typeof result.value.data.dataUrl === 'string',
       )
       .map((result) => result.value.data!.dataUrl!);
+  }
+
+  /** Un fallo al contar los archivos de un mantenimiento no invalida su fila. */
+  private countAttachments(
+    result: PromiseSettledResult<PreventiveMaintAttachmentsResponse>,
+  ): number {
+    return result.status === 'fulfilled' ? (result.value.data?.length ?? 0) : 0;
   }
 
   // ── Errores ────────────────────────────────────────────────────────────────
