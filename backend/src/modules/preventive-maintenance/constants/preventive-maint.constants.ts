@@ -57,15 +57,29 @@ export const VALID_PM_STATUSES = Object.values(PM_STATUS_NAMES);
 export const PM_ACTIVE_STATUS_IDS: PmStatusId[] = [
   PM_STATUS_IDS.ACCEPTANCE,
   PM_STATUS_IDS.EXECUTION,
+  PM_STATUS_IDS.SUSPENSION,
 ];
 
-/** Códigos del lookup `Process - Action` que hacen avanzar el flujo PM. */
+/**
+ * IDs del lookup `Process - Action`. Con el código en vez del ID, OpenMAINT
+ * guarda `Action: null` y aplica la transición por defecto del paso.
+ */
 export const PM_ACTIONS = {
-  /** PM02 Aceptación → PM03 Ejecución ("Iniciar ejecución") */
-  START_EXECUTION: 'PM02-Advance',
-  /** PM03 Ejecución → Completado ("Terminar actividad") */
-  CONCLUDE: 'PM03-Advance',
+  /** `PM02-Advance`: Aceptación → Ejecución */
+  START_EXECUTION: 266618,
+  /** `PM03-Advance`: Ejecución → Completado */
+  CONCLUDE: 266622,
+  /** `PM03-Back`: Ejecución → Suspensión */
+  SUSPEND: 266624,
+  /** `PM04-Advance`: Suspensión → Ejecución. Hoy solo se hace desde OpenMAINT. */
+  RESUME: 266626,
 } as const;
 
 /** Lookup `MaintProcess - Outcome`: cierre satisfactorio. */
 export const PM_OUTCOME_POSITIVE = 261326;
+
+/** Motivo de la suspensión. OpenMAINT lo limpia por su cuenta al reanudar. */
+export const PM_SUSPENSION_REASON_ATTR = 'SuspensionReason';
+
+/** Lookup del que salen las opciones del motivo de suspensión. */
+export const PM_SUSPENSION_REASON_LOOKUP = 'MaintProcess - SuspensionReason';

@@ -84,6 +84,8 @@ describe('PreventiveMaintenanceService', () => {
       getChecklist: jest.fn().mockResolvedValue([]),
       saveChecklist: jest.fn().mockResolvedValue([]),
       assertComplete: jest.fn().mockResolvedValue(undefined),
+      markPendingAsNotDone: jest.fn().mockResolvedValue(0),
+      clearNotDone: jest.fn().mockResolvedValue(0),
     };
 
     const moduleRef = await Test.createTestingModule({
@@ -132,7 +134,7 @@ describe('PreventiveMaintenanceService', () => {
       });
     });
 
-    it('por defecto solo pide los estados activos (Aceptación y Ejecución)', async () => {
+    it('por defecto pide los estados que el técnico tiene pendientes', async () => {
       openmaint.findByAssignee.mockResolvedValue({ data: [] });
 
       await service.getMyPreventiveMaintenances(SESSION_ID, EMPLOYEE_ID, {});
@@ -143,7 +145,11 @@ describe('PreventiveMaintenanceService', () => {
         {
           limit: 50,
           offset: 0,
-          statusIds: [PM_STATUS_IDS.ACCEPTANCE, PM_STATUS_IDS.EXECUTION],
+          statusIds: [
+            PM_STATUS_IDS.ACCEPTANCE,
+            PM_STATUS_IDS.EXECUTION,
+            PM_STATUS_IDS.SUSPENSION,
+          ],
         },
       );
     });
@@ -483,6 +489,58 @@ describe('PreventiveMaintenanceService', () => {
         service.startExecution(SESSION_ID, 4370994),
       ).rejects.toBeInstanceOf(BadRequestException);
     });
+
+    describe('mantenimiento suspendido', () => {
+      const suspendedCard = {
+        ...openmaintCard,
+        ProcessStatus: PM_STATUS_IDS.SUSPENSION,
+        _ProcessStatus_code: 'PM-Suspension',
+        _tasklist: [{ _id: 'act-4', _definition: 'PM04-Suspension' }],
+      };
+
+      beforeEach(() => {
+        openmaint.findWithTasklist.mockResolvedValue({ data: suspendedCard });
+        openmaint.findById.mockResolvedValue({ data: suspendedCard });
+      });
+
+      it('no lo reanuda: esa transición se hace en OpenMAINT', async () => {
+        const { data } = await service.startExecution(SESSION_ID, 4370994);
+
+        expect(openmaint.advance).not.toHaveBeenCalled();
+        expect(data.statusCode).toBe('Suspension');
+        expect(data.canSuspend).toBe(false);
+      });
+
+      it('deja el checklist marcado como N.D. mientras siga suspendido', async () => {
+        await service.startExecution(SESSION_ID, 4370994);
+
+        expect(checklist.clearNotDone).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('checklist tras una suspensión', () => {
+      it('devuelve a pendientes las actividades N.D. al abrirlo en Ejecución', async () => {
+        openmaint.findWithTasklist.mockResolvedValue({ data: openmaintCard });
+        openmaint.findById.mockResolvedValue({ data: openmaintCard });
+
+        await service.startExecution(SESSION_ID, 4370994);
+
+        expect(checklist.clearNotDone).toHaveBeenCalledWith(
+          SESSION_ID,
+          4370994,
+        );
+      });
+
+      it('no interrumpe al técnico si falla la limpieza del N.D.', async () => {
+        openmaint.findWithTasklist.mockResolvedValue({ data: openmaintCard });
+        openmaint.findById.mockResolvedValue({ data: openmaintCard });
+        checklist.clearNotDone.mockRejectedValue(new Error('boom'));
+
+        const { data } = await service.startExecution(SESSION_ID, 4370994);
+
+        expect(data.statusCode).toBe('Execution');
+      });
+    });
   });
 
   describe('completePreventiveMaintenance', () => {
@@ -629,6 +687,199 @@ describe('PreventiveMaintenanceService', () => {
         service.completePreventiveMaintenance(SESSION_ID, 4370994, {}),
       ).rejects.toBeInstanceOf(ConflictException);
       expect(openmaint.advance).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('suspendPreventiveMaintenance', () => {
+    const REASON_ID = 266683;
+
+    const executionCard = {
+      ...openmaintCard,
+      ProcessStatus: PM_STATUS_IDS.EXECUTION,
+      _tasklist: [{ _id: 'act-3', _definition: 'PM03-Execution' }],
+    };
+
+    const suspendedCard = {
+      ...openmaintCard,
+      ProcessStatus: PM_STATUS_IDS.SUSPENSION,
+      _ProcessStatus_code: 'PM-Suspension',
+      SuspensionReason: REASON_ID,
+      _SuspensionReason_description_translation: 'Esperando repuestos',
+    };
+
+    beforeEach(() => {
+      openmaint.findWithTasklist.mockResolvedValue({ data: executionCard });
+      openmaint.findById.mockResolvedValue({ data: suspendedCard });
+    });
+
+    it('suspende con la acción PM03-Back, el motivo y las notas', async () => {
+      const result = await service.suspendPreventiveMaintenance(
+        SESSION_ID,
+        4370994,
+        { reasonId: REASON_ID, notes: '  falta el repuesto  ' },
+      );
+
+      expect(openmaint.advance).toHaveBeenCalledWith(SESSION_ID, 4370994, {
+        activityId: 'act-3',
+        action: PM_ACTIONS.SUSPEND,
+        notes: 'falta el repuesto',
+        fields: { SuspensionReason: REASON_ID },
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it('no exige el checklist completo', async () => {
+      await service.suspendPreventiveMaintenance(SESSION_ID, 4370994, {
+        reasonId: REASON_ID,
+      });
+
+      expect(checklist.assertComplete).not.toHaveBeenCalled();
+      expect(openmaint.advance).toHaveBeenCalled();
+    });
+
+    it('guarda las respuestas recibidas antes de marcar el resto como N.D.', async () => {
+      const items = [{ taskDefId: 6861754, value: 'sin novedades' }];
+
+      await service.suspendPreventiveMaintenance(SESSION_ID, 4370994, {
+        reasonId: REASON_ID,
+        items,
+      });
+
+      expect(checklist.saveChecklist).toHaveBeenCalledWith(
+        SESSION_ID,
+        4370994,
+        items,
+      );
+      expect(checklist.saveChecklist.mock.invocationCallOrder[0]).toBeLessThan(
+        checklist.markPendingAsNotDone.mock.invocationCallOrder[0],
+      );
+    });
+
+    it('marca como N.D. las pendientes antes de avanzar', async () => {
+      await service.suspendPreventiveMaintenance(SESSION_ID, 4370994, {
+        reasonId: REASON_ID,
+      });
+
+      expect(checklist.markPendingAsNotDone).toHaveBeenCalledWith(
+        SESSION_ID,
+        4370994,
+      );
+      expect(
+        checklist.markPendingAsNotDone.mock.invocationCallOrder[0],
+      ).toBeLessThan(openmaint.advance.mock.invocationCallOrder[0]);
+    });
+
+    it('no guarda el checklist si no viajan respuestas', async () => {
+      await service.suspendPreventiveMaintenance(SESSION_ID, 4370994, {
+        reasonId: REASON_ID,
+        items: [],
+      });
+
+      expect(checklist.saveChecklist).not.toHaveBeenCalled();
+      expect(checklist.markPendingAsNotDone).toHaveBeenCalled();
+    });
+
+    it('falla si OpenMAINT acepta el avance pero no cambia el estado', async () => {
+      openmaint.findById.mockResolvedValue({ data: executionCard });
+
+      await expect(
+        service.suspendPreventiveMaintenance(SESSION_ID, 4370994, {
+          reasonId: REASON_ID,
+        }),
+      ).rejects.toBeInstanceOf(BadGatewayException);
+    });
+
+    it('rechaza suspender uno que no está en ejecución', async () => {
+      openmaint.findWithTasklist.mockResolvedValue({
+        data: {
+          ...openmaintCard,
+          ProcessStatus: PM_STATUS_IDS.ACCEPTANCE,
+          _tasklist: [{ _id: 'act-1' }],
+        },
+      });
+
+      await expect(
+        service.suspendPreventiveMaintenance(SESSION_ID, 4370994, {
+          reasonId: REASON_ID,
+        }),
+      ).rejects.toBeInstanceOf(ConflictException);
+      expect(openmaint.advance).not.toHaveBeenCalled();
+    });
+
+    it('rechaza suspender uno ya suspendido', async () => {
+      openmaint.findWithTasklist.mockResolvedValue({
+        data: { ...suspendedCard, _tasklist: [{ _id: 'act-4' }] },
+      });
+
+      await expect(
+        service.suspendPreventiveMaintenance(SESSION_ID, 4370994, {
+          reasonId: REASON_ID,
+        }),
+      ).rejects.toBeInstanceOf(ConflictException);
+      expect(openmaint.advance).not.toHaveBeenCalled();
+    });
+
+    it('expone el motivo en el detalle mientras está suspendido', async () => {
+      openmaint.findById.mockResolvedValue({ data: suspendedCard });
+
+      const { data } = await service.getPreventiveMaintenanceDetail(
+        SESSION_ID,
+        4370994,
+      );
+
+      expect(data.statusCode).toBe('Suspension');
+      expect(data.suspensionReason).toBe('Esperando repuestos');
+      expect(data.canSuspend).toBe(false);
+    });
+  });
+
+  describe('getSuspensionReasons', () => {
+    it('mapea los valores del lookup usando la descripción traducida', async () => {
+      openmaint.findLookupValues.mockResolvedValue({
+        data: [
+          {
+            _id: 266683,
+            code: 'Replacement',
+            description: 'Awaiting spare parts',
+            _description_translation: 'Esperando repuestos',
+          },
+        ],
+      });
+
+      const { data } = await service.getSuspensionReasons(SESSION_ID);
+
+      expect(data).toEqual([{ id: '266683', label: 'Esperando repuestos' }]);
+    });
+
+    it('descarta los valores inactivos', async () => {
+      openmaint.findLookupValues.mockResolvedValue({
+        data: [
+          { _id: 266685, description: 'Other', active: false },
+          { _id: 266681, description: 'Supplier' },
+        ],
+      });
+
+      const { data } = await service.getSuspensionReasons(SESSION_ID);
+
+      expect(data).toEqual([{ id: '266681', label: 'Supplier' }]);
+    });
+
+    it('traduce un fallo de OpenMAINT a BadGatewayException', async () => {
+      openmaint.findLookupValues.mockRejectedValue(new Error('boom'));
+
+      await expect(
+        service.getSuspensionReasons(SESSION_ID),
+      ).rejects.toBeInstanceOf(BadGatewayException);
+    });
+
+    it('propaga el 401 para que el frontend pueda redirigir al login', async () => {
+      openmaint.findLookupValues.mockRejectedValue({
+        response: { status: 401 },
+      });
+
+      await expect(
+        service.getSuspensionReasons(SESSION_ID),
+      ).rejects.toBeInstanceOf(UnauthorizedException);
     });
   });
 });
