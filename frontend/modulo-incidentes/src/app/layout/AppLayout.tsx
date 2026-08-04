@@ -22,11 +22,14 @@ export const AppLayout = ({ children, className = "bg-white" }: AppLayoutProps) 
     location.pathname === "/" ||
     location.pathname.startsWith("/owner/auth");
 
+  const isExecutionRoute = activeTask && location.pathname === `/cleaning-tasks/${activeTask.id}/execute`;
+
   const showIndicator = Boolean(
     !isAuthRoute &&
     !isSupervisor &&
     activeTask &&
-    isActiveCleaningTaskPhase(activeTask.phase)
+    isActiveCleaningTaskPhase(activeTask.phase) &&
+    !isExecutionRoute
   );
 
   return (

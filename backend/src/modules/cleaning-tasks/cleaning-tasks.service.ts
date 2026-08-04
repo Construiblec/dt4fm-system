@@ -197,7 +197,6 @@ export class CleaningTasksService {
       description: task.Description ?? null,
       phase: task._phase_description ?? task.phase,
       generatedDate: task.GeneratedDate,
-      assignedDate: task.AssignedDateTime ?? null,
       plannedStartTime: task.PlannedStartTime ?? null,
       plannedEndTime: task.PlannedEndTime ?? null,
       actualStartTime: task.ActualStartTime ?? null,
@@ -251,7 +250,6 @@ export class CleaningTasksService {
       description: task.Description ?? null,
       phase: task._phase_description ?? task.phase,
       generatedDate: task.GeneratedDate,
-      assignedDate: task.AssignedDateTime ?? null,
       plannedStartTime: task.PlannedStartTime ?? null,
       plannedEndTime: task.PlannedEndTime ?? null,
       actualStartTime: task.ActualStartTime ?? null,
@@ -329,7 +327,6 @@ export class CleaningTasksService {
         phase: phaseDesc,
         phaseId,
         generatedDate: task.GeneratedDate,
-        assignedDate: task.AssignedDateTime ?? null,
         plannedStartTime: task.PlannedStartTime ?? null,
         plannedEndTime: task.PlannedEndTime ?? null,
         actualStartTime: task.ActualStartTime ?? null,
@@ -769,7 +766,7 @@ export class CleaningTasksService {
     if (dto.actualStartTime) body.ActualStartTime = dto.actualStartTime;
     if (dto.actualEndTime) body.ActualEndTime = dto.actualEndTime;
     if (dto.observations) body.Observations = dto.observations;
-    if (dto.employeeId) body.AssignedDateTime = new Date().toISOString();
+    if (dto.employeeId) body.PlannedStartTime = new Date().toISOString();
     const response = await this.openmaintService.updateCleaningTask(
       taskId,
       body,

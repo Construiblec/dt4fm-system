@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { MapPin, Clock, Timer } from "lucide-react";
+import { MapPin, Clock, Timer, AlertTriangle } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { startCleaningTask } from "@/modules/incidentes/services/cleaningTaskExecutionService";
 import type { CleaningTask } from "@/modules/incidentes/types/CleaningTask";
@@ -34,7 +34,7 @@ function calcDuration(start?: string | null, end?: string | null): string {
   return `${hours}h ${minutes}min`;
 }
 
-function formatAssignedDate(dateStr?: string | null): string {
+function formatTaskDate(dateStr?: string | null): string {
   if (!dateStr) return "Sin asignar";
   return new Date(dateStr).toLocaleDateString(undefined, {
     weekday: "short",
@@ -51,13 +51,33 @@ function formatTime(isoStr?: string | null): string {
   });
 }
 
+function formatOverdue(ms: number): string {
+  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+  const days = Math.floor(totalSeconds / 86_400);
+  const hours = Math.floor((totalSeconds % 86_400) / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  const pad = (n: number) => n.toString().padStart(2, "0");
+  const hhmmss = `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
+  return days > 0 ? `${days}d ${hhmmss}` : hhmmss;
+}
+
+function useNow(active: boolean, intervalMs = 1000): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!active) return;
+    const id = setInterval(() => setNow(Date.now()), intervalMs);
+    return () => clearInterval(id);
+  }, [active, intervalMs]);
+  return now;
+}
+
 type Props = Pick<
   CleaningTask,
   | "id"
   | "taskNumber"
   | "description"
   | "unit"
-  | "assignedDate"
   | "plannedStartTime"
   | "plannedEndTime"
   | "phase"
@@ -69,7 +89,6 @@ export const CleaningTaskCard = ({
   taskNumber,
   description,
   unit,
-  assignedDate,
   plannedStartTime,
   plannedEndTime,
   phase,
@@ -86,6 +105,28 @@ export const CleaningTaskCard = ({
   const isAnotherTaskActive = activeTask !== null && activeTask.id !== id;
   const isActionable = actionablePhases.has(phase) && !isAnotherTaskActive;
   const unitLabel = unit?.description ?? description;
+
+  const hasNotStarted = !actualStartTime;
+  const canTick = hasNotStarted && actionablePhases.has(phase);
+  const now = useNow(canTick);
+  const plannedStartMs = plannedStartTime ? new Date(plannedStartTime).getTime() : NaN;
+  const actualStartMs = actualStartTime ? new Date(actualStartTime).getTime() : NaN;
+
+  const isRunningLate =
+    hasNotStarted && actionablePhases.has(phase) && !isNaN(plannedStartMs) && plannedStartMs < now;
+  const startedLate =
+    !hasNotStarted &&
+    actionablePhases.has(phase) &&
+    !isNaN(plannedStartMs) &&
+    !isNaN(actualStartMs) &&
+    actualStartMs > plannedStartMs;
+
+  const isOverdue = isRunningLate || startedLate;
+  const overdueLabel = isRunningLate
+    ? formatOverdue(now - plannedStartMs)
+    : startedLate
+      ? formatOverdue(actualStartMs - plannedStartMs)
+      : null;
 
   const startMutation = useMutation({
     mutationFn: () => startCleaningTask(id),
@@ -132,22 +173,42 @@ export const CleaningTaskCard = ({
   };
 
   return (
-    <article className="rounded-xl border-l-4 border-cyan-500 bg-white p-4 shadow-sm">
-      {/* Header */}
-      <div className="flex items-start justify-between">
-        <div>
-          <p className="text-xs font-bold uppercase tracking-wide text-cyan-600">
-            Limpieza
-          </p>
-          <h3 className="mt-1 text-base font-semibold text-slate-900">
-            {unitLabel}
-          </h3>
+    <div
+      className={`flex overflow-hidden rounded-xl bg-white shadow-sm ${
+        isOverdue ? "ring-1 ring-orange-200" : ""
+      }`}
+    >
+      {isOverdue ? (
+        <div className="flex w-7 flex-shrink-0 items-center justify-center bg-orange-500">
+          <span className="rotate-180 whitespace-nowrap text-[10px] font-bold tracking-wide text-white [writing-mode:vertical-lr]">
+            TAREA ATRASADA
+          </span>
         </div>
+      ) : (
+        <div className="w-1 flex-shrink-0 bg-cyan-500" />
+      )}
+      <article className="min-w-0 flex-1 p-4">
+        {/* Header */}
+        <div className="flex items-start justify-between">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-wide text-cyan-600">
+              Limpieza
+            </p>
+            <h3 className="mt-1 text-base font-semibold text-slate-900">
+              {unitLabel}
+            </h3>
+          </div>
 
-        <span className="rounded-md bg-slate-100 px-2 py-1 text-xs font-medium text-slate-600">
-          {formatAssignedDate(assignedDate)}
-        </span>
-      </div>
+          <span
+            className={`rounded-md px-2 py-1 text-xs font-medium ${
+              isOverdue
+                ? "border border-orange-300 bg-orange-100 text-orange-700"
+                : "bg-slate-100 text-slate-600"
+            }`}
+          >
+            {formatTaskDate(plannedStartTime)}
+          </span>
+        </div>
 
       {/* Phase badge */}
       <div className="mt-2">
@@ -178,6 +239,24 @@ export const CleaningTaskCard = ({
         </div>
       </div>
 
+      {/* Overdue warning */}
+      {isOverdue && overdueLabel && (
+        <div className="mt-3 flex items-center gap-2 rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-sm text-orange-700">
+          <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+          <span>
+            {isRunningLate ? (
+              <>
+                Llevas <strong>{overdueLabel}</strong> con retraso
+              </>
+            ) : (
+              <>
+                Empezaste con <strong>{overdueLabel}</strong> de retraso
+              </>
+            )}
+          </span>
+        </div>
+      )}
+
       {/* Footer */}
       {actionablePhases.has(phase) && (
         <div className="mt-4 flex justify-end">
@@ -207,6 +286,7 @@ export const CleaningTaskCard = ({
         }
         onClose={() => setErrorMessage(null)}
       />
-    </article>
+      </article>
+    </div>
   );
 };

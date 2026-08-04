@@ -123,7 +123,6 @@ export const SupervisorTaskDetailPage = () => {
             description: detail.description,
             phase: detail.phase,
             generatedDate: detail.generatedDate,
-            assignedDate: detail.assignedDate ?? "",
             plannedStartTime: detail.plannedStartTime ?? "",
             plannedEndTime: detail.plannedEndTime ?? "",
             actualStartTime: detail.actualStartTime,
