@@ -5,10 +5,16 @@ import {
   ArrowLeft,
   Image as ImageIcon,
   PauseCircle,
+  Plus,
 } from "lucide-react";
 import { AppLayout } from "@/app/layout/AppLayout";
 import { PreventiveChecklist } from "@/modules/incidentes/components/PreventiveChecklist";
+import { PreventiveDetailTabs } from "@/modules/incidentes/components/PreventiveDetailTabs";
+import type { PreventiveDetailTab } from "@/modules/incidentes/components/PreventiveDetailTabs";
+import { PreventiveDocumentsSection } from "@/modules/incidentes/components/PreventiveDocumentsSection";
 import { SuspendMaintenanceModal } from "@/modules/incidentes/components/SuspendMaintenanceModal";
+import { UploadDocumentSheet } from "@/modules/incidentes/components/UploadDocumentSheet";
+import { PREVENTIVE_DOCUMENTS_ENABLED } from "@/modules/incidentes/constants/preventiveDocuments";
 import {
   getPreventiveStatusLabel,
   PREVENTIVE_STATUS_BADGE_CLASSES,
@@ -63,6 +69,8 @@ export const PreventiveMaintenanceDetailPage = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [tab, setTab] = useState<PreventiveDetailTab>("checklist");
+  const [showUploadSheet, setShowUploadSheet] = useState(false);
 
   // ── Ejecución del checklist y cierre ────────────────────────────────────────
   const checklistItems = maintenance?.checklist ?? [];
@@ -317,7 +325,11 @@ export const PreventiveMaintenanceDetailPage = () => {
                 </div>
               </section>
 
-              {maintenance.images.length > 0 ? (
+              <PreventiveDetailTabs value={tab} onChange={setTab} />
+
+              {tab === "documents" ? <PreventiveDocumentsSection /> : null}
+
+              {tab === "checklist" && maintenance.images.length > 0 ? (
                 <section className="rounded-3xl bg-white p-5 shadow-sm">
                   <div className="flex items-center gap-2">
                     <ImageIcon className="h-5 w-5 text-slate-500" />
@@ -350,7 +362,7 @@ export const PreventiveMaintenanceDetailPage = () => {
                 </section>
               ) : null}
 
-              {maintenance.notes !== null ? (
+              {tab === "checklist" && maintenance.notes !== null ? (
                 <section className="rounded-3xl bg-white p-5 shadow-sm">
                   <h2 className="text-base font-semibold text-slate-900">
                     Historial de notas
@@ -361,14 +373,17 @@ export const PreventiveMaintenanceDetailPage = () => {
                 </section>
               ) : null}
 
-              <PreventiveChecklist
-                items={checklistItems}
-                answers={answers}
-                onAnswerChange={setAnswer}
-                disabled={isCompleting || !maintenance.canComplete}
-              />
+              {tab === "checklist" ? (
+                <PreventiveChecklist
+                  items={checklistItems}
+                  answers={answers}
+                  onAnswerChange={setAnswer}
+                  disabled={isCompleting || !maintenance.canComplete}
+                />
+              ) : null}
 
-              {maintenance.canComplete || maintenance.canSuspend ? (
+              {tab === "checklist" &&
+              (maintenance.canComplete || maintenance.canSuspend) ? (
                 <>
                   <section className="rounded-3xl bg-white p-5 shadow-sm">
                     <label
@@ -434,6 +449,26 @@ export const PreventiveMaintenanceDetailPage = () => {
             </>
           ) : null}
         </div>
+
+        {/* Anclado al ancho de la app, no al del viewport */}
+        {tab === "documents" && !loading && !error && maintenance ? (
+          <div className="pointer-events-none fixed inset-x-0 bottom-0 z-40 mx-auto flex max-w-md justify-end px-5 pb-6">
+            <button
+              type="button"
+              aria-label="Subir informe o documento"
+              onClick={() => setShowUploadSheet(true)}
+              className="pointer-events-auto flex h-14 w-14 items-center justify-center rounded-full bg-brand text-white shadow-lg transition hover:bg-brand-hover"
+            >
+              <Plus className="h-6 w-6" />
+            </button>
+          </div>
+        ) : null}
+
+        <UploadDocumentSheet
+          open={showUploadSheet}
+          enabled={PREVENTIVE_DOCUMENTS_ENABLED}
+          onCancel={() => setShowUploadSheet(false)}
+        />
 
         <ConfirmModal
           open={showConfirmModal}
