@@ -22,6 +22,7 @@ const toActiveTask = (task: CleaningTaskExecutionDetail): ActiveCleaningTask => 
   description: task.description,
   phase: task.phase,
   actualStartTime: task.actualStartTime ?? new Date().toISOString(),
+  plannedStartTime: task.plannedStartTime,
   plannedEndTime: task.plannedEndTime,
   unitDescription: task.unit?.description ?? task.description,
 });

@@ -132,6 +132,7 @@ export const DashboardPage = () => {
       phase: backendActiveTask.phase,
       actualStartTime:
         backendActiveTask.actualStartTime ?? new Date().toISOString(),
+      plannedStartTime: backendActiveTask.plannedStartTime,
       plannedEndTime: backendActiveTask.plannedEndTime,
       unitDescription:
         backendActiveTask.unit?.description ?? backendActiveTask.description,

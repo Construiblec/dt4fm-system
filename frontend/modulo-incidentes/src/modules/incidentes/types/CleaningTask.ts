@@ -21,6 +21,7 @@ export type CleaningTask = {
   plannedEndTime: string;
   actualStartTime: string | null;
   actualEndTime: string | null;
+  executionTime: number | null;
   taskObservations: string | null;
   supervisionObserv: string | null;
   teamObservations: string | null;

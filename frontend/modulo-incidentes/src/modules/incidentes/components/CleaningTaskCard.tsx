@@ -106,15 +106,22 @@ export const CleaningTaskCard = ({
   const isActionable = actionablePhases.has(phase) && !isAnotherTaskActive;
   const unitLabel = unit?.description ?? description;
 
+  const isReopened = phase === "Assigned" && !!actualStartTime;
+
   const hasNotStarted = !actualStartTime;
-  const canTick = hasNotStarted && actionablePhases.has(phase);
+  const canTick = hasNotStarted && actionablePhases.has(phase) && !isReopened;
   const now = useNow(canTick);
   const plannedStartMs = plannedStartTime ? new Date(plannedStartTime).getTime() : NaN;
   const actualStartMs = actualStartTime ? new Date(actualStartTime).getTime() : NaN;
 
   const isRunningLate =
-    hasNotStarted && actionablePhases.has(phase) && !isNaN(plannedStartMs) && plannedStartMs < now;
+    !isReopened &&
+    hasNotStarted &&
+    actionablePhases.has(phase) &&
+    !isNaN(plannedStartMs) &&
+    plannedStartMs < now;
   const startedLate =
+    !isReopened &&
     !hasNotStarted &&
     actionablePhases.has(phase) &&
     !isNaN(plannedStartMs) &&
@@ -137,6 +144,7 @@ export const CleaningTaskCard = ({
         description,
         phase: taskDetail.phase ?? "InExecution",
         actualStartTime: taskDetail.actualStartTime ?? actualStartTime ?? new Date().toISOString(),
+        plannedStartTime,
         plannedEndTime,
         unitDescription: unit?.description ?? description,
       });
@@ -162,6 +170,7 @@ export const CleaningTaskCard = ({
         description,
         phase,
         actualStartTime: actualStartTime ?? new Date().toISOString(),
+        plannedStartTime,
         plannedEndTime,
         unitDescription: unit?.description ?? description,
       });
@@ -173,22 +182,33 @@ export const CleaningTaskCard = ({
   };
 
   return (
-    <div
-      className={`flex overflow-hidden rounded-xl bg-white shadow-sm ${
-        isOverdue ? "ring-1 ring-orange-200" : ""
-      }`}
-    >
-      {isOverdue ? (
-        <div className="flex w-7 flex-shrink-0 items-center justify-center bg-orange-500">
-          <span className="rotate-180 whitespace-nowrap text-[10px] font-bold tracking-wide text-white [writing-mode:vertical-lr]">
-            TAREA ATRASADA
+    <div className="relative">
+      {isReopened && (
+        <div className="absolute -top-2 left-0 z-10">
+          <span
+            className="inline-block rounded-t-md bg-cyan-500 py-1 pl-3 pr-4 text-[10px] font-bold uppercase tracking-wide text-white shadow-sm"
+            style={{ clipPath: "polygon(0 0, 100% 0, 82% 100%, 0 100%)" }}
+          >
+            Reabierto
           </span>
         </div>
-      ) : (
-        <div className="w-1 flex-shrink-0 bg-cyan-500" />
       )}
-      <article className="min-w-0 flex-1 p-4">
-        {/* Header */}
+      <div
+        className={`flex overflow-hidden rounded-xl bg-white shadow-sm ${
+          isOverdue ? "ring-1 ring-orange-200" : ""
+        }`}
+      >
+        {isOverdue ? (
+          <div className="flex w-7 flex-shrink-0 items-center justify-center bg-orange-500">
+            <span className="rotate-180 whitespace-nowrap text-[10px] font-bold tracking-wide text-white [writing-mode:vertical-lr]">
+              TAREA ATRASADA
+            </span>
+          </div>
+        ) : (
+          <div className="w-1 flex-shrink-0 bg-cyan-500" />
+        )}
+        <article className="min-w-0 flex-1 p-4">
+          {/* Header */}
         <div className="flex items-start justify-between">
           <div>
             <p className="text-xs font-bold uppercase tracking-wide text-cyan-600">
@@ -274,6 +294,8 @@ export const CleaningTaskCard = ({
         </div>
       )}
 
+        </article>
+      </div>
       <LoadingModal open={startMutation.isPending} message="Iniciando tarea..." />
       <ErrorModal
         open={errorMessage !== null}
@@ -286,7 +308,6 @@ export const CleaningTaskCard = ({
         }
         onClose={() => setErrorMessage(null)}
       />
-      </article>
     </div>
   );
 };
