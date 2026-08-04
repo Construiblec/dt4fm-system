@@ -459,13 +459,14 @@ export class CleaningTasksController {
 
   /**
    * PATCH /cleaning-tasks/:taskId/reopen
-   * Reabre una tarea (Completed o Reviewed) cambiándola a InExecution.
-   * Los tiempos originales se conservan. Solo SuperUser/Admin.
+   * Reabre una tarea (Completed o Reviewed) cambiándola a Assigned.
+   * El empleado debe volver a iniciarla manualmente. Los tiempos originales
+   * se conservan hasta ese momento. Solo SuperUser/Admin.
    * Body: { observations?: string }
    */
   @Patch(':taskId/reopen')
   @ApiOperation({
-    summary: 'Reabrir una tarea de limpieza (Completed/Reviewed → InExecution)',
+    summary: 'Reabrir una tarea de limpieza (Completed/Reviewed → Assigned)',
   })
   @ApiParam({ name: 'taskId', description: 'ID de la tarea', type: 'integer' })
   @ApiHeader({
@@ -480,7 +481,7 @@ export class CleaningTasksController {
   })
   @ApiResponse({
     status: 200,
-    description: 'Tarea reabierta y asignada nuevamente a ejecución.',
+    description: 'Tarea reabierta y asignada nuevamente al empleado.',
   })
   async reopenTask(
     @Param('taskId', ParseIntPipe) taskId: number,

@@ -57,7 +57,6 @@ export type CleaningTaskDetail = {
   phase: string;
   phaseId: number;
   generatedDate: string;
-  assignedDate: string | null;
   plannedStartTime: string | null;
   plannedEndTime: string | null;
   actualStartTime: string | null;

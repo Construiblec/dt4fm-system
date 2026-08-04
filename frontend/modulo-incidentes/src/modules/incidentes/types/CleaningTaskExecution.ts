@@ -37,6 +37,7 @@ export type ActiveCleaningTask = {
   description: string;
   phase: string;
   actualStartTime: string;
+  plannedStartTime: string;
   plannedEndTime: string;
   unitDescription?: string;
 };
