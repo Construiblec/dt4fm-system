@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   AlertTriangle,
@@ -80,6 +80,7 @@ export const PreventiveMaintenanceDetailPage = () => {
     SuspensionReason[]
   >([]);
   const [loadingReasons, setLoadingReasons] = useState(false);
+  const reasonsRequested = useRef(false);
   const [isSuspending, setIsSuspending] = useState(false);
   const [suspendError, setSuspendError] = useState<string | null>(null);
   const [suspendSuccessOpen, setSuspendSuccessOpen] = useState(false);
@@ -136,36 +137,26 @@ export const PreventiveMaintenanceDetailPage = () => {
     }
   };
 
-  // Los motivos se piden la primera vez que se abre el modal
+  // Los motivos se piden la primera vez que se abre el modal. El ref evita
+  // repetir la petición sin meter el flag de carga en las dependencias, que
+  // reejecutaría el efecto y descartaría la respuesta en vuelo.
   useEffect(() => {
-    if (!showSuspendModal || suspensionReasons.length > 0 || loadingReasons) {
+    if (!showSuspendModal || reasonsRequested.current) {
       return;
     }
 
-    let isMounted = true;
+    reasonsRequested.current = true;
     setLoadingReasons(true);
 
     getSuspensionReasons()
-      .then((reasons) => {
-        if (isMounted) {
-          setSuspensionReasons(reasons);
-        }
-      })
+      .then(setSuspensionReasons)
       .catch(() => {
-        if (isMounted) {
-          setSuspendError("No se pudieron cargar los motivos de suspensión");
-        }
+        // Se permite reintentar al reabrir el modal
+        reasonsRequested.current = false;
+        setSuspendError("No se pudieron cargar los motivos de suspensión");
       })
-      .finally(() => {
-        if (isMounted) {
-          setLoadingReasons(false);
-        }
-      });
-
-    return () => {
-      isMounted = false;
-    };
-  }, [showSuspendModal, suspensionReasons.length, loadingReasons]);
+      .finally(() => setLoadingReasons(false));
+  }, [showSuspendModal]);
 
   useEffect(() => {
     let isMounted = true;

@@ -39,6 +39,9 @@ export const PreventiveMaintenanceCard = ({
     : (PREVENTIVE_STATUS_BORDER_CLASSES[statusCode ?? ""] ??
       "border-slate-300");
 
+  // Reanudar un suspendido se hace en OpenMAINT, no desde la app
+  const isSuspended = statusCode === "Suspension";
+
   return (
     <article className={`rounded-xl border-l-4 bg-white p-4 shadow-sm ${border}`}>
       {/* Identidad de la instancia: número + breve descripción */}
@@ -95,12 +98,23 @@ export const PreventiveMaintenanceCard = ({
         </div>
       </div>
 
-      {/* Footer. Abrir mueve el flujo: arranca la ejecución o reanuda un suspendido */}
-      <div className="mt-4 flex justify-end">
+      {/* Footer. Abrir arranca la ejecución si el mantenimiento está asignado */}
+      <div className="mt-4 flex items-center justify-end gap-3">
+        {isSuspended ? (
+          <p className="text-xs text-slate-500">
+            Reanúdalo en OpenMAINT para continuar
+          </p>
+        ) : null}
+
         <button
           type="button"
+          disabled={isSuspended}
           onClick={() => navigate(`/preventive-maintenance/${id}`)}
-          className="rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-hover"
+          className={`rounded-lg px-4 py-2 text-sm font-semibold text-white transition ${
+            isSuspended
+              ? "cursor-not-allowed bg-slate-300"
+              : "bg-brand hover:bg-brand-hover"
+          }`}
         >
           Abrir
         </button>

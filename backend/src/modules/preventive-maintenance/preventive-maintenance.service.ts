@@ -140,47 +140,50 @@ export class PreventiveMaintenanceService {
 
   /**
    * Abre el mantenimiento para el técnico: si está en Aceptación lo avanza a
-   * Ejecución, y si está suspendido lo reanuda. Es idempotente — si ya está en
-   * ejecución o cerrado simplemente devuelve el detalle sin tocar el flujo.
+   * Ejecución. Es idempotente — si ya está en ejecución o cerrado devuelve el
+   * detalle sin tocar el flujo.
+   *
+   * Un mantenimiento suspendido no se reanuda desde aquí: esa transición se
+   * hace en OpenMAINT.
    */
   async startExecution(sessionId: string, id: number) {
     const card = await this.fetchCardWithTasklist(sessionId, id);
-    const isSuspended = card.ProcessStatus === PM_STATUS_IDS.SUSPENSION;
-    const action = isSuspended
-      ? PM_ACTIONS.RESUME
-      : card.ProcessStatus === PM_STATUS_IDS.ACCEPTANCE
-        ? PM_ACTIONS.START_EXECUTION
-        : null;
 
-    if (action !== null) {
+    if (card.ProcessStatus === PM_STATUS_IDS.ACCEPTANCE) {
       const activityId = this.requireActivityId(card);
 
       this.logger.log(
-        `${isSuspended ? 'Reanudando' : 'Iniciando ejecución de'} el ` +
-          `mantenimiento preventivo ${card.Number ?? id}`,
+        `Iniciando ejecución del mantenimiento preventivo ${card.Number ?? id}`,
       );
 
-      if (await this.advanceToExecution(sessionId, id, activityId, action)) {
+      if (
+        await this.advanceToExecution(
+          sessionId,
+          id,
+          activityId,
+          PM_ACTIONS.START_EXECUTION,
+        )
+      ) {
         // La relectura valida el avance y da el `_activity` de PM03
         const executing = await this.fetchCardWithTasklist(sessionId, id);
 
         this.assertStatus(
           executing,
           PM_STATUS_IDS.EXECUTION,
-          isSuspended
-            ? 'OpenMAINT no aplicó la reanudación del mantenimiento preventivo'
-            : 'OpenMAINT no aplicó el inicio de ejecución del mantenimiento preventivo',
+          'OpenMAINT no aplicó el inicio de ejecución del mantenimiento preventivo',
         );
 
-        if (isSuspended) {
-          await this.clearNotDoneOnResume(sessionId, id);
-        } else {
-          await this.registerExecutionStart(sessionId, executing);
-        }
+        await this.registerExecutionStart(sessionId, executing);
       }
     }
 
     const updated = await this.fetchCard(sessionId, id);
+
+    // Al volver de una suspensión las actividades siguen marcadas como N.D.:
+    // se limpian para que vuelvan a presentarse por completar.
+    if (updated.ProcessStatus === PM_STATUS_IDS.EXECUTION) {
+      await this.clearNotDoneOnResume(sessionId, id);
+    }
 
     return { success: true, data: await this.toDetail(sessionId, updated) };
   }
@@ -536,8 +539,8 @@ export class PreventiveMaintenanceService {
 
   /**
    * Devuelve a pendientes las actividades que se marcaron N.D. al suspender.
-   * Un fallo no interrumpe al técnico —ya está en ejecución— pero dejaría esas
-   * actividades contando como resueltas.
+   * No escribe nada si no hay ninguna. Un fallo no interrumpe al técnico, pero
+   * dejaría esas actividades contando como resueltas.
    */
   private async clearNotDoneOnResume(
     sessionId: string,
