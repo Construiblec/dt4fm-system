@@ -99,13 +99,7 @@ export const PreventiveMaintenanceCard = ({
       </div>
 
       {/* Footer. Abrir arranca la ejecución si el mantenimiento está asignado */}
-      <div className="mt-4 flex items-center justify-end gap-3">
-        {isSuspended ? (
-          <p className="text-xs text-slate-500">
-            Reanúdalo en OpenMAINT para continuar
-          </p>
-        ) : null}
-
+      <div className="mt-4 flex justify-end">
         <button
           type="button"
           disabled={isSuspended}

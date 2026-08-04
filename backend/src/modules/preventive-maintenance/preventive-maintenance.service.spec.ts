@@ -490,7 +490,7 @@ describe('PreventiveMaintenanceService', () => {
       ).rejects.toBeInstanceOf(BadRequestException);
     });
 
-    describe('reanudación desde Suspensión', () => {
+    describe('mantenimiento suspendido', () => {
       const suspendedCard = {
         ...openmaintCard,
         ProcessStatus: PM_STATUS_IDS.SUSPENSION,
@@ -498,28 +498,30 @@ describe('PreventiveMaintenanceService', () => {
         _tasklist: [{ _id: 'act-4', _definition: 'PM04-Suspension' }],
       };
 
-      const mockResume = () => {
-        openmaint.findWithTasklist
-          .mockResolvedValueOnce({ data: suspendedCard })
-          .mockResolvedValueOnce({ data: executingCard });
-        openmaint.findById.mockResolvedValue({ data: openmaintCard });
-      };
-
-      it('avanza de Suspensión a Ejecución con la acción PM04-Advance', async () => {
-        mockResume();
-
-        const { data } = await service.startExecution(SESSION_ID, 4370994);
-
-        expect(openmaint.advance).toHaveBeenCalledWith(SESSION_ID, 4370994, {
-          activityId: 'act-4',
-          action: PM_ACTIONS.RESUME,
-        });
-        expect(data.statusCode).toBe('Execution');
-        expect(data.canSuspend).toBe(true);
+      beforeEach(() => {
+        openmaint.findWithTasklist.mockResolvedValue({ data: suspendedCard });
+        openmaint.findById.mockResolvedValue({ data: suspendedCard });
       });
 
-      it('devuelve a pendientes las actividades marcadas como N.D.', async () => {
-        mockResume();
+      it('no lo reanuda: esa transición se hace en OpenMAINT', async () => {
+        const { data } = await service.startExecution(SESSION_ID, 4370994);
+
+        expect(openmaint.advance).not.toHaveBeenCalled();
+        expect(data.statusCode).toBe('Suspension');
+        expect(data.canSuspend).toBe(false);
+      });
+
+      it('deja el checklist marcado como N.D. mientras siga suspendido', async () => {
+        await service.startExecution(SESSION_ID, 4370994);
+
+        expect(checklist.clearNotDone).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('checklist tras una suspensión', () => {
+      it('devuelve a pendientes las actividades N.D. al abrirlo en Ejecución', async () => {
+        openmaint.findWithTasklist.mockResolvedValue({ data: openmaintCard });
+        openmaint.findById.mockResolvedValue({ data: openmaintCard });
 
         await service.startExecution(SESSION_ID, 4370994);
 
@@ -529,33 +531,14 @@ describe('PreventiveMaintenanceService', () => {
         );
       });
 
-      it('no vuelve a sellar la hora de inicio al reanudar', async () => {
-        mockResume();
-
-        await service.startExecution(SESSION_ID, 4370994);
-
-        expect(openmaint.saveFields).not.toHaveBeenCalled();
-      });
-
       it('no interrumpe al técnico si falla la limpieza del N.D.', async () => {
-        mockResume();
+        openmaint.findWithTasklist.mockResolvedValue({ data: openmaintCard });
+        openmaint.findById.mockResolvedValue({ data: openmaintCard });
         checklist.clearNotDone.mockRejectedValue(new Error('boom'));
 
         const { data } = await service.startExecution(SESSION_ID, 4370994);
 
         expect(data.statusCode).toBe('Execution');
-      });
-
-      it('falla si OpenMAINT acepta la reanudación pero no la aplica', async () => {
-        openmaint.findWithTasklist
-          .mockResolvedValueOnce({ data: suspendedCard })
-          .mockResolvedValueOnce({ data: suspendedCard });
-
-        await expect(
-          service.startExecution(SESSION_ID, 4370994),
-        ).rejects.toBeInstanceOf(BadGatewayException);
-
-        expect(checklist.clearNotDone).not.toHaveBeenCalled();
       });
     });
   });

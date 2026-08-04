@@ -71,7 +71,7 @@ export const PM_ACTIONS = {
   CONCLUDE: 266622,
   /** `PM03-Back`: Ejecución → Suspensión */
   SUSPEND: 266624,
-  /** `PM04-Advance`: Suspensión → Ejecución */
+  /** `PM04-Advance`: Suspensión → Ejecución. Hoy solo se hace desde OpenMAINT. */
   RESUME: 266626,
 } as const;
 
