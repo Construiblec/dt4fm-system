@@ -163,6 +163,8 @@ export const DashboardPage = () => {
   );
 
   const filteredCleaningTasks = cleaningTasks.filter((task) => {
+    const allowedPhases = ["Assigned", "InExecution", "Completed"];
+    if (!allowedPhases.includes(task.phase)) return false;
     return phaseFilter === "ALL" || task.phase === phaseFilter;
   });
 

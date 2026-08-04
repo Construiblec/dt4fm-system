@@ -27,8 +27,10 @@ export const useSupervisorTasks = () => {
       setLoading(true);
       setError(null);
       const response = await fetchAllCleaningTasks(params);
-      setTasks(response.data);
-      setTotal(response.meta.total);
+      const allowedPhases = ["Completed", "Reviewed"];
+      const filteredData = response.data.filter(t => allowedPhases.includes(t.phase));
+      setTasks(filteredData);
+      setTotal(filteredData.length);
     } catch {
       setError("No se pudieron cargar las tareas");
     } finally {
