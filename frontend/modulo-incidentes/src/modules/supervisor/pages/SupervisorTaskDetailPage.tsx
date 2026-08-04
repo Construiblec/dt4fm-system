@@ -127,6 +127,7 @@ export const SupervisorTaskDetailPage = () => {
             plannedEndTime: detail.plannedEndTime ?? "",
             actualStartTime: detail.actualStartTime,
             actualEndTime: detail.actualEndTime,
+            executionTime: null,
             taskObservations: detail.taskObservations,
             supervisionObserv: detail.supervisionObserv,
             teamObservations: detail.teamObservations,
