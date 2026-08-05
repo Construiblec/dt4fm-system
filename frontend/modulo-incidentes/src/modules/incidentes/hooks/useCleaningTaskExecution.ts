@@ -126,7 +126,11 @@ export const useCleaningTaskExecution = (taskId: number) => {
         throw new Error(parsed.error.issues[0]?.message ?? "No se puede completar la tarea");
       }
 
-      return completeCleaningTask(taskId, parsed.data.observations ?? "");
+      return completeCleaningTask(
+        taskId,
+        parsed.data.observations ?? "",
+        activeTask?.sessionStartTime
+      );
     },
     onSuccess: () => {
       setSuccessOpen(true);

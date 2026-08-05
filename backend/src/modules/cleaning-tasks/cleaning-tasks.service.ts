@@ -414,17 +414,23 @@ export class CleaningTasksService {
     this.validatePhaseTransition(phaseDesc, PHASE_IDS.IN_EXECUTION);
     const now = new Date().toISOString();
     
-    let delayTime = 0;
-    if (task.PlannedStartTime) {
-      const delayMs = new Date(now).getTime() - new Date(task.PlannedStartTime).getTime();
-      if (delayMs > 0) {
-        delayTime = delayMs / 3_600_000;
-      }
-    }
+    const body: Record<string, unknown> = { phase: PHASE_IDS.IN_EXECUTION };
     
-    const body: Record<string, unknown> = { phase: PHASE_IDS.IN_EXECUTION, ActualStartTime: now };
-    if (delayTime > 0) {
-      body.DelayTime = delayTime;
+    // Solo calculamos el retraso y seteamos ActualStartTime si es la PRIMERA vez que se inicia
+    if (!task.ActualStartTime) {
+      body.ActualStartTime = now;
+      
+      let delayTime = 0;
+      if (task.PlannedStartTime) {
+        const delayMs = new Date(now).getTime() - new Date(task.PlannedStartTime).getTime();
+        if (delayMs > 0) {
+          delayTime = delayMs / 3_600_000;
+        }
+      }
+      
+      if (delayTime > 0) {
+        body.DelayTime = delayTime;
+      }
     }
 
     const response = await this.openmaintService.updateTaskWithSession(
@@ -437,7 +443,7 @@ export class CleaningTasksService {
       data: {
         id: response?.data?._id ?? taskId,
         phase: PHASE_NAMES[PHASE_IDS.IN_EXECUTION],
-        actualStartTime: response?.data?.ActualStartTime ?? now,
+        actualStartTime: response?.data?.ActualStartTime ?? task.ActualStartTime ?? now,
       },
     };
   }
@@ -458,8 +464,12 @@ export class CleaningTasksService {
     if (!task.ActualStartTime)
       throw new BadRequestException('Task must be started before completing');
     const now = new Date().toISOString();
-    const sessionHours = this.calculateDurationHours(task.ActualStartTime, now);
-    const executionTime = (task.ExecutionTime ?? 0) + sessionHours;
+    const sessionStart = dto.sessionStartTime ?? task.ActualStartTime;
+    const sessionHours = this.calculateDurationHours(sessionStart, now);
+    const prevExecution = typeof task.ExecutionTime === 'number' 
+      ? task.ExecutionTime 
+      : parseFloat(String(task.ExecutionTime || 0));
+    const executionTime = (isNaN(prevExecution) ? 0 : prevExecution) + sessionHours;
     const body: Record<string, unknown> = {
       phase: PHASE_IDS.COMPLETED,
       ActualEndTime: now,
@@ -507,7 +517,6 @@ export class CleaningTasksService {
     const body: Record<string, unknown> = { phase: targetPhaseId };
     
     if (!dto.approved) {
-      body.ActualStartTime = null;
       body.ActualEndTime = null;
     }
 
@@ -560,7 +569,6 @@ export class CleaningTasksService {
     }
     const body: Record<string, unknown> = { 
       phase: PHASE_IDS.ASSIGNED,
-      ActualStartTime: null,
       ActualEndTime: null,
     };
     if (dto.observations) {
