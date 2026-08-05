@@ -7,9 +7,7 @@ export const completeTaskSchema = z.object({
   checklistComplete: z.boolean().refine((value) => value === true, {
     message: "Debes completar todas las actividades del checklist",
   }),
-  photoUploaded: z.boolean().refine((value) => value === true, {
-    message: "Debes subir al menos una fotografia de evidencia",
-  }),
+  photoUploaded: z.boolean(),
 });
 
 export const photoUploadSchema = z.object({

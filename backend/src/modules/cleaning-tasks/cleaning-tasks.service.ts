@@ -485,8 +485,14 @@ export class CleaningTasksService {
       );
     const targetPhaseId = dto.approved
       ? PHASE_IDS.REVIEWED
-      : PHASE_IDS.IN_EXECUTION;
+      : PHASE_IDS.ASSIGNED;
     const body: Record<string, unknown> = { phase: targetPhaseId };
+    
+    if (!dto.approved) {
+      body.ActualStartTime = null;
+      body.ActualEndTime = null;
+    }
+
     if (dto.reviewComments) {
       body.Notes = dto.reviewComments;
       const prefix = dto.approved ? '[Aprobado]' : '[Reabierto]';
@@ -534,9 +540,14 @@ export class CleaningTasksService {
         `Solo se pueden reabrir tareas en estado Completed o Reviewed. Estado actual: ${phaseDesc}`,
       );
     }
-    const body: Record<string, unknown> = { phase: PHASE_IDS.ASSIGNED };
+    const body: Record<string, unknown> = { 
+      phase: PHASE_IDS.ASSIGNED,
+      ActualStartTime: null,
+      ActualEndTime: null,
+    };
     if (dto.observations) {
-      body.SupervisionObserv = this.appendNote(task.SupervisionObserv, dto.observations);
+      const newObs = `[Reabierto]: ${dto.observations}`;
+      body.SupervisionObserv = this.appendNote(task.SupervisionObserv, newObs);
     }
     const updated = await this.openmaintService.updateTaskWithSession(taskId, body, sessionToken);
     return {

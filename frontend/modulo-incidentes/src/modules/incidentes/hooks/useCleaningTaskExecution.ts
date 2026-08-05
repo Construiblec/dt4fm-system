@@ -87,10 +87,6 @@ export const useCleaningTaskExecution = (taskId: number) => {
     const totalActivities = taskDetail.checklistDetail?.activities.length ?? 0;
     initializeChecklist(totalActivities);
 
-    if (!observations && taskDetail.taskObservations) {
-      setObservations(taskDetail.taskObservations);
-    }
-
     if (!photoUploaded) {
       const photoAttachment = getPhotoFromAttachments(taskDetail.attachments);
       const resolvedPhotoUrl = getAttachmentUrl(photoAttachment);
@@ -148,12 +144,8 @@ export const useCleaningTaskExecution = (taskId: number) => {
       return `Completa todas las actividades del checklist (${completedActivities}/${totalActivities} completadas)`;
     }
 
-    if (!photoUploaded) {
-      return "Sube al menos una fotografia de evidencia";
-    }
-
     return null;
-  }, [completedActivities, isChecklistComplete, photoUploaded, totalActivities]);
+  }, [completedActivities, isChecklistComplete, totalActivities]);
 
   return {
     taskDetail: detailQuery.data,

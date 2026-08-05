@@ -126,7 +126,7 @@ export const useCleaningTaskExecutionStore = create<CleaningTaskExecutionState>(
       },
       completedChecklistCount: () =>
         Object.values(get().checklistProgress).filter(Boolean).length,
-      canComplete: () => get().isChecklistComplete() && get().photoUploaded,
+      canComplete: () => get().isChecklistComplete(),
     }),
     {
       name: "cleaning-task-execution-storage",

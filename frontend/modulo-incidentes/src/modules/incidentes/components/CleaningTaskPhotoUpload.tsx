@@ -64,14 +64,14 @@ export const CleaningTaskPhotoUpload = ({
           <h2 className="text-base font-semibold text-slate-900">
             Fotografia de evidencia
           </h2>
-          <p className="mt-1 text-sm text-slate-500">Obligatoria para finalizar la tarea</p>
+          <p className="mt-1 text-sm text-slate-500">Opcional para complementar la tarea</p>
         </div>
         <span
           className={`rounded-full px-3 py-1 text-xs font-semibold ${
             photoUploaded ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
           }`}
         >
-          {photoUploaded ? "Subida" : "Pendiente"}
+          {photoUploaded ? "Subida" : "Sin foto"}
         </span>
       </div>
 
@@ -109,7 +109,7 @@ export const CleaningTaskPhotoUpload = ({
           ) : photoUploaded ? (
             <span className="text-emerald-700">Foto subida exitosamente</span>
           ) : (
-            <span>Sube una fotografia para habilitar la finalizacion</span>
+            <span>Puedes subir una fotografia opcionalmente</span>
           )}
         </div>
 
