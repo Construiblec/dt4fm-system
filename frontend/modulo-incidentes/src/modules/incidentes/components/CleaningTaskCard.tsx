@@ -27,11 +27,19 @@ function calcDuration(start?: string | null, end?: string | null): string {
   const diffMs = new Date(end).getTime() - new Date(start).getTime();
   if (isNaN(diffMs) || diffMs <= 0) return "—";
   const totalMinutes = Math.round(diffMs / 60_000);
-  const hours = Math.floor(totalMinutes / 60);
-  const minutes = totalMinutes % 60;
-  if (hours === 0) return `${minutes}min`;
-  if (minutes === 0) return `${hours}h`;
-  return `${hours}h ${minutes}min`;
+  const d = Math.floor(totalMinutes / 1440);
+  const h = Math.floor((totalMinutes % 1440) / 60);
+  const m = totalMinutes % 60;
+
+  if (d > 0) {
+    let res = `${d}d`;
+    if (h > 0) res += ` ${h}h`;
+    if (m > 0) res += ` ${m}min`;
+    return res;
+  }
+  if (h === 0) return `${m}min`;
+  if (m === 0) return `${h}h`;
+  return `${h}h ${m}min`;
 }
 
 function formatTaskDate(dateStr?: string | null): string {
@@ -82,6 +90,9 @@ type Props = Pick<
   | "plannedEndTime"
   | "phase"
   | "actualStartTime"
+  | "supervisionObserv"
+  | "actualEndTime"
+  | "executionTime"
 >;
 
 export const CleaningTaskCard = ({
@@ -93,6 +104,7 @@ export const CleaningTaskCard = ({
   plannedEndTime,
   phase,
   actualStartTime,
+  supervisionObserv,
 }: Props) => {
   const navigate = useNavigate();
   const activeTask = useCleaningTaskExecutionStore((state) => state.activeTask);
@@ -106,13 +118,21 @@ export const CleaningTaskCard = ({
   const isActionable = actionablePhases.has(phase) && !isAnotherTaskActive;
   const unitLabel = unit?.description ?? description;
 
-  const isReopened = phase === "Assigned" && !!actualStartTime;
+  const lastReabiertoIdx = supervisionObserv?.lastIndexOf("[Reabierto]") ?? -1;
+  const lastAprobadoIdx = supervisionObserv?.lastIndexOf("[Aprobado]") ?? -1;
+  const isReopened =
+    (phase === "Assigned" || phase === "InExecution") &&
+    lastReabiertoIdx > lastAprobadoIdx;
+
+  const plannedStartMs = plannedStartTime ? new Date(plannedStartTime).getTime() : NaN;
+  const actualStartMs = actualStartTime ? new Date(actualStartTime).getTime() : NaN;
+
+  const didStartLate = !isNaN(plannedStartMs) && !isNaN(actualStartMs) && actualStartMs > plannedStartMs;
+  const delayTimeLabel = didStartLate ? calcDuration(plannedStartTime, actualStartTime) : null;
 
   const hasNotStarted = !actualStartTime;
   const canTick = hasNotStarted && actionablePhases.has(phase) && !isReopened;
   const now = useNow(canTick);
-  const plannedStartMs = plannedStartTime ? new Date(plannedStartTime).getTime() : NaN;
-  const actualStartMs = actualStartTime ? new Date(actualStartTime).getTime() : NaN;
 
   const isRunningLate =
     !isReopened &&
@@ -182,21 +202,10 @@ export const CleaningTaskCard = ({
   };
 
   return (
-    <div className="relative">
-      {isReopened && (
-        <div className="absolute -top-2 left-0 z-10">
-          <span
-            className="inline-block rounded-t-md bg-cyan-500 py-1 pl-3 pr-4 text-[10px] font-bold uppercase tracking-wide text-white shadow-sm"
-            style={{ clipPath: "polygon(0 0, 100% 0, 82% 100%, 0 100%)" }}
-          >
-            Reabierto
-          </span>
-        </div>
-      )}
+    <div className="relative mt-6">
       <div
-        className={`flex overflow-hidden rounded-xl bg-white shadow-sm ${
-          isOverdue ? "ring-1 ring-orange-200" : ""
-        }`}
+        className={`flex overflow-hidden rounded-xl bg-white shadow-sm ${isOverdue ? "ring-1 ring-orange-200" : ""
+          }`}
       >
         {isOverdue ? (
           <div className="flex w-7 flex-shrink-0 items-center justify-center bg-orange-500">
@@ -209,90 +218,103 @@ export const CleaningTaskCard = ({
         )}
         <article className="min-w-0 flex-1 p-4">
           {/* Header */}
-        <div className="flex items-start justify-between">
-          <div>
-            <p className="text-xs font-bold uppercase tracking-wide text-cyan-600">
-              Limpieza
-            </p>
-            <h3 className="mt-1 text-base font-semibold text-slate-900">
-              {unitLabel}
-            </h3>
-          </div>
+          <div className="flex items-start justify-between">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wide text-cyan-600">
+                {description}
+              </p>
+              <h3 className="mt-1 text-base font-semibold text-slate-900">
+                {taskNumber || "Sin Número de Tarea"}
+              </h3>
+            </div>
 
-          <span
-            className={`rounded-md px-2 py-1 text-xs font-medium ${
-              isOverdue
+            <span
+              className={`rounded-md px-2 py-1 text-xs font-medium ${isOverdue
                 ? "border border-orange-300 bg-orange-100 text-orange-700"
                 : "bg-slate-100 text-slate-600"
-            }`}
-          >
-            {formatTaskDate(plannedStartTime)}
-          </span>
-        </div>
+                }`}
+            >
+              {formatTaskDate(plannedStartTime)}
+            </span>
+          </div>
 
-      {/* Phase badge */}
-      <div className="mt-2">
-        <span
-          className={`inline-block rounded-md px-2 py-1 text-xs font-semibold ${
-            phaseStyles[phase] ?? "bg-slate-100 text-slate-700"
-          }`}
-        >
-          {phase}
-        </span>
-      </div>
-
-      {/* Body */}
-      <div className="mt-3 space-y-2 text-sm text-slate-600">
-        <div className="flex items-start gap-2">
-          <MapPin className="mt-0.5 h-4 w-4 flex-shrink-0" />
-          <span>{description}</span>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <Clock className="h-4 w-4 flex-shrink-0" />
-          <span>Inicio planeado: {formatTime(plannedStartTime)}</span>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <Timer className="h-4 w-4 flex-shrink-0" />
-          <span>Duración estimada: {duration}</span>
-        </div>
-      </div>
-
-      {/* Overdue warning */}
-      {isOverdue && overdueLabel && (
-        <div className="mt-3 flex items-center gap-2 rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-sm text-orange-700">
-          <AlertTriangle className="h-4 w-4 flex-shrink-0" />
-          <span>
-            {isRunningLate ? (
-              <>
-                Llevas <strong>{overdueLabel}</strong> con retraso
-              </>
-            ) : (
-              <>
-                Empezaste con <strong>{overdueLabel}</strong> de retraso
-              </>
+          {/* Phase badge */}
+          <div className="mt-2 flex items-center gap-2">
+            <span
+              className={`inline-block rounded-md px-2 py-1 text-xs font-semibold ${phaseStyles[phase] ?? "bg-slate-100 text-slate-700"
+                }`}
+            >
+              {phase}
+            </span>
+            {isReopened && (
+              <span className="flex-shrink-0 rounded-md bg-rose-100 px-2 py-1 text-xs font-semibold text-rose-700">
+                Reabierta
+              </span>
             )}
-          </span>
-        </div>
-      )}
+          </div>
 
-      {/* Footer */}
-      {actionablePhases.has(phase) && (
-        <div className="mt-4 flex justify-end">
-          <button
-            disabled={!isActionable}
-            onClick={handleStart}
-            className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${
-              isActionable
-                ? "bg-brand text-white hover:bg-brand-hover"
-                : "bg-slate-200 text-slate-400 cursor-not-allowed"
-            }`}
-          >
-            {isSameActiveTask || isTaskAlreadyInExecution ? "Continuar" : "Iniciar"}
-          </button>
-        </div>
-      )}
+          {/* Body */}
+          <div className="mt-3 space-y-2 text-sm text-slate-600">
+            <div className="flex items-start gap-2">
+              <MapPin className="mt-0.5 h-4 w-4 flex-shrink-0" />
+              <span>{unitLabel}</span>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Clock className="h-4 w-4 flex-shrink-0" />
+              <span>Inicio planeado: {formatTime(plannedStartTime)}</span>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Clock className="h-4 w-4 flex-shrink-0" />
+              <span>Fin planeado: {formatTime(plannedEndTime)}</span>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Timer className="h-4 w-4 flex-shrink-0" />
+              <span>Duración estimada: {duration}</span>
+            </div>
+            {didStartLate && delayTimeLabel && (
+              <div className="flex items-center gap-2">
+                <Timer className="h-4 w-4 flex-shrink-0" />
+                <span>Tarea con retraso de: {delayTimeLabel}</span>
+              </div>
+            )}
+          </div>
+
+          {/* Overdue warning */}
+          {isOverdue && overdueLabel && (
+            <div className="mt-3 flex items-center gap-2 rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-sm text-orange-700">
+              <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+              <span>
+                {isRunningLate ? (
+                  <>
+                    Llevas <strong>{overdueLabel}</strong> con retraso
+                  </>
+                ) : (
+                  <>
+                    Empezaste con <strong>{overdueLabel}</strong> de retraso
+                  </>
+                )}
+              </span>
+            </div>
+          )}
+
+          {/* Footer */}
+          {actionablePhases.has(phase) && (
+            <div className="mt-4 flex justify-end">
+              <button
+                disabled={!isActionable}
+                onClick={handleStart}
+                className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${isActionable
+                  ? "bg-brand text-white hover:bg-brand-hover"
+                  : "bg-slate-200 text-slate-400 cursor-not-allowed"
+                  }`}
+              >
+                {isSameActiveTask || isTaskAlreadyInExecution ? "Continuar" : "Iniciar"}
+              </button>
+            </div>
+          )}
 
         </article>
       </div>

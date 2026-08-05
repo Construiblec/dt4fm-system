@@ -51,7 +51,10 @@ export const useCleaningTaskExecutionStore = create<CleaningTaskExecutionState>(
           const shouldPreserveContext = state.contextTaskId === task.id;
 
           return {
-            activeTask: task,
+            activeTask: {
+              ...task,
+              sessionStartTime: new Date().toISOString(),
+            },
             contextTaskId: task.id,
             checklistProgress: shouldPreserveContext ? state.checklistProgress : {},
             observations: shouldPreserveContext ? state.observations : "",
@@ -73,7 +76,10 @@ export const useCleaningTaskExecutionStore = create<CleaningTaskExecutionState>(
           const shouldPreserveContext = state.contextTaskId === task.id;
 
           return {
-            activeTask: task,
+            activeTask: {
+              ...task,
+              sessionStartTime: shouldPreserveContext ? state.activeTask?.sessionStartTime : new Date().toISOString(),
+            },
             contextTaskId: task.id,
             checklistProgress: shouldPreserveContext ? state.checklistProgress : {},
             observations: shouldPreserveContext ? state.observations : "",
@@ -126,7 +132,7 @@ export const useCleaningTaskExecutionStore = create<CleaningTaskExecutionState>(
       },
       completedChecklistCount: () =>
         Object.values(get().checklistProgress).filter(Boolean).length,
-      canComplete: () => get().isChecklistComplete() && get().photoUploaded,
+      canComplete: () => get().isChecklistComplete(),
     }),
     {
       name: "cleaning-task-execution-storage",

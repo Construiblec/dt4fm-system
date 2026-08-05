@@ -417,7 +417,7 @@ export class CleaningTasksController {
 
   /**
    * PATCH /cleaning-tasks/:taskId/review
-   * Transición Completed → Reviewed (o de vuelta a InExecution si rejected).
+   * Transición Completed → Reviewed (o de vuelta a Assigned si rejected).
    * Solo para SuperUser/Admin.
    */
   @Patch(':taskId/review')
@@ -438,7 +438,7 @@ export class CleaningTasksController {
   @ApiResponse({
     status: 200,
     description:
-      'Revisión registrada. La tarea pasa a Reviewed o retorna a InExecution.',
+      'Revisión registrada. La tarea pasa a Reviewed o retorna a Assigned.',
   })
   async reviewTask(
     @Param('taskId', ParseIntPipe) taskId: number,

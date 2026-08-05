@@ -82,6 +82,7 @@ export class CleaningTasksService {
         actualStartTime: task.ActualStartTime ?? null,
         actualEndTime: task.ActualEndTime ?? null,
         executionTime: task.ExecutionTime ?? null,
+        delayTime: task.DelayTime ?? null,
         taskObservations: task.Observations ?? null,
         supervisionObserv: task.SupervisionObserv ?? null,
         teamObservations: task.TeamObservations ?? null,
@@ -203,6 +204,7 @@ export class CleaningTasksService {
       actualStartTime: task.ActualStartTime ?? null,
       actualEndTime: task.ActualEndTime ?? null,
       executionTime: task.ExecutionTime ?? null,
+      delayTime: task.DelayTime ?? null,
       taskObservations: task.Observations ?? null,
       supervisionObserv: task.SupervisionObserv ?? null,
       teamObservations: task.TeamObservations ?? null,
@@ -257,6 +259,7 @@ export class CleaningTasksService {
       actualStartTime: task.ActualStartTime ?? null,
       actualEndTime: task.ActualEndTime ?? null,
       executionTime: task.ExecutionTime ?? null,
+      delayTime: task.DelayTime ?? null,
       taskObservations: task.Observations ?? null,
       supervisionObserv: task.SupervisionObserv ?? null,
       teamObservations: task.TeamObservations ?? null,
@@ -335,6 +338,7 @@ export class CleaningTasksService {
         actualStartTime: task.ActualStartTime ?? null,
         actualEndTime: task.ActualEndTime ?? null,
         executionTime: task.ExecutionTime ?? null,
+        delayTime: task.DelayTime ?? null,
         taskObservations: task.Observations ?? null,
         supervisionObserv: task.SupervisionObserv ?? null,
         teamObservations: task.TeamObservations ?? null,
@@ -409,9 +413,29 @@ export class CleaningTasksService {
     const phaseDesc = task._phase_description ?? String(task.phase);
     this.validatePhaseTransition(phaseDesc, PHASE_IDS.IN_EXECUTION);
     const now = new Date().toISOString();
+    
+    const body: Record<string, unknown> = { phase: PHASE_IDS.IN_EXECUTION };
+    
+    // Solo calculamos el retraso y seteamos ActualStartTime si es la PRIMERA vez que se inicia
+    if (!task.ActualStartTime) {
+      body.ActualStartTime = now;
+      
+      let delayTime = 0;
+      if (task.PlannedStartTime) {
+        const delayMs = new Date(now).getTime() - new Date(task.PlannedStartTime).getTime();
+        if (delayMs > 0) {
+          delayTime = delayMs / 3_600_000;
+        }
+      }
+      
+      if (delayTime > 0) {
+        body.DelayTime = delayTime;
+      }
+    }
+
     const response = await this.openmaintService.updateTaskWithSession(
       taskId,
-      { phase: PHASE_IDS.IN_EXECUTION, ActualStartTime: now },
+      body,
       sessionToken,
     );
     return {
@@ -419,7 +443,7 @@ export class CleaningTasksService {
       data: {
         id: response?.data?._id ?? taskId,
         phase: PHASE_NAMES[PHASE_IDS.IN_EXECUTION],
-        actualStartTime: response?.data?.ActualStartTime ?? now,
+        actualStartTime: response?.data?.ActualStartTime ?? task.ActualStartTime ?? now,
       },
     };
   }
@@ -440,8 +464,12 @@ export class CleaningTasksService {
     if (!task.ActualStartTime)
       throw new BadRequestException('Task must be started before completing');
     const now = new Date().toISOString();
-    const sessionHours = this.calculateDurationHours(task.ActualStartTime, now);
-    const executionTime = (task.ExecutionTime ?? 0) + sessionHours;
+    const sessionStart = dto.sessionStartTime ?? task.ActualStartTime;
+    const sessionHours = this.calculateDurationHours(sessionStart, now);
+    const prevExecution = typeof task.ExecutionTime === 'number' 
+      ? task.ExecutionTime 
+      : parseFloat(String(task.ExecutionTime || 0));
+    const executionTime = (isNaN(prevExecution) ? 0 : prevExecution) + sessionHours;
     const body: Record<string, unknown> = {
       phase: PHASE_IDS.COMPLETED,
       ActualEndTime: now,
@@ -485,8 +513,13 @@ export class CleaningTasksService {
       );
     const targetPhaseId = dto.approved
       ? PHASE_IDS.REVIEWED
-      : PHASE_IDS.IN_EXECUTION;
+      : PHASE_IDS.ASSIGNED;
     const body: Record<string, unknown> = { phase: targetPhaseId };
+    
+    if (!dto.approved) {
+      body.ActualEndTime = null;
+    }
+
     if (dto.reviewComments) {
       body.Notes = dto.reviewComments;
       const prefix = dto.approved ? '[Aprobado]' : '[Reabierto]';
@@ -534,9 +567,13 @@ export class CleaningTasksService {
         `Solo se pueden reabrir tareas en estado Completed o Reviewed. Estado actual: ${phaseDesc}`,
       );
     }
-    const body: Record<string, unknown> = { phase: PHASE_IDS.ASSIGNED };
+    const body: Record<string, unknown> = { 
+      phase: PHASE_IDS.ASSIGNED,
+      ActualEndTime: null,
+    };
     if (dto.observations) {
-      body.SupervisionObserv = this.appendNote(task.SupervisionObserv, dto.observations);
+      const newObs = `[Reabierto]: ${dto.observations}`;
+      body.SupervisionObserv = this.appendNote(task.SupervisionObserv, newObs);
     }
     const updated = await this.openmaintService.updateTaskWithSession(taskId, body, sessionToken);
     return {
