@@ -7,6 +7,7 @@ import type {
 import type {
   PreventiveMaintenance,
   PreventiveMaintenanceDetail,
+  SuspensionReason,
 } from "@/modules/incidentes/types/PreventiveMaintenance";
 
 const preventiveMaintenanceApi = axios.create({
@@ -27,6 +28,11 @@ type DetailResponse = {
 type ChecklistResponse = {
   success: boolean;
   data: { checklist: PreventiveChecklistItem[] };
+};
+
+type SuspensionReasonsResponse = {
+  success: boolean;
+  data: SuspensionReason[];
 };
 
 const getAuthHeaders = () => ({
@@ -112,6 +118,43 @@ export const completePreventiveMaintenance = async (
           "Content-Type": "multipart/form-data",
         },
       },
+    );
+  } catch (error) {
+    handleUnauthorized(error);
+  }
+};
+
+export const getSuspensionReasons = async (): Promise<SuspensionReason[]> => {
+  try {
+    const { data } =
+      await preventiveMaintenanceApi.get<SuspensionReasonsResponse>(
+        "/preventive-maintenance/suspension-reasons",
+        { headers: getAuthHeaders() },
+      );
+
+    return data.data;
+  } catch (error) {
+    return handleUnauthorized(error);
+  }
+};
+
+/**
+ * Suspende el mantenimiento. Las respuestas del checklist viajan en la misma
+ * petición: el backend las guarda y marca como N.D. las que sigan sin resolver.
+ */
+export const suspendPreventiveMaintenance = async (
+  id: string,
+  input: { reasonId: string; notes: string; items: ChecklistAnswer[] },
+): Promise<void> => {
+  try {
+    await preventiveMaintenanceApi.post(
+      `/preventive-maintenance/${id}/suspend`,
+      {
+        reasonId: Number(input.reasonId),
+        notes: input.notes,
+        items: input.items,
+      },
+      { headers: getAuthHeaders() },
     );
   } catch (error) {
     handleUnauthorized(error);
