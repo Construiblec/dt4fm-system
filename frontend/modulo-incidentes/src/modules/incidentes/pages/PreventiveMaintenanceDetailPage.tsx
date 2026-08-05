@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   AlertTriangle,
@@ -80,7 +80,12 @@ export const PreventiveMaintenanceDetailPage = () => {
   } = usePreventiveMaintenanceHistory(id, tab === "documents");
 
   // ── Ejecución del checklist y cierre ────────────────────────────────────────
-  const checklistItems = maintenance?.checklist ?? [];
+  // Memoizado porque `?? []` daría un array nuevo en cada render mientras el
+  // detalle carga, y `usePreventiveChecklist` resembraría las respuestas en bucle.
+  const checklistItems = useMemo(
+    () => maintenance?.checklist ?? [],
+    [maintenance],
+  );
   const { answers, setAnswer, completedCount, totalCount, isComplete, payload } =
     usePreventiveChecklist(checklistItems);
   const [observations, setObservations] = useState("");

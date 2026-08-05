@@ -6,6 +6,7 @@ import type {
 } from "@/modules/incidentes/types/PreventiveChecklist";
 import type {
   PreventiveMaintenance,
+  PreventiveMaintenanceAttachment,
   PreventiveMaintenanceDetail,
   PreventiveMaintenanceHistoryEntry,
   SuspensionReason,
@@ -40,6 +41,12 @@ type HistoryResponse = {
   success: boolean;
   data: PreventiveMaintenanceHistoryEntry[];
   meta: { total: number; equipment: string | null };
+};
+
+type AttachmentsResponse = {
+  success: boolean;
+  data: PreventiveMaintenanceAttachment[];
+  meta: { total: number };
 };
 
 const getAuthHeaders = () => ({
@@ -93,6 +100,22 @@ export const getPreventiveMaintenanceHistory = async (
   try {
     const { data } = await preventiveMaintenanceApi.get<HistoryResponse>(
       `/preventive-maintenance/${id}/history`,
+      { headers: getAuthHeaders() },
+    );
+
+    return data.data;
+  } catch (error) {
+    return handleUnauthorized(error);
+  }
+};
+
+/** Archivos adjuntos del mantenimiento, incluido el informe que genera al cerrar. */
+export const getPreventiveMaintenanceAttachments = async (
+  id: string,
+): Promise<PreventiveMaintenanceAttachment[]> => {
+  try {
+    const { data } = await preventiveMaintenanceApi.get<AttachmentsResponse>(
+      `/preventive-maintenance/${id}/attachments`,
       { headers: getAuthHeaders() },
     );
 

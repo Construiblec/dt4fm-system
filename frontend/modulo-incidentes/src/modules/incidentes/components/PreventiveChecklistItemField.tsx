@@ -4,6 +4,7 @@ import type {
   ChecklistOption,
   PreventiveChecklistItem,
 } from "@/modules/incidentes/types/PreventiveChecklist";
+import { FLAG_LABELS } from "@/modules/incidentes/utils/checklistOutcome";
 
 /**
  * `showPicker()` está en Chrome 99+ y Firefox 101+. Si no existe se deja el
@@ -62,9 +63,6 @@ const toOutcomeValue = (kind: ChecklistFieldKind, input: string): string => {
 
 /** Tipos con dos opciones excluyentes, que se pintan como botones. */
 type ChoiceKind = "posneg" | "flag";
-
-/** OpenMAINT etiqueta el Flag «Hecho / Que hacer»; al técnico le dice más un sí/no. */
-const FLAG_LABELS = ["Sí", "No"];
 
 const SELECTED_CLASS = [
   "border-emerald-600 bg-emerald-600 text-white",

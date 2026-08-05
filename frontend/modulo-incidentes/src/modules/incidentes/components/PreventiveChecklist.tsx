@@ -1,6 +1,7 @@
 import { CheckCircle2, ClipboardList } from "lucide-react";
 import { PreventiveChecklistItemField } from "@/modules/incidentes/components/PreventiveChecklistItemField";
 import type { PreventiveChecklistItem } from "@/modules/incidentes/types/PreventiveChecklist";
+import { stripLeadingCode } from "@/modules/incidentes/utils/equipmentLabel";
 
 type Props = {
   items: PreventiveChecklistItem[];
@@ -8,18 +9,6 @@ type Props = {
   onAnswerChange: (taskDefId: number, value: string) => void;
   /** Bloquea la edición mientras se está guardando o si ya está cerrado */
   disabled?: boolean;
-};
-
-/**
- * OpenMAINT describe el equipo como `Código - Descripción`, y el código es un
- * identificador autogenerado que no le dice nada al técnico.
- */
-const stripLeadingCode = (description: string) => {
-  const separator = description.indexOf(" - ");
-
-  return separator === -1
-    ? description
-    : description.slice(separator + 3).trim();
 };
 
 export const PreventiveChecklist = ({
