@@ -27,11 +27,38 @@ function calcDuration(start?: string | null, end?: string | null): string {
   const diffMs = new Date(end).getTime() - new Date(start).getTime();
   if (isNaN(diffMs) || diffMs <= 0) return "—";
   const totalMinutes = Math.round(diffMs / 60_000);
-  const hours = Math.floor(totalMinutes / 60);
-  const minutes = totalMinutes % 60;
-  if (hours === 0) return `${minutes}min`;
-  if (minutes === 0) return `${hours}h`;
-  return `${hours}h ${minutes}min`;
+  const d = Math.floor(totalMinutes / 1440);
+  const h = Math.floor((totalMinutes % 1440) / 60);
+  const m = totalMinutes % 60;
+
+  if (d > 0) {
+    let res = `${d}d`;
+    if (h > 0) res += ` ${h}h`;
+    if (m > 0) res += ` ${m}min`;
+    return res;
+  }
+  if (h === 0) return `${m}min`;
+  if (m === 0) return `${h}h`;
+  return `${h}h ${m}min`;
+}
+
+function formatExecutionTime(hoursFloat?: number | null): string | null {
+  if (hoursFloat == null) return null;
+  const totalMinutes = Math.round(hoursFloat * 60);
+  if (totalMinutes <= 0) return "—";
+  const d = Math.floor(totalMinutes / 1440);
+  const h = Math.floor((totalMinutes % 1440) / 60);
+  const m = totalMinutes % 60;
+
+  if (d > 0) {
+    let res = `${d}d`;
+    if (h > 0) res += ` ${h}h`;
+    if (m > 0) res += ` ${m}min`;
+    return res;
+  }
+  if (h === 0) return `${m}min`;
+  if (m === 0) return `${h}h`;
+  return `${h}h ${m}min`;
 }
 
 function formatTaskDate(dateStr?: string | null): string {
@@ -83,6 +110,8 @@ type Props = Pick<
   | "phase"
   | "actualStartTime"
   | "supervisionObserv"
+  | "actualEndTime"
+  | "executionTime"
 >;
 
 export const CleaningTaskCard = ({
@@ -95,6 +124,8 @@ export const CleaningTaskCard = ({
   phase,
   actualStartTime,
   supervisionObserv,
+  actualEndTime,
+  executionTime,
 }: Props) => {
   const navigate = useNavigate();
   const activeTask = useCleaningTaskExecutionStore((state) => state.activeTask);
@@ -114,11 +145,15 @@ export const CleaningTaskCard = ({
     (phase === "Assigned" || phase === "InExecution") &&
     lastReabiertoIdx > lastAprobadoIdx;
 
+  const plannedStartMs = plannedStartTime ? new Date(plannedStartTime).getTime() : NaN;
+  const actualStartMs = actualStartTime ? new Date(actualStartTime).getTime() : NaN;
+
+  const didStartLate = !isNaN(plannedStartMs) && !isNaN(actualStartMs) && actualStartMs > plannedStartMs;
+  const delayTimeLabel = didStartLate ? calcDuration(plannedStartTime, actualStartTime) : null;
+
   const hasNotStarted = !actualStartTime;
   const canTick = hasNotStarted && actionablePhases.has(phase) && !isReopened;
   const now = useNow(canTick);
-  const plannedStartMs = plannedStartTime ? new Date(plannedStartTime).getTime() : NaN;
-  const actualStartMs = actualStartTime ? new Date(actualStartTime).getTime() : NaN;
 
   const isRunningLate =
     !isReopened &&
@@ -260,6 +295,12 @@ export const CleaningTaskCard = ({
               <Timer className="h-4 w-4 flex-shrink-0" />
               <span>Duración estimada: {duration}</span>
             </div>
+            {didStartLate && delayTimeLabel && (
+              <div className="flex items-center gap-2">
+                <Timer className="h-4 w-4 flex-shrink-0" />
+                <span>Tarea con retraso de: {delayTimeLabel}</span>
+              </div>
+            )}
           </div>
 
           {/* Overdue warning */}

@@ -4,19 +4,19 @@ import { formatEmployeeName } from "@/shared/utils/nameUtils";
 import { cleanObservationText } from "@/shared/utils/textUtils";
 
 const phaseStyles: Record<string, string> = {
-  Assigned:    "bg-blue-100 text-blue-700",
+  Assigned: "bg-blue-100 text-blue-700",
   InExecution: "bg-amber-100 text-amber-700",
-  Completed:   "bg-violet-100 text-violet-700",
-  Reviewed:    "bg-emerald-100 text-emerald-700",
-  Cancelled:   "bg-red-100 text-red-700",
+  Completed: "bg-violet-100 text-violet-700",
+  Reviewed: "bg-emerald-100 text-emerald-700",
+  Cancelled: "bg-red-100 text-red-700",
 };
 
 const phaseLabels: Record<string, string> = {
-  Assigned:    "Asignada",
+  Assigned: "Asignada",
   InExecution: "En ejecución",
-  Completed:   "Completada",
-  Reviewed:    "Revisada",
-  Cancelled:   "Cancelada",
+  Completed: "Completada",
+  Reviewed: "Revisada",
+  Cancelled: "Cancelada",
 };
 
 function formatDateTime(iso: string | null): string {
@@ -33,11 +33,39 @@ function calcDuration(start: string | null, end: string | null): string {
   if (!start || !end) return "—";
   const ms = new Date(end).getTime() - new Date(start).getTime();
   if (ms <= 0) return "—";
-  const mins = Math.round(ms / 60_000);
-  const h = Math.floor(mins / 60);
-  const m = mins % 60;
+  const totalMinutes = Math.round(ms / 60_000);
+  const d = Math.floor(totalMinutes / 1440);
+  const h = Math.floor((totalMinutes % 1440) / 60);
+  const m = totalMinutes % 60;
+
+  if (d > 0) {
+    let res = `${d}d`;
+    if (h > 0) res += ` ${h}h`;
+    if (m > 0) res += ` ${m}min`;
+    return res;
+  }
   if (h === 0) return `${m}min`;
-  return m === 0 ? `${h}h` : `${h}h ${m}min`;
+  if (m === 0) return `${h}h`;
+  return `${h}h ${m}min`;
+}
+
+function formatExecutionTime(hoursFloat?: number | null): string | null {
+  if (hoursFloat == null) return null;
+  const totalMinutes = Math.round(hoursFloat * 60);
+  if (totalMinutes <= 0) return "—";
+  const d = Math.floor(totalMinutes / 1440);
+  const h = Math.floor((totalMinutes % 1440) / 60);
+  const m = totalMinutes % 60;
+
+  if (d > 0) {
+    let res = `${d}d`;
+    if (h > 0) res += ` ${h}h`;
+    if (m > 0) res += ` ${m}min`;
+    return res;
+  }
+  if (h === 0) return `${m}min`;
+  if (m === 0) return `${h}h`;
+  return `${h}h ${m}min`;
 }
 
 type Props = {
@@ -92,9 +120,17 @@ export const TaskDetailInfo = ({ detail }: Props) => {
           <span className="text-slate-400">Fin real</span>
           <span>{formatDateTime(detail.actualEndTime)}</span>
         </div>
-        <div className="flex justify-between font-semibold">
+        <div className="flex justify-between">
           <span className="text-slate-400">Duración</span>
-          <span className="text-slate-800">{duration}</span>
+          <span>{duration}</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="text-slate-400">Retraso</span>
+          {detail.delayTime && detail.delayTime > 0 ? (
+            <span>{formatExecutionTime(detail.delayTime)}</span>
+          ) : (
+            <span>Sin retraso</span>
+          )}
         </div>
       </div>
 

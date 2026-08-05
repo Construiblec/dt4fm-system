@@ -82,6 +82,7 @@ export class CleaningTasksService {
         actualStartTime: task.ActualStartTime ?? null,
         actualEndTime: task.ActualEndTime ?? null,
         executionTime: task.ExecutionTime ?? null,
+        delayTime: task.DelayTime ?? null,
         taskObservations: task.Observations ?? null,
         supervisionObserv: task.SupervisionObserv ?? null,
         teamObservations: task.TeamObservations ?? null,
@@ -203,6 +204,7 @@ export class CleaningTasksService {
       actualStartTime: task.ActualStartTime ?? null,
       actualEndTime: task.ActualEndTime ?? null,
       executionTime: task.ExecutionTime ?? null,
+      delayTime: task.DelayTime ?? null,
       taskObservations: task.Observations ?? null,
       supervisionObserv: task.SupervisionObserv ?? null,
       teamObservations: task.TeamObservations ?? null,
@@ -257,6 +259,7 @@ export class CleaningTasksService {
       actualStartTime: task.ActualStartTime ?? null,
       actualEndTime: task.ActualEndTime ?? null,
       executionTime: task.ExecutionTime ?? null,
+      delayTime: task.DelayTime ?? null,
       taskObservations: task.Observations ?? null,
       supervisionObserv: task.SupervisionObserv ?? null,
       teamObservations: task.TeamObservations ?? null,
@@ -335,6 +338,7 @@ export class CleaningTasksService {
         actualStartTime: task.ActualStartTime ?? null,
         actualEndTime: task.ActualEndTime ?? null,
         executionTime: task.ExecutionTime ?? null,
+        delayTime: task.DelayTime ?? null,
         taskObservations: task.Observations ?? null,
         supervisionObserv: task.SupervisionObserv ?? null,
         teamObservations: task.TeamObservations ?? null,
@@ -409,9 +413,23 @@ export class CleaningTasksService {
     const phaseDesc = task._phase_description ?? String(task.phase);
     this.validatePhaseTransition(phaseDesc, PHASE_IDS.IN_EXECUTION);
     const now = new Date().toISOString();
+    
+    let delayTime = 0;
+    if (task.PlannedStartTime) {
+      const delayMs = new Date(now).getTime() - new Date(task.PlannedStartTime).getTime();
+      if (delayMs > 0) {
+        delayTime = delayMs / 3_600_000;
+      }
+    }
+    
+    const body: Record<string, unknown> = { phase: PHASE_IDS.IN_EXECUTION, ActualStartTime: now };
+    if (delayTime > 0) {
+      body.DelayTime = delayTime;
+    }
+
     const response = await this.openmaintService.updateTaskWithSession(
       taskId,
-      { phase: PHASE_IDS.IN_EXECUTION, ActualStartTime: now },
+      body,
       sessionToken,
     );
     return {

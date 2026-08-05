@@ -44,7 +44,7 @@ export const SupervisorTaskDetailPage = () => {
               Detalle de tarea
             </p>
             <h1 className="text-base font-bold text-slate-900">
-              {detail?.taskNumber ?? "Cargando..."}
+              {loading ? "Cargando..." : (detail?.taskNumber || "Sin Número de Tarea")}
             </h1>
           </div>
         </header>

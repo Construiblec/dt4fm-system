@@ -24,6 +24,7 @@ type CleaningTaskCard = {
   ActualStartTime?: string;
   ActualEndTime?: string;
   ExecutionTime?: number;
+  DelayTime?: number;
   Observations?: string;
   SupervisionObserv?: string;
   TeamObservations?: string;

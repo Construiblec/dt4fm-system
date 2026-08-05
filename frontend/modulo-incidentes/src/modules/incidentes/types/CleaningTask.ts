@@ -22,6 +22,7 @@ export type CleaningTask = {
   actualStartTime: string | null;
   actualEndTime: string | null;
   executionTime: number | null;
+  delayTime: number | null;
   taskObservations: string | null;
   supervisionObserv: string | null;
   teamObservations: string | null;
