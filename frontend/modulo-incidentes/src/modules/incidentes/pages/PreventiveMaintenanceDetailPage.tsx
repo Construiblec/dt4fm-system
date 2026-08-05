@@ -12,6 +12,7 @@ import { PreventiveChecklist } from "@/modules/incidentes/components/PreventiveC
 import { PreventiveDetailTabs } from "@/modules/incidentes/components/PreventiveDetailTabs";
 import type { PreventiveDetailTab } from "@/modules/incidentes/components/PreventiveDetailTabs";
 import { PreventiveDocumentsSection } from "@/modules/incidentes/components/PreventiveDocumentsSection";
+import { PreventiveHistorySection } from "@/modules/incidentes/components/PreventiveHistorySection";
 import { SuspendMaintenanceModal } from "@/modules/incidentes/components/SuspendMaintenanceModal";
 import { UploadDocumentSheet } from "@/modules/incidentes/components/UploadDocumentSheet";
 import { PREVENTIVE_DOCUMENTS_ENABLED } from "@/modules/incidentes/constants/preventiveDocuments";
@@ -20,6 +21,7 @@ import {
   PREVENTIVE_STATUS_BADGE_CLASSES,
 } from "@/modules/incidentes/constants/preventiveStatus";
 import { usePreventiveChecklist } from "@/modules/incidentes/hooks/usePreventiveChecklist";
+import { usePreventiveMaintenanceHistory } from "@/modules/incidentes/hooks/usePreventiveMaintenanceHistory";
 import {
   completePreventiveMaintenance,
   getSuspensionReasons,
@@ -71,6 +73,11 @@ export const PreventiveMaintenanceDetailPage = () => {
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [tab, setTab] = useState<PreventiveDetailTab>("checklist");
   const [showUploadSheet, setShowUploadSheet] = useState(false);
+  const {
+    entries: historyEntries,
+    loading: loadingHistory,
+    error: historyError,
+  } = usePreventiveMaintenanceHistory(id, tab === "documents");
 
   // ── Ejecución del checklist y cierre ────────────────────────────────────────
   const checklistItems = maintenance?.checklist ?? [];
@@ -247,7 +254,10 @@ export const PreventiveMaintenanceDetailPage = () => {
           </div>
         </header>
 
-        <div className="space-y-5 px-4 py-5">
+        {/* El FAB flota sobre el final de la lista, de ahí el respiro extra */}
+        <div
+          className={`space-y-5 px-4 py-5 ${tab === "documents" ? "pb-28" : ""}`}
+        >
           {loading ? (
             <section className="rounded-3xl bg-white p-5 text-sm text-slate-500 shadow-sm">
               Cargando detalle del mantenimiento...
@@ -327,7 +337,20 @@ export const PreventiveMaintenanceDetailPage = () => {
 
               <PreventiveDetailTabs value={tab} onChange={setTab} />
 
-              {tab === "documents" ? <PreventiveDocumentsSection /> : null}
+              {tab === "documents" ? (
+                <>
+                  <PreventiveDocumentsSection />
+
+                  <PreventiveHistorySection
+                    entries={historyEntries}
+                    loading={loadingHistory}
+                    error={historyError}
+                    onOpen={(historyId) =>
+                      navigate(`/preventive-maintenance/historial/${historyId}`)
+                    }
+                  />
+                </>
+              ) : null}
 
               {tab === "checklist" && maintenance.images.length > 0 ? (
                 <section className="rounded-3xl bg-white p-5 shadow-sm">

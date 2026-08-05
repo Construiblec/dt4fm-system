@@ -7,6 +7,7 @@ import type {
 import type {
   PreventiveMaintenance,
   PreventiveMaintenanceDetail,
+  PreventiveMaintenanceHistoryEntry,
   SuspensionReason,
 } from "@/modules/incidentes/types/PreventiveMaintenance";
 
@@ -33,6 +34,12 @@ type ChecklistResponse = {
 type SuspensionReasonsResponse = {
   success: boolean;
   data: SuspensionReason[];
+};
+
+type HistoryResponse = {
+  success: boolean;
+  data: PreventiveMaintenanceHistoryEntry[];
+  meta: { total: number; equipment: string | null };
 };
 
 const getAuthHeaders = () => ({
@@ -70,6 +77,22 @@ export const getPreventiveMaintenanceById = async (
   try {
     const { data } = await preventiveMaintenanceApi.get<DetailResponse>(
       `/preventive-maintenance/${id}`,
+      { headers: getAuthHeaders() },
+    );
+
+    return data.data;
+  } catch (error) {
+    return handleUnauthorized(error);
+  }
+};
+
+/** Mantenimientos ya completados sobre el mismo equipo. */
+export const getPreventiveMaintenanceHistory = async (
+  id: string,
+): Promise<PreventiveMaintenanceHistoryEntry[]> => {
+  try {
+    const { data } = await preventiveMaintenanceApi.get<HistoryResponse>(
+      `/preventive-maintenance/${id}/history`,
       { headers: getAuthHeaders() },
     );
 

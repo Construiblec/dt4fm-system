@@ -46,6 +46,22 @@ export type PreventiveMaintenanceDetail = PreventiveMaintenance & {
   checklist: PreventiveChecklistItem[];
 };
 
+/** Mantenimiento ya cerrado sobre el mismo equipo. */
+export type PreventiveMaintenanceHistoryEntry = PreventiveMaintenance & {
+  /** Cuántos archivos dejó; alimenta la etiqueta «Informe generado» */
+  attachmentCount: number;
+};
+
+export type PreventiveMaintenanceAttachment = {
+  id: string;
+  fileName: string;
+  category: string | null;
+  uploadDate: string | null;
+  /** Ruta del backend, hay que componerla con el token para abrirla */
+  downloadUrl: string;
+  isImage: boolean;
+};
+
 /** Opción del desplegable de motivo de suspensión. */
 export type SuspensionReason = {
   id: string;
