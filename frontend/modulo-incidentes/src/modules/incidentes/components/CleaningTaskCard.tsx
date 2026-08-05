@@ -42,25 +42,6 @@ function calcDuration(start?: string | null, end?: string | null): string {
   return `${h}h ${m}min`;
 }
 
-function formatExecutionTime(hoursFloat?: number | null): string | null {
-  if (hoursFloat == null) return null;
-  const totalMinutes = Math.round(hoursFloat * 60);
-  if (totalMinutes <= 0) return "—";
-  const d = Math.floor(totalMinutes / 1440);
-  const h = Math.floor((totalMinutes % 1440) / 60);
-  const m = totalMinutes % 60;
-
-  if (d > 0) {
-    let res = `${d}d`;
-    if (h > 0) res += ` ${h}h`;
-    if (m > 0) res += ` ${m}min`;
-    return res;
-  }
-  if (h === 0) return `${m}min`;
-  if (m === 0) return `${h}h`;
-  return `${h}h ${m}min`;
-}
-
 function formatTaskDate(dateStr?: string | null): string {
   if (!dateStr) return "Sin asignar";
   return new Date(dateStr).toLocaleDateString(undefined, {
@@ -124,8 +105,6 @@ export const CleaningTaskCard = ({
   phase,
   actualStartTime,
   supervisionObserv,
-  actualEndTime,
-  executionTime,
 }: Props) => {
   const navigate = useNavigate();
   const activeTask = useCleaningTaskExecutionStore((state) => state.activeTask);
