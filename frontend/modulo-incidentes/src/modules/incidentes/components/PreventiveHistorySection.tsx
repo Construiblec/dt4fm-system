@@ -37,7 +37,7 @@ export const PreventiveHistorySection = ({
     </div>
 
     <p className="mt-1 text-sm text-slate-500">
-      Mantenimientos anteriores sobre este mismo equipo.
+      Últimos mantenimientos realizados sobre este mismo equipo.
     </p>
 
     {loading ? <StateMessage>Cargando historial...</StateMessage> : null}

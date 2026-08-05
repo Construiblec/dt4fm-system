@@ -93,14 +93,15 @@ export const getPreventiveMaintenanceById = async (
   }
 };
 
-/** Mantenimientos ya completados sobre el mismo equipo. */
+/** Mantenimientos ya completados sobre el mismo equipo, del más reciente al más antiguo. */
 export const getPreventiveMaintenanceHistory = async (
   id: string,
+  limit: number,
 ): Promise<PreventiveMaintenanceHistoryEntry[]> => {
   try {
     const { data } = await preventiveMaintenanceApi.get<HistoryResponse>(
       `/preventive-maintenance/${id}/history`,
-      { headers: getAuthHeaders() },
+      { headers: getAuthHeaders(), params: { limit } },
     );
 
     return data.data;

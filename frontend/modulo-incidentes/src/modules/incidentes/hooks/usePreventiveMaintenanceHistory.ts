@@ -8,6 +8,9 @@ type Result = {
   error: string | null;
 };
 
+/** Solo interesan las últimas intervenciones; el resto se consulta en OpenMAINT. */
+const HISTORY_LIMIT = 3;
+
 /**
  * Carga los mantenimientos anteriores del equipo.
  *
@@ -37,7 +40,7 @@ export const usePreventiveMaintenanceHistory = (
         setLoading(true);
         setError(null);
 
-        const data = await getPreventiveMaintenanceHistory(id);
+        const data = await getPreventiveMaintenanceHistory(id, HISTORY_LIMIT);
 
         if (isMounted) {
           setEntries(data);
