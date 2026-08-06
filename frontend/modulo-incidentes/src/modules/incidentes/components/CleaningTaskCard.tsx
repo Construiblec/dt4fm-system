@@ -280,7 +280,7 @@ export const CleaningTaskCard = ({
               <Timer className="h-4 w-4 flex-shrink-0" />
               <span>Duración estimada: {duration}</span>
             </div>
-            {didStartLate && delayTimeLabel && (
+            {didStartLate && !!delayTimeLabel && (
               <div className="flex items-center gap-2">
                 <Timer className="h-4 w-4 flex-shrink-0" />
                 <span>Tarea con retraso de: {delayTimeLabel}</span>
@@ -289,7 +289,7 @@ export const CleaningTaskCard = ({
           </div>
 
           {/* Overdue warning */}
-          {isOverdue && overdueLabel && (
+          {isOverdue && !!overdueLabel && (
             <div className="mt-3 flex items-center gap-2 rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-sm text-orange-700">
               <AlertTriangle className="h-4 w-4 flex-shrink-0" />
               <span>
