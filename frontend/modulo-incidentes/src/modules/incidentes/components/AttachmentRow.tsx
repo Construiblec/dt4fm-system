@@ -33,7 +33,10 @@ const formatDate = (value: string | null) => {
 export const AttachmentRow = ({ attachment }: Props) => {
   const badge = getBadge(attachment);
   const uploadedAt = formatDate(attachment.uploadDate);
-  const meta = [attachment.category, uploadedAt].filter(Boolean).join(" · ");
+  // La descripción dice más que la categoría, que casi siempre es «Document»
+  const meta = [attachment.description ?? attachment.category, uploadedAt]
+    .filter(Boolean)
+    .join(" · ");
 
   return (
     <a

@@ -194,6 +194,81 @@ export class PreventiveMaintenanceController {
     );
   }
 
+  @Get(':id/documents')
+  @ApiOperation({
+    summary: 'Listar la documentación del equipo (manuales y fichas técnicas)',
+    description:
+      'Son los archivos colgados del manual de mantenimiento al que apunta ' +
+      'el plan preventivo. Si el mantenimiento no tiene plan o el plan no ' +
+      'tiene manual, devuelve una lista vacía.',
+  })
+  @ApiParam({
+    name: 'id',
+    description: 'ID del mantenimiento preventivo',
+    type: 'integer',
+  })
+  @ApiHeader({
+    name: 'authorization',
+    description: 'Token de sesión de OpenMAINT',
+    required: true,
+  })
+  @ApiResponse({ status: 200, description: 'Documentos obtenidos con éxito' })
+  @ApiResponse({
+    status: 404,
+    description: 'Mantenimiento preventivo no encontrado',
+  })
+  async getEquipmentDocuments(
+    @Param('id', ParseIntPipe) id: number,
+    @Headers('authorization') sessionId: string,
+  ) {
+    return this.preventiveMaintenanceService.getEquipmentDocuments(
+      this.requireSessionId(sessionId),
+      id,
+    );
+  }
+
+  @Get(':id/documents/:attachmentId/download')
+  @ApiOperation({
+    summary: 'Descargar un documento del manual del equipo',
+    description:
+      'Acepta el token de sesión por cabecera o por query, para poder usar ' +
+      'la URL directamente en un `<a href>`.',
+  })
+  @ApiParam({
+    name: 'id',
+    description: 'ID del mantenimiento preventivo',
+    type: 'integer',
+  })
+  @ApiParam({ name: 'attachmentId', description: 'ID del adjunto del manual' })
+  @ApiQuery({
+    name: 'token',
+    description: 'Token de sesión, alternativa a la cabecera `authorization`',
+    required: false,
+  })
+  @ApiResponse({ status: 200, description: 'Binario del archivo' })
+  @ApiResponse({ status: 401, description: 'Token de sesión no proveído' })
+  @ApiResponse({ status: 404, description: 'Documento no encontrado' })
+  async downloadDocument(
+    @Param('id', ParseIntPipe) id: number,
+    @Param('attachmentId') attachmentId: string,
+    @Headers('authorization') sessionIdFromHeader: string,
+    @Query('token') tokenFromQuery: string | undefined,
+    @Res() res: Response,
+  ) {
+    const sessionId = sessionIdFromHeader || tokenFromQuery;
+
+    if (!sessionId) {
+      throw new UnauthorizedException('Session token is required');
+    }
+
+    return this.preventiveMaintenanceService.streamDocument(
+      sessionId,
+      id,
+      attachmentId,
+      res,
+    );
+  }
+
   @Get(':id/attachments/:attachmentId/download')
   @ApiOperation({
     summary: 'Descargar el binario de un adjunto',

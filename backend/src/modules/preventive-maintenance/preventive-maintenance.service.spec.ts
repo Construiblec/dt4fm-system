@@ -76,6 +76,9 @@ describe('PreventiveMaintenanceService', () => {
       findAttachmentPreview: jest.fn(),
       downloadAttachment: jest.fn(),
       uploadAttachment: jest.fn(),
+      findMaintenanceConfig: jest.fn(),
+      findManualAttachments: jest.fn().mockResolvedValue({ data: [] }),
+      downloadManualAttachment: jest.fn(),
       findChecklistCard: jest.fn(),
       updateChecklistCard: jest.fn(),
       findTaskDefinition: jest.fn(),
@@ -971,6 +974,7 @@ describe('PreventiveMaintenanceService', () => {
           id: 'a1',
           fileName: 'informe.pdf',
           category: 'Documento',
+          description: null,
           uploadDate: '2026-06-05T10:00:00Z',
           downloadUrl:
             '/preventive-maintenance/4370994/attachments/a1/download',
@@ -1015,6 +1019,89 @@ describe('PreventiveMaintenanceService', () => {
       await expect(
         service.getAttachments(SESSION_ID, 999999),
       ).rejects.toBeInstanceOf(NotFoundException);
+    });
+  });
+
+  describe('getEquipmentDocuments', () => {
+    beforeEach(() => {
+      openmaint.findById.mockResolvedValue({ data: openmaintCard });
+      openmaint.findMaintenanceConfig.mockResolvedValue({
+        data: {
+          _id: 4351125,
+          MaintManual: 7185465,
+          _MaintManual_description: 'MM-P - Prueba',
+        },
+      });
+    });
+
+    it('recorre plan → manual y mapea sus archivos', async () => {
+      openmaint.findManualAttachments.mockResolvedValue({
+        data: [
+          {
+            _id: 'm1',
+            name: 'Manual OpenMaint.pdf',
+            description: 'Manual de prueba',
+            _category_description: 'Document',
+            created: '2026-08-06T13:48:28.216Z',
+          },
+        ],
+      });
+
+      const result = await service.getEquipmentDocuments(SESSION_ID, 4370994);
+
+      expect(openmaint.findMaintenanceConfig).toHaveBeenCalledWith(
+        SESSION_ID,
+        4351125,
+      );
+      expect(openmaint.findManualAttachments).toHaveBeenCalledWith(
+        SESSION_ID,
+        7185465,
+      );
+      expect(result.data).toEqual([
+        {
+          id: 'm1',
+          // Los adjuntos de clase traen `name`, no `fileName`
+          fileName: 'Manual OpenMaint.pdf',
+          category: 'Document',
+          description: 'Manual de prueba',
+          uploadDate: '2026-08-06T13:48:28.216Z',
+          downloadUrl: '/preventive-maintenance/4370994/documents/m1/download',
+          isImage: false,
+        },
+      ]);
+      expect(result.meta.manual).toBe('MM-P - Prueba');
+    });
+
+    it('devuelve una lista vacía si el mantenimiento no tiene plan', async () => {
+      openmaint.findById.mockResolvedValue({
+        data: { ...openmaintCard, PrevMaintConfig: null },
+      });
+
+      const result = await service.getEquipmentDocuments(SESSION_ID, 4370994);
+
+      expect(result.data).toEqual([]);
+      expect(openmaint.findMaintenanceConfig).not.toHaveBeenCalled();
+    });
+
+    it('devuelve una lista vacía si el plan no tiene manual', async () => {
+      openmaint.findMaintenanceConfig.mockResolvedValue({
+        data: { _id: 4351125, MaintManual: null },
+      });
+
+      const result = await service.getEquipmentDocuments(SESSION_ID, 4370994);
+
+      expect(result.data).toEqual([]);
+      expect(openmaint.findManualAttachments).not.toHaveBeenCalled();
+    });
+
+    it('propaga el 401 al resolver el manual', async () => {
+      openmaint.findMaintenanceConfig.mockRejectedValue({
+        response: { status: 401 },
+      });
+
+      await expect(
+        service.getEquipmentDocuments(SESSION_ID, 4370994),
+      ).rejects.toBeInstanceOf(UnauthorizedException);
     });
   });
 

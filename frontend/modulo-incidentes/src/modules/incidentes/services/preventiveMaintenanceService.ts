@@ -110,6 +110,25 @@ export const getPreventiveMaintenanceHistory = async (
   }
 };
 
+/**
+ * Documentación del equipo: los archivos del manual de mantenimiento al que
+ * apunta el plan preventivo.
+ */
+export const getPreventiveMaintenanceDocuments = async (
+  id: string,
+): Promise<PreventiveMaintenanceAttachment[]> => {
+  try {
+    const { data } = await preventiveMaintenanceApi.get<AttachmentsResponse>(
+      `/preventive-maintenance/${id}/documents`,
+      { headers: getAuthHeaders() },
+    );
+
+    return data.data;
+  } catch (error) {
+    return handleUnauthorized(error);
+  }
+};
+
 /** Archivos adjuntos del mantenimiento, incluido el informe que genera al cerrar. */
 export const getPreventiveMaintenanceAttachments = async (
   id: string,

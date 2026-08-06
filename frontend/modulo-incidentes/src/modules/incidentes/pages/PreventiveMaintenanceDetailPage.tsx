@@ -21,6 +21,7 @@ import {
   PREVENTIVE_STATUS_BADGE_CLASSES,
 } from "@/modules/incidentes/constants/preventiveStatus";
 import { usePreventiveChecklist } from "@/modules/incidentes/hooks/usePreventiveChecklist";
+import { usePreventiveMaintenanceDocuments } from "@/modules/incidentes/hooks/usePreventiveMaintenanceDocuments";
 import { usePreventiveMaintenanceHistory } from "@/modules/incidentes/hooks/usePreventiveMaintenanceHistory";
 import {
   completePreventiveMaintenance,
@@ -78,6 +79,11 @@ export const PreventiveMaintenanceDetailPage = () => {
     loading: loadingHistory,
     error: historyError,
   } = usePreventiveMaintenanceHistory(id, tab === "documents");
+  const {
+    documents,
+    loading: loadingDocuments,
+    error: documentsError,
+  } = usePreventiveMaintenanceDocuments(id, tab === "documents");
 
   // ── Ejecución del checklist y cierre ────────────────────────────────────────
   // Memoizado porque `?? []` daría un array nuevo en cada render mientras el
@@ -344,7 +350,11 @@ export const PreventiveMaintenanceDetailPage = () => {
 
               {tab === "documents" ? (
                 <>
-                  <PreventiveDocumentsSection />
+                  <PreventiveDocumentsSection
+                    documents={documents}
+                    loading={loadingDocuments}
+                    error={documentsError}
+                  />
 
                   <PreventiveHistorySection
                     entries={historyEntries}

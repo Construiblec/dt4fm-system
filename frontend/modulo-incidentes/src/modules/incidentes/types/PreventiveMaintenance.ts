@@ -56,6 +56,8 @@ export type PreventiveMaintenanceAttachment = {
   id: string;
   fileName: string;
   category: string | null;
+  /** Descripción que se escribió al subirlo */
+  description: string | null;
   uploadDate: string | null;
   /** Ruta del backend, hay que componerla con el token para abrirla */
   downloadUrl: string;

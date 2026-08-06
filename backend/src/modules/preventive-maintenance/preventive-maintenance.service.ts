@@ -92,6 +92,8 @@ export type PreventiveMaintenanceAttachment = {
   id: string;
   fileName: string;
   category: string | null;
+  /** Descripción que el usuario escribió al subirlo */
+  description: string | null;
   uploadDate: string | null;
   /** Ruta de este mismo backend, no de OpenMAINT */
   downloadUrl: string;
@@ -450,23 +452,131 @@ export class PreventiveMaintenanceService {
       return { success: true, data: [], meta: { total: 0 } };
     }
 
-    const data: PreventiveMaintenanceAttachment[] = attachments.map(
-      (attachment) => {
-        const fileName = attachment.fileName ?? attachment.name ?? 'adjunto';
-
-        return {
-          id: attachment._id,
-          fileName,
-          category:
-            attachment._category_description ?? attachment.category ?? null,
-          uploadDate: attachment.created ?? attachment.modified ?? null,
-          downloadUrl: `/preventive-maintenance/${id}/attachments/${attachment._id}/download`,
-          isImage: IMAGE_FILE_REGEX.test(fileName),
-        };
-      },
+    const data = attachments.map((attachment) =>
+      this.toAttachment(
+        attachment,
+        `/preventive-maintenance/${id}/attachments/${attachment._id}/download`,
+      ),
     );
 
     return { success: true, data, meta: { total: data.length } };
+  }
+
+  /**
+   * Documentación del equipo: la instancia apunta al plan preventivo y este al
+   * manual, de cuya tarjeta cuelgan los PDFs. Sin plan o sin manual asociado
+   * simplemente no hay documentos que mostrar.
+   */
+  async getEquipmentDocuments(sessionId: string, id: number) {
+    const manualId = await this.resolveManualId(sessionId, id);
+
+    if (manualId === null) {
+      return { success: true, data: [], meta: { total: 0, manual: null } };
+    }
+
+    let attachments: PreventiveMaintAttachment[];
+
+    try {
+      const response = await this.openmaint.findManualAttachments(
+        sessionId,
+        manualId.id,
+      );
+      attachments = response.data ?? [];
+    } catch (error) {
+      this.throwIfSessionExpired(error);
+
+      return {
+        success: true,
+        data: [],
+        meta: { total: 0, manual: manualId.name },
+      };
+    }
+
+    const data = attachments.map((attachment) =>
+      this.toAttachment(
+        attachment,
+        `/preventive-maintenance/${id}/documents/${attachment._id}/download`,
+      ),
+    );
+
+    return {
+      success: true,
+      data,
+      meta: { total: data.length, manual: manualId.name },
+    };
+  }
+
+  /** Reenvía al navegador un PDF del manual del equipo. */
+  async streamDocument(
+    sessionId: string,
+    id: number,
+    attachmentId: string,
+    res: Response,
+  ): Promise<void> {
+    const manual = await this.resolveManualId(sessionId, id);
+
+    if (manual === null) {
+      throw new NotFoundException('El mantenimiento no tiene manual asociado');
+    }
+
+    await this.sendAttachment(res, () =>
+      this.openmaint.downloadManualAttachment(
+        sessionId,
+        manual.id,
+        attachmentId,
+      ),
+    );
+  }
+
+  /** Recorre instancia → plan → manual. `null` si la cadena se corta. */
+  private async resolveManualId(
+    sessionId: string,
+    id: number,
+  ): Promise<{ id: number; name: string | null } | null> {
+    const card = await this.fetchCard(sessionId, id);
+
+    if (card.PrevMaintConfig == null) {
+      return null;
+    }
+
+    try {
+      const response = await this.openmaint.findMaintenanceConfig(
+        sessionId,
+        card.PrevMaintConfig,
+      );
+      const manualId = response.data?.MaintManual;
+
+      return manualId == null
+        ? null
+        : {
+            id: manualId,
+            name: response.data?._MaintManual_description ?? null,
+          };
+    } catch (error) {
+      this.throwIfSessionExpired(error);
+
+      throw new BadGatewayException(
+        'Error al consultar el manual del equipo en OpenMAINT',
+      );
+    }
+  }
+
+  private toAttachment(
+    attachment: PreventiveMaintAttachment,
+    downloadUrl: string,
+  ): PreventiveMaintenanceAttachment {
+    // Los adjuntos de proceso traen `fileName`; los de clase, `name`
+    const fileName = attachment.fileName ?? attachment.name ?? 'adjunto';
+
+    return {
+      id: attachment._id,
+      fileName,
+      category: attachment._category_description ?? attachment.category ?? null,
+      description: attachment.description ?? null,
+      uploadDate: attachment.created ?? attachment.modified ?? null,
+      downloadUrl,
+      isImage: IMAGE_FILE_REGEX.test(fileName),
+    };
   }
 
   /** Reenvía el binario de un adjunto al navegador. */
@@ -476,16 +586,23 @@ export class PreventiveMaintenanceService {
     attachmentId: string,
     res: Response,
   ): Promise<void> {
-    let file: Awaited<
-      ReturnType<PreventiveMaintenanceOpenmaintService['downloadAttachment']>
-    >;
+    await this.sendAttachment(res, () =>
+      this.openmaint.downloadAttachment(sessionId, id, attachmentId),
+    );
+  }
+
+  private async sendAttachment(
+    res: Response,
+    download: () => Promise<{
+      data: Buffer;
+      contentType: string;
+      fileName: string;
+    }>,
+  ): Promise<void> {
+    let file: Awaited<ReturnType<typeof download>>;
 
     try {
-      file = await this.openmaint.downloadAttachment(
-        sessionId,
-        id,
-        attachmentId,
-      );
+      file = await download();
     } catch (error) {
       this.throwIfSessionExpired(error);
 

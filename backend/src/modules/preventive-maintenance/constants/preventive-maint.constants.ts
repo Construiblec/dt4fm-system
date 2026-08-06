@@ -83,3 +83,10 @@ export const PM_SUSPENSION_REASON_ATTR = 'SuspensionReason';
 
 /** Lookup del que salen las opciones del motivo de suspensión. */
 export const PM_SUSPENSION_REASON_LOOKUP = 'MaintProcess - SuspensionReason';
+
+/**
+ * Documentación del equipo. La instancia apunta al plan (`PrevMaintConfig`) y
+ * este al manual (`MaintenanceManual`), de cuya tarjeta cuelgan los PDFs.
+ */
+export const PREV_MAINT_CONFIG_CLASS = 'PrevMaintConfig';
+export const MAINTENANCE_MANUAL_CLASS = 'MaintenanceManual';

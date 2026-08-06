@@ -6,7 +6,9 @@ import {
   PREV_MAINT_TASKS_CLASS,
 } from './constants/checklist.constants';
 import {
+  MAINTENANCE_MANUAL_CLASS,
   PmStatusId,
+  PREV_MAINT_CONFIG_CLASS,
   PREVENTIVE_MAINT_PROCESS,
 } from './constants/preventive-maint.constants';
 
@@ -89,6 +91,21 @@ export type PreventiveMaintAttachment = {
 export type PreventiveMaintAttachmentsResponse = {
   success?: boolean;
   data?: PreventiveMaintAttachment[];
+};
+
+/** Plan preventivo del que se generó la instancia. */
+export type PrevMaintConfigCard = {
+  _id: number;
+  Code?: string | null;
+  Description?: string | null;
+  /** Manual de mantenimiento, del que cuelgan los PDFs del equipo */
+  MaintManual?: number | null;
+  _MaintManual_description?: string | null;
+};
+
+export type PrevMaintConfigResponse = {
+  success?: boolean;
+  data?: PrevMaintConfigCard;
 };
 
 export type PreventiveMaintAttachmentPreviewResponse = {
@@ -401,6 +418,41 @@ export class PreventiveMaintenanceOpenmaintService {
       formData,
       sessionId,
       { headers: formData.getHeaders() },
+    );
+  }
+
+  // ── Manual de mantenimiento (documentación del equipo) ─────────────────────
+
+  /** Plan preventivo, que es quien enlaza con el manual del equipo. */
+  async findMaintenanceConfig(
+    sessionId: string,
+    configId: number,
+  ): Promise<PrevMaintConfigResponse> {
+    return (await this.client.get(
+      `/classes/${PREV_MAINT_CONFIG_CLASS}/cards/${configId}`,
+      sessionId,
+    )) as PrevMaintConfigResponse;
+  }
+
+  /** PDFs colgados de la tarjeta del manual. */
+  async findManualAttachments(
+    sessionId: string,
+    manualId: number,
+  ): Promise<PreventiveMaintAttachmentsResponse> {
+    return (await this.client.get(
+      `/classes/${MAINTENANCE_MANUAL_CLASS}/cards/${manualId}/attachments`,
+      sessionId,
+    )) as PreventiveMaintAttachmentsResponse;
+  }
+
+  async downloadManualAttachment(
+    sessionId: string,
+    manualId: number,
+    attachmentId: string,
+  ): Promise<{ data: Buffer; contentType: string; fileName: string }> {
+    return this.client.getBuffer(
+      `/classes/${MAINTENANCE_MANUAL_CLASS}/cards/${manualId}/attachments/${attachmentId}/download`,
+      sessionId,
     );
   }
 

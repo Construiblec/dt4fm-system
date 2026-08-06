@@ -1,5 +1,6 @@
 /**
- * Los manuales y fichas técnicas del equipo todavía no tienen una ubicación
- * definida en OpenMAINT, así que la sección se muestra vacía y sin subida.
+ * Los documentos se leen del manual del equipo, pero todavía no está definido
+ * dónde deben guardarse los que suba el técnico, así que la subida sigue
+ * deshabilitada.
  */
 export const PREVENTIVE_DOCUMENTS_ENABLED = false;
