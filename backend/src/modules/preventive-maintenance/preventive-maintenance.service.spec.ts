@@ -76,6 +76,7 @@ describe('PreventiveMaintenanceService', () => {
       findAttachmentPreview: jest.fn(),
       downloadAttachment: jest.fn(),
       uploadAttachment: jest.fn(),
+      deleteAttachment: jest.fn(),
       findMaintenanceConfig: jest.fn(),
       findManualAttachments: jest.fn().mockResolvedValue({ data: [] }),
       downloadManualAttachment: jest.fn(),
@@ -1086,6 +1087,58 @@ describe('PreventiveMaintenanceService', () => {
       await expect(
         service.uploadDocument(SESSION_ID, 4370994, file),
       ).rejects.toBeInstanceOf(BadGatewayException);
+    });
+  });
+
+  describe('deleteDocument', () => {
+    const documento = { _id: 'd1', name: 'ficha.pdf', description: 'Ficha' };
+    const informe = {
+      _id: 'r1',
+      name: 'PM.0002_Informe de actividades_20260805_095932.pdf',
+      description: '[PM.0002] Informe de actividades 2026-08-05 09:59:32',
+    };
+
+    beforeEach(() => {
+      openmaint.findById.mockResolvedValue({ data: openmaintCard });
+      openmaint.findAttachments.mockResolvedValue({
+        data: [documento, informe],
+      });
+    });
+
+    it('elimina el documento y devuelve la lista actualizada', async () => {
+      await service.deleteDocument(SESSION_ID, 4370994, 'd1');
+
+      expect(openmaint.deleteAttachment).toHaveBeenCalledWith(
+        SESSION_ID,
+        4370994,
+        'd1',
+      );
+    });
+
+    it('no deja eliminar el informe que generó OpenMAINT', async () => {
+      await expect(
+        service.deleteDocument(SESSION_ID, 4370994, 'r1'),
+      ).rejects.toBeInstanceOf(ConflictException);
+
+      expect(openmaint.deleteAttachment).not.toHaveBeenCalled();
+    });
+
+    it('rechaza eliminar de un mantenimiento ya completado', async () => {
+      openmaint.findById.mockResolvedValue({
+        data: { ...openmaintCard, ProcessStatus: PM_STATUS_IDS.COMPLETED },
+      });
+
+      await expect(
+        service.deleteDocument(SESSION_ID, 4370994, 'd1'),
+      ).rejects.toBeInstanceOf(ConflictException);
+
+      expect(openmaint.deleteAttachment).not.toHaveBeenCalled();
+    });
+
+    it('falla con NotFound si el adjunto no existe', async () => {
+      await expect(
+        service.deleteDocument(SESSION_ID, 4370994, 'inexistente'),
+      ).rejects.toBeInstanceOf(NotFoundException);
     });
   });
 

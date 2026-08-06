@@ -28,6 +28,7 @@ import { usePreventiveMaintenanceDocuments } from "@/modules/incidentes/hooks/us
 import { usePreventiveMaintenanceHistory } from "@/modules/incidentes/hooks/usePreventiveMaintenanceHistory";
 import {
   completePreventiveMaintenance,
+  deletePreventiveMaintenanceDocument,
   getSuspensionReasons,
   savePreventiveChecklist,
   startPreventiveMaintenance,
@@ -35,6 +36,7 @@ import {
   uploadPreventiveMaintenanceDocument,
 } from "@/modules/incidentes/services/preventiveMaintenanceService";
 import type {
+  PreventiveMaintenanceAttachment,
   PreventiveMaintenanceDetail,
   SuspensionReason,
 } from "@/modules/incidentes/types/PreventiveMaintenance";
@@ -96,6 +98,26 @@ export const PreventiveMaintenanceDetailPage = () => {
   } = usePreventiveMaintenanceAttachments(id, tab === "documents");
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [documentToDelete, setDocumentToDelete] =
+    useState<PreventiveMaintenanceAttachment | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const canManageDocuments = maintenance?.isClosed === false;
+
+  const handleDelete = async (attachment: PreventiveMaintenanceAttachment) => {
+    try {
+      setDocumentToDelete(null);
+      setDeletingId(attachment.id);
+
+      replaceAttachments(
+        await deletePreventiveMaintenanceDocument(id, attachment.id),
+      );
+    } catch {
+      setUploadError("No se pudo eliminar el documento");
+    } finally {
+      setDeletingId(null);
+    }
+  };
 
   const handleUpload = async (file: File) => {
     try {
@@ -384,6 +406,11 @@ export const PreventiveMaintenanceDetailPage = () => {
                     emptyMessage="Todavía no hay documentos adjuntos."
                     loading={loadingAttachments}
                     error={attachmentsError}
+                    hideWhenEmpty
+                    onDelete={
+                      canManageDocuments ? setDocumentToDelete : undefined
+                    }
+                    deletingId={deletingId}
                   />
 
                   <PreventiveDocumentsSection
@@ -549,9 +576,21 @@ export const PreventiveMaintenanceDetailPage = () => {
           onCancel={() => setShowUploadSheet(false)}
         />
 
+        <ConfirmModal
+          open={documentToDelete !== null}
+          title="Eliminar documento"
+          message={`¿Seguro que deseas eliminar "${documentToDelete?.fileName ?? ""}"? Se quitará de la tarjeta del mantenimiento en OpenMAINT.`}
+          onConfirm={() => {
+            if (documentToDelete) {
+              void handleDelete(documentToDelete);
+            }
+          }}
+          onCancel={() => setDocumentToDelete(null)}
+        />
+
         <ErrorModal
           open={uploadError !== null}
-          title="No se pudo adjuntar el documento"
+          title="No se pudo completar la acción"
           message={uploadError ?? ""}
           onClose={() => setUploadError(null)}
         />

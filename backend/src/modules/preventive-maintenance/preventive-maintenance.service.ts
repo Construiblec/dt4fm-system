@@ -500,6 +500,69 @@ export class PreventiveMaintenanceService {
   }
 
   /**
+   * Quita un documento adjuntado por el técnico. El informe que genera
+   * OpenMAINT al cerrar no se toca: es el registro del trabajo hecho.
+   */
+  async deleteDocument(sessionId: string, id: number, attachmentId: string) {
+    const card = await this.fetchCard(sessionId, id);
+
+    if (card.ProcessStatus === PM_STATUS_IDS.COMPLETED) {
+      throw new ConflictException(
+        'No se pueden eliminar documentos de un mantenimiento ya completado',
+      );
+    }
+
+    const attachment =
+      (await this.findAttachment(sessionId, id, attachmentId)) ?? null;
+
+    if (attachment === null) {
+      throw new NotFoundException('Adjunto no encontrado');
+    }
+
+    if (this.isGeneratedReport(attachment, card.Number ?? null)) {
+      throw new ConflictException(
+        'El informe generado por OpenMAINT no se puede eliminar',
+      );
+    }
+
+    try {
+      await this.openmaint.deleteAttachment(sessionId, id, attachmentId);
+    } catch (error) {
+      this.throwIfSessionExpired(error);
+
+      throw new BadGatewayException(
+        'Error al eliminar el documento en OpenMAINT',
+      );
+    }
+
+    this.logger.log(
+      `Documento eliminado del mantenimiento ${card.Number ?? id}`,
+    );
+
+    return this.getAttachments(sessionId, id);
+  }
+
+  private async findAttachment(
+    sessionId: string,
+    id: number,
+    attachmentId: string,
+  ): Promise<PreventiveMaintAttachment | undefined> {
+    try {
+      const response = await this.openmaint.findAttachments(sessionId, id);
+
+      return (response.data ?? []).find(
+        (attachment) => attachment._id === attachmentId,
+      );
+    } catch (error) {
+      this.throwIfSessionExpired(error);
+
+      throw new BadGatewayException(
+        'Error al consultar los adjuntos en OpenMAINT',
+      );
+    }
+  }
+
+  /**
    * Documentación del equipo: la instancia apunta al plan preventivo y este al
    * manual, de cuya tarjeta cuelgan los PDFs. Sin plan o sin manual asociado
    * simplemente no hay documentos que mostrar.

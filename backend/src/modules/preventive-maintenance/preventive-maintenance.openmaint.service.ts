@@ -397,6 +397,17 @@ export class PreventiveMaintenanceOpenmaintService {
     );
   }
 
+  async deleteAttachment(
+    sessionId: string,
+    id: number,
+    attachmentId: string,
+  ): Promise<unknown> {
+    return this.client.delete(
+      `${INSTANCES_PATH}/${id}/attachments/${attachmentId}`,
+      sessionId,
+    );
+  }
+
   async uploadAttachment(
     sessionId: string,
     id: number,

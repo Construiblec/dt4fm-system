@@ -10,6 +10,10 @@ type Props = {
   emptyMessage: string;
   loading?: boolean;
   error?: string | null;
+  /** Oculta la tarjeta entera mientras no haya nada que mostrar */
+  hideWhenEmpty?: boolean;
+  onDelete?: (attachment: PreventiveMaintenanceAttachment) => void;
+  deletingId?: string | null;
 };
 
 /** Tarjeta con una lista de archivos y sus estados de carga, error y vacío. */
@@ -21,7 +25,16 @@ export const AttachmentListSection = ({
   emptyMessage,
   loading = false,
   error = null,
-}: Props) => (
+  hideWhenEmpty = false,
+  onDelete,
+  deletingId = null,
+}: Props) => {
+  // El error sí se muestra: callarlo dejaría al técnico sin saber que falló
+  if (hideWhenEmpty && attachments.length === 0 && !loading && !error) {
+    return null;
+  }
+
+  return (
   <section className="rounded-3xl bg-white p-5 shadow-sm">
     <div className="flex items-center justify-between gap-3">
       <div className="flex items-center gap-2">
@@ -59,9 +72,15 @@ export const AttachmentListSection = ({
     {!loading && !error && attachments.length > 0 ? (
       <div className="mt-4 space-y-2">
         {attachments.map((attachment) => (
-          <AttachmentRow key={attachment.id} attachment={attachment} />
+          <AttachmentRow
+            key={attachment.id}
+            attachment={attachment}
+            onDelete={onDelete}
+            isDeleting={deletingId === attachment.id}
+          />
         ))}
       </div>
     ) : null}
   </section>
-);
+  );
+};

@@ -171,6 +171,26 @@ export const uploadPreventiveMaintenanceDocument = async (
   }
 };
 
+/**
+ * Quita un documento adjunto y devuelve la lista actualizada. Solo se permite
+ * mientras el mantenimiento siga abierto.
+ */
+export const deletePreventiveMaintenanceDocument = async (
+  id: string,
+  attachmentId: string,
+): Promise<PreventiveMaintenanceAttachment[]> => {
+  try {
+    const { data } = await preventiveMaintenanceApi.delete<AttachmentsResponse>(
+      `/preventive-maintenance/${id}/attachments/${attachmentId}`,
+      { headers: getAuthHeaders() },
+    );
+
+    return data.data;
+  } catch (error) {
+    return handleUnauthorized(error);
+  }
+};
+
 /** Guarda las respuestas del checklist y devuelve su estado actualizado. */
 export const savePreventiveChecklist = async (
   id: string,

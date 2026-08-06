@@ -236,6 +236,7 @@ export const PastPreventiveMaintenancePage = () => {
                   (attachment) => !attachment.isReport,
                 )}
                 emptyMessage="No se adjuntó ningún documento."
+                hideWhenEmpty
               />
 
               <AttachmentListSection

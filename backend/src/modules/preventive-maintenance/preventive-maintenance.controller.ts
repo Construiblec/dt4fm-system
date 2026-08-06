@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
   Headers,
   Param,
@@ -304,6 +305,42 @@ export class PreventiveMaintenanceController {
       this.requireSessionId(sessionId),
       id,
       file,
+    );
+  }
+
+  @Delete(':id/attachments/:attachmentId')
+  @ApiOperation({
+    summary: 'Eliminar un documento adjunto del mantenimiento',
+    description:
+      'Solo mientras el mantenimiento siga abierto. El informe que genera ' +
+      'OpenMAINT al cerrarlo no se puede eliminar.',
+  })
+  @ApiParam({
+    name: 'id',
+    description: 'ID del mantenimiento preventivo',
+    type: 'integer',
+  })
+  @ApiParam({ name: 'attachmentId', description: 'ID del adjunto' })
+  @ApiHeader({
+    name: 'authorization',
+    description: 'Token de sesión de OpenMAINT',
+    required: true,
+  })
+  @ApiResponse({ status: 200, description: 'Documento eliminado' })
+  @ApiResponse({ status: 404, description: 'Adjunto no encontrado' })
+  @ApiResponse({
+    status: 409,
+    description: 'El mantenimiento está completado o es el informe generado',
+  })
+  async deleteDocument(
+    @Param('id', ParseIntPipe) id: number,
+    @Param('attachmentId') attachmentId: string,
+    @Headers('authorization') sessionId: string,
+  ) {
+    return this.preventiveMaintenanceService.deleteDocument(
+      this.requireSessionId(sessionId),
+      id,
+      attachmentId,
     );
   }
 
