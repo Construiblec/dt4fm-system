@@ -66,24 +66,31 @@ export const SupervisorTaskCard = ({ task }: Props) => {
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <p className="truncate text-xs font-bold uppercase tracking-wide text-slate-400">
-            {task.taskNumber}
+            {task.description}
           </p>
           <h3 className="mt-0.5 truncate text-base font-semibold text-slate-900">
-            {task.unit?.description ?? task.description}
+            {task.taskNumber || "Sin Número de Tarea"}
           </h3>
         </div>
-        <span
-          className={`flex-shrink-0 rounded-md px-2 py-1 text-xs font-semibold ${style.badge}`}
-        >
-          {phaseLabels[task.phase] ?? task.phase}
-        </span>
+        <div className="flex flex-col items-end gap-1">
+          <span
+            className={`flex-shrink-0 rounded-md px-2 py-1 text-xs font-semibold ${style.badge}`}
+          >
+            {phaseLabels[task.phase] ?? task.phase}
+          </span>
+          {(task.supervisionObserv?.lastIndexOf('[Reabierto]') ?? -1) > (task.supervisionObserv?.lastIndexOf('[Aprobado]') ?? -1) && (
+            <span className="flex-shrink-0 rounded-md bg-rose-100 px-2 py-1 text-xs font-semibold text-rose-700">
+              Reabierta
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Body */}
       <div className="mt-3 space-y-1.5 text-sm text-slate-600">
         <div className="flex items-center gap-2">
           <MapPin className="h-4 w-4 flex-shrink-0 text-slate-400" />
-          <span className="truncate">{task.description}</span>
+          <span className="truncate">{task.unit?.description ?? task.description}</span>
         </div>
 
         <div className="flex items-center gap-2">
@@ -93,7 +100,7 @@ export const SupervisorTaskCard = ({ task }: Props) => {
 
         <div className="flex items-center gap-2">
           <CalendarDays className="h-4 w-4 flex-shrink-0 text-slate-400" />
-          <span>Generada: {formatDate(task.generatedDate)}</span>
+          <span>Planificada: {formatDate(task.plannedStartTime)}</span>
         </div>
 
         {task.actualStartTime && (

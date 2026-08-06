@@ -11,4 +11,12 @@ export class CompleteTaskDto {
   @IsString()
   @MaxLength(500)
   observations?: string;
+
+  @ApiPropertyOptional({
+    description: 'Fecha en la que inició la sesión de trabajo actual (ISO).',
+    example: '2023-10-01T12:00:00Z',
+  })
+  @IsOptional()
+  @IsString()
+  sessionStartTime?: string;
 }

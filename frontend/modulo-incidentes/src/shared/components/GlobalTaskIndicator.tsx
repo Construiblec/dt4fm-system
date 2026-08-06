@@ -1,14 +1,17 @@
 import { Clock3 } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { useActiveTaskTimer } from "@/modules/incidentes/hooks/useActiveTaskTimer";
 import { useCleaningTaskExecutionStore } from "@/store/cleaningTaskExecutionStore";
 
 export const GlobalTaskIndicator = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const activeTask = useCleaningTaskExecutionStore((state) => state.activeTask);
   const { elapsedFormatted, isOvertime } = useActiveTaskTimer();
 
   if (!activeTask) return null;
+  // If we are currently on the execution page of this task, hide the indicator
+  if (location.pathname === `/cleaning-tasks/${activeTask.id}/execute`) return null;
 
   return (
     <div
