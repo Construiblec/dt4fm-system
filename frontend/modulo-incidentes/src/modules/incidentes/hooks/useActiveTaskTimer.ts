@@ -5,6 +5,7 @@ import { formatDuration } from "@/shared/utils/dateUtils";
 export const useActiveTaskTimer = () => {
   const activeTask = useCleaningTaskExecutionStore((state) => state.activeTask);
   const startTime = activeTask?.actualStartTime;
+  const plannedStartTime = activeTask?.plannedStartTime;
   const plannedEndTime = activeTask?.plannedEndTime;
   const [now, setNow] = useState(() => Date.now());
 
@@ -23,12 +24,18 @@ export const useActiveTaskTimer = () => {
   return useMemo(() => {
     const startedAtMs = startTime ? new Date(startTime).getTime() : null;
     const elapsedMs = startedAtMs !== null ? Math.max(0, now - startedAtMs) : 0;
+    const plannedStartMs = plannedStartTime
+      ? new Date(plannedStartTime).getTime()
+      : null;
     const plannedEndMs = plannedEndTime
       ? new Date(plannedEndTime).getTime()
       : null;
     const plannedDurationMs =
-      plannedEndMs !== null && startedAtMs !== null
-        ? Math.max(0, plannedEndMs - startedAtMs)
+      plannedStartMs !== null &&
+      plannedEndMs !== null &&
+      Number.isFinite(plannedStartMs) &&
+      Number.isFinite(plannedEndMs)
+        ? Math.max(0, plannedEndMs - plannedStartMs)
         : null;
     const remainingMs =
       plannedDurationMs !== null ? Math.max(0, plannedDurationMs - elapsedMs) : null;
@@ -48,5 +55,5 @@ export const useActiveTaskTimer = () => {
       overtimeMs,
       overtimeFormatted: overtimeMs > 0 ? formatDuration(overtimeMs) : null,
     };
-  }, [startTime, plannedEndTime, now]);
+  }, [startTime, plannedStartTime, plannedEndTime, now]);
 };

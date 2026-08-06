@@ -19,11 +19,12 @@ type CleaningTaskCard = {
   phase: string | number;
   _phase_description?: string;
   GeneratedDate: string;
-  AssignedDateTime?: string;
   PlannedStartTime?: string;
   PlannedEndTime?: string;
   ActualStartTime?: string;
   ActualEndTime?: string;
+  ExecutionTime?: number;
+  DelayTime?: number;
   Observations?: string;
   SupervisionObserv?: string;
   TeamObservations?: string;

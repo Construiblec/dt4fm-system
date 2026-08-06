@@ -132,6 +132,7 @@ export const DashboardPage = () => {
       phase: backendActiveTask.phase,
       actualStartTime:
         backendActiveTask.actualStartTime ?? new Date().toISOString(),
+      plannedStartTime: backendActiveTask.plannedStartTime,
       plannedEndTime: backendActiveTask.plannedEndTime,
       unitDescription:
         backendActiveTask.unit?.description ?? backendActiveTask.description,
@@ -163,6 +164,8 @@ export const DashboardPage = () => {
   );
 
   const filteredCleaningTasks = cleaningTasks.filter((task) => {
+    const allowedPhases = ["Assigned", "InExecution", "Completed"];
+    if (!allowedPhases.includes(task.phase)) return false;
     return phaseFilter === "ALL" || task.phase === phaseFilter;
   });
 

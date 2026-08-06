@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsOptional } from 'class-validator';
+import { IsString, IsOptional, IsNumber } from 'class-validator';
 
 export class UpdateCleaningTaskDto {
   @ApiPropertyOptional({
@@ -57,4 +57,12 @@ export class UpdateCleaningTaskDto {
   @IsString()
   @IsOptional()
   observations?: string;
+
+  @ApiPropertyOptional({
+    description: 'Tiempo de ejecución acumulado, en horas decimales',
+    example: 1.5,
+  })
+  @IsNumber()
+  @IsOptional()
+  executionTime?: number;
 }

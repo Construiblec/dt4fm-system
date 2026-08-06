@@ -1,13 +1,10 @@
 import { Filter, Eraser } from "lucide-react";
 
 const PHASES = [
-  { value: "ALL", label: "Fase" },
+  { value: "ALL", label: "Todas las fases" },
   { value: "Assigned", label: "Asignada" },
-  { value: "InProgress", label: "En progreso" },
   { value: "InExecution", label: "En ejecución" },
   { value: "Completed", label: "Completada" },
-  { value: "Reviewed", label: "Revisada" },
-  { value: "Cancelled", label: "Cancelada" },
 ];
 
 type Props = {

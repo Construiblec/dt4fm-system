@@ -38,6 +38,16 @@ export type PreventiveMaintenanceDetail = PreventiveMaintenance & {
   images: string[];
   /** El mantenimiento está en ejecución y puede cerrarse */
   canComplete: boolean;
+  /** Puede suspenderse; a diferencia del cierre no exige el checklist completo */
+  canSuspend: boolean;
+  /** Motivo con el que se suspendió, si lo está */
+  suspensionReason: string | null;
   /** Actividades a ejecutar; el cierre exige tenerlas todas resueltas */
   checklist: PreventiveChecklistItem[];
+};
+
+/** Opción del desplegable de motivo de suspensión. */
+export type SuspensionReason = {
+  id: string;
+  label: string;
 };

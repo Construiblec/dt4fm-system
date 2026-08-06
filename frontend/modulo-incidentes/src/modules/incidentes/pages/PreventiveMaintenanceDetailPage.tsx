@@ -1,29 +1,34 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { AlertTriangle, ArrowLeft, Image as ImageIcon } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowLeft,
+  Image as ImageIcon,
+  PauseCircle,
+} from "lucide-react";
 import { AppLayout } from "@/app/layout/AppLayout";
 import { PreventiveChecklist } from "@/modules/incidentes/components/PreventiveChecklist";
-import { getPreventiveStatusLabel } from "@/modules/incidentes/constants/preventiveStatus";
+import { SuspendMaintenanceModal } from "@/modules/incidentes/components/SuspendMaintenanceModal";
+import {
+  getPreventiveStatusLabel,
+  PREVENTIVE_STATUS_BADGE_CLASSES,
+} from "@/modules/incidentes/constants/preventiveStatus";
 import { usePreventiveChecklist } from "@/modules/incidentes/hooks/usePreventiveChecklist";
 import {
   completePreventiveMaintenance,
+  getSuspensionReasons,
   savePreventiveChecklist,
   startPreventiveMaintenance,
+  suspendPreventiveMaintenance,
 } from "@/modules/incidentes/services/preventiveMaintenanceService";
-import type { PreventiveMaintenanceDetail } from "@/modules/incidentes/types/PreventiveMaintenance";
+import type {
+  PreventiveMaintenanceDetail,
+  SuspensionReason,
+} from "@/modules/incidentes/types/PreventiveMaintenance";
 import { ConfirmModal } from "@/shared/components/ConfirmModal";
 import { ErrorModal } from "@/shared/components/ErrorModal";
 import { LoadingModal } from "@/shared/components/LoadingModal";
 import { SuccessModal } from "@/shared/components/SuccessModal";
-
-const statusStyles: Record<string, string> = {
-  Planning: "bg-slate-100 text-slate-700",
-  Acceptance: "bg-amber-100 text-amber-700",
-  Execution: "bg-blue-100 text-blue-700",
-  Suspension: "bg-violet-100 text-violet-700",
-  Completed: "bg-emerald-100 text-emerald-700",
-  Canceled: "bg-red-100 text-red-700",
-};
 
 const formatDateTime = (value: string | null) => {
   if (!value) {
@@ -69,6 +74,17 @@ export const PreventiveMaintenanceDetailPage = () => {
   const [completeError, setCompleteError] = useState<string | null>(null);
   const [successOpen, setSuccessOpen] = useState(false);
 
+  // ── Suspensión ──────────────────────────────────────────────────────────────
+  const [showSuspendModal, setShowSuspendModal] = useState(false);
+  const [suspensionReasons, setSuspensionReasons] = useState<
+    SuspensionReason[]
+  >([]);
+  const [loadingReasons, setLoadingReasons] = useState(false);
+  const reasonsRequested = useRef(false);
+  const [isSuspending, setIsSuspending] = useState(false);
+  const [suspendError, setSuspendError] = useState<string | null>(null);
+  const [suspendSuccessOpen, setSuspendSuccessOpen] = useState(false);
+
   const canComplete = Boolean(maintenance?.canComplete) && isComplete;
 
   const validationMessage = !maintenance?.canComplete
@@ -99,6 +115,48 @@ export const PreventiveMaintenanceDetailPage = () => {
       setIsCompleting(false);
     }
   };
+
+  const handleConfirmSuspend = async (reasonId: string, notes: string) => {
+    if (isSuspending) {
+      return;
+    }
+
+    try {
+      setShowSuspendModal(false);
+      setIsSuspending(true);
+      setSuspendError(null);
+
+      // `payload` solo lleva las respondidas; el backend marca el resto como N.D.
+      await suspendPreventiveMaintenance(id, { reasonId, notes, items: payload });
+
+      setSuspendSuccessOpen(true);
+    } catch {
+      setSuspendError("No se pudo suspender el mantenimiento preventivo");
+    } finally {
+      setIsSuspending(false);
+    }
+  };
+
+  // Los motivos se piden la primera vez que se abre el modal. El ref evita
+  // repetir la petición sin meter el flag de carga en las dependencias, que
+  // reejecutaría el efecto y descartaría la respuesta en vuelo.
+  useEffect(() => {
+    if (!showSuspendModal || reasonsRequested.current) {
+      return;
+    }
+
+    reasonsRequested.current = true;
+    setLoadingReasons(true);
+
+    getSuspensionReasons()
+      .then(setSuspensionReasons)
+      .catch(() => {
+        // Se permite reintentar al reabrir el modal
+        reasonsRequested.current = false;
+        setSuspendError("No se pudieron cargar los motivos de suspensión");
+      })
+      .finally(() => setLoadingReasons(false));
+  }, [showSuspendModal]);
 
   useEffect(() => {
     let isMounted = true;
@@ -167,8 +225,9 @@ export const PreventiveMaintenanceDetailPage = () => {
             {maintenance ? (
               <span
                 className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                  statusStyles[maintenance.statusCode ?? ""] ??
-                  "bg-slate-100 text-slate-700"
+                  PREVENTIVE_STATUS_BADGE_CLASSES[
+                    maintenance.statusCode ?? ""
+                  ] ?? "bg-slate-100 text-slate-700"
                 }`}
               >
                 {getPreventiveStatusLabel(
@@ -195,6 +254,21 @@ export const PreventiveMaintenanceDetailPage = () => {
 
           {!loading && !error && maintenance ? (
             <>
+              {/* Solo visible si la reanudación automática al abrir no se aplicó */}
+              {maintenance.statusCode === "Suspension" ? (
+                <section className="flex items-start gap-2 rounded-3xl bg-violet-50 p-5 shadow-sm ring-1 ring-violet-200">
+                  <PauseCircle className="mt-0.5 h-5 w-5 shrink-0 text-violet-600" />
+                  <div>
+                    <p className="text-sm font-semibold text-violet-900">
+                      Mantenimiento suspendido
+                    </p>
+                    <p className="mt-1 text-sm text-violet-700">
+                      {maintenance.suspensionReason ?? "Sin motivo registrado"}
+                    </p>
+                  </div>
+                </section>
+              ) : null}
+
               <section className="rounded-3xl bg-white p-5 shadow-sm">
                 <div className="flex items-start justify-between gap-4">
                   <div>
@@ -294,7 +368,7 @@ export const PreventiveMaintenanceDetailPage = () => {
                 disabled={isCompleting || !maintenance.canComplete}
               />
 
-              {maintenance.canComplete ? (
+              {maintenance.canComplete || maintenance.canSuspend ? (
                 <>
                   <section className="rounded-3xl bg-white p-5 shadow-sm">
                     <label
@@ -325,20 +399,35 @@ export const PreventiveMaintenanceDetailPage = () => {
                       </p>
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={() => setShowConfirmModal(true)}
-                      disabled={!canComplete || isCompleting}
-                      className={`mt-4 w-full rounded-2xl px-4 py-4 text-sm font-semibold text-white shadow-sm transition ${
-                        canComplete && !isCompleting
-                          ? "bg-emerald-600 hover:bg-emerald-700 focus:outline-none focus:ring-4 focus:ring-emerald-200"
-                          : "cursor-not-allowed bg-slate-300"
-                      }`}
-                    >
-                      {isCompleting
-                        ? "Finalizando mantenimiento..."
-                        : "Finalizar mantenimiento"}
-                    </button>
+                    {/* Suspender no depende del progreso del checklist */}
+                    {maintenance.canSuspend ? (
+                      <button
+                        type="button"
+                        onClick={() => setShowSuspendModal(true)}
+                        disabled={isSuspending || isCompleting}
+                        className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-4 text-sm font-semibold text-amber-800 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <PauseCircle className="h-4 w-4" />
+                        {isSuspending ? "Suspendiendo..." : "Suspender"}
+                      </button>
+                    ) : null}
+
+                    {maintenance.canComplete ? (
+                      <button
+                        type="button"
+                        onClick={() => setShowConfirmModal(true)}
+                        disabled={!canComplete || isCompleting}
+                        className={`mt-3 w-full rounded-2xl px-4 py-4 text-sm font-semibold text-white shadow-sm transition ${
+                          canComplete && !isCompleting
+                            ? "bg-emerald-600 hover:bg-emerald-700 focus:outline-none focus:ring-4 focus:ring-emerald-200"
+                            : "cursor-not-allowed bg-slate-300"
+                        }`}
+                      >
+                        {isCompleting
+                          ? "Finalizando mantenimiento..."
+                          : "Finalizar mantenimiento"}
+                      </button>
+                    ) : null}
                   </section>
                 </>
               ) : null}
@@ -376,6 +465,41 @@ export const PreventiveMaintenanceDetailPage = () => {
           title="No se pudo finalizar el mantenimiento"
           message={completeError ?? "No se pudo finalizar el mantenimiento"}
           onClose={() => setCompleteError(null)}
+        />
+
+        <SuspendMaintenanceModal
+          open={showSuspendModal}
+          reasons={suspensionReasons}
+          loadingReasons={loadingReasons}
+          isSubmitting={isSuspending}
+          onConfirm={(reasonId, notes) =>
+            void handleConfirmSuspend(reasonId, notes)
+          }
+          onCancel={() => setShowSuspendModal(false)}
+        />
+
+        <LoadingModal
+          open={isSuspending}
+          message="Suspendiendo mantenimiento..."
+        />
+
+        <SuccessModal
+          open={suspendSuccessOpen}
+          incidentId={maintenance?.id ?? null}
+          title="Mantenimiento suspendido"
+          message="Las actividades sin completar se registraron como N.D. y volverán a estar pendientes al reanudar."
+          buttonLabel="Volver al Dashboard"
+          onClose={() => {
+            setSuspendSuccessOpen(false);
+            navigate("/dashboard");
+          }}
+        />
+
+        <ErrorModal
+          open={suspendError !== null}
+          title="No se pudo suspender el mantenimiento"
+          message={suspendError ?? ""}
+          onClose={() => setSuspendError(null)}
         />
 
         {selectedImage ? (
