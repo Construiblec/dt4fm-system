@@ -4,6 +4,7 @@ import { VisitorFormPage } from "@/modules/auth/pages/VisitorFormPage";
 import { CleaningTaskExecutionPage } from "@/modules/incidentes/pages/CleaningTaskExecutionPage";
 import { DashboardPage } from "@/modules/incidentes/pages/DashboardPage";
 import { IncidentDetailPage } from "@/modules/incidentes/pages/IncidentDetailPage";
+import { PastPreventiveMaintenancePage } from "@/modules/incidentes/pages/PastPreventiveMaintenancePage";
 import { PreventiveMaintenanceDetailPage } from "@/modules/incidentes/pages/PreventiveMaintenanceDetailPage";
 import { ReportIncidentPage } from "@/modules/incidentes/pages/ReportIncidentPage";
 import { SupervisorDashboardPage } from "@/modules/supervisor/pages/SupervisorDashboardPage";
@@ -26,6 +27,10 @@ export const router = createBrowserRouter([
   {
     path: "/preventive-maintenance/:id",
     element: <PreventiveMaintenanceDetailPage />,
+  },
+  {
+    path: "/preventive-maintenance/historial/:id",
+    element: <PastPreventiveMaintenancePage />,
   },
   { path: "/reportar-incidente", element: <ReportIncidentPage /> },
   { path: "/supervisor", element: <SupervisorDashboardPage /> },

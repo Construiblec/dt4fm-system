@@ -86,16 +86,6 @@ export const fetchTaskAttachments = async (
   }
 };
 
-/**
- * Devuelve la URL completa para visualizar un attachment directamente en <img src>.
- * Usa ?token= como query param porque <img> no puede enviar headers.
- */
-export const getAttachmentUrl = (downloadUrl: string): string => {
-  const base = env.VITE_API_URL.replace(/\/api\/?$/, "");
-  const token = localStorage.getItem("sessionId") ?? "";
-  return `${base}${downloadUrl}?token=${encodeURIComponent(token)}`;
-};
-
 // ─── Reabrir una tarea ───────────────────────────────────────────────────────
 
 export const reopenCleaningTask = async (

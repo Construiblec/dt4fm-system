@@ -6,7 +6,9 @@ import type {
 } from "@/modules/incidentes/types/PreventiveChecklist";
 import type {
   PreventiveMaintenance,
+  PreventiveMaintenanceAttachment,
   PreventiveMaintenanceDetail,
+  PreventiveMaintenanceHistoryEntry,
   SuspensionReason,
 } from "@/modules/incidentes/types/PreventiveMaintenance";
 
@@ -33,6 +35,18 @@ type ChecklistResponse = {
 type SuspensionReasonsResponse = {
   success: boolean;
   data: SuspensionReason[];
+};
+
+type HistoryResponse = {
+  success: boolean;
+  data: PreventiveMaintenanceHistoryEntry[];
+  meta: { total: number; equipment: string | null };
+};
+
+type AttachmentsResponse = {
+  success: boolean;
+  data: PreventiveMaintenanceAttachment[];
+  meta: { total: number };
 };
 
 const getAuthHeaders = () => ({
@@ -70,6 +84,104 @@ export const getPreventiveMaintenanceById = async (
   try {
     const { data } = await preventiveMaintenanceApi.get<DetailResponse>(
       `/preventive-maintenance/${id}`,
+      { headers: getAuthHeaders() },
+    );
+
+    return data.data;
+  } catch (error) {
+    return handleUnauthorized(error);
+  }
+};
+
+/** Mantenimientos ya completados sobre el mismo equipo, del más reciente al más antiguo. */
+export const getPreventiveMaintenanceHistory = async (
+  id: string,
+  limit: number,
+): Promise<PreventiveMaintenanceHistoryEntry[]> => {
+  try {
+    const { data } = await preventiveMaintenanceApi.get<HistoryResponse>(
+      `/preventive-maintenance/${id}/history`,
+      { headers: getAuthHeaders(), params: { limit } },
+    );
+
+    return data.data;
+  } catch (error) {
+    return handleUnauthorized(error);
+  }
+};
+
+/**
+ * Documentación del equipo: los archivos del manual de mantenimiento al que
+ * apunta el plan preventivo.
+ */
+export const getPreventiveMaintenanceDocuments = async (
+  id: string,
+): Promise<PreventiveMaintenanceAttachment[]> => {
+  try {
+    const { data } = await preventiveMaintenanceApi.get<AttachmentsResponse>(
+      `/preventive-maintenance/${id}/documents`,
+      { headers: getAuthHeaders() },
+    );
+
+    return data.data;
+  } catch (error) {
+    return handleUnauthorized(error);
+  }
+};
+
+/** Archivos adjuntos del mantenimiento, incluido el informe que genera al cerrar. */
+export const getPreventiveMaintenanceAttachments = async (
+  id: string,
+): Promise<PreventiveMaintenanceAttachment[]> => {
+  try {
+    const { data } = await preventiveMaintenanceApi.get<AttachmentsResponse>(
+      `/preventive-maintenance/${id}/attachments`,
+      { headers: getAuthHeaders() },
+    );
+
+    return data.data;
+  } catch (error) {
+    return handleUnauthorized(error);
+  }
+};
+
+/**
+ * Adjunta un documento a la tarjeta del mantenimiento y devuelve la lista de
+ * adjuntos ya actualizada.
+ */
+export const uploadPreventiveMaintenanceDocument = async (
+  id: string,
+  file: File,
+): Promise<PreventiveMaintenanceAttachment[]> => {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  try {
+    const { data } = await preventiveMaintenanceApi.post<AttachmentsResponse>(
+      `/preventive-maintenance/${id}/attachments`,
+      formData,
+      {
+        headers: { ...getAuthHeaders(), "Content-Type": "multipart/form-data" },
+      },
+    );
+
+    return data.data;
+  } catch (error) {
+    return handleUnauthorized(error);
+  }
+};
+
+/**
+ * Quita un documento adjunto y devuelve la lista actualizada. Solo se permite
+ * mientras el mantenimiento siga abierto.
+ */
+export const deletePreventiveMaintenanceDocument = async (
+  id: string,
+  attachmentId: string,
+): Promise<PreventiveMaintenanceAttachment[]> => {
+  try {
+    const { data } = await preventiveMaintenanceApi.delete<AttachmentsResponse>(
+      `/preventive-maintenance/${id}/attachments/${attachmentId}`,
       { headers: getAuthHeaders() },
     );
 

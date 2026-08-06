@@ -6,7 +6,9 @@ import {
   PREV_MAINT_TASKS_CLASS,
 } from './constants/checklist.constants';
 import {
+  MAINTENANCE_MANUAL_CLASS,
   PmStatusId,
+  PREV_MAINT_CONFIG_CLASS,
   PREVENTIVE_MAINT_PROCESS,
 } from './constants/preventive-maint.constants';
 
@@ -77,11 +79,33 @@ export type PreventiveMaintAttachment = {
   _id: string;
   name?: string;
   fileName?: string;
+  /** Código de la categoría del DMS; la descripción viene ya traducida */
+  category?: string;
+  _category_description?: string;
+  description?: string;
+  author?: string;
+  created?: string;
+  modified?: string;
 };
 
 export type PreventiveMaintAttachmentsResponse = {
   success?: boolean;
   data?: PreventiveMaintAttachment[];
+};
+
+/** Plan preventivo del que se generó la instancia. */
+export type PrevMaintConfigCard = {
+  _id: number;
+  Code?: string | null;
+  Description?: string | null;
+  /** Manual de mantenimiento, del que cuelgan los PDFs del equipo */
+  MaintManual?: number | null;
+  _MaintManual_description?: string | null;
+};
+
+export type PrevMaintConfigResponse = {
+  success?: boolean;
+  data?: PrevMaintConfigCard;
 };
 
 export type PreventiveMaintAttachmentPreviewResponse = {
@@ -91,7 +115,7 @@ export type PreventiveMaintAttachmentPreviewResponse = {
   };
 };
 
-export type UploadedImage = {
+export type UploadedFile = {
   buffer: Buffer;
   originalname: string;
   mimetype: string;
@@ -159,6 +183,18 @@ export type FindByAssigneeOptions = {
   statusIds?: PmStatusId[];
 };
 
+export type FindByEquipmentOptions = FindByAssigneeOptions & {
+  /** Atributo por el que enlaza el equipo: `CISubset` o `CI` */
+  equipmentAttr: string;
+  equipmentId: number;
+};
+
+/** Condición de filtro de OpenMAINT, ya sea simple o compuesta. */
+type FilterCondition =
+  | { simple: { attribute: string; operator: string; value: string[] } }
+  | { or: FilterCondition[] }
+  | { and: FilterCondition[] };
+
 export type AdvanceOptions = {
   /** `_id` de la tarea activa (`_tasklist[0]._id`) */
   activityId: string;
@@ -216,6 +252,41 @@ export class PreventiveMaintenanceOpenmaintService {
         (statusIds?.length
           ? ` con ProcessStatus in [${statusIds.join(',')}]`
           : ''),
+    );
+
+    return (await this.client.get(
+      `${INSTANCES_PATH}?${params.toString()}`,
+      sessionId,
+    )) as PreventiveMaintCardsResponse;
+  }
+
+  /** Mantenimientos preventivos ejecutados sobre un mismo equipo. */
+  async findByEquipment(
+    sessionId: string,
+    {
+      equipmentAttr,
+      equipmentId,
+      limit,
+      offset,
+      statusIds,
+    }: FindByEquipmentOptions,
+  ): Promise<PreventiveMaintCardsResponse> {
+    const params = new URLSearchParams({
+      include_tasklist: 'false',
+      onlyGridAttrs: 'true',
+      start: String(offset),
+      limit: String(limit),
+      sort: JSON.stringify([{ property: 'Sorting', direction: 'DESC' }]),
+      filter: JSON.stringify(
+        this.buildFilter([
+          this.equals(equipmentAttr, equipmentId),
+          this.statusCondition(statusIds),
+        ]),
+      ),
+    });
+
+    this.logger.log(
+      `Consultando historial de preventivos con ${equipmentAttr}=${equipmentId}`,
     );
 
     return (await this.client.get(
@@ -314,10 +385,34 @@ export class PreventiveMaintenanceOpenmaintService {
     )) as PreventiveMaintAttachmentPreviewResponse;
   }
 
+  /** Binario de un adjunto, para reenviarlo al navegador. */
+  async downloadAttachment(
+    sessionId: string,
+    id: number,
+    attachmentId: string,
+  ): Promise<{ data: Buffer; contentType: string; fileName: string }> {
+    return this.client.getBuffer(
+      `${INSTANCES_PATH}/${id}/attachments/${attachmentId}/download`,
+      sessionId,
+    );
+  }
+
+  async deleteAttachment(
+    sessionId: string,
+    id: number,
+    attachmentId: string,
+  ): Promise<unknown> {
+    return this.client.delete(
+      `${INSTANCES_PATH}/${id}/attachments/${attachmentId}`,
+      sessionId,
+    );
+  }
+
   async uploadAttachment(
     sessionId: string,
     id: number,
-    file: UploadedImage,
+    file: UploadedFile,
+    description?: string,
   ): Promise<unknown> {
     const formData = new FormData();
 
@@ -327,7 +422,11 @@ export class PreventiveMaintenanceOpenmaintService {
     });
     formData.append(
       'attachment',
-      JSON.stringify({ fileName: file.originalname, majorVersion: true }),
+      JSON.stringify({
+        fileName: file.originalname,
+        majorVersion: true,
+        ...(description ? { description } : {}),
+      }),
     );
 
     return this.client.post(
@@ -335,6 +434,41 @@ export class PreventiveMaintenanceOpenmaintService {
       formData,
       sessionId,
       { headers: formData.getHeaders() },
+    );
+  }
+
+  // ── Manual de mantenimiento (documentación del equipo) ─────────────────────
+
+  /** Plan preventivo, que es quien enlaza con el manual del equipo. */
+  async findMaintenanceConfig(
+    sessionId: string,
+    configId: number,
+  ): Promise<PrevMaintConfigResponse> {
+    return (await this.client.get(
+      `/classes/${PREV_MAINT_CONFIG_CLASS}/cards/${configId}`,
+      sessionId,
+    )) as PrevMaintConfigResponse;
+  }
+
+  /** PDFs colgados de la tarjeta del manual. */
+  async findManualAttachments(
+    sessionId: string,
+    manualId: number,
+  ): Promise<PreventiveMaintAttachmentsResponse> {
+    return (await this.client.get(
+      `/classes/${MAINTENANCE_MANUAL_CLASS}/cards/${manualId}/attachments`,
+      sessionId,
+    )) as PreventiveMaintAttachmentsResponse;
+  }
+
+  async downloadManualAttachment(
+    sessionId: string,
+    manualId: number,
+    attachmentId: string,
+  ): Promise<{ data: Buffer; contentType: string; fileName: string }> {
+    return this.client.getBuffer(
+      `/classes/${MAINTENANCE_MANUAL_CLASS}/cards/${manualId}/attachments/${attachmentId}/download`,
+      sessionId,
     );
   }
 
@@ -408,41 +542,46 @@ export class PreventiveMaintenanceOpenmaintService {
     )) as LookupValuesResponse;
   }
 
+  private buildAssigneeFilter(employeeId: number, statusIds?: PmStatusId[]) {
+    return this.buildFilter([
+      this.equals('Assignee', employeeId),
+      this.statusCondition(statusIds),
+    ]);
+  }
+
   /**
-   * Filtro de OpenMAINT: una condición simple cuando solo hay `Assignee`, y un
-   * `and` cuando además se filtra por estado.
+   * Compone el filtro de OpenMAINT descartando las condiciones vacías.
    *
    * Importante: en los endpoints de procesos el `and`/`or` va *dentro* de
    * `attribute` (`{attribute:{and:[{simple}, {or:[...]}]}}`). La forma inversa
-   * (`{and:[{attribute}]}`) devuelve un error 500 de CMDBuild, y `equal` con
-   * varios valores tampoco funciona como `IN`: hay que componer un `or`.
+   * (`{and:[{attribute}]}`) devuelve un error 500 de CMDBuild.
    */
-  private buildAssigneeFilter(employeeId: number, statusIds?: PmStatusId[]) {
-    const assignee = {
-      simple: {
-        attribute: 'Assignee',
-        operator: 'equal',
-        value: [String(employeeId)],
-      },
-    };
+  private buildFilter(conditions: (FilterCondition | null)[]) {
+    const present = conditions.filter(
+      (condition): condition is FilterCondition => condition !== null,
+    );
 
+    return {
+      attribute: present.length === 1 ? present[0] : { and: present },
+    };
+  }
+
+  private equals(attribute: string, value: number): FilterCondition {
+    return { simple: { attribute, operator: 'equal', value: [String(value)] } };
+  }
+
+  /**
+   * `equal` con varios valores no funciona como `IN`: hay que componer un `or`.
+   */
+  private statusCondition(statusIds?: PmStatusId[]): FilterCondition | null {
     if (!statusIds?.length) {
-      return { attribute: assignee };
+      return null;
     }
 
-    const statusConditions = statusIds.map((statusId) => ({
-      simple: {
-        attribute: 'ProcessStatus',
-        operator: 'equal',
-        value: [String(statusId)],
-      },
-    }));
+    const conditions = statusIds.map((statusId) =>
+      this.equals('ProcessStatus', statusId),
+    );
 
-    const status =
-      statusConditions.length === 1
-        ? statusConditions[0]
-        : { or: statusConditions };
-
-    return { attribute: { and: [assignee, status] } };
+    return conditions.length === 1 ? conditions[0] : { or: conditions };
   }
 }
