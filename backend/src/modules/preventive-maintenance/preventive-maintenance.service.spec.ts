@@ -979,7 +979,29 @@ describe('PreventiveMaintenanceService', () => {
           downloadUrl:
             '/preventive-maintenance/4370994/attachments/a1/download',
           isImage: false,
+          isReport: false,
         },
+      ]);
+    });
+
+    it('marca como informe el PDF que genera OpenMAINT al cerrar', async () => {
+      openmaint.findAttachments.mockResolvedValue({
+        data: [
+          {
+            _id: 'r1',
+            name: 'PM.0002_Informe de actividades_20260805_095932.pdf',
+            // La marca la pone OpenMAINT con el número de la instancia
+            description: '[PM.0002] Informe de actividades 2026-08-05 09:59:32',
+          },
+          { _id: 'd1', name: 'ficha.pdf', description: 'Ficha del proveedor' },
+        ],
+      });
+
+      const { data } = await service.getAttachments(SESSION_ID, 4370994);
+
+      expect(data.map((a) => [a.id, a.isReport])).toEqual([
+        ['r1', true],
+        ['d1', false],
       ]);
     });
 
@@ -1019,6 +1041,51 @@ describe('PreventiveMaintenanceService', () => {
       await expect(
         service.getAttachments(SESSION_ID, 999999),
       ).rejects.toBeInstanceOf(NotFoundException);
+    });
+  });
+
+  describe('uploadDocument', () => {
+    const file = {
+      buffer: Buffer.from('%PDF'),
+      originalname: 'ficha.pdf',
+      mimetype: 'application/pdf',
+    };
+
+    it('adjunta el documento y devuelve la lista actualizada', async () => {
+      openmaint.findById.mockResolvedValue({ data: openmaintCard });
+      openmaint.findAttachments.mockResolvedValue({
+        data: [{ _id: 'd1', name: 'ficha.pdf' }],
+      });
+
+      const result = await service.uploadDocument(SESSION_ID, 4370994, file);
+
+      expect(openmaint.uploadAttachment).toHaveBeenCalledWith(
+        SESSION_ID,
+        4370994,
+        file,
+      );
+      expect(result.data[0].fileName).toBe('ficha.pdf');
+    });
+
+    it('rechaza adjuntar a un mantenimiento ya completado', async () => {
+      openmaint.findById.mockResolvedValue({
+        data: { ...openmaintCard, ProcessStatus: PM_STATUS_IDS.COMPLETED },
+      });
+
+      await expect(
+        service.uploadDocument(SESSION_ID, 4370994, file),
+      ).rejects.toBeInstanceOf(ConflictException);
+
+      expect(openmaint.uploadAttachment).not.toHaveBeenCalled();
+    });
+
+    it('traduce un fallo de la subida a BadGatewayException', async () => {
+      openmaint.findById.mockResolvedValue({ data: openmaintCard });
+      openmaint.uploadAttachment.mockRejectedValue(new Error('boom'));
+
+      await expect(
+        service.uploadDocument(SESSION_ID, 4370994, file),
+      ).rejects.toBeInstanceOf(BadGatewayException);
     });
   });
 
@@ -1067,6 +1134,7 @@ describe('PreventiveMaintenanceService', () => {
           uploadDate: '2026-08-06T13:48:28.216Z',
           downloadUrl: '/preventive-maintenance/4370994/documents/m1/download',
           isImage: false,
+          isReport: false,
         },
       ]);
       expect(result.meta.manual).toBe('MM-P - Prueba');

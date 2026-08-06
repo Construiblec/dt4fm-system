@@ -32,8 +32,19 @@ import { GetHistoryQueryDto } from './dto/get-history-query.dto';
 import { GetMyPreventiveMaintenancesQueryDto } from './dto/get-my-preventive-maintenances-query.dto';
 import { SaveChecklistDto } from './dto/save-checklist.dto';
 import { SuspendPreventiveMaintenanceDto } from './dto/suspend-preventive-maintenance.dto';
-import type { UploadedImage } from './preventive-maintenance.openmaint.service';
+import type { UploadedFile as UploadedFileType } from './preventive-maintenance.openmaint.service';
 import { PreventiveMaintenanceService } from './preventive-maintenance.service';
+
+/** Solo documentos: la evidencia fotográfica va por el cierre, no por aquí. */
+const ALLOWED_DOCUMENT_MIMETYPES = [
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+];
+
+const MAX_DOCUMENT_SIZE_BYTES = 10 * 1024 * 1024;
 
 @ApiTags('Mantenimiento preventivo')
 @Controller('preventive-maintenance')
@@ -224,6 +235,75 @@ export class PreventiveMaintenanceController {
     return this.preventiveMaintenanceService.getEquipmentDocuments(
       this.requireSessionId(sessionId),
       id,
+    );
+  }
+
+  @Post(':id/attachments')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: { fileSize: MAX_DOCUMENT_SIZE_BYTES },
+      fileFilter: (_req, file, callback) => {
+        const isDocument = ALLOWED_DOCUMENT_MIMETYPES.includes(file.mimetype);
+
+        callback(
+          isDocument
+            ? null
+            : new BadRequestException(
+                'Solo se permiten documentos (PDF, Word o Excel)',
+              ),
+          isDocument,
+        );
+      },
+    }),
+  )
+  @ApiOperation({
+    summary: 'Adjuntar un documento al mantenimiento preventivo',
+    description:
+      'Sube el archivo a la tarjeta del mantenimiento. Responde con la lista ' +
+      'de adjuntos ya actualizada.',
+  })
+  @ApiParam({
+    name: 'id',
+    description: 'ID del mantenimiento preventivo',
+    type: 'integer',
+  })
+  @ApiHeader({
+    name: 'authorization',
+    description: 'Token de sesión de OpenMAINT',
+    required: true,
+  })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    description: 'Documento a adjuntar (PDF, Word o Excel, máximo 10 MB)',
+    schema: {
+      type: 'object',
+      properties: {
+        file: { type: 'string', format: 'binary' },
+      },
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Documento adjuntado' })
+  @ApiResponse({
+    status: 400,
+    description: 'Cabecera faltante o tipo de archivo no permitido',
+  })
+  @ApiResponse({
+    status: 409,
+    description: 'El mantenimiento ya está completado',
+  })
+  async uploadDocument(
+    @Param('id', ParseIntPipe) id: number,
+    @Headers('authorization') sessionId: string,
+    @UploadedFile() file?: UploadedFileType,
+  ) {
+    if (!file) {
+      throw new BadRequestException('Se requiere un archivo');
+    }
+
+    return this.preventiveMaintenanceService.uploadDocument(
+      this.requireSessionId(sessionId),
+      id,
+      file,
     );
   }
 
@@ -443,7 +523,7 @@ export class PreventiveMaintenanceController {
     @Headers('authorization') sessionId: string,
     @Body(new ValidationPipe({ transform: true }))
     dto: CompletePreventiveMaintenanceDto,
-    @UploadedFile() file?: UploadedImage,
+    @UploadedFile() file?: UploadedFileType,
   ) {
     return this.preventiveMaintenanceService.completePreventiveMaintenance(
       this.requireSessionId(sessionId),

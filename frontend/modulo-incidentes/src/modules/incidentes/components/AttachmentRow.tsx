@@ -33,10 +33,12 @@ const formatDate = (value: string | null) => {
 export const AttachmentRow = ({ attachment }: Props) => {
   const badge = getBadge(attachment);
   const uploadedAt = formatDate(attachment.uploadDate);
-  // La descripción dice más que la categoría, que casi siempre es «Document»
-  const meta = [attachment.description ?? attachment.category, uploadedAt]
-    .filter(Boolean)
-    .join(" · ");
+  // La descripción dice más que la categoría, que casi siempre es «Document».
+  // La del informe se omite: solo repite el nombre con la marca de OpenMAINT.
+  const detail = attachment.isReport
+    ? null
+    : (attachment.description ?? attachment.category);
+  const meta = [detail, uploadedAt].filter(Boolean).join(" · ");
 
   return (
     <a
@@ -56,7 +58,9 @@ export const AttachmentRow = ({ attachment }: Props) => {
             {attachment.fileName}
           </span>
           {meta ? (
-            <span className="block text-xs text-slate-500">{meta}</span>
+            <span className="block truncate text-xs text-slate-500">
+              {meta}
+            </span>
           ) : null}
         </span>
       </span>

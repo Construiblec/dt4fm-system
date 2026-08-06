@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, FileText } from "lucide-react";
+import { ArrowLeft, FileText, Paperclip } from "lucide-react";
 import { AppLayout } from "@/app/layout/AppLayout";
-import { AttachmentRow } from "@/modules/incidentes/components/AttachmentRow";
+import { AttachmentListSection } from "@/modules/incidentes/components/AttachmentListSection";
 import { ReadOnlyPreventiveChecklist } from "@/modules/incidentes/components/ReadOnlyPreventiveChecklist";
 import {
   getPreventiveStatusLabel,
@@ -228,31 +228,25 @@ export const PastPreventiveMaintenancePage = () => {
                 </section>
               ) : null}
 
-              <section className="rounded-3xl bg-white p-5 shadow-sm">
-                <div className="flex items-center gap-2">
-                  <FileText className="h-5 w-5 text-slate-500" />
-                  <h2 className="text-base font-semibold text-slate-900">
-                    Informe generado
-                  </h2>
-                </div>
-
-                {attachments.length > 0 ? (
-                  <div className="mt-4 space-y-2">
-                    {attachments.map((attachment) => (
-                      <AttachmentRow
-                        key={attachment.id}
-                        attachment={attachment}
-                      />
-                    ))}
-                  </div>
-                ) : (
-                  <div className="mt-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center">
-                    <p className="text-sm text-slate-500">
-                      Este mantenimiento no dejó ningún archivo.
-                    </p>
-                  </div>
+              <AttachmentListSection
+                icon={Paperclip}
+                title="Documentos adjuntos"
+                subtitle="Archivos que se adjuntaron durante la ejecución."
+                attachments={attachments.filter(
+                  (attachment) => !attachment.isReport,
                 )}
-              </section>
+                emptyMessage="No se adjuntó ningún documento."
+              />
+
+              <AttachmentListSection
+                icon={FileText}
+                title="Informe generado"
+                subtitle="Informe que OpenMAINT generó al cerrar el mantenimiento."
+                attachments={attachments.filter(
+                  (attachment) => attachment.isReport,
+                )}
+                emptyMessage="Este mantenimiento no generó informe."
+              />
             </>
           ) : null}
         </div>

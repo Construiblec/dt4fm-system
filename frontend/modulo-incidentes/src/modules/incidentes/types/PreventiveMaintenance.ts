@@ -62,6 +62,8 @@ export type PreventiveMaintenanceAttachment = {
   /** Ruta del backend, hay que componerla con el token para abrirla */
   downloadUrl: string;
   isImage: boolean;
+  /** Lo generó OpenMAINT al cerrar, no lo adjuntó el técnico */
+  isReport: boolean;
 };
 
 /** Opción del desplegable de motivo de suspensión. */

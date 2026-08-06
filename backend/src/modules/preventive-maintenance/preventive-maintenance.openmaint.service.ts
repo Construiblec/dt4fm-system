@@ -115,7 +115,7 @@ export type PreventiveMaintAttachmentPreviewResponse = {
   };
 };
 
-export type UploadedImage = {
+export type UploadedFile = {
   buffer: Buffer;
   originalname: string;
   mimetype: string;
@@ -400,7 +400,8 @@ export class PreventiveMaintenanceOpenmaintService {
   async uploadAttachment(
     sessionId: string,
     id: number,
-    file: UploadedImage,
+    file: UploadedFile,
+    description?: string,
   ): Promise<unknown> {
     const formData = new FormData();
 
@@ -410,7 +411,11 @@ export class PreventiveMaintenanceOpenmaintService {
     });
     formData.append(
       'attachment',
-      JSON.stringify({ fileName: file.originalname, majorVersion: true }),
+      JSON.stringify({
+        fileName: file.originalname,
+        majorVersion: true,
+        ...(description ? { description } : {}),
+      }),
     );
 
     return this.client.post(

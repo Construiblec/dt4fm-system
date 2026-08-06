@@ -145,6 +145,32 @@ export const getPreventiveMaintenanceAttachments = async (
   }
 };
 
+/**
+ * Adjunta un documento a la tarjeta del mantenimiento y devuelve la lista de
+ * adjuntos ya actualizada.
+ */
+export const uploadPreventiveMaintenanceDocument = async (
+  id: string,
+  file: File,
+): Promise<PreventiveMaintenanceAttachment[]> => {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  try {
+    const { data } = await preventiveMaintenanceApi.post<AttachmentsResponse>(
+      `/preventive-maintenance/${id}/attachments`,
+      formData,
+      {
+        headers: { ...getAuthHeaders(), "Content-Type": "multipart/form-data" },
+      },
+    );
+
+    return data.data;
+  } catch (error) {
+    return handleUnauthorized(error);
+  }
+};
+
 /** Guarda las respuestas del checklist y devuelve su estado actualizado. */
 export const savePreventiveChecklist = async (
   id: string,

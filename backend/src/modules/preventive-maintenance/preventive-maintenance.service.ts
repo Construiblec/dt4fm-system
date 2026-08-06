@@ -35,11 +35,14 @@ import {
   PreventiveMaintCard,
   PreventiveMaintCardsResponse,
   PreventiveMaintenanceOpenmaintService,
-  UploadedImage,
+  UploadedFile,
 } from './preventive-maintenance.openmaint.service';
 import { LookupOption, toLookupOption } from './utils/lookup-option.util';
 
 const IMAGE_FILE_REGEX = /\.(png|jpg|jpeg|webp)$/i;
+
+/** Respaldo para reconocer el informe cuando la instancia no tiene número. */
+const GENERATED_REPORT_REGEX = /informe de actividades/i;
 
 const LOCK_RETRIES = 3;
 const LOCK_RETRY_DELAY_MS = 300;
@@ -98,6 +101,8 @@ export type PreventiveMaintenanceAttachment = {
   /** Ruta de este mismo backend, no de OpenMAINT */
   downloadUrl: string;
   isImage: boolean;
+  /** Lo generó OpenMAINT al cerrar, no lo adjuntó el técnico */
+  isReport: boolean;
 };
 
 @Injectable()
@@ -233,7 +238,7 @@ export class PreventiveMaintenanceService {
     sessionId: string,
     id: number,
     dto: CompletePreventiveMaintenanceDto,
-    file?: UploadedImage,
+    file?: UploadedFile,
   ) {
     const card = await this.fetchCardWithTasklist(sessionId, id);
 
@@ -435,10 +440,14 @@ export class PreventiveMaintenanceService {
     };
   }
 
-  /** Archivos adjuntos de un mantenimiento, con su ruta de descarga. */
+  /**
+   * Archivos adjuntos de un mantenimiento: el informe que OpenMAINT genera al
+   * cerrarlo y los documentos que adjuntó el técnico, distinguidos por
+   * `isReport`.
+   */
   async getAttachments(sessionId: string, id: number) {
     // Valida que el mantenimiento exista y sea accesible para la sesión
-    await this.fetchCard(sessionId, id);
+    const card = await this.fetchCard(sessionId, id);
 
     let attachments: PreventiveMaintAttachment[];
 
@@ -456,10 +465,38 @@ export class PreventiveMaintenanceService {
       this.toAttachment(
         attachment,
         `/preventive-maintenance/${id}/attachments/${attachment._id}/download`,
+        this.isGeneratedReport(attachment, card.Number ?? null),
       ),
     );
 
     return { success: true, data, meta: { total: data.length } };
+  }
+
+  /** Adjunta un documento a la tarjeta del mantenimiento. */
+  async uploadDocument(sessionId: string, id: number, file: UploadedFile) {
+    const card = await this.fetchCard(sessionId, id);
+
+    if (card.ProcessStatus === PM_STATUS_IDS.COMPLETED) {
+      throw new ConflictException(
+        'No se pueden adjuntar documentos a un mantenimiento ya completado',
+      );
+    }
+
+    try {
+      await this.openmaint.uploadAttachment(sessionId, id, file);
+    } catch (error) {
+      this.throwIfSessionExpired(error);
+
+      throw new BadGatewayException(
+        'Error al adjuntar el documento en OpenMAINT',
+      );
+    }
+
+    this.logger.log(
+      `Documento "${file.originalname}" adjuntado al mantenimiento ${card.Number ?? id}`,
+    );
+
+    return this.getAttachments(sessionId, id);
   }
 
   /**
@@ -564,6 +601,7 @@ export class PreventiveMaintenanceService {
   private toAttachment(
     attachment: PreventiveMaintAttachment,
     downloadUrl: string,
+    isReport = false,
   ): PreventiveMaintenanceAttachment {
     // Los adjuntos de proceso traen `fileName`; los de clase, `name`
     const fileName = attachment.fileName ?? attachment.name ?? 'adjunto';
@@ -576,7 +614,26 @@ export class PreventiveMaintenanceService {
       uploadDate: attachment.created ?? attachment.modified ?? null,
       downloadUrl,
       isImage: IMAGE_FILE_REGEX.test(fileName),
+      isReport,
     };
+  }
+
+  /**
+   * El informe que OpenMAINT genera al cerrar comparte categoría con lo que
+   * adjunta el técnico, así que se reconoce por la marca que le pone en la
+   * descripción: `[PM.2027.0067] Informe de actividades ...`.
+   */
+  private isGeneratedReport(
+    attachment: PreventiveMaintAttachment,
+    number: string | null,
+  ): boolean {
+    const description = attachment.description ?? '';
+
+    return number
+      ? description.startsWith(`[${number}]`)
+      : GENERATED_REPORT_REGEX.test(
+          attachment.fileName ?? attachment.name ?? '',
+        );
   }
 
   /** Reenvía el binario de un adjunto al navegador. */

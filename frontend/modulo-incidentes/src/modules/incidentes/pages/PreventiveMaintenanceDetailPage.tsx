@@ -4,10 +4,12 @@ import {
   AlertTriangle,
   ArrowLeft,
   Image as ImageIcon,
+  Paperclip,
   PauseCircle,
   Plus,
 } from "lucide-react";
 import { AppLayout } from "@/app/layout/AppLayout";
+import { AttachmentListSection } from "@/modules/incidentes/components/AttachmentListSection";
 import { PreventiveChecklist } from "@/modules/incidentes/components/PreventiveChecklist";
 import { PreventiveDetailTabs } from "@/modules/incidentes/components/PreventiveDetailTabs";
 import type { PreventiveDetailTab } from "@/modules/incidentes/components/PreventiveDetailTabs";
@@ -15,12 +17,13 @@ import { PreventiveDocumentsSection } from "@/modules/incidentes/components/Prev
 import { PreventiveHistorySection } from "@/modules/incidentes/components/PreventiveHistorySection";
 import { SuspendMaintenanceModal } from "@/modules/incidentes/components/SuspendMaintenanceModal";
 import { UploadDocumentSheet } from "@/modules/incidentes/components/UploadDocumentSheet";
-import { PREVENTIVE_DOCUMENTS_ENABLED } from "@/modules/incidentes/constants/preventiveDocuments";
+import { PREVENTIVE_UPLOAD_ENABLED } from "@/modules/incidentes/constants/preventiveDocuments";
 import {
   getPreventiveStatusLabel,
   PREVENTIVE_STATUS_BADGE_CLASSES,
 } from "@/modules/incidentes/constants/preventiveStatus";
 import { usePreventiveChecklist } from "@/modules/incidentes/hooks/usePreventiveChecklist";
+import { usePreventiveMaintenanceAttachments } from "@/modules/incidentes/hooks/usePreventiveMaintenanceAttachments";
 import { usePreventiveMaintenanceDocuments } from "@/modules/incidentes/hooks/usePreventiveMaintenanceDocuments";
 import { usePreventiveMaintenanceHistory } from "@/modules/incidentes/hooks/usePreventiveMaintenanceHistory";
 import {
@@ -29,6 +32,7 @@ import {
   savePreventiveChecklist,
   startPreventiveMaintenance,
   suspendPreventiveMaintenance,
+  uploadPreventiveMaintenanceDocument,
 } from "@/modules/incidentes/services/preventiveMaintenanceService";
 import type {
   PreventiveMaintenanceDetail,
@@ -84,6 +88,28 @@ export const PreventiveMaintenanceDetailPage = () => {
     loading: loadingDocuments,
     error: documentsError,
   } = usePreventiveMaintenanceDocuments(id, tab === "documents");
+  const {
+    documents: attachedDocuments,
+    loading: loadingAttachments,
+    error: attachmentsError,
+    replace: replaceAttachments,
+  } = usePreventiveMaintenanceAttachments(id, tab === "documents");
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+
+  const handleUpload = async (file: File) => {
+    try {
+      setIsUploading(true);
+      setUploadError(null);
+
+      replaceAttachments(await uploadPreventiveMaintenanceDocument(id, file));
+      setShowUploadSheet(false);
+    } catch {
+      setUploadError("No se pudo adjuntar el documento");
+    } finally {
+      setIsUploading(false);
+    }
+  };
 
   // ── Ejecución del checklist y cierre ────────────────────────────────────────
   // Memoizado porque `?? []` daría un array nuevo en cada render mientras el
@@ -350,6 +376,16 @@ export const PreventiveMaintenanceDetailPage = () => {
 
               {tab === "documents" ? (
                 <>
+                  <AttachmentListSection
+                    icon={Paperclip}
+                    title="Documentos adjuntos"
+                    subtitle="Archivos que se adjuntaron a este mantenimiento."
+                    attachments={attachedDocuments}
+                    emptyMessage="Todavía no hay documentos adjuntos."
+                    loading={loadingAttachments}
+                    error={attachmentsError}
+                  />
+
                   <PreventiveDocumentsSection
                     documents={documents}
                     loading={loadingDocuments}
@@ -488,8 +524,8 @@ export const PreventiveMaintenanceDetailPage = () => {
           ) : null}
         </div>
 
-        {/* Anclado al ancho de la app, no al del viewport */}
-        {tab === "documents" && !loading && !error && maintenance ? (
+        {/* Anclado al ancho de la app. Un mantenimiento cerrado no admite adjuntos */}
+        {tab === "documents" && !loading && !error && maintenance?.isClosed === false ? (
           <div className="pointer-events-none fixed inset-x-0 bottom-0 z-40 mx-auto flex max-w-md justify-end px-5 pb-6">
             <button
               type="button"
@@ -504,8 +540,20 @@ export const PreventiveMaintenanceDetailPage = () => {
 
         <UploadDocumentSheet
           open={showUploadSheet}
-          enabled={PREVENTIVE_DOCUMENTS_ENABLED}
+          enabled={PREVENTIVE_UPLOAD_ENABLED}
+          isUploading={isUploading}
+          onSelect={(file) => void handleUpload(file)}
+          onTooLarge={() =>
+            setUploadError("El documento supera el máximo de 10 MB")
+          }
           onCancel={() => setShowUploadSheet(false)}
+        />
+
+        <ErrorModal
+          open={uploadError !== null}
+          title="No se pudo adjuntar el documento"
+          message={uploadError ?? ""}
+          onClose={() => setUploadError(null)}
         />
 
         <ConfirmModal
