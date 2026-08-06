@@ -53,7 +53,9 @@ export const useCleaningTaskExecutionStore = create<CleaningTaskExecutionState>(
           return {
             activeTask: {
               ...task,
-              sessionStartTime: new Date().toISOString(),
+              // La tarjeta pasa el instante del toque en "Iniciar"; si faltara, el
+              // cronómetro arranca ahora (nunca desde el inicio original).
+              executionStartedAt: task.executionStartedAt ?? new Date().toISOString(),
             },
             contextTaskId: task.id,
             checklistProgress: shouldPreserveContext ? state.checklistProgress : {},
@@ -78,7 +80,13 @@ export const useCleaningTaskExecutionStore = create<CleaningTaskExecutionState>(
           return {
             activeTask: {
               ...task,
-              sessionStartTime: shouldPreserveContext ? state.activeTask?.sessionStartTime : new Date().toISOString(),
+              // Nunca puede quedar indefinido: sin esta marca no se sabría qué parte
+              // del tiempo pertenece a la ejecución actual. Al continuar una tarea ya
+              // iniciada se conserva la marca original para no reiniciar el conteo.
+              executionStartedAt:
+                (shouldPreserveContext ? state.activeTask?.executionStartedAt : undefined) ??
+                task.executionStartedAt ??
+                new Date().toISOString(),
             },
             contextTaskId: task.id,
             checklistProgress: shouldPreserveContext ? state.checklistProgress : {},

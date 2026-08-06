@@ -156,14 +156,20 @@ export const CleaningTaskCard = ({
       : null;
 
   const startMutation = useMutation({
-    mutationFn: () => startCleaningTask(id),
-    onSuccess: (taskDetail) => {
+    mutationFn: async () => {
+      // Cero del cronómetro: el instante del toque, antes de esperar a la API.
+      const executionStartedAt = new Date().toISOString();
+      const taskDetail = await startCleaningTask(id);
+      return { taskDetail, executionStartedAt };
+    },
+    onSuccess: ({ taskDetail, executionStartedAt }) => {
       startTask({
         id,
         taskNumber,
         description,
         phase: taskDetail.phase ?? "InExecution",
-        actualStartTime: taskDetail.actualStartTime ?? actualStartTime ?? new Date().toISOString(),
+        actualStartTime: taskDetail.actualStartTime ?? actualStartTime ?? executionStartedAt,
+        executionStartedAt,
         plannedStartTime,
         plannedEndTime,
         unitDescription: unit?.description ?? description,
