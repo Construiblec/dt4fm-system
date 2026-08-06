@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsNumber, IsOptional, IsString, MaxLength, Min } from 'class-validator';
 
 export class CompleteTaskDto {
   @ApiPropertyOptional({
@@ -13,10 +13,14 @@ export class CompleteTaskDto {
   observations?: string;
 
   @ApiPropertyOptional({
-    description: 'Fecha en la que inició la sesión de trabajo actual (ISO).',
-    example: '2023-10-01T12:00:00Z',
+    description:
+      'Tiempo trabajado en esta ejecución, en horas decimales. Lo mide el front ' +
+      'desde que el empleado toca "Iniciar" en la tarjeta (el cronómetro que ' +
+      'arranca en cero). Se suma al ExecutionTime ya acumulado en OpenMAINT.',
+    example: 0.75,
   })
   @IsOptional()
-  @IsString()
-  sessionStartTime?: string;
+  @IsNumber()
+  @Min(0)
+  executionHours?: number;
 }
