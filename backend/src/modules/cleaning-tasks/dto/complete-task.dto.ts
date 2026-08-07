@@ -14,13 +14,13 @@ export class CompleteTaskDto {
 
   @ApiPropertyOptional({
     description:
-      'Tiempo trabajado en esta ejecución, en horas decimales. Lo mide el front ' +
+      'Tiempo trabajado en esta ejecución, en minutos (double). Lo mide el front ' +
       'desde que el empleado toca "Iniciar" en la tarjeta (el cronómetro que ' +
       'arranca en cero). Se suma al ExecutionTime ya acumulado en OpenMAINT.',
-    example: 0.75,
+    example: 90,
   })
   @IsOptional()
   @IsNumber()
   @Min(0)
-  executionHours?: number;
+  executionMinutes?: number;
 }
