@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { ImageOff, ZoomIn, X } from "lucide-react";
-import { getAttachmentUrl } from "@/modules/supervisor/services/supervisorService";
+import { buildAttachmentUrl } from "@/shared/utils/attachmentUrl";
 import type { TaskAttachment } from "@/modules/supervisor/types/SupervisorTask";
 
 type Props = {
@@ -47,7 +47,7 @@ export const TaskDetailPhotos = ({ attachments }: Props) => {
 
         <div className="grid grid-cols-3 gap-2">
           {photos.map((photo) => {
-            const url = getAttachmentUrl(photo.downloadUrl);
+            const url = buildAttachmentUrl(photo.downloadUrl);
             return (
               <button
                 key={photo.id}

@@ -21,7 +21,9 @@ export type CleaningTask = {
   plannedEndTime: string;
   actualStartTime: string | null;
   actualEndTime: string | null;
+  /** Tiempo trabajado acumulado, en minutos. */
   executionTime: number | null;
+  /** Retraso del primer inicio respecto a lo planificado, en minutos. */
   delayTime: number | null;
   taskObservations: string | null;
   supervisionObserv: string | null;

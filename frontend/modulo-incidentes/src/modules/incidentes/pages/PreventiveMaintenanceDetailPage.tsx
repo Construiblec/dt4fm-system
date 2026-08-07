@@ -1,27 +1,42 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   AlertTriangle,
   ArrowLeft,
   Image as ImageIcon,
+  Paperclip,
   PauseCircle,
+  Plus,
 } from "lucide-react";
 import { AppLayout } from "@/app/layout/AppLayout";
+import { AttachmentListSection } from "@/modules/incidentes/components/AttachmentListSection";
 import { PreventiveChecklist } from "@/modules/incidentes/components/PreventiveChecklist";
+import { PreventiveDetailTabs } from "@/modules/incidentes/components/PreventiveDetailTabs";
+import type { PreventiveDetailTab } from "@/modules/incidentes/components/PreventiveDetailTabs";
+import { PreventiveDocumentsSection } from "@/modules/incidentes/components/PreventiveDocumentsSection";
+import { PreventiveHistorySection } from "@/modules/incidentes/components/PreventiveHistorySection";
 import { SuspendMaintenanceModal } from "@/modules/incidentes/components/SuspendMaintenanceModal";
+import { UploadDocumentSheet } from "@/modules/incidentes/components/UploadDocumentSheet";
+import { PREVENTIVE_UPLOAD_ENABLED } from "@/modules/incidentes/constants/preventiveDocuments";
 import {
   getPreventiveStatusLabel,
   PREVENTIVE_STATUS_BADGE_CLASSES,
 } from "@/modules/incidentes/constants/preventiveStatus";
 import { usePreventiveChecklist } from "@/modules/incidentes/hooks/usePreventiveChecklist";
+import { usePreventiveMaintenanceAttachments } from "@/modules/incidentes/hooks/usePreventiveMaintenanceAttachments";
+import { usePreventiveMaintenanceDocuments } from "@/modules/incidentes/hooks/usePreventiveMaintenanceDocuments";
+import { usePreventiveMaintenanceHistory } from "@/modules/incidentes/hooks/usePreventiveMaintenanceHistory";
 import {
   completePreventiveMaintenance,
+  deletePreventiveMaintenanceDocument,
   getSuspensionReasons,
   savePreventiveChecklist,
   startPreventiveMaintenance,
   suspendPreventiveMaintenance,
+  uploadPreventiveMaintenanceDocument,
 } from "@/modules/incidentes/services/preventiveMaintenanceService";
 import type {
+  PreventiveMaintenanceAttachment,
   PreventiveMaintenanceDetail,
   SuspensionReason,
 } from "@/modules/incidentes/types/PreventiveMaintenance";
@@ -63,9 +78,68 @@ export const PreventiveMaintenanceDetailPage = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [tab, setTab] = useState<PreventiveDetailTab>("checklist");
+  const [showUploadSheet, setShowUploadSheet] = useState(false);
+  const {
+    entries: historyEntries,
+    loading: loadingHistory,
+    error: historyError,
+  } = usePreventiveMaintenanceHistory(id, tab === "documents");
+  const {
+    documents,
+    loading: loadingDocuments,
+    error: documentsError,
+  } = usePreventiveMaintenanceDocuments(id, tab === "documents");
+  const {
+    documents: attachedDocuments,
+    loading: loadingAttachments,
+    error: attachmentsError,
+    replace: replaceAttachments,
+  } = usePreventiveMaintenanceAttachments(id, tab === "documents");
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [documentToDelete, setDocumentToDelete] =
+    useState<PreventiveMaintenanceAttachment | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const canManageDocuments = maintenance?.isClosed === false;
+
+  const handleDelete = async (attachment: PreventiveMaintenanceAttachment) => {
+    try {
+      setDocumentToDelete(null);
+      setDeletingId(attachment.id);
+
+      replaceAttachments(
+        await deletePreventiveMaintenanceDocument(id, attachment.id),
+      );
+    } catch {
+      setUploadError("No se pudo eliminar el documento");
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const handleUpload = async (file: File) => {
+    try {
+      setIsUploading(true);
+      setUploadError(null);
+
+      replaceAttachments(await uploadPreventiveMaintenanceDocument(id, file));
+      setShowUploadSheet(false);
+    } catch {
+      setUploadError("No se pudo adjuntar el documento");
+    } finally {
+      setIsUploading(false);
+    }
+  };
 
   // ── Ejecución del checklist y cierre ────────────────────────────────────────
-  const checklistItems = maintenance?.checklist ?? [];
+  // Memoizado porque `?? []` daría un array nuevo en cada render mientras el
+  // detalle carga, y `usePreventiveChecklist` resembraría las respuestas en bucle.
+  const checklistItems = useMemo(
+    () => maintenance?.checklist ?? [],
+    [maintenance],
+  );
   const { answers, setAnswer, completedCount, totalCount, isComplete, payload } =
     usePreventiveChecklist(checklistItems);
   const [observations, setObservations] = useState("");
@@ -239,7 +313,10 @@ export const PreventiveMaintenanceDetailPage = () => {
           </div>
         </header>
 
-        <div className="space-y-5 px-4 py-5">
+        {/* El FAB flota sobre el final de la lista, de ahí el respiro extra */}
+        <div
+          className={`space-y-5 px-4 py-5 ${tab === "documents" ? "pb-28" : ""}`}
+        >
           {loading ? (
             <section className="rounded-3xl bg-white p-5 text-sm text-slate-500 shadow-sm">
               Cargando detalle del mantenimiento...
@@ -317,7 +394,43 @@ export const PreventiveMaintenanceDetailPage = () => {
                 </div>
               </section>
 
-              {maintenance.images.length > 0 ? (
+              <PreventiveDetailTabs value={tab} onChange={setTab} />
+
+              {tab === "documents" ? (
+                <>
+                  <AttachmentListSection
+                    icon={Paperclip}
+                    title="Documentos adjuntos"
+                    subtitle="Archivos que se adjuntaron a este mantenimiento."
+                    attachments={attachedDocuments}
+                    emptyMessage="Todavía no hay documentos adjuntos."
+                    loading={loadingAttachments}
+                    error={attachmentsError}
+                    hideWhenEmpty
+                    onDelete={
+                      canManageDocuments ? setDocumentToDelete : undefined
+                    }
+                    deletingId={deletingId}
+                  />
+
+                  <PreventiveDocumentsSection
+                    documents={documents}
+                    loading={loadingDocuments}
+                    error={documentsError}
+                  />
+
+                  <PreventiveHistorySection
+                    entries={historyEntries}
+                    loading={loadingHistory}
+                    error={historyError}
+                    onOpen={(historyId) =>
+                      navigate(`/preventive-maintenance/historial/${historyId}`)
+                    }
+                  />
+                </>
+              ) : null}
+
+              {tab === "checklist" && maintenance.images.length > 0 ? (
                 <section className="rounded-3xl bg-white p-5 shadow-sm">
                   <div className="flex items-center gap-2">
                     <ImageIcon className="h-5 w-5 text-slate-500" />
@@ -350,7 +463,7 @@ export const PreventiveMaintenanceDetailPage = () => {
                 </section>
               ) : null}
 
-              {maintenance.notes !== null ? (
+              {tab === "checklist" && maintenance.notes !== null ? (
                 <section className="rounded-3xl bg-white p-5 shadow-sm">
                   <h2 className="text-base font-semibold text-slate-900">
                     Historial de notas
@@ -361,14 +474,17 @@ export const PreventiveMaintenanceDetailPage = () => {
                 </section>
               ) : null}
 
-              <PreventiveChecklist
-                items={checklistItems}
-                answers={answers}
-                onAnswerChange={setAnswer}
-                disabled={isCompleting || !maintenance.canComplete}
-              />
+              {tab === "checklist" ? (
+                <PreventiveChecklist
+                  items={checklistItems}
+                  answers={answers}
+                  onAnswerChange={setAnswer}
+                  disabled={isCompleting || !maintenance.canComplete}
+                />
+              ) : null}
 
-              {maintenance.canComplete || maintenance.canSuspend ? (
+              {tab === "checklist" &&
+              (maintenance.canComplete || maintenance.canSuspend) ? (
                 <>
                   <section className="rounded-3xl bg-white p-5 shadow-sm">
                     <label
@@ -434,6 +550,50 @@ export const PreventiveMaintenanceDetailPage = () => {
             </>
           ) : null}
         </div>
+
+        {/* Anclado al ancho de la app. Un mantenimiento cerrado no admite adjuntos */}
+        {tab === "documents" && !loading && !error && maintenance?.isClosed === false ? (
+          <div className="pointer-events-none fixed inset-x-0 bottom-0 z-40 mx-auto flex max-w-md justify-end px-5 pb-6">
+            <button
+              type="button"
+              aria-label="Subir informe o documento"
+              onClick={() => setShowUploadSheet(true)}
+              className="pointer-events-auto flex h-14 w-14 items-center justify-center rounded-full bg-brand text-white shadow-lg transition hover:bg-brand-hover"
+            >
+              <Plus className="h-6 w-6" />
+            </button>
+          </div>
+        ) : null}
+
+        <UploadDocumentSheet
+          open={showUploadSheet}
+          enabled={PREVENTIVE_UPLOAD_ENABLED}
+          isUploading={isUploading}
+          onSelect={(file) => void handleUpload(file)}
+          onTooLarge={() =>
+            setUploadError("El documento supera el máximo de 10 MB")
+          }
+          onCancel={() => setShowUploadSheet(false)}
+        />
+
+        <ConfirmModal
+          open={documentToDelete !== null}
+          title="Eliminar documento"
+          message={`¿Seguro que deseas eliminar "${documentToDelete?.fileName ?? ""}"? Se quitará de la tarjeta del mantenimiento en OpenMAINT.`}
+          onConfirm={() => {
+            if (documentToDelete) {
+              void handleDelete(documentToDelete);
+            }
+          }}
+          onCancel={() => setDocumentToDelete(null)}
+        />
+
+        <ErrorModal
+          open={uploadError !== null}
+          title="No se pudo completar la acción"
+          message={uploadError ?? ""}
+          onClose={() => setUploadError(null)}
+        />
 
         <ConfirmModal
           open={showConfirmModal}

@@ -119,14 +119,14 @@ export const uploadCleaningTaskPhoto = async (
 export const completeCleaningTask = async (
   taskId: number,
   observations: string,
-  executionHours?: number,
+  executionMinutes?: number,
 ): Promise<CleaningTaskCompleteResponse> => {
   try {
     const { data } = await cleaningExecutionApi.patch<CleaningTaskCompleteResponse>(
       `/cleaning-tasks/${taskId}/complete`,
       {
         observations,
-        executionHours,
+        executionMinutes,
       },
       {
         headers: {

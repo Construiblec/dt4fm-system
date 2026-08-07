@@ -43,8 +43,8 @@ const ALLOWED_MIME_TYPES = [
 ];
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
 const MAX_ATTACHMENTS = 10;
-/** Tope defensivo para el tiempo de una sola ejecución reportado por el front. */
-const MAX_SESSION_HOURS = 24;
+/** Tope defensivo, en minutos, para el tiempo de una sola ejecución reportado por el front. */
+const MAX_SESSION_MINUTES = 1440;
 
 @Injectable()
 export class CleaningTasksService {
@@ -433,11 +433,11 @@ export class CleaningTasksService {
     if (!hasRunBefore) {
       body.ActualStartTime = now;
 
-      const delayHours = task.PlannedStartTime
-        ? this.calculateDurationHours(task.PlannedStartTime, now)
+      const delayMinutes = task.PlannedStartTime
+        ? this.calculateDurationMinutes(task.PlannedStartTime, now)
         : 0;
-      if (delayHours > 0) {
-        body.DelayTime = this.roundHours(delayHours);
+      if (delayMinutes > 0) {
+        body.DelayTime = this.roundMinutes(delayMinutes);
       }
     }
 
@@ -473,16 +473,8 @@ export class CleaningTasksService {
       throw new BadRequestException('Task must be started before completing');
     const now = new Date().toISOString();
     const prevExecution = this.toNumber(task.ExecutionTime);
-    const sessionHours = this.resolveExecutionHours(taskId, task, dto, prevExecution, now);
-    const executionTime = this.roundHours(prevExecution + sessionHours);
-
-    this.logger.log(
-      `[DEBUG completeTask] taskId=${taskId} | ` +
-      `dto.executionHours=${dto.executionHours} | ` +
-      `prevExecution(openMaint)=${prevExecution} | ` +
-      `sessionHours(resolved)=${sessionHours} | ` +
-      `executionTime(final)=${executionTime}`,
-    );
+    const sessionMinutes = this.resolveExecutionMinutes(taskId, task, dto, prevExecution, now);
+    const executionTime = this.roundMinutes(prevExecution + sessionMinutes);
 
     const body: Record<string, unknown> = {
       phase: PHASE_IDS.COMPLETED,
@@ -500,14 +492,14 @@ export class CleaningTasksService {
         phase: PHASE_NAMES[PHASE_IDS.COMPLETED],
         actualEndTime: response?.data?.ActualEndTime ?? now,
         observations: dto.observations ?? null,
-        duration: Math.round(sessionHours * 60),
+        duration: Math.round(sessionMinutes),
         executionTime: this.toNumber(response?.data?.ExecutionTime) || executionTime,
       },
     };
   }
 
   /**
-   * Horas trabajadas en ESTA ejecución, las que se sumarán al acumulado.
+   * Minutos trabajados en ESTA ejecución, los que se sumarán al acumulado.
    *
    * La fuente es el cronómetro del front, que arranca en cero cuando el empleado
    * toca "Iniciar" en la tarjeta. Se mide allá de punta a punta con el mismo reloj,
@@ -518,33 +510,33 @@ export class CleaningTasksService {
    * - Tarea reabierta: ActualStartTime apunta al primer inicio histórico; usarlo
    *   sumaría los días que la tarea estuvo cerrada, así que se acumula 0.
    */
-  private resolveExecutionHours(
+  private resolveExecutionMinutes(
     taskId: number,
     task: any,
     dto: CompleteTaskDto,
     prevExecution: number,
     now: string,
   ): number {
-    const reported = dto.executionHours;
+    const reported = dto.executionMinutes;
     if (typeof reported === 'number' && isFinite(reported) && reported >= 0) {
-      if (reported > MAX_SESSION_HOURS) {
+      if (reported > MAX_SESSION_MINUTES) {
         this.logger.warn(
-          `Tarea ${taskId}: el front reportó ${reported}h de ejecución, por encima del ` +
-            `máximo de ${MAX_SESSION_HOURS}h. Se acota para no corromper el acumulado.`,
+          `Tarea ${taskId}: el front reportó ${reported} min de ejecución, por encima del ` +
+            `máximo de ${MAX_SESSION_MINUTES} min. Se acota para no corromper el acumulado.`,
         );
-        return MAX_SESSION_HOURS;
+        return MAX_SESSION_MINUTES;
       }
       return reported;
     }
 
     const wasReopened = prevExecution > 0;
     if (!wasReopened && task.ActualStartTime) {
-      return Math.max(0, this.calculateDurationHours(task.ActualStartTime, now));
+      return Math.max(0, this.calculateDurationMinutes(task.ActualStartTime, now));
     }
 
     this.logger.warn(
-      `Tarea ${taskId}: se completó sin executionHours y no es deducible (acumulado ` +
-        `actual: ${prevExecution}h). No se acumula tiempo para no inflar ExecutionTime.`,
+      `Tarea ${taskId}: se completó sin executionMinutes y no es deducible (acumulado ` +
+        `actual: ${prevExecution} min). No se acumula tiempo para no inflar ExecutionTime.`,
     );
     return 0;
   }
@@ -841,15 +833,13 @@ export class CleaningTasksService {
     }
   }
 
+  /**
+   * Minutos entre dos fechas, con decimales: el redondeo se aplica una sola vez,
+   * al escribir en OpenMAINT, para no perder precisión al acumular ejecuciones.
+   */
   private calculateDurationMinutes(startIso: string, endIso: string): number {
-    return Math.round(
-      (new Date(endIso).getTime() - new Date(startIso).getTime()) / 60_000,
-    );
-  }
-
-  private calculateDurationHours(startIso: string, endIso: string): number {
     return (
-      (new Date(endIso).getTime() - new Date(startIso).getTime()) / 3_600_000
+      (new Date(endIso).getTime() - new Date(startIso).getTime()) / 60_000
     );
   }
 
@@ -865,11 +855,11 @@ export class CleaningTasksService {
   }
 
   /**
-   * Recorta la precisión de las horas antes de guardarlas en OpenMAINT: 4 decimales
-   * (~0.4 s) bastan y evitan que el supervisor vea valores como 0.11666666666666667.
+   * Recorta la precisión de los minutos antes de guardarlos en OpenMAINT:
+   * 2 decimales (~0.6 s) bastan y evitan valores como 7.000000000000001.
    */
-  private roundHours(hours: number): number {
-    return Math.round(hours * 10_000) / 10_000;
+  private roundMinutes(minutes: number): number {
+    return Math.round(minutes * 100) / 100;
   }
 
   private appendNote(existingText: string | null | undefined, newText: string): string {

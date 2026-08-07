@@ -49,9 +49,10 @@ function calcDuration(start: string | null, end: string | null): string {
   return `${h}h ${m}min`;
 }
 
-function formatExecutionTime(hoursFloat?: number | null): string | null {
-  if (hoursFloat == null) return null;
-  const totalMinutes = Math.round(hoursFloat * 60);
+/** ExecutionTime y DelayTime llegan de OpenMAINT en minutos (double). */
+function formatExecutionTime(minutesFloat?: number | null): string | null {
+  if (minutesFloat == null) return null;
+  const totalMinutes = Math.round(minutesFloat);
   if (totalMinutes <= 0) return "—";
   const d = Math.floor(totalMinutes / 1440);
   const h = Math.floor((totalMinutes % 1440) / 60);

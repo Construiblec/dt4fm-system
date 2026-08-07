@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import type {
   ChecklistAnswer,
   PreventiveChecklistItem,
@@ -17,30 +17,34 @@ type Result = {
 /**
  * Estado de las respuestas del checklist.
  *
- * Se inicializa con lo que ya haya guardado en OpenMAINT, de modo que reabrir
- * un mantenimiento a medias muestra el avance real. No se persiste en
+ * Parte de lo que ya haya guardado en OpenMAINT, de modo que reabrir un
+ * mantenimiento a medias muestra el avance real. No se persiste en
  * `localStorage` a propósito: la fuente de verdad es OpenMAINT y una copia
  * local competiría con ella en cuanto se guardase.
+ *
+ * Solo se guardan las ediciones del técnico y se fusionan con lo ya registrado
+ * al leer. Sembrar el estado desde un efecto haría que un `items` recreado en
+ * cada render (p. ej. `detalle?.checklist ?? []` mientras carga) disparase
+ * actualizaciones en bucle.
  */
 export const usePreventiveChecklist = (
   items: PreventiveChecklistItem[],
 ): Result => {
-  const [answers, setAnswers] = useState<Record<number, string>>({});
+  const [edits, setEdits] = useState<Record<number, string>>({});
 
-  const initialAnswers = useMemo(() => {
-    const entries = items
+  const answers = useMemo(() => {
+    const registered = items
       .filter((item) => item.value !== null && item.value !== "")
       .map((item) => [item.taskDefId, String(item.value)] as const);
 
-    return Object.fromEntries(entries) as Record<number, string>;
-  }, [items]);
-
-  useEffect(() => {
-    setAnswers(initialAnswers);
-  }, [initialAnswers]);
+    return {
+      ...(Object.fromEntries(registered) as Record<number, string>),
+      ...edits,
+    };
+  }, [items, edits]);
 
   const setAnswer = (taskDefId: number, value: string) =>
-    setAnswers((current) => ({ ...current, [taskDefId]: value }));
+    setEdits((current) => ({ ...current, [taskDefId]: value }));
 
   const completedCount = items.filter((item) =>
     Boolean(answers[item.taskDefId]),
