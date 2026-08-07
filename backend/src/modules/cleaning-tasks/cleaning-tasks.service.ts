@@ -18,6 +18,7 @@ import {
 import { CancelTaskDto } from './dto/cancel-task.dto';
 import { CompleteTaskDto } from './dto/complete-task.dto';
 import { CreateCleaningTaskDto } from './dto/create-cleaning-task.dto';
+import { GetCheckoutsQueryDto } from './dto/get-checkouts-query.dto';
 import { ReopenTaskDto } from './dto/reopen-task.dto';
 import { ReviewTaskDto } from './dto/review-task.dto';
 import { UpdateCleaningTaskDto } from './dto/update-cleaning-task.dto';
@@ -45,6 +46,8 @@ const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
 const MAX_ATTACHMENTS = 10;
 /** Tope defensivo, en minutos, para el tiempo de una sola ejecución reportado por el front. */
 const MAX_SESSION_MINUTES = 1440;
+/** Ventana máxima consultable de checkouts, para acotar el costo hacia Hostaway. */
+const MAX_CHECKOUT_RANGE_DAYS = 92;
 
 @Injectable()
 export class CleaningTasksService {
@@ -55,21 +58,71 @@ export class CleaningTasksService {
     private readonly openmaintService: CleaningTasksOpenmaintService,
   ) {}
 
-  async getCheckouts(date?: string) {
-    const targetDate = date ?? new Date().toISOString().split('T')[0];
-    const response = await this.hostawayService.getCheckoutsByDate(targetDate);
-    return {
-      date: targetDate,
-      checkouts: response.result.map((r) => ({
+  /**
+   * Lectura de checkouts desde Hostaway, en un día o en un rango.
+   *
+   * Acepta `date` (un solo día, comportamiento histórico) o el par
+   * `dateFrom`/`dateTo`. Si no llega nada, consulta hoy.
+   * El campo `date` de la respuesta se conserva para no romper a los
+   * clientes que ya lo leen.
+   */
+  async getCheckouts(query: GetCheckoutsQueryDto = {}) {
+    const today = new Date().toISOString().split('T')[0];
+
+    const dateFrom = query.dateFrom ?? query.date ?? today;
+    const dateTo = query.dateTo ?? query.date ?? dateFrom;
+
+    if (dateTo < dateFrom) {
+      throw new BadRequestException(
+        `El rango es inválido: dateTo (${dateTo}) es anterior a dateFrom (${dateFrom})`,
+      );
+    }
+
+    const spanDays = this.countDaysInclusive(dateFrom, dateTo);
+    if (spanDays > MAX_CHECKOUT_RANGE_DAYS) {
+      throw new BadRequestException(
+        `El rango solicitado (${spanDays} días) supera el máximo de ${MAX_CHECKOUT_RANGE_DAYS} días`,
+      );
+    }
+
+    const response = await this.hostawayService.getCheckouts(dateFrom, dateTo);
+
+    const checkouts = response.result
+      .map((r) => ({
         reservationId: r.reservationId,
         guestName: r.guestName,
         listingName: r.listingName,
         listingId: r.listingId,
         checkoutDate: r.checkoutDate,
         checkoutTime: r.checkoutTime,
-      })),
-      count: response.count,
+      }))
+      .sort(
+        (a, b) =>
+          a.checkoutDate.localeCompare(b.checkoutDate) ||
+          a.listingName.localeCompare(b.listingName),
+      );
+
+    return {
+      date: dateFrom,
+      dateFrom,
+      dateTo,
+      checkouts,
+      count: checkouts.length,
     };
+  }
+
+  /** Días que abarca [from, to] inclusive, calculado en UTC. */
+  private countDaysInclusive(from: string, to: string): number {
+    const start = Date.parse(`${from}T00:00:00Z`);
+    const end = Date.parse(`${to}T00:00:00Z`);
+
+    if (isNaN(start) || isNaN(end)) {
+      throw new BadRequestException(
+        'Las fechas deben tener formato YYYY-MM-DD',
+      );
+    }
+
+    return Math.floor((end - start) / 86_400_000) + 1;
   }
 
   async getCleaningTasks(date?: string) {
@@ -163,7 +216,7 @@ export class CleaningTasksService {
         listingName: r.listingName,
         listingId: r.listingId,
         checkoutDate: r.checkoutDate,
-        checkoutTime: r.checkoutTime,
+        checkoutTime: this.normalizeCheckoutTime(r.checkoutTime),
         guestName: r.guestName,
       }));
     return {
@@ -171,6 +224,17 @@ export class CleaningTasksService {
       dateTo,
       ...(await this.generateTasksFromCheckouts(checkouts)),
     };
+  }
+
+  /**
+   * Hostaway devuelve checkOutTime como entero (11 = 11:00) mientras que el
+   * mock y el DTO lo expresan como texto 'HH:MM'. Unificamos a texto.
+   */
+  private normalizeCheckoutTime(value: string | number): string {
+    if (typeof value === 'number') {
+      return `${String(value).padStart(2, '0')}:00`;
+    }
+    return value.includes(':') ? value : `${value.padStart(2, '0')}:00`;
   }
 
   // ─── Todas las tareas (supervisor) ────────────────────────────────────────
