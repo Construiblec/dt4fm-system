@@ -75,14 +75,16 @@ type Props = {
 
 export const TaskDetailInfo = ({ detail }: Props) => {
   const phaseStyle = phaseStyles[detail.phase] ?? "bg-slate-100 text-slate-700";
-  // ExecutionTime es el tiempo realmente trabajado, sumando todas las sesiones.
-  // Si está disponible, se usa directamente. El fallback de calcDuration (ActualEnd − ActualStart)
-  // solo es válido para tareas que nunca fueron reabiertas; en tareas reabiertas
-  // ese rango incluye el tiempo ocioso entre sesiones y produce inflación.
-  const wasReopened = detail.supervisionObserv?.includes("[Reabierto]") ?? false;
+  // ExecutionTime es el tiempo realmente trabajado, sumando todas las ejecuciones.
+  // El respaldo por resta solo aplica a tareas antiguas que nunca lo registraron.
   const duration =
     formatExecutionTime(detail.executionTime) ??
-    (wasReopened ? "—" : calcDuration(detail.actualStartTime, detail.actualEndTime));
+    calcDuration(detail.actualStartTime, detail.actualEndTime);
+
+  // El retraso se calcula de las fechas, igual que en la tarjeta del equipo, para que
+  // ambas vistas coincidan. PlannedStartTime y ActualStartTime se conservan intactos al
+  // reabrir, así que el valor es correcto sin depender del DelayTime guardado.
+  const delayLabel = calcDuration(detail.plannedStartTime, detail.actualStartTime);
 
   return (
     <section className="rounded-2xl bg-white p-4 shadow-sm space-y-4">
@@ -134,11 +136,7 @@ export const TaskDetailInfo = ({ detail }: Props) => {
         </div>
         <div className="flex justify-between">
           <span className="text-slate-400">Retraso</span>
-          {detail.delayTime && detail.delayTime > 0 ? (
-            <span>{formatExecutionTime(detail.delayTime)}</span>
-          ) : (
-            <span>Sin retraso</span>
-          )}
+          <span>{delayLabel === "—" ? "Sin retraso" : delayLabel}</span>
         </div>
       </div>
 
