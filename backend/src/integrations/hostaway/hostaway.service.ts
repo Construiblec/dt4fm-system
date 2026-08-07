@@ -22,6 +22,12 @@ interface TokenCache {
 // Solo estos statuses generan tarea de limpieza
 const VALID_RESERVATION_STATUSES = ['new', 'modified', 'confirmed'];
 
+/** Máximo por página que acepta Hostaway en /v1/reservations */
+const HOSTAWAY_PAGE_SIZE = 100;
+
+/** Tope defensivo de páginas para no quedar iterando ante un cursor anómalo */
+const MAX_CHECKOUT_PAGES = 25;
+
 @Injectable()
 export class HostawayService {
   private readonly logger = new Logger(HostawayService.name);
@@ -196,8 +202,10 @@ export class HostawayService {
    * devuelve las reservas más recientes. Por eso filtramos en código
    * por departureDate y por status válido.
    *
-   * Usamos limit=100 (máximo de Hostaway) para asegurar que
-   * no se pierda ningún checkout del día en propiedades con mucho movimiento.
+   * Recorremos todas las páginas con el cursor afterId (mismo patrón que
+   * getReservationsByArrivalDate). Con una sola página de 100 un rango de
+   * varios días se truncaba en silencio: a ~16 checkouts diarios, una semana
+   * ya roza el tope y el usuario recibía un listado incompleto sin error.
    */
   async getCheckouts(
     dateFrom: string,
@@ -208,7 +216,7 @@ export class HostawayService {
 
     if (useMock) {
       this.logger.warn('[MOCK] Usando datos de prueba de Hostaway');
-      return getMockCheckouts(dateFrom);
+      return getMockCheckouts(dateFrom, dateTo);
     }
 
     const token = await this.getAccessToken();
@@ -217,39 +225,75 @@ export class HostawayService {
       `Consultando checkouts Hostaway [${dateFrom} -> ${dateTo}]`,
     );
 
-    const response = await this.performRequest<{
-      result?: unknown[];
-      count?: number;
-    }>('Consulta de checkouts Hostaway', () =>
-      firstValueFrom(
-        this.httpService.get('https://api.hostaway.com/v1/reservations', {
-          timeout: this.requestTimeoutMs,
-          headers: { Authorization: `Bearer ${token}` },
-          params: {
-            checkOutDateFrom: dateFrom,
-            checkOutDateTo: dateTo,
-            includeResources: 1,
-            limit: 100,
-          },
-        }),
-      ),
-    );
+    const filtered: any[] = [];
+    const seenReservationIds = new Set<string>();
+    let totalReceived = 0;
+    let afterId: number | undefined = undefined;
+    let page = 1;
 
-    const rawReservations: any[] = response.data?.result ?? [];
+    while (page <= MAX_CHECKOUT_PAGES) {
+      const params: Record<string, unknown> = {
+        checkOutDateFrom: dateFrom,
+        checkOutDateTo: dateTo,
+        includeResources: 1,
+        limit: HOSTAWAY_PAGE_SIZE,
+      };
 
-    // Filtro 1: solo reservas cuya departureDate esté en el rango solicitado
-    const inRange = rawReservations.filter((r) => {
-      const dep = r.departureDate ?? '';
-      return dep >= dateFrom && dep <= dateTo;
-    });
+      if (afterId !== undefined) {
+        params.afterId = afterId;
+      }
 
-    // Filtro 2: solo status válidos para generar tarea de limpieza
-    const filtered = inRange.filter((r) =>
-      VALID_RESERVATION_STATUSES.includes(r.status ?? ''),
-    );
+      const response = await this.performRequest<{
+        result?: unknown[];
+        count?: number;
+      }>(`Consulta de checkouts Hostaway página ${page}`, () =>
+        firstValueFrom(
+          this.httpService.get('https://api.hostaway.com/v1/reservations', {
+            timeout: this.requestTimeoutMs,
+            headers: { Authorization: `Bearer ${token}` },
+            params,
+          }),
+        ),
+      );
+
+      const rawBatch: any[] = response.data?.result ?? [];
+      totalReceived += rawBatch.length;
+
+      for (const r of rawBatch) {
+        // Filtro 1: solo reservas cuya departureDate esté en el rango solicitado
+        const dep = r.departureDate ?? '';
+        if (dep < dateFrom || dep > dateTo) continue;
+
+        // Filtro 2: solo status válidos para generar tarea de limpieza
+        if (!VALID_RESERVATION_STATUSES.includes(r.status ?? '')) continue;
+
+        // El cursor puede solaparse entre páginas; evitamos duplicados.
+        const id = String(r.hostawayReservationId ?? r.id ?? '');
+        if (id && seenReservationIds.has(id)) continue;
+        if (id) seenReservationIds.add(id);
+
+        filtered.push(r);
+      }
+
+      // Última página: Hostaway devolvió menos de lo pedido.
+      if (rawBatch.length < HOSTAWAY_PAGE_SIZE) break;
+
+      const nextAfterId = rawBatch[rawBatch.length - 1]?.id;
+      // Sin cursor válido o sin avance no podemos seguir sin ciclar.
+      if (nextAfterId == null || nextAfterId === afterId) break;
+
+      afterId = nextAfterId as number;
+      page++;
+    }
+
+    if (page > MAX_CHECKOUT_PAGES) {
+      this.logger.warn(
+        `Hostaway: se alcanzó el tope de ${MAX_CHECKOUT_PAGES} páginas para [${dateFrom}/${dateTo}]; el resultado podría estar incompleto`,
+      );
+    }
 
     this.logger.log(
-      `Hostaway: ${rawReservations.length} recibidas → ${inRange.length} en rango [${dateFrom}/${dateTo}] → ${filtered.length} con status válido`,
+      `Hostaway: ${totalReceived} recibidas en ${page} página(s) → ${filtered.length} en rango [${dateFrom}/${dateTo}] con status válido`,
     );
 
     return {

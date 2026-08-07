@@ -35,6 +35,7 @@ import { CompleteTaskDto } from './dto/complete-task.dto';
 import { CreateCleaningTaskDto } from './dto/create-cleaning-task.dto';
 import { GetAllCleaningTasksQueryDto } from './dto/get-all-cleaning-tasks-query.dto';
 import { GetCleaningTasksQueryDto } from './dto/get-cleaning-tasks-query.dto';
+import { GetCheckoutsQueryDto } from './dto/get-checkouts-query.dto';
 import { ReopenTaskDto } from './dto/reopen-task.dto';
 import { ReviewTaskDto } from './dto/review-task.dto';
 import { UpdateCleaningTaskDto } from './dto/update-cleaning-task.dto';
@@ -127,19 +128,40 @@ export class CleaningTasksController {
   // ─── Hostaway checkouts (lectura) ─────────────────────────────────────────
 
   @Get('checkouts')
-  @ApiOperation({ summary: 'Obtener checkouts leídos desde Hostaway' })
+  @ApiOperation({
+    summary: 'Obtener checkouts leídos desde Hostaway (un día o un rango)',
+  })
   @ApiQuery({
     name: 'date',
     required: false,
-    description: 'Fecha en formato YYYY-MM-DD',
+    description: 'Consultar un único día (YYYY-MM-DD). Por defecto, hoy.',
+    type: 'string',
+  })
+  @ApiQuery({
+    name: 'dateFrom',
+    required: false,
+    description: 'Inicio del rango (YYYY-MM-DD)',
+    type: 'string',
+  })
+  @ApiQuery({
+    name: 'dateTo',
+    required: false,
+    description: 'Fin del rango, inclusive (YYYY-MM-DD)',
     type: 'string',
   })
   @ApiResponse({
     status: 200,
-    description: 'Listado de checkouts de la fecha especificada.',
+    description: 'Listado de checkouts del día o rango especificado.',
   })
-  async getCheckouts(@Query('date') date?: string) {
-    return this.cleaningTasksService.getCheckouts(date);
+  @ApiResponse({
+    status: 400,
+    description: 'Formato de fecha inválido o rango fuera de límites.',
+  })
+  async getCheckouts(
+    @Query(new ValidationPipe({ transform: true, whitelist: true }))
+    query: GetCheckoutsQueryDto,
+  ) {
+    return this.cleaningTasksService.getCheckouts(query);
   }
 
   // ─── Sincronización Hostaway → OpenMAINT ──────────────────────────────────
