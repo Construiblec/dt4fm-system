@@ -126,10 +126,17 @@ export const useCleaningTaskExecution = (taskId: number) => {
         throw new Error(parsed.error.issues[0]?.message ?? "No se puede completar la tarea");
       }
 
+      // Mismo valor que muestra el cronómetro: lo transcurrido en minutos desde el
+      // toque en "Iniciar". El backend lo suma al ExecutionTime acumulado en OpenMAINT.
+      const startedAt = activeTask?.executionStartedAt;
+      const executionMinutes = startedAt
+        ? Math.max(0, (Date.now() - new Date(startedAt).getTime()) / 60_000)
+        : undefined;
+
       return completeCleaningTask(
         taskId,
         parsed.data.observations ?? "",
-        activeTask?.sessionStartTime
+        executionMinutes,
       );
     },
     onSuccess: () => {

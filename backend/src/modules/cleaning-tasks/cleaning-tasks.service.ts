@@ -3,6 +3,7 @@ import {
   ForbiddenException,
   Injectable,
   InternalServerErrorException,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { HostawayService } from '../../integrations/hostaway/hostaway.service';
@@ -42,9 +43,13 @@ const ALLOWED_MIME_TYPES = [
 ];
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
 const MAX_ATTACHMENTS = 10;
+/** Tope defensivo, en minutos, para el tiempo de una sola ejecución reportado por el front. */
+const MAX_SESSION_MINUTES = 1440;
 
 @Injectable()
 export class CleaningTasksService {
+  private readonly logger = new Logger(CleaningTasksService.name);
+
   constructor(
     private readonly hostawayService: HostawayService,
     private readonly openmaintService: CleaningTasksOpenmaintService,
@@ -415,21 +420,24 @@ export class CleaningTasksService {
     const now = new Date().toISOString();
     
     const body: Record<string, unknown> = { phase: PHASE_IDS.IN_EXECUTION };
-    
-    // Solo calculamos el retraso y seteamos ActualStartTime si es la PRIMERA vez que se inicia
-    if (!task.ActualStartTime) {
+
+    // ActualStartTime y DelayTime se registran UNA SOLA VEZ: en el primer inicio real.
+    // Una tarea reabierta ya trae historial, así que no se recalculan y el retraso
+    // original se conserva (de lo contrario el retraso crecería en cada reapertura,
+    // porque se mediría contra la fecha en que se reinició, no la del primer inicio).
+    const hasRunBefore =
+      !!task.ActualStartTime ||
+      this.toNumber(task.ExecutionTime) > 0 ||
+      this.toNumber(task.DelayTime) > 0;
+
+    if (!hasRunBefore) {
       body.ActualStartTime = now;
-      
-      let delayTime = 0;
-      if (task.PlannedStartTime) {
-        const delayMs = new Date(now).getTime() - new Date(task.PlannedStartTime).getTime();
-        if (delayMs > 0) {
-          delayTime = delayMs / 3_600_000;
-        }
-      }
-      
-      if (delayTime > 0) {
-        body.DelayTime = delayTime;
+
+      const delayMinutes = task.PlannedStartTime
+        ? this.calculateDurationMinutes(task.PlannedStartTime, now)
+        : 0;
+      if (delayMinutes > 0) {
+        body.DelayTime = this.roundMinutes(delayMinutes);
       }
     }
 
@@ -464,12 +472,10 @@ export class CleaningTasksService {
     if (!task.ActualStartTime)
       throw new BadRequestException('Task must be started before completing');
     const now = new Date().toISOString();
-    const sessionStart = dto.sessionStartTime ?? task.ActualStartTime;
-    const sessionHours = this.calculateDurationHours(sessionStart, now);
-    const prevExecution = typeof task.ExecutionTime === 'number' 
-      ? task.ExecutionTime 
-      : parseFloat(String(task.ExecutionTime || 0));
-    const executionTime = (isNaN(prevExecution) ? 0 : prevExecution) + sessionHours;
+    const prevExecution = this.toNumber(task.ExecutionTime);
+    const sessionMinutes = this.resolveExecutionMinutes(taskId, task, dto, prevExecution, now);
+    const executionTime = this.roundMinutes(prevExecution + sessionMinutes);
+
     const body: Record<string, unknown> = {
       phase: PHASE_IDS.COMPLETED,
       ActualEndTime: now,
@@ -486,10 +492,53 @@ export class CleaningTasksService {
         phase: PHASE_NAMES[PHASE_IDS.COMPLETED],
         actualEndTime: response?.data?.ActualEndTime ?? now,
         observations: dto.observations ?? null,
-        duration: this.calculateDurationMinutes(task.ActualStartTime, now),
-        executionTime: response?.data?.ExecutionTime ?? executionTime,
+        duration: Math.round(sessionMinutes),
+        executionTime: this.toNumber(response?.data?.ExecutionTime) || executionTime,
       },
     };
+  }
+
+  /**
+   * Minutos trabajados en ESTA ejecución, los que se sumarán al acumulado.
+   *
+   * La fuente es el cronómetro del front, que arranca en cero cuando el empleado
+   * toca "Iniciar" en la tarjeta. Se mide allá de punta a punta con el mismo reloj,
+   * así que no le afecta un desfase horario entre el dispositivo y el servidor.
+   *
+   * Respaldos cuando el front no manda el dato:
+   * - Primera ejecución: ActualStartTime es el arranque de esta única sesión y sirve.
+   * - Tarea reabierta: ActualStartTime apunta al primer inicio histórico; usarlo
+   *   sumaría los días que la tarea estuvo cerrada, así que se acumula 0.
+   */
+  private resolveExecutionMinutes(
+    taskId: number,
+    task: any,
+    dto: CompleteTaskDto,
+    prevExecution: number,
+    now: string,
+  ): number {
+    const reported = dto.executionMinutes;
+    if (typeof reported === 'number' && isFinite(reported) && reported >= 0) {
+      if (reported > MAX_SESSION_MINUTES) {
+        this.logger.warn(
+          `Tarea ${taskId}: el front reportó ${reported} min de ejecución, por encima del ` +
+            `máximo de ${MAX_SESSION_MINUTES} min. Se acota para no corromper el acumulado.`,
+        );
+        return MAX_SESSION_MINUTES;
+      }
+      return reported;
+    }
+
+    const wasReopened = prevExecution > 0;
+    if (!wasReopened && task.ActualStartTime) {
+      return Math.max(0, this.calculateDurationMinutes(task.ActualStartTime, now));
+    }
+
+    this.logger.warn(
+      `Tarea ${taskId}: se completó sin executionMinutes y no es deducible (acumulado ` +
+        `actual: ${prevExecution} min). No se acumula tiempo para no inflar ExecutionTime.`,
+    );
+    return 0;
   }
 
   async reviewTask(
@@ -539,13 +588,14 @@ export class CleaningTasksService {
 
   /**
    * Reabre una tarea cambiándola a Assigned.
-   * El empleado debe volver a iniciarla manualmente (startTask), lo que
-   * reinicia ActualStartTime y permite que completeTask acumule
-   * correctamente el tiempo de la nueva sesión en ExecutionTime.
-   * Los tiempos originales (ActualStartTime/ActualEndTime previos) se
-   * conservan hasta que el empleado inicie la tarea de nuevo.
-   * Fases válidas: Completed, Reviewed.
-   * Solo SuperUser/Admin.
+   * El empleado debe volver a iniciarla manualmente (startTask).
+   *
+   * ActualStartTime y DelayTime NO se tocan: siguen describiendo el primer inicio
+   * real y su retraso. Solo se limpia ActualEndTime porque la tarea vuelve a estar
+   * pendiente. El tiempo de la nueva sesión se suma al ExecutionTime ya acumulado
+   * cuando el empleado vuelve a completarla.
+   *
+   * Fases válidas: Completed, Reviewed. Solo SuperUser/Admin.
    */
   async reopenTask(
     taskId: number,
@@ -783,16 +833,33 @@ export class CleaningTasksService {
     }
   }
 
+  /**
+   * Minutos entre dos fechas, con decimales: el redondeo se aplica una sola vez,
+   * al escribir en OpenMAINT, para no perder precisión al acumular ejecuciones.
+   */
   private calculateDurationMinutes(startIso: string, endIso: string): number {
-    return Math.round(
-      (new Date(endIso).getTime() - new Date(startIso).getTime()) / 60_000,
+    return (
+      (new Date(endIso).getTime() - new Date(startIso).getTime()) / 60_000
     );
   }
 
-  private calculateDurationHours(startIso: string, endIso: string): number {
-    return (
-      (new Date(endIso).getTime() - new Date(startIso).getTime()) / 3_600_000
-    );
+  /**
+   * OpenMAINT puede devolver los campos Double como número o como string.
+   * Normaliza a número; cualquier valor no parseable se trata como 0.
+   */
+  private toNumber(value: unknown): number {
+    if (typeof value === 'number') return isNaN(value) ? 0 : value;
+    if (value == null || value === '') return 0;
+    const parsed = parseFloat(String(value));
+    return isNaN(parsed) ? 0 : parsed;
+  }
+
+  /**
+   * Recorta la precisión de los minutos antes de guardarlos en OpenMAINT:
+   * 2 decimales (~0.6 s) bastan y evitan valores como 7.000000000000001.
+   */
+  private roundMinutes(minutes: number): number {
+    return Math.round(minutes * 100) / 100;
   }
 
   private appendNote(existingText: string | null | undefined, newText: string): string {

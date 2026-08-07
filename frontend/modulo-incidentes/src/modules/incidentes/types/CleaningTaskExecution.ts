@@ -37,7 +37,13 @@ export type ActiveCleaningTask = {
   description: string;
   phase: string;
   actualStartTime: string | null;
-  sessionStartTime?: string;
+  /**
+   * Momento exacto en que el empleado tocó "Iniciar" en la tarjeta. Es el cero del
+   * cronómetro y la base del tiempo que se acumula en ExecutionTime. No tiene
+   * relación con la sesión de login ni con actualStartTime (que en una tarea
+   * reabierta sigue apuntando al primer inicio histórico).
+   */
+  executionStartedAt?: string;
   plannedStartTime: string;
   plannedEndTime: string;
   unitDescription?: string;

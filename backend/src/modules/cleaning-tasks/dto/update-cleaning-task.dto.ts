@@ -59,8 +59,8 @@ export class UpdateCleaningTaskDto {
   observations?: string;
 
   @ApiPropertyOptional({
-    description: 'Tiempo de ejecución acumulado, en horas decimales',
-    example: 1.5,
+    description: 'Tiempo de ejecución acumulado, en minutos (double)',
+    example: 90,
   })
   @IsNumber()
   @IsOptional()

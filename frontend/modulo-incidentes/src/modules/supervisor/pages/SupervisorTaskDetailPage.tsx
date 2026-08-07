@@ -51,7 +51,7 @@ export const SupervisorTaskDetailPage = () => {
 
         <div className="space-y-4 px-4 pt-4">
           {/* Error */}
-          {!loading && error && (
+          {!loading && !!error && (
             <div className="rounded-2xl bg-red-50 p-4 text-sm text-red-600 shadow-sm">
               {error}
             </div>
@@ -127,7 +127,7 @@ export const SupervisorTaskDetailPage = () => {
             plannedEndTime: detail.plannedEndTime ?? "",
             actualStartTime: detail.actualStartTime,
             actualEndTime: detail.actualEndTime,
-            executionTime: null,
+            executionTime: detail.executionTime ?? null,
             delayTime: detail.delayTime ?? null,
             taskObservations: detail.taskObservations,
             supervisionObserv: detail.supervisionObserv,

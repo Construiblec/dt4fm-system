@@ -4,7 +4,11 @@ import { formatDuration } from "@/shared/utils/dateUtils";
 
 export const useActiveTaskTimer = () => {
   const activeTask = useCleaningTaskExecutionStore((state) => state.activeTask);
-  const startTime = activeTask?.actualStartTime;
+  // Se cuenta desde que el empleado tocó "Iniciar" en la tarjeta, nada más.
+  // Sin respaldo a actualStartTime a propósito: en una tarea reabierta ese campo
+  // sigue apuntando al primer inicio histórico y el cronómetro arrancaría con el
+  // tiempo transcurrido desde entonces en vez de en cero.
+  const startTime = activeTask?.executionStartedAt;
   const plannedStartTime = activeTask?.plannedStartTime;
   const plannedEndTime = activeTask?.plannedEndTime;
   const [now, setNow] = useState(() => Date.now());

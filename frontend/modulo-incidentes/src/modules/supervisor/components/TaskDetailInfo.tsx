@@ -49,9 +49,10 @@ function calcDuration(start: string | null, end: string | null): string {
   return `${h}h ${m}min`;
 }
 
-function formatExecutionTime(hoursFloat?: number | null): string | null {
-  if (hoursFloat == null) return null;
-  const totalMinutes = Math.round(hoursFloat * 60);
+/** ExecutionTime y DelayTime llegan de OpenMAINT en minutos (double). */
+function formatExecutionTime(minutesFloat?: number | null): string | null {
+  if (minutesFloat == null) return null;
+  const totalMinutes = Math.round(minutesFloat);
   if (totalMinutes <= 0) return "—";
   const d = Math.floor(totalMinutes / 1440);
   const h = Math.floor((totalMinutes % 1440) / 60);
@@ -74,7 +75,14 @@ type Props = {
 
 export const TaskDetailInfo = ({ detail }: Props) => {
   const phaseStyle = phaseStyles[detail.phase] ?? "bg-slate-100 text-slate-700";
-  const duration = calcDuration(detail.actualStartTime, detail.actualEndTime);
+  // ExecutionTime es el tiempo realmente trabajado, sumando todas las sesiones.
+  // Si está disponible, se usa directamente. El fallback de calcDuration (ActualEnd − ActualStart)
+  // solo es válido para tareas que nunca fueron reabiertas; en tareas reabiertas
+  // ese rango incluye el tiempo ocioso entre sesiones y produce inflación.
+  const wasReopened = detail.supervisionObserv?.includes("[Reabierto]") ?? false;
+  const duration =
+    formatExecutionTime(detail.executionTime) ??
+    (wasReopened ? "—" : calcDuration(detail.actualStartTime, detail.actualEndTime));
 
   return (
     <section className="rounded-2xl bg-white p-4 shadow-sm space-y-4">
@@ -135,7 +143,7 @@ export const TaskDetailInfo = ({ detail }: Props) => {
       </div>
 
       {/* Task Observations */}
-      {detail.taskObservations && (
+      {!!detail.taskObservations && (
         <div className="rounded-xl border border-blue-100 bg-blue-50 p-3">
           <p className="mb-1 text-xs font-semibold text-blue-700">Observaciones de la tarea</p>
           <p className="whitespace-pre-line text-sm text-blue-900 italic">"{cleanObservationText(detail.taskObservations)}"</p>
@@ -143,7 +151,7 @@ export const TaskDetailInfo = ({ detail }: Props) => {
       )}
 
       {/* Supervision Observations */}
-      {detail.supervisionObserv && (
+      {!!detail.supervisionObserv && (
         <div className="rounded-xl border border-violet-100 bg-violet-50 p-3">
           <p className="mb-1 text-xs font-semibold text-violet-700">Observaciones de supervisión</p>
           <p className="whitespace-pre-line text-sm text-violet-900 italic">"{cleanObservationText(detail.supervisionObserv)}"</p>
@@ -151,7 +159,7 @@ export const TaskDetailInfo = ({ detail }: Props) => {
       )}
 
       {/* Team Observations */}
-      {detail.teamObservations && (
+      {!!detail.teamObservations && (
         <div className="rounded-xl border border-amber-100 bg-amber-50 p-3">
           <p className="mb-1 text-xs font-semibold text-amber-700">Observaciones del empleado</p>
           <p className="whitespace-pre-line text-sm text-amber-900 italic">"{cleanObservationText(detail.teamObservations)}"</p>

@@ -62,10 +62,12 @@ export const LoginForm = () => {
       }
 
       setIsSuccess(true);
-      if (response.role === "SuperUser" || response.role === "Admin" || response.role === "SupervisorLimpieza") {
+      if (response.role === "Admin" || response.role === "SupervisorLimpieza") {
         navigate("/supervisor");
-      } else {
+      } else if (response.role === "TPM Equipment" || response.role === "SuperUser") {
         navigate("/dashboard");
+      } else {
+        navigate("/dashboard"); // Permitir otros roles por defecto como estaba antes, pero explicitando los roles solicitados
       }
     } catch (error) {
       setIsSuccess(false);
@@ -108,8 +110,8 @@ export const LoginForm = () => {
                 setUserType("team");
               }}
               className={`flex flex-col items-center justify-center gap-2 rounded-2xl border px-2 py-4 text-sm font-semibold transition ${isActive
-                  ? "border-brand bg-brand/10 text-brand shadow-sm"
-                  : "border-slate-200 bg-white text-slate-500"
+                ? "border-brand bg-brand/10 text-brand shadow-sm"
+                : "border-slate-200 bg-white text-slate-500"
                 }`}
             >
               <div

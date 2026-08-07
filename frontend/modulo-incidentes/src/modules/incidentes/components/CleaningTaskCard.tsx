@@ -156,14 +156,20 @@ export const CleaningTaskCard = ({
       : null;
 
   const startMutation = useMutation({
-    mutationFn: () => startCleaningTask(id),
-    onSuccess: (taskDetail) => {
+    mutationFn: async () => {
+      // Cero del cronómetro: el instante del toque, antes de esperar a la API.
+      const executionStartedAt = new Date().toISOString();
+      const taskDetail = await startCleaningTask(id);
+      return { taskDetail, executionStartedAt };
+    },
+    onSuccess: ({ taskDetail, executionStartedAt }) => {
       startTask({
         id,
         taskNumber,
         description,
         phase: taskDetail.phase ?? "InExecution",
-        actualStartTime: taskDetail.actualStartTime ?? actualStartTime ?? new Date().toISOString(),
+        actualStartTime: taskDetail.actualStartTime ?? actualStartTime ?? executionStartedAt,
+        executionStartedAt,
         plannedStartTime,
         plannedEndTime,
         unitDescription: unit?.description ?? description,
@@ -274,7 +280,7 @@ export const CleaningTaskCard = ({
               <Timer className="h-4 w-4 flex-shrink-0" />
               <span>Duración estimada: {duration}</span>
             </div>
-            {didStartLate && delayTimeLabel && (
+            {didStartLate && !!delayTimeLabel && (
               <div className="flex items-center gap-2">
                 <Timer className="h-4 w-4 flex-shrink-0" />
                 <span>Tarea con retraso de: {delayTimeLabel}</span>
@@ -283,7 +289,7 @@ export const CleaningTaskCard = ({
           </div>
 
           {/* Overdue warning */}
-          {isOverdue && overdueLabel && (
+          {isOverdue && !!overdueLabel && (
             <div className="mt-3 flex items-center gap-2 rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-sm text-orange-700">
               <AlertTriangle className="h-4 w-4 flex-shrink-0" />
               <span>
