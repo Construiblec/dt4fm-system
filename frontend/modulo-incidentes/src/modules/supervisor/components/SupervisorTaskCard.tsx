@@ -57,6 +57,12 @@ export const SupervisorTaskCard = ({ task }: Props) => {
     border: "border-slate-300",
   };
 
+  // Se deduce de los datos, no del texto de observaciones: una tarea recién asignada
+  // nunca trae actualStartTime (al reabrir se conserva el del primer inicio), y
+  // executionTime solo existe tras una finalización previa.
+  const isReopened =
+    (task.phase === "Assigned" && task.actualStartTime != null) ||
+    (task.phase === "InExecution" && (task.executionTime ?? 0) > 0);
 
   return (
     <article
@@ -78,7 +84,7 @@ export const SupervisorTaskCard = ({ task }: Props) => {
           >
             {phaseLabels[task.phase] ?? task.phase}
           </span>
-          {(task.supervisionObserv?.lastIndexOf('[Reabierto]') ?? -1) > (task.supervisionObserv?.lastIndexOf('[Aprobado]') ?? -1) && (
+          {isReopened && (
             <span className="flex-shrink-0 rounded-md bg-rose-100 px-2 py-1 text-xs font-semibold text-rose-700">
               Reabierta
             </span>

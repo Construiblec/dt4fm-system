@@ -571,10 +571,15 @@ export class CleaningTasksService {
 
     if (dto.reviewComments) {
       body.Notes = dto.reviewComments;
-      const prefix = dto.approved ? '[Aprobado]' : '[Reabierto]';
-      const newObs = `${prefix}: ${dto.reviewComments}`;
-      body.SupervisionObserv = this.appendNote(task.SupervisionObserv, newObs);
     }
+
+    // La nota queda siempre como bitácora, con o sin comentarios.
+    const prefix = dto.approved ? '[Aprobado]' : '[Reabierto]';
+    const comments = dto.reviewComments?.trim();
+    body.SupervisionObserv = this.appendNote(
+      task.SupervisionObserv,
+      comments ? `${prefix}: ${comments}` : prefix,
+    );
     const updated = await this.openmaintService.updateTaskWithSession(taskId, body, sessionToken);
     return {
       success: true,
@@ -621,10 +626,13 @@ export class CleaningTasksService {
       phase: PHASE_IDS.ASSIGNED,
       ActualEndTime: null,
     };
-    if (dto.observations) {
-      const newObs = `[Reabierto]: ${dto.observations}`;
-      body.SupervisionObserv = this.appendNote(task.SupervisionObserv, newObs);
-    }
+    // La nota queda siempre como bitácora, con o sin motivo. Ninguna vista depende
+    // ya de este texto para saber si la tarea fue reabierta: eso se deduce de los datos.
+    const reason = dto.observations?.trim();
+    body.SupervisionObserv = this.appendNote(
+      task.SupervisionObserv,
+      reason ? `[Reabierto]: ${reason}` : '[Reabierto]',
+    );
     const updated = await this.openmaintService.updateTaskWithSession(taskId, body, sessionToken);
     return {
       success: true,

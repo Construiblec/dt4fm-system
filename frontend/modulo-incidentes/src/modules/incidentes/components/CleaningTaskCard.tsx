@@ -90,7 +90,6 @@ type Props = Pick<
   | "plannedEndTime"
   | "phase"
   | "actualStartTime"
-  | "supervisionObserv"
   | "actualEndTime"
   | "executionTime"
 >;
@@ -104,7 +103,7 @@ export const CleaningTaskCard = ({
   plannedEndTime,
   phase,
   actualStartTime,
-  supervisionObserv,
+  executionTime,
 }: Props) => {
   const navigate = useNavigate();
   const activeTask = useCleaningTaskExecutionStore((state) => state.activeTask);
@@ -118,11 +117,12 @@ export const CleaningTaskCard = ({
   const isActionable = actionablePhases.has(phase) && !isAnotherTaskActive;
   const unitLabel = unit?.description ?? description;
 
-  const lastReabiertoIdx = supervisionObserv?.lastIndexOf("[Reabierto]") ?? -1;
-  const lastAprobadoIdx = supervisionObserv?.lastIndexOf("[Aprobado]") ?? -1;
+  // Se deduce de los datos, no del texto de observaciones: una tarea recién asignada
+  // nunca trae actualStartTime (al reabrir se conserva el del primer inicio), y
+  // executionTime solo existe tras una finalización previa.
   const isReopened =
-    (phase === "Assigned" || phase === "InExecution") &&
-    lastReabiertoIdx > lastAprobadoIdx;
+    (phase === "Assigned" && actualStartTime != null) ||
+    (phase === "InExecution" && (executionTime ?? 0) > 0);
 
   const plannedStartMs = plannedStartTime ? new Date(plannedStartTime).getTime() : NaN;
   const actualStartMs = actualStartTime ? new Date(actualStartTime).getTime() : NaN;
