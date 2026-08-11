@@ -88,6 +88,40 @@ export class OpenmaintService {
     return this.client.get('/classes/Building/cards', sessionId);
   }
 
+  private buildEqualFilter(attribute: string, value: number): string {
+    return encodeURIComponent(
+      JSON.stringify({
+        attribute: { simple: { attribute, operator: 'equal', value: [value] } },
+      }),
+    );
+  }
+
+  // limit=500 evita el truncado silencioso por el default de paginación de CMDBuild
+  private getCardsByBuilding(
+    className: string,
+    buildingId: number,
+    sessionId: string,
+  ) {
+    const filter = this.buildEqualFilter('Building', buildingId);
+
+    return this.client.get(
+      `/classes/${className}/cards?limit=500&filter=${filter}`,
+      sessionId,
+    );
+  }
+
+  async getFloorsByBuilding(buildingId: number, sessionId: string) {
+    return this.getCardsByBuilding('Floor', buildingId, sessionId);
+  }
+
+  async getUnitsByBuilding(buildingId: number, sessionId: string) {
+    return this.getCardsByBuilding('Unit', buildingId, sessionId);
+  }
+
+  async getCommonAreasByBuilding(buildingId: number, sessionId: string) {
+    return this.getCardsByBuilding('CommonAreas', buildingId, sessionId);
+  }
+
   async getIncidentsByRequester(sessionId: string, employeeId: number) {
     const encodedSort = encodeURIComponent(
       JSON.stringify([

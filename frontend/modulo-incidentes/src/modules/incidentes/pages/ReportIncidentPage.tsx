@@ -1,17 +1,25 @@
 import { AppLayout } from "@/app/layout/AppLayout";
 import { useEffect, useMemo, useState, type ChangeEvent } from "react";
-import { useForm } from "react-hook-form";
+import { Controller, useForm } from "react-hook-form";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
-import { getBuildings } from "@/modules/incidentes/services/buildingsService";
+import {
+  getBuildingLocations,
+  getBuildings,
+} from "@/modules/incidentes/services/buildingsService";
 import {
   createIncident,
   type CreateIncidentResponse,
 } from "@/modules/incidentes/services/incidentsService";
 import type { Building } from "@/modules/incidentes/types/Building";
+import type { BuildingLocations } from "@/modules/incidentes/types/BuildingLocations";
 import { ConfirmModal } from "@/shared/components/ConfirmModal";
 import { ErrorModal } from "@/shared/components/ErrorModal";
 import { LoadingModal } from "@/shared/components/LoadingModal";
+import {
+  SearchableSelect,
+  type SearchableSelectOption,
+} from "@/shared/components/SearchableSelect";
 import { SuccessModal } from "@/shared/components/SuccessModal";
 import { ArrowLeft } from "lucide-react";
 
@@ -40,12 +48,29 @@ const priorities = [
 
 type FormValues = {
   building: string;
-  area: string;
+  /** "" | String(floor.id) */
+  floorId: string;
+  /** "" | "Unit:123" | "CommonArea:123" | OTHER_AREA_VALUE */
+  areaId: string;
+  /** Texto libre cuando areaId === OTHER_AREA_VALUE */
+  areaOther: string;
+  /** Texto libre del fallback para edificios sin plantas registradas */
+  freeArea: string;
   description: string;
 };
 
 const MAX_IMAGES = 6;
 const MAX_IMAGE_SIZE_BYTES = 50 * 1024 * 1024;
+
+const OTHER_AREA_VALUE = "__other__";
+
+const MAX_AREA_OTHER_LENGTH = 80;
+const MAX_FREE_AREA_LENGTH = 120;
+/** ShortDescr es una columna de 255 en CMDBuild; 200 deja margen y mantiene legible el asunto del correo */
+const MAX_FLOOR_AREA_LENGTH = 200;
+
+const FIELD_CLASSES =
+  "w-full rounded-2xl border border-slate-200 bg-white px-4 py-4 text-sm text-slate-900 outline-none transition focus:border-brand focus:ring-4 focus:ring-brand/20";
 
 export const ReportIncidentPage = () => {
   const navigate = useNavigate();
@@ -60,14 +85,32 @@ export const ReportIncidentPage = () => {
     (typeof priorities)[number]
   >(priorities[1]);
   const [images, setImages] = useState<File[]>([]);
+  const [locations, setLocations] = useState<BuildingLocations | null>(null);
+  const [locationsLoading, setLocationsLoading] = useState(false);
+  const [locationsError, setLocationsError] = useState(false);
   const isVisitor = Boolean(localStorage.getItem("visitorName"));
-  const { register, handleSubmit } = useForm<FormValues>({
+  const {
+    register,
+    handleSubmit,
+    control,
+    watch,
+    setValue,
+    trigger,
+    formState: { errors },
+  } = useForm<FormValues>({
     defaultValues: {
       building: "",
-      area: "",
+      floorId: "",
+      areaId: "",
+      areaOther: "",
+      freeArea: "",
       description: "",
     },
   });
+
+  const buildingId = watch("building");
+  const floorId = watch("floorId");
+  const areaId = watch("areaId");
 
   const imagePreviews = useMemo(
     () =>
@@ -119,6 +162,137 @@ export const ReportIncidentPage = () => {
       isMounted = false;
     };
   }, [navigate]);
+
+  // Un solo efecto: al cambiar de edificio limpia planta/área/texto libre y recarga
+  useEffect(() => {
+    setValue("floorId", "");
+    setValue("areaId", "");
+    setValue("areaOther", "");
+    setValue("freeArea", "");
+    setLocations(null);
+    setLocationsError(false);
+
+    if (!buildingId) {
+      return;
+    }
+
+    let cancelled = false;
+
+    setLocationsLoading(true);
+
+    getBuildingLocations(Number(buildingId))
+      .then((data) => {
+        // La comprobación de id descarta respuestas de un edificio ya cambiado
+        if (cancelled || data.buildingId !== Number(buildingId)) {
+          return;
+        }
+
+        setLocations(data);
+      })
+      .catch((error) => {
+        if (cancelled) {
+          return;
+        }
+
+        if (axios.isAxiosError(error) && error.response?.status === 401) {
+          navigate("/login");
+          return;
+        }
+
+        // Degradar al texto libre en vez de bloquear el reporte, pero
+        // sin hacer pasar el fallo por "el edificio no tiene plantas"
+        console.error("Error loading building locations");
+        setLocationsError(true);
+        setLocations({
+          buildingId: Number(buildingId),
+          floors: [],
+          unassignedAreas: [],
+        });
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLocationsLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [buildingId, setValue, navigate]);
+
+  const hasFloors = (locations?.floors.length ?? 0) > 0;
+  const isFallback =
+    Boolean(buildingId) && !locationsLoading && locations !== null && !hasFloors;
+
+  const floorOptions = useMemo<SearchableSelectOption[]>(
+    () =>
+      (locations?.floors ?? []).map((floor) => ({
+        value: String(floor.id),
+        label: floor.label,
+      })),
+    [locations],
+  );
+
+  const selectedFloor = useMemo(
+    () => locations?.floors.find((floor) => String(floor.id) === floorId) ?? null,
+    [locations, floorId],
+  );
+
+  const areaOptions = useMemo<SearchableSelectOption[]>(() => {
+    // Sin planta elegida solo se ofrecen las áreas que no pertenecen a
+    // ninguna planta, más Otros (bodegas, parqueaderos y lo no registrado)
+    const options: SearchableSelectOption[] = (selectedFloor?.areas ?? []).map(
+      (area) => ({
+        value: `${area.kind}:${area.id}`,
+        label: area.label,
+        group: area.kind === "Unit" ? "Unidades" : "Áreas comunes",
+      }),
+    );
+
+    for (const area of locations?.unassignedAreas ?? []) {
+      options.push({
+        value: `${area.kind}:${area.id}`,
+        label: area.label,
+        group: "Sin planta asignada",
+      });
+    }
+
+    options.push({
+      value: OTHER_AREA_VALUE,
+      label: "Otros",
+      group: "Otros",
+    });
+
+    return options;
+  }, [selectedFloor, locations]);
+
+  const composeFloorArea = (values: FormValues): string => {
+    if (!hasFloors) {
+      return values.freeArea.trim();
+    }
+
+    let areaLabel = "";
+
+    if (values.areaId === OTHER_AREA_VALUE) {
+      areaLabel = values.areaOther.trim();
+    } else if (values.areaId) {
+      const pool = [
+        ...(selectedFloor?.areas ?? []),
+        ...(locations?.unassignedAreas ?? []),
+      ];
+
+      areaLabel =
+        pool
+          .find((area) => `${area.kind}:${area.id}` === values.areaId)
+          ?.label.trim() ?? "";
+    }
+
+    return [selectedFloor?.label.trim() ?? "", areaLabel]
+      .filter(Boolean)
+      .join(" - ")
+      .replace(/\s+/g, " ")
+      .slice(0, MAX_FLOOR_AREA_LENGTH);
+  };
 
   const remainingSlots = useMemo(
     () => MAX_IMAGES - images.length,
@@ -208,7 +382,7 @@ export const ReportIncidentPage = () => {
 
       const response = await createIncident({
         buildingId: values.building,
-        floorArea: values.area,
+        floorArea: composeFloorArea(values),
         priority: Number(selectedPriority.id),
         notes,
         images,
@@ -250,7 +424,12 @@ export const ReportIncidentPage = () => {
         <form
           onSubmit={(event) => {
             event.preventDefault();
-            setShowConfirmModal(true);
+            // Validar antes de confirmar: si no, los errores saldrían tras cerrar el modal
+            void trigger().then((isValid) => {
+              if (isValid) {
+                setShowConfirmModal(true);
+              }
+            });
           }}
           className="space-y-5 px-4 py-5"
         >
@@ -275,21 +454,167 @@ export const ReportIncidentPage = () => {
             </select>
           </section>
 
-          <section className="space-y-2">
-            <label
-              htmlFor="area"
-              className="text-sm font-semibold text-slate-700"
-            >
-              Piso / {"\u00c1rea"}
-            </label>
-            <input
-              id="area"
-              type="text"
-              placeholder="01 / 09"
-              className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-4 text-sm text-slate-900 outline-none transition focus:border-brand focus:ring-4 focus:ring-brand/20"
-              {...register("area")}
-            />
-          </section>
+          {isFallback ? (
+            <section className="space-y-2">
+              <label
+                htmlFor="freeArea"
+                className="text-sm font-semibold text-slate-700"
+              >
+                Piso / {"\u00c1rea"}
+              </label>
+              <input
+                id="freeArea"
+                type="text"
+                placeholder="01 / 09"
+                maxLength={MAX_FREE_AREA_LENGTH}
+                className={FIELD_CLASSES}
+                {...register("freeArea")}
+              />
+              {locationsError ? (
+                <p className="text-xs font-medium text-amber-600">
+                  No se pudieron cargar las plantas de este edificio. Escriba
+                  la ubicaci{"\u00f3"}n manualmente.
+                </p>
+              ) : (
+                <p className="text-xs text-slate-400">
+                  Este edificio no tiene plantas registradas. Escriba la
+                  ubicaci{"\u00f3"}n manualmente.
+                </p>
+              )}
+            </section>
+          ) : (
+            <>
+              <section className="space-y-2">
+                <label
+                  htmlFor="floorId"
+                  className="text-sm font-semibold text-slate-700"
+                >
+                  Planta{" "}
+                  <span className="text-red-500" aria-hidden="true">
+                    *
+                  </span>
+                </label>
+                <Controller
+                  control={control}
+                  name="floorId"
+                  rules={{
+                    validate: (value) =>
+                      !hasFloors ||
+                      value !== "" ||
+                      // "Otros" es texto libre: no depende de ninguna planta
+                      areaId === OTHER_AREA_VALUE ||
+                      "Seleccione la planta.",
+                  }}
+                  render={({ field, fieldState }) => (
+                    <SearchableSelect
+                      id="floorId"
+                      value={field.value}
+                      onChange={(next) => {
+                        field.onChange(next);
+
+                        // Conservar lo escrito en Otros al elegir planta después
+                        if (areaId !== OTHER_AREA_VALUE) {
+                          setValue("areaId", "");
+                          setValue("areaOther", "");
+                        }
+                      }}
+                      onBlur={field.onBlur}
+                      options={floorOptions}
+                      loading={locationsLoading}
+                      loadingMessage="Cargando plantas..."
+                      disabled={!buildingId}
+                      required={hasFloors}
+                      invalid={Boolean(fieldState.error)}
+                      describedById={
+                        fieldState.error ? "floorId-error" : undefined
+                      }
+                      placeholder={
+                        buildingId
+                          ? "Seleccionar planta"
+                          : "Seleccione primero el edificio"
+                      }
+                      searchPlaceholder="Buscar planta..."
+                      emptyMessage="Sin plantas"
+                    />
+                  )}
+                />
+                {errors.floorId ? (
+                  <p
+                    id="floorId-error"
+                    role="alert"
+                    className="text-xs font-medium text-red-500"
+                  >
+                    {errors.floorId.message}
+                  </p>
+                ) : null}
+              </section>
+
+              <section className="space-y-2">
+                <label
+                  htmlFor="areaId"
+                  className="text-sm font-semibold text-slate-700"
+                >
+                  {"\u00c1rea"}
+                </label>
+                <Controller
+                  control={control}
+                  name="areaId"
+                  render={({ field }) => (
+                    <SearchableSelect
+                      id="areaId"
+                      value={field.value}
+                      onChange={field.onChange}
+                      onBlur={field.onBlur}
+                      options={areaOptions}
+                      disabled={!buildingId}
+                      loading={locationsLoading}
+                      loadingMessage="Cargando áreas..."
+                      placeholder={
+                        floorId
+                          ? "Seleccionar \u00e1rea (opcional)"
+                          : "Seleccionar \u00e1rea u Otros"
+                      }
+                      searchPlaceholder={"Buscar \u00e1rea..."}
+                      emptyMessage={"Sin \u00e1reas"}
+                    />
+                  )}
+                />
+
+                {areaId === OTHER_AREA_VALUE ? (
+                  <>
+                    <input
+                      id="areaOther"
+                      type="text"
+                      maxLength={MAX_AREA_OTHER_LENGTH}
+                      placeholder={
+                        "Describa el \u00e1rea (ej. Hall de entrada)"
+                      }
+                      aria-invalid={Boolean(errors.areaOther) || undefined}
+                      aria-describedby={
+                        errors.areaOther ? "areaOther-error" : undefined
+                      }
+                      className={FIELD_CLASSES}
+                      {...register("areaOther", {
+                        validate: (value) =>
+                          areaId !== OTHER_AREA_VALUE ||
+                          value.trim().length > 0 ||
+                          "Describa el \u00e1rea.",
+                      })}
+                    />
+                    {errors.areaOther ? (
+                      <p
+                        id="areaOther-error"
+                        role="alert"
+                        className="text-xs font-medium text-red-500"
+                      >
+                        {errors.areaOther.message}
+                      </p>
+                    ) : null}
+                  </>
+                ) : null}
+              </section>
+            </>
+          )}
 
           <section className="space-y-3">
             <p className="text-sm font-semibold text-slate-700">

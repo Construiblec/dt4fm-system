@@ -91,8 +91,8 @@ export const TaskCard = ({
       {/* Body */}
       <div className="mt-3 space-y-2 text-sm text-slate-600">
         <div className="flex items-center gap-2">
-          <Layers className="h-4 w-4" />
-          <span>{location}</span>
+          <Layers className="h-4 w-4 shrink-0" />
+          <span className="min-w-0 truncate">{location}</span>
         </div>
 
         <div className="flex items-center gap-2">
