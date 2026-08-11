@@ -1,6 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsInt, IsString, Min } from 'class-validator';
+import { IsInt, IsString, MaxLength, Min } from 'class-validator';
 
 export class CreateIncidentDto {
   @ApiProperty({ description: 'ID del edificio', example: 3456 })
@@ -14,6 +14,8 @@ export class CreateIncidentDto {
     example: 'Piso 2 - Hall de entrada',
   })
   @IsString()
+  // ShortDescr es una columna de 255 en CMDBuild
+  @MaxLength(255)
   floorArea: string;
 
   @ApiProperty({

@@ -1,5 +1,11 @@
-import { Controller, Get, Headers } from '@nestjs/common';
-import { ApiHeader, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { Controller, Get, Headers, Param, ParseIntPipe } from '@nestjs/common';
+import {
+  ApiHeader,
+  ApiOperation,
+  ApiParam,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { BuildingsService } from './buildings.service';
 
 @ApiTags('Edificios')
@@ -24,5 +30,36 @@ export class BuildingsController {
   })
   async getBuildings(@Headers('authorization') sessionId: string) {
     return this.buildingsService.getBuildings(sessionId);
+  }
+
+  @Get(':buildingId/locations')
+  @ApiOperation({
+    summary:
+      'Obtener las plantas de un edificio con sus unidades y áreas comunes',
+  })
+  @ApiParam({
+    name: 'buildingId',
+    description: 'ID del edificio en OpenMAINT',
+    example: 3025058,
+  })
+  @ApiHeader({
+    name: 'authorization',
+    description: 'Token de sesión de OpenMAINT',
+    required: true,
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Plantas y áreas obtenidas con éxito',
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Sesión de OpenMAINT inválida o expirada',
+  })
+  @ApiResponse({ status: 502, description: 'Error al consultar OpenMAINT' })
+  async getBuildingLocations(
+    @Param('buildingId', ParseIntPipe) buildingId: number,
+    @Headers('authorization') sessionId: string,
+  ) {
+    return this.buildingsService.getBuildingLocations(buildingId, sessionId);
   }
 }
