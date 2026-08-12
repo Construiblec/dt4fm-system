@@ -1,6 +1,7 @@
 import axios from "axios";
 import { env } from "@/config/env";
 import type { Building } from "@/modules/incidentes/types/Building";
+import type { BuildingLocations } from "@/modules/incidentes/types/BuildingLocations";
 
 const buildingsApi = axios.create({
   baseURL: env.VITE_API_URL.replace(/\/api\/?$/, ""),
@@ -17,6 +18,23 @@ export const getBuildings = async (): Promise<Building[]> => {
       Authorization: sessionId ?? "",
     },
   });
+
+  return data;
+};
+
+export const getBuildingLocations = async (
+  buildingId: number,
+): Promise<BuildingLocations> => {
+  const sessionId = localStorage.getItem("sessionId");
+
+  const { data } = await buildingsApi.get<BuildingLocations>(
+    `/buildings/${buildingId}/locations`,
+    {
+      headers: {
+        Authorization: sessionId ?? "",
+      },
+    },
+  );
 
   return data;
 };
