@@ -9,6 +9,10 @@ const incidentsApi = axios.create({
 export type CreateIncidentPayload = {
   buildingId: string;
   floorArea: string;
+  /** Ubicación estructurada; se omite lo que el usuario no haya elegido */
+  floorId?: number | null;
+  unitId?: number | null;
+  commonAreaId?: number | null;
   priority: number;
   notes: string;
   images?: File[];
@@ -27,6 +31,9 @@ type GetMyIncidentsResponse = {
 export const createIncident = async ({
   buildingId,
   floorArea,
+  floorId,
+  unitId,
+  commonAreaId,
   priority,
   notes,
   images = [],
@@ -39,6 +46,15 @@ export const createIncident = async ({
   formData.append("floorArea", floorArea);
   formData.append("priority", String(Number(priority)));
   formData.append("notes", notes);
+
+  // Nunca enviar cadenas vacías: el DTO las convertiría en 0 y fallaría el @Min(1)
+  const optionalIds = { floorId, unitId, commonAreaId };
+
+  Object.entries(optionalIds).forEach(([key, value]) => {
+    if (typeof value === "number" && Number.isInteger(value) && value > 0) {
+      formData.append(key, String(value));
+    }
+  });
 
   images.forEach((image) => {
     formData.append("images", image);

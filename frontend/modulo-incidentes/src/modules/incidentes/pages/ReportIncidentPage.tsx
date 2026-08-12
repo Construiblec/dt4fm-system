@@ -266,6 +266,39 @@ export const ReportIncidentPage = () => {
     return options;
   }, [selectedFloor, locations]);
 
+  // El valor del área es "Unit:<id>" o "CommonArea:<id>", que es lo que permite
+  // distinguir una unidad inmobiliaria de un área común al guardarlas en OpenMAINT
+  const parseAreaSelection = (
+    value: string,
+  ): { unitId?: number; commonAreaId?: number } => {
+    if (!value || value === OTHER_AREA_VALUE) {
+      return {};
+    }
+
+    const separatorIndex = value.indexOf(":");
+
+    if (separatorIndex === -1) {
+      return {};
+    }
+
+    const kind = value.slice(0, separatorIndex);
+    const id = Number(value.slice(separatorIndex + 1));
+
+    if (!Number.isInteger(id) || id <= 0) {
+      return {};
+    }
+
+    if (kind === "Unit") {
+      return { unitId: id };
+    }
+
+    if (kind === "CommonArea") {
+      return { commonAreaId: id };
+    }
+
+    return {};
+  };
+
   const composeFloorArea = (values: FormValues): string => {
     if (!hasFloors) {
       return values.freeArea.trim();
@@ -380,9 +413,15 @@ export const ReportIncidentPage = () => {
       setSuccessData(null);
       setIsSubmitting(true);
 
+      const { unitId, commonAreaId } = parseAreaSelection(values.areaId);
+      const floorId = values.floorId ? Number(values.floorId) : undefined;
+
       const response = await createIncident({
         buildingId: values.building,
         floorArea: composeFloorArea(values),
+        floorId,
+        unitId,
+        commonAreaId,
         priority: Number(selectedPriority.id),
         notes,
         images,
