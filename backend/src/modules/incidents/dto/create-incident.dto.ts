@@ -1,6 +1,6 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsInt, IsString, MaxLength, Min } from 'class-validator';
+import { IsInt, IsOptional, IsString, MaxLength, Min } from 'class-validator';
 
 export class CreateIncidentDto {
   @ApiProperty({ description: 'ID del edificio', example: 3456 })
@@ -17,6 +17,36 @@ export class CreateIncidentDto {
   // ShortDescr es una columna de 255 en CMDBuild
   @MaxLength(255)
   floorArea: string;
+
+  @ApiPropertyOptional({
+    description: 'ID de la planta en OpenMAINT (clase Floor)',
+    example: 3055144,
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  floorId?: number;
+
+  @ApiPropertyOptional({
+    description: 'ID de la unidad inmobiliaria en OpenMAINT (clase Unit)',
+    example: 3110665,
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  unitId?: number;
+
+  @ApiPropertyOptional({
+    description: 'ID del área común en OpenMAINT (clase CommonAreas)',
+    example: 3065444,
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  commonAreaId?: number;
 
   @ApiProperty({
     description:
