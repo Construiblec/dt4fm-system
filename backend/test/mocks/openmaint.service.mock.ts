@@ -28,7 +28,7 @@ export const mockOpenmaintService = {
   }),
   completeIncident: jest.fn().mockResolvedValue(true),
   uploadCompletionAttachment: jest.fn().mockResolvedValue(true),
-  getIncidentsByRequester: jest.fn().mockResolvedValue({
+  getIncidentsByAssignee: jest.fn().mockResolvedValue({
     data: [
       {
         _id: 12345,

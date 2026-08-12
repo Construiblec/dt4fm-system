@@ -210,7 +210,7 @@ export class IncidentsService {
     let response: OpenmaintIncidentListResponse;
 
     try {
-      response = (await this.openmaintService.getIncidentsByRequester(
+      response = (await this.openmaintService.getIncidentsByAssignee(
         sessionId,
         employeeId,
       )) as OpenmaintIncidentListResponse;

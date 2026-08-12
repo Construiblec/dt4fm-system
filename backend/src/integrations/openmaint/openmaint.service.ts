@@ -122,7 +122,7 @@ export class OpenmaintService {
     return this.getCardsByBuilding('CommonAreas', buildingId, sessionId);
   }
 
-  async getIncidentsByRequester(sessionId: string, employeeId: number) {
+  async getIncidentsByAssignee(sessionId: string, employeeId: number) {
     const encodedSort = encodeURIComponent(
       JSON.stringify([
         {
@@ -133,22 +133,11 @@ export class OpenmaintService {
     );
     const searchFilter = {
       attribute: {
-        or: [
-          {
-            simple: {
-              attribute: 'Requester',
-              operator: 'equal',
-              value: [employeeId],
-            },
-          },
-          {
-            simple: {
-              attribute: 'Assignee',
-              operator: 'equal',
-              value: [employeeId],
-            },
-          },
-        ],
+        simple: {
+          attribute: 'Assignee',
+          operator: 'equal',
+          value: [employeeId],
+        },
       },
     };
 
