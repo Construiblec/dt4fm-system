@@ -252,6 +252,10 @@ export class IncidentsService {
           Type: 268288,
           Priority: dto.priority,
           Site: dto.buildingId,
+          // Solo se envían si el usuario los eligió; son opcionales en OpenMAINT
+          ...(dto.floorId ? { Floor: dto.floorId } : {}),
+          ...(dto.unitId ? { Unit: dto.unitId } : {}),
+          ...(dto.commonAreaId ? { CommonArea: dto.commonAreaId } : {}),
           Category: 1460015,
           Subcategory: 1460074,
           ProcessStatus: 277461,

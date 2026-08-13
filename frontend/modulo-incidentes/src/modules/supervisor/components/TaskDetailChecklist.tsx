@@ -1,4 +1,5 @@
 import { CheckCircle2 } from "lucide-react";
+import { parseCleaningChecklist } from "@/modules/incidentes/utils/cleaningChecklistUtils";
 
 type Props = {
   activities: string[];
@@ -7,6 +8,8 @@ type Props = {
 
 export const TaskDetailChecklist = ({ activities, templateName }: Props) => {
   if (activities.length === 0) return null;
+
+  const sections = parseCleaningChecklist(activities);
 
   return (
     <section className="rounded-2xl bg-white p-4 shadow-sm">
@@ -19,14 +22,23 @@ export const TaskDetailChecklist = ({ activities, templateName }: Props) => {
         )}
       </div>
 
-      <ul className="space-y-2">
-        {activities.map((activity, i) => (
-          <li key={i} className="flex items-start gap-2 text-sm text-slate-600">
-            <CheckCircle2 className="mt-0.5 h-4 w-4 flex-shrink-0 text-emerald-500" />
-            <span>{activity}</span>
-          </li>
+      <div className="space-y-4">
+        {sections.map((section, sIdx) => (
+          <div key={sIdx} className="space-y-2">
+            {section.title && (
+              <h4 className="text-2xl font-bold text-slate-800">{section.title}</h4>
+            )}
+            <ul className="space-y-2">
+              {section.items.map((item) => (
+                <li key={item.originalIndex} className="flex items-start gap-2 text-sm text-slate-600">
+                  <CheckCircle2 className="mt-0.5 h-4 w-4 flex-shrink-0 text-emerald-500" />
+                  <span>{item.text}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
         ))}
-      </ul>
+      </div>
     </section>
   );
 };

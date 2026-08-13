@@ -39,6 +39,10 @@ type OpenmaintCreateIncidentBody = {
   Type: number;
   Priority: number;
   Site: number;
+  // Ubicación fina: opcionales en CorrectiveMaint, se omiten si no se eligieron
+  Floor?: number;
+  Unit?: number;
+  CommonArea?: number;
   Category: number;
   Subcategory: number;
   ProcessStatus: number;
