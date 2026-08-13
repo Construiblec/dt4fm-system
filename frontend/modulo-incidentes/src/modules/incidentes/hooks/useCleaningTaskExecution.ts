@@ -15,6 +15,7 @@ import {
   isActiveCleaningTaskPhase,
   useCleaningTaskExecutionStore,
 } from "@/store/cleaningTaskExecutionStore";
+import { getCheckableActivitiesCount } from "@/modules/incidentes/utils/cleaningChecklistUtils";
 
 const toActiveTask = (task: CleaningTaskExecutionDetail): ActiveCleaningTask => ({
   id: task.id,
@@ -84,7 +85,9 @@ export const useCleaningTaskExecution = (taskId: number) => {
         : nextActiveTask,
     );
 
-    const totalActivities = taskDetail.checklistDetail?.activities.length ?? 0;
+    const totalActivities = taskDetail.checklistDetail
+      ? getCheckableActivitiesCount(taskDetail.checklistDetail.activities)
+      : 0;
     initializeChecklist(totalActivities);
 
     if (!photoUploaded) {
@@ -109,7 +112,9 @@ export const useCleaningTaskExecution = (taskId: number) => {
     syncActiveTask,
   ]);
 
-  const totalActivities = detailQuery.data?.checklistDetail?.activities.length ?? 0;
+  const totalActivities = detailQuery.data?.checklistDetail
+    ? getCheckableActivitiesCount(detailQuery.data.checklistDetail.activities)
+    : 0;
   const completedActivities = completedChecklistCountStore();
   const isChecklistComplete = isChecklistCompleteStore();
   const canComplete = canCompleteStore();
