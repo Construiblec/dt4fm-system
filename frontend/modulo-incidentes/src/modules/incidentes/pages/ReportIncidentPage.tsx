@@ -9,6 +9,7 @@ import {
 } from "@/modules/incidentes/services/buildingsService";
 import {
   createIncident,
+  MissingEmployeeError,
   type CreateIncidentResponse,
 } from "@/modules/incidentes/services/incidentsService";
 import type { Building } from "@/modules/incidentes/types/Building";
@@ -21,7 +22,11 @@ import {
   type SearchableSelectOption,
 } from "@/shared/components/SearchableSelect";
 import { SuccessModal } from "@/shared/components/SuccessModal";
-import { clearSession, isVisitorSession } from "@/shared/auth/session";
+import {
+  clearSession,
+  getHomeRoute,
+  isVisitorSession,
+} from "@/shared/auth/session";
 import { ArrowLeft } from "lucide-react";
 
 const priorities = [
@@ -381,13 +386,34 @@ export const ReportIncidentPage = () => {
     void handleSubmit(onSubmit)();
   };
 
-  const onSubmit = async (values: FormValues) => {
+  /**
+   * ProcessNotes reúne la descripción y todo el texto libre.
+   *
+   * "Otros" no corresponde a ninguna referencia de openMAINT (Unit y CommonArea
+   * solo aceptan los ids de los desplegables), así que su texto se registra
+   * aquí para que no se pierda.
+   */
+  const composeNotes = (values: FormValues): string => {
+    const blocks: string[] = [values.description.trim()];
+
+    if (values.areaId === OTHER_AREA_VALUE && values.areaOther.trim()) {
+      blocks.push(`Área indicada: ${values.areaOther.trim()}`);
+    }
+
     const visitorName = localStorage.getItem("visitorName");
     const visitorPhone = localStorage.getItem("visitorPhone");
-    const notes =
-      visitorName && visitorPhone
-        ? `${values.description}\n\n--- Datos del visitante ---\nNombre: ${visitorName}\nTeléfono: ${visitorPhone}`
-        : values.description;
+
+    if (visitorName && visitorPhone) {
+      blocks.push(
+        `--- Datos del visitante ---\nNombre: ${visitorName}\nTeléfono: ${visitorPhone}`,
+      );
+    }
+
+    return blocks.filter(Boolean).join("\n\n");
+  };
+
+  const onSubmit = async (values: FormValues) => {
+    const notes = composeNotes(values);
 
     if (!values.building) {
       setError("Debe seleccionar un edificio.");
@@ -436,6 +462,11 @@ export const ReportIncidentPage = () => {
         return;
       }
 
+      if (error instanceof MissingEmployeeError) {
+        setError(error.message);
+        return;
+      }
+
       setError("Intente nuevamente.");
     } finally {
       setIsSubmitting(false);
@@ -454,7 +485,7 @@ export const ReportIncidentPage = () => {
       return;
     }
 
-    navigate("/dashboard");
+    navigate(getHomeRoute());
   };
 
   return (
@@ -788,7 +819,7 @@ export const ReportIncidentPage = () => {
               return;
             }
 
-            navigate("/dashboard");
+            navigate(getHomeRoute());
           }}
         />
         <ErrorModal

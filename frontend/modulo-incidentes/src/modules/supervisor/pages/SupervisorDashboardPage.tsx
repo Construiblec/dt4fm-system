@@ -4,6 +4,7 @@ import { useLogout } from "@/modules/auth/hooks/useLogout";
 import { useSupervisorTasks } from "@/modules/supervisor/hooks/useSupervisorTasks";
 import { SupervisorTaskCard } from "@/modules/supervisor/components/SupervisorTaskCard";
 import { SupervisorFilters } from "@/modules/supervisor/components/SupervisorFilters";
+import { FloatingReportButton } from "@/modules/incidentes/components/FloatingReportButton";
 import { ReviewModal } from "@/modules/supervisor/components/ReviewModal";
 import type { CleaningTask } from "@/modules/incidentes/types/CleaningTask";
 import logo from "@/shared/assets/images/construiblec-logo.png";
@@ -127,6 +128,11 @@ export const SupervisorDashboardPage = () => {
             )}
           </div>
         </section>
+
+        {/* Deja aire al final para que el botón flotante no tape la última tarjeta */}
+        <div className="h-24" />
+
+        <FloatingReportButton />
       </main>
 
       {/* Review modal */}

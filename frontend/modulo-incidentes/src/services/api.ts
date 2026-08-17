@@ -3,7 +3,11 @@ import { env } from "@/config/env";
 
 export type LoginResponse = {
   sessionId: string;
-  employeeId: string;
+  /**
+   * El backend resuelve el Employee por `LoginUser`; es `null` cuando el
+   * usuario de openMAINT no tiene tarjeta de empleado asociada.
+   */
+  employeeId: string | number | null;
   username: string;
   role: string;
   cleaningEmployeeId?: string | number;

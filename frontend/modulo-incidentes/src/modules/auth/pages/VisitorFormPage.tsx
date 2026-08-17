@@ -4,6 +4,7 @@ import { useForm } from "react-hook-form";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
 import { AppLayout } from "@/app/layout/AppLayout";
+import { storeEmployeeId } from "@/shared/auth/session";
 import logo from "@/shared/assets/images/construiblec-logo.png";
 import { login } from "@/services/api";
 
@@ -34,7 +35,7 @@ export const VisitorFormPage = () => {
       const response = await login("usuario.invitado", "Invitado2026.");
 
       localStorage.setItem("sessionId", response.sessionId);
-      localStorage.setItem("employeeId", response.employeeId);
+      storeEmployeeId(response.employeeId);
       localStorage.setItem("username", response.username);
       localStorage.setItem("role", response.role);
 

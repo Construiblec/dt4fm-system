@@ -62,54 +62,58 @@ export const CleaningTaskChecklist = ({ activities }: CleaningTaskChecklistProps
 
           return (
             <div key={sectionIndex} className="space-y-3">
+              {/*
+                Sección con título: una sola tarjeta que abarca el título y sus
+                elementos. El check es de toda la sección, así que tocar
+                cualquier parte de la tarjeta la marca.
+              */}
               {section.title !== null && titleIndex !== null ? (
                 <label
-                  className={`${CHECKABLE_ROW_CLASS} ${
+                  className={`block cursor-pointer rounded-2xl border p-4 transition ${
                     titleChecked
                       ? "border-emerald-200 bg-emerald-50"
                       : "border-slate-200 bg-slate-50 hover:border-cyan-200"
                   }`}
                 >
-                  <input
-                    type="checkbox"
-                    checked={titleChecked}
-                    onChange={(event) =>
-                      updateChecklistItem(titleIndex, event.target.checked)
-                    }
-                    className={CHECKBOX_CLASS}
-                  />
-                  <span className="text-lg font-bold leading-6 text-slate-800">
-                    {section.title}
-                  </span>
-                </label>
-              ) : null}
+                  <div className="flex items-start gap-3">
+                    <input
+                      type="checkbox"
+                      checked={titleChecked}
+                      onChange={(event) =>
+                        updateChecklistItem(titleIndex, event.target.checked)
+                      }
+                      className={CHECKBOX_CLASS}
+                    />
+                    <span className="text-lg font-bold leading-6 text-slate-800">
+                      {section.title}
+                    </span>
+                  </div>
 
-              {section.items.length > 0 ? (
-                <ul
-                  className={
-                    section.title !== null
-                      ? "space-y-2 pl-4"
-                      : "space-y-3"
-                  }
-                >
-                  {section.items.map((item) => {
-                    // Sección con título: el elemento es solo descripción.
-                    if (item.checkableIndex === null) {
-                      return (
+                  {section.items.length > 0 ? (
+                    <ul className="mt-3 space-y-2 pl-8">
+                      {section.items.map((item) => (
                         <li
                           key={item.originalIndex}
                           className="flex items-start gap-2 text-sm leading-6 text-slate-600"
                         >
                           <span
                             aria-hidden
-                            className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-slate-300"
+                            className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-slate-400"
                           />
                           <span>{item.text}</span>
                         </li>
-                      );
-                    }
+                      ))}
+                    </ul>
+                  ) : null}
+                </label>
+              ) : null}
 
-                    // Plantilla sin títulos: el elemento conserva su check.
+              {/* Plantilla sin títulos: cada elemento conserva su propio check. */}
+              {section.title === null && section.items.length > 0 ? (
+                <ul className="space-y-3">
+                  {section.items.map((item) => {
+                    if (item.checkableIndex === null) return null;
+
                     const itemIndex = item.checkableIndex;
                     const itemChecked = checklistProgress[itemIndex] ?? false;
 
