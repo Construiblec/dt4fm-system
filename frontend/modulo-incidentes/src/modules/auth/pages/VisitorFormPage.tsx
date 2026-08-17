@@ -129,7 +129,7 @@ export const VisitorFormPage = () => {
               <label className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-600">
                 <input
                   type="checkbox"
-                  className="mt-1 h-4 w-4 rounded border-slate-300 text-brand focus:ring-brand/20"
+                  className="mt-1 h-4 w-4 shrink-0 rounded border-slate-300 text-brand focus:ring-brand/20"
                   {...register("acceptTerms", {
                     required: "Debe aceptar los t\u00e9rminos.",
                   })}

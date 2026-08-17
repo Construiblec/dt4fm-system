@@ -1,11 +1,16 @@
 import { useCleaningTaskExecutionStore } from "@/store/cleaningTaskExecutionStore";
 
 /**
+ * openMAINT devuelve en `role` el **Code** del rol, no su Description. Ojo con
+ * esto: el Code de "TPM Equipment" es `MaintOffice`. Códigos existentes en la
+ * instancia: Requester, SuperUser, Guest, Supplier, Propietarios, Team,
+ * MaintOffice, SupervisorLimpieza, AdminOffice, TPM.
+ *
  * Roles que ejecutan y completan tareas en campo. Hoy tienen los mismos
  * permisos; se mantienen separados porque a futuro se habilitarán funciones
  * distintas por rol.
  */
-export const TASK_EXECUTION_ROLES = ["TPM Equipment", "Supplier"] as const;
+export const TASK_EXECUTION_ROLES = ["MaintOffice", "Supplier"] as const;
 
 const normalizeRole = (role?: string | null) => role?.trim().toLowerCase() ?? "";
 

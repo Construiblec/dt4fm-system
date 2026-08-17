@@ -1,11 +1,24 @@
 import { CheckCircle2 } from "lucide-react";
 import { useCleaningTaskExecutionStore } from "@/store/cleaningTaskExecutionStore";
-import { parseCleaningChecklist, getCheckableActivitiesCount } from "@/modules/incidentes/utils/cleaningChecklistUtils";
+import {
+  getCheckableActivitiesCount,
+  parseCleaningChecklist,
+} from "@/modules/incidentes/utils/cleaningChecklistUtils";
 import { useMemo } from "react";
 
 type CleaningTaskChecklistProps = {
   activities: string[];
 };
+
+/**
+ * `shrink-0` es necesario: sin él el input se comprime dentro del flex cuando
+ * el texto es largo, y los cuadros salen de distinto tamaño entre filas.
+ */
+const CHECKBOX_CLASS =
+  "mt-0.5 h-5 w-5 shrink-0 rounded border-slate-300 text-cyan-600 focus:ring-cyan-500";
+
+const CHECKABLE_ROW_CLASS =
+  "flex cursor-pointer items-start gap-3 rounded-2xl border p-4 transition";
 
 export const CleaningTaskChecklist = ({ activities }: CleaningTaskChecklistProps) => {
   const checklistProgress = useCleaningTaskExecutionStore((state) => state.checklistProgress);
@@ -32,7 +45,7 @@ export const CleaningTaskChecklist = ({ activities }: CleaningTaskChecklistProps
             {completedCount}/{totalCheckable} actividades completadas
           </p>
         </div>
-        <CheckCircle2 className="h-5 w-5 text-cyan-600" />
+        <CheckCircle2 className="h-5 w-5 shrink-0 text-cyan-600" />
       </div>
 
       <div className="mt-4 h-2 overflow-hidden rounded-full bg-slate-100">
@@ -43,35 +56,90 @@ export const CleaningTaskChecklist = ({ activities }: CleaningTaskChecklistProps
       </div>
 
       <div className="mt-5 space-y-4">
-        {sections.map((section, sIdx) => (
-          <div key={sIdx} className="space-y-3">
-            {section.title && (
-              <h3 className="text-2xl font-bold text-slate-800">{section.title}</h3>
-            )}
-            {section.items.map((item) => {
-              const checked = checklistProgress[item.checkableIndex] ?? false;
+        {sections.map((section, sectionIndex) => {
+          const titleIndex = section.checkableIndex;
+          const titleChecked = titleIndex !== null && (checklistProgress[titleIndex] ?? false);
 
-              return (
+          return (
+            <div key={sectionIndex} className="space-y-3">
+              {section.title !== null && titleIndex !== null ? (
                 <label
-                  key={item.originalIndex}
-                  className={`flex cursor-pointer items-start gap-3 rounded-2xl border p-4 transition ${
-                    checked
+                  className={`${CHECKABLE_ROW_CLASS} ${
+                    titleChecked
                       ? "border-emerald-200 bg-emerald-50"
                       : "border-slate-200 bg-slate-50 hover:border-cyan-200"
                   }`}
                 >
                   <input
                     type="checkbox"
-                    checked={checked}
-                    onChange={(event) => updateChecklistItem(item.checkableIndex, event.target.checked)}
-                    className="mt-1 h-5 w-5 rounded border-slate-300 text-cyan-600 focus:ring-cyan-500"
+                    checked={titleChecked}
+                    onChange={(event) =>
+                      updateChecklistItem(titleIndex, event.target.checked)
+                    }
+                    className={CHECKBOX_CLASS}
                   />
-                  <span className="text-sm leading-6 text-slate-700">{item.text}</span>
+                  <span className="text-lg font-bold leading-6 text-slate-800">
+                    {section.title}
+                  </span>
                 </label>
-              );
-            })}
-          </div>
-        ))}
+              ) : null}
+
+              {section.items.length > 0 ? (
+                <ul
+                  className={
+                    section.title !== null
+                      ? "space-y-2 pl-4"
+                      : "space-y-3"
+                  }
+                >
+                  {section.items.map((item) => {
+                    // Sección con título: el elemento es solo descripción.
+                    if (item.checkableIndex === null) {
+                      return (
+                        <li
+                          key={item.originalIndex}
+                          className="flex items-start gap-2 text-sm leading-6 text-slate-600"
+                        >
+                          <span
+                            aria-hidden
+                            className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-slate-300"
+                          />
+                          <span>{item.text}</span>
+                        </li>
+                      );
+                    }
+
+                    // Plantilla sin títulos: el elemento conserva su check.
+                    const itemIndex = item.checkableIndex;
+                    const itemChecked = checklistProgress[itemIndex] ?? false;
+
+                    return (
+                      <li key={item.originalIndex}>
+                        <label
+                          className={`${CHECKABLE_ROW_CLASS} ${
+                            itemChecked
+                              ? "border-emerald-200 bg-emerald-50"
+                              : "border-slate-200 bg-slate-50 hover:border-cyan-200"
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={itemChecked}
+                            onChange={(event) =>
+                              updateChecklistItem(itemIndex, event.target.checked)
+                            }
+                            className={CHECKBOX_CLASS}
+                          />
+                          <span className="text-sm leading-6 text-slate-700">{item.text}</span>
+                        </label>
+                      </li>
+                    );
+                  })}
+                </ul>
+              ) : null}
+            </div>
+          );
+        })}
       </div>
     </section>
   );

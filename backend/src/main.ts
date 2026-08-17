@@ -71,7 +71,7 @@ async function bootstrap() {
         type: 'apiKey',
         name: 'x-role',
         in: 'header',
-        description: 'Rol del usuario (SuperUser / Admin / etc.)',
+        description: 'Rol del usuario (SuperUser / SupervisorLimpieza / etc.)',
       },
       'x-role',
     )

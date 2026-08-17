@@ -26,12 +26,22 @@ export const TaskDetailChecklist = ({ activities, templateName }: Props) => {
         {sections.map((section, sIdx) => (
           <div key={sIdx} className="space-y-2">
             {section.title && (
-              <h4 className="text-2xl font-bold text-slate-800">{section.title}</h4>
+              <h4 className="flex items-start gap-2 text-lg font-bold text-slate-800">
+                <CheckCircle2 className="mt-1 h-4 w-4 shrink-0 text-emerald-500" />
+                <span>{section.title}</span>
+              </h4>
             )}
-            <ul className="space-y-2">
+            <ul className={section.title ? "space-y-2 pl-6" : "space-y-2"}>
               {section.items.map((item) => (
                 <li key={item.originalIndex} className="flex items-start gap-2 text-sm text-slate-600">
-                  <CheckCircle2 className="mt-0.5 h-4 w-4 flex-shrink-0 text-emerald-500" />
+                  {section.title ? (
+                    <span
+                      aria-hidden
+                      className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-slate-300"
+                    />
+                  ) : (
+                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500" />
+                  )}
                   <span>{item.text}</span>
                 </li>
               ))}
