@@ -62,9 +62,9 @@ export const LoginForm = () => {
       }
 
       setIsSuccess(true);
-      if (response.role === "Admin" || response.role === "SupervisorLimpieza") {
+      if (response.role === "SupervisorLimpieza") {
         navigate("/supervisor");
-      } else if (response.role === "TPM Equipment" || response.role === "SuperUser") {
+      } else if (response.role === "MaintOffice" || response.role === "SuperUser") {
         navigate("/dashboard");
       } else {
         navigate("/dashboard"); // Permitir otros roles por defecto como estaba antes, pero explicitando los roles solicitados

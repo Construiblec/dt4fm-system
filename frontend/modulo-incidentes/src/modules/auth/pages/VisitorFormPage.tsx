@@ -2,6 +2,7 @@ import axios from "axios";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { useNavigate } from "react-router-dom";
+import { ArrowLeft } from "lucide-react";
 import { AppLayout } from "@/app/layout/AppLayout";
 import logo from "@/shared/assets/images/construiblec-logo.png";
 import { login } from "@/services/api";
@@ -60,6 +61,15 @@ export const VisitorFormPage = () => {
       <main className="min-h-screen px-4 py-8">
         <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center">
           <section className="w-full max-w-sm rounded-[28px] border border-white/80 bg-white p-6 shadow-[0_20px_60px_rgba(15,23,42,0.10)] sm:p-8">
+            <button
+              type="button"
+              onClick={() => navigate("/login")}
+              aria-label="Regresar"
+              className="mb-4 flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 text-slate-700 transition hover:bg-slate-200"
+            >
+              <ArrowLeft className="h-5 w-5" />
+            </button>
+
             <div className="mb-8 flex flex-col items-center text-center">
               <div className="mb-5 flex h-20 w-20 items-center justify-center rounded-3xl bg-slate-50 shadow-inner">
                 <img
@@ -119,7 +129,7 @@ export const VisitorFormPage = () => {
               <label className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-600">
                 <input
                   type="checkbox"
-                  className="mt-1 h-4 w-4 rounded border-slate-300 text-brand focus:ring-brand/20"
+                  className="mt-1 h-4 w-4 shrink-0 rounded border-slate-300 text-brand focus:ring-brand/20"
                   {...register("acceptTerms", {
                     required: "Debe aceptar los t\u00e9rminos.",
                   })}
