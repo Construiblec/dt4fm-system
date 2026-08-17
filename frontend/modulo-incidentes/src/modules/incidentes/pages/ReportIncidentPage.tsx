@@ -21,6 +21,7 @@ import {
   type SearchableSelectOption,
 } from "@/shared/components/SearchableSelect";
 import { SuccessModal } from "@/shared/components/SuccessModal";
+import { clearSession, isVisitorSession } from "@/shared/auth/session";
 import { ArrowLeft } from "lucide-react";
 
 const priorities = [
@@ -441,6 +442,21 @@ export const ReportIncidentPage = () => {
     }
   };
 
+  /**
+   * El invitado llega aquí desde /visitor-form sin ser un usuario real, así que
+   * no puede volver al dashboard: se descarta la sesión prestada y regresa al
+   * formulario de invitado.
+   */
+  const handleBack = () => {
+    if (isVisitorSession()) {
+      clearSession();
+      navigate("/visitor-form");
+      return;
+    }
+
+    navigate("/dashboard");
+  };
+
   return (
     <AppLayout className="bg-[#f1f1f2]">
       <main className="min-h-screen bg-[#f1f1f2]">
@@ -448,7 +464,8 @@ export const ReportIncidentPage = () => {
           <div className="flex items-center gap-3">
             <button
               type="button"
-              onClick={() => navigate("/dashboard")}
+              onClick={handleBack}
+              aria-label="Regresar"
               className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 text-slate-700 transition hover:bg-slate-200"
             >
               <ArrowLeft className="h-5 w-5" />
@@ -765,15 +782,8 @@ export const ReportIncidentPage = () => {
           incidentId={successData?.incidentId ?? null}
           message={successData ? getSuccessMessage(successData) : ""}
           onClose={() => {
-            const isVisitor = Boolean(localStorage.getItem("visitorName"));
-
-            if (isVisitor) {
-              localStorage.removeItem("visitorName");
-              localStorage.removeItem("visitorPhone");
-              localStorage.removeItem("sessionId");
-              localStorage.removeItem("employeeId");
-              localStorage.removeItem("username");
-              localStorage.removeItem("role");
+            if (isVisitorSession()) {
+              clearSession();
               navigate("/login");
               return;
             }
