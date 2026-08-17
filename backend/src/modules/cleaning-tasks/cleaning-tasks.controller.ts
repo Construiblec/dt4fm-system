@@ -29,7 +29,10 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
-import { CleaningTasksService } from './cleaning-tasks.service';
+import {
+  CleaningTasksService,
+  isSupervisorRole,
+} from './cleaning-tasks.service';
 import { CancelTaskDto } from './dto/cancel-task.dto';
 import { CompleteTaskDto } from './dto/complete-task.dto';
 import { CreateCleaningTaskDto } from './dto/create-cleaning-task.dto';
@@ -50,11 +53,12 @@ export class CleaningTasksController {
 
   /**
    * GET /cleaning-tasks/all?phase=Completed&date=2026-04-16&employeeId=123&limit=50&offset=0
-   * Devuelve todas las tareas de limpieza. Solo accesible por SuperUser o Admin.
+   * Devuelve todas las tareas de limpieza. Solo accesible por los roles
+   * supervisores (SuperUser / SupervisorLimpieza).
    */
   @Get('all')
   @ApiOperation({
-    summary: 'Obtener todas las tareas de limpieza (Supervisor/Admin)',
+    summary: 'Obtener todas las tareas de limpieza (Supervisor)',
   })
   @ApiHeader({
     name: 'x-session-token',
@@ -63,7 +67,7 @@ export class CleaningTasksController {
   })
   @ApiHeader({
     name: 'x-role',
-    description: 'Rol del usuario (SuperUser / Admin)',
+    description: 'Rol del usuario (SuperUser / SupervisorLimpieza)',
     required: true,
   })
   @ApiResponse({ status: 200, description: 'Listado completo de tareas.' })
@@ -303,7 +307,7 @@ export class CleaningTasksController {
    * GET /cleaning-tasks/:taskId
    * Detalle completo de una tarea con attachments y flags de acción.
    * - Empleado: requiere x-cleaning-employee-id y valida que la tarea le pertenezca.
-   * - SuperUser/Admin: no requiere x-cleaning-employee-id, omite validación de ownership.
+   * - SuperUser/SupervisorLimpieza: no requiere x-cleaning-employee-id, omite validación de ownership.
    */
   @Get(':taskId')
   @ApiOperation({
@@ -326,7 +330,7 @@ export class CleaningTasksController {
   })
   @ApiHeader({
     name: 'x-role',
-    description: 'Rol del usuario (SuperUser / Admin)',
+    description: 'Rol del usuario (SuperUser / SupervisorLimpieza)',
     required: false,
   })
   @ApiResponse({
@@ -345,8 +349,7 @@ export class CleaningTasksController {
   ) {
     this.requireSessionToken(sessionToken);
 
-    const isSupervisor =
-      role === 'SuperUser' || role === 'Admin' || role === 'SupervisorLimpieza';
+    const isSupervisor = isSupervisorRole(role);
 
     if (isSupervisor) {
       return this.cleaningTasksService.getTaskDetailAsSupervisor(
@@ -440,7 +443,7 @@ export class CleaningTasksController {
   /**
    * PATCH /cleaning-tasks/:taskId/review
    * Transición Completed → Reviewed (o de vuelta a Assigned si rejected).
-   * Solo para SuperUser/Admin.
+   * Solo para SuperUser/SupervisorLimpieza.
    */
   @Patch(':taskId/review')
   @ApiOperation({
@@ -454,7 +457,7 @@ export class CleaningTasksController {
   })
   @ApiHeader({
     name: 'x-role',
-    description: 'Rol del usuario (SuperUser / Admin)',
+    description: 'Rol del usuario (SuperUser / SupervisorLimpieza)',
     required: true,
   })
   @ApiResponse({
@@ -483,7 +486,7 @@ export class CleaningTasksController {
    * PATCH /cleaning-tasks/:taskId/reopen
    * Reabre una tarea (Completed o Reviewed) cambiándola a Assigned.
    * El empleado debe volver a iniciarla manualmente. Los tiempos originales
-   * se conservan hasta ese momento. Solo SuperUser/Admin.
+   * se conservan hasta ese momento. Solo SuperUser/SupervisorLimpieza.
    * Body: { observations?: string }
    */
   @Patch(':taskId/reopen')
@@ -498,7 +501,7 @@ export class CleaningTasksController {
   })
   @ApiHeader({
     name: 'x-role',
-    description: 'Rol del usuario (SuperUser / Admin)',
+    description: 'Rol del usuario (SuperUser / SupervisorLimpieza)',
     required: true,
   })
   @ApiResponse({
@@ -524,7 +527,7 @@ export class CleaningTasksController {
   /**
    * PATCH /cleaning-tasks/:taskId/cancel
    * Cancela una tarea en estado Assigned o InExecution.
-   * Solo para SuperUser/Admin.
+   * Solo para SuperUser/SupervisorLimpieza.
    */
   @Patch(':taskId/cancel')
   @ApiOperation({
@@ -538,7 +541,7 @@ export class CleaningTasksController {
   })
   @ApiHeader({
     name: 'x-role',
-    description: 'Rol del usuario (SuperUser / Admin)',
+    description: 'Rol del usuario (SuperUser / SupervisorLimpieza)',
     required: true,
   })
   @ApiResponse({ status: 200, description: 'Tarea cancelada exitosamente.' })
@@ -563,7 +566,7 @@ export class CleaningTasksController {
    * GET /cleaning-tasks/:taskId/attachments?category=Photo
    * Lista los attachments de una tarea.
    * - Empleado: requiere x-cleaning-employee-id y valida ownership.
-   * - SuperUser/Admin: no requiere x-cleaning-employee-id, acceso directo.
+   * - SuperUser/SupervisorLimpieza: no requiere x-cleaning-employee-id, acceso directo.
    */
   @Get(':taskId/attachments')
   @ApiOperation({
@@ -601,8 +604,7 @@ export class CleaningTasksController {
   ) {
     this.requireSessionToken(sessionToken);
 
-    const isSupervisor =
-      role === 'SuperUser' || role === 'Admin' || role === 'SupervisorLimpieza';
+    const isSupervisor = isSupervisorRole(role);
 
     if (isSupervisor) {
       return this.cleaningTasksService.getAttachmentsAsSupervisor(

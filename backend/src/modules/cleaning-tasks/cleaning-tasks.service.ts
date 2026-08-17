@@ -34,7 +34,14 @@ type UploadedFile = {
 
 const PHASE_LOOKUP = { Assigned: 'Assigned' };
 const SOURCE_LOOKUP = { Hostaway: 'Hostaway', Manual: 'Manual' };
-const SUPERVISOR_ROLES = ['SuperUser', 'Admin', 'SupervisorLimpieza'];
+/**
+ * Códigos de rol de openMAINT (el login devuelve el Code, no la Description).
+ * `SuperUser` es el administrador; no existe un rol con Code `Admin`.
+ */
+export const SUPERVISOR_ROLES = ['SuperUser', 'SupervisorLimpieza'];
+
+export const isSupervisorRole = (role?: string) =>
+  Boolean(role && SUPERVISOR_ROLES.includes(role));
 const ALLOWED_UPLOAD_PHASES = ['InExecution', 'Completed'];
 const ALLOWED_MIME_TYPES = [
   'image/jpeg',
@@ -664,7 +671,7 @@ export class CleaningTasksService {
    * pendiente. El tiempo de la nueva sesión se suma al ExecutionTime ya acumulado
    * cuando el empleado vuelve a completarla.
    *
-   * Fases válidas: Completed, Reviewed. Solo SuperUser/Admin.
+   * Fases válidas: Completed, Reviewed. Solo SuperUser/SupervisorLimpieza.
    */
   async reopenTask(
     taskId: number,

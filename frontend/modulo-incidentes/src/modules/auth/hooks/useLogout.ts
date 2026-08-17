@@ -1,13 +1,11 @@
 import { useNavigate } from "react-router-dom";
+import { clearSession } from "@/shared/auth/session";
 
 export const useLogout = () => {
   const navigate = useNavigate();
 
   return () => {
-    localStorage.removeItem("session");
-    localStorage.removeItem("sessionId");
-    localStorage.removeItem("username");
-    localStorage.removeItem("role");
+    clearSession();
     navigate("/login");
   };
 };

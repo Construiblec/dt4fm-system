@@ -1,4 +1,5 @@
 import axios from "axios";
+import { getHomeRoute, storeEmployeeId } from "@/shared/auth/session";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { useNavigate } from "react-router-dom";
@@ -51,7 +52,7 @@ export const LoginForm = () => {
       const response = await login(usuario, password);
 
       localStorage.setItem("sessionId", response.sessionId);
-      localStorage.setItem("employeeId", response.employeeId);
+      storeEmployeeId(response.employeeId);
       localStorage.setItem("username", response.username);
       localStorage.setItem("role", response.role);
       if (response.cleaningEmployeeId !== undefined) {
@@ -62,13 +63,8 @@ export const LoginForm = () => {
       }
 
       setIsSuccess(true);
-      if (response.role === "Admin" || response.role === "SupervisorLimpieza") {
-        navigate("/supervisor");
-      } else if (response.role === "TPM Equipment" || response.role === "SuperUser") {
-        navigate("/dashboard");
-      } else {
-        navigate("/dashboard"); // Permitir otros roles por defecto como estaba antes, pero explicitando los roles solicitados
-      }
+      // Los roles no contemplados caen en el dashboard de operario, como antes
+      navigate(getHomeRoute(response.role));
     } catch (error) {
       setIsSuccess(false);
 

@@ -11,6 +11,7 @@ import {
   User,
 } from "lucide-react";
 import { AppLayout } from "@/app/layout/AppLayout";
+import { clearSession } from "@/shared/auth/session";
 import {
   getOwnerUnits,
   getOwnerPayments,
@@ -76,11 +77,7 @@ export const OwnerDashboardPage = () => {
   }, [tenantId]);
 
   const handleLogout = () => {
-    localStorage.removeItem("sessionId");
-    localStorage.removeItem("username");
-    localStorage.removeItem("role");
-    localStorage.removeItem("tenantId");
-    localStorage.removeItem("ownerName");
+    clearSession();
     navigate("/login");
   };
 

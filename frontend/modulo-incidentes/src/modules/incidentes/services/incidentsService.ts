@@ -1,6 +1,20 @@
 import axios from "axios";
 import { env } from "@/config/env";
+import { getEmployeeId } from "@/shared/auth/session";
 import type { Incident } from "@/modules/incidentes/types/Incident";
+
+/**
+ * El usuario de openMAINT no tiene tarjeta de Employee asociada (atributo
+ * `LoginUser`), así que no puede figurar como solicitante del incidente.
+ */
+export class MissingEmployeeError extends Error {
+  constructor() {
+    super(
+      "Su usuario no tiene un empleado asociado en openMAINT, así que no puede reportar novedades. Solicite al administrador que vincule su usuario a una ficha de empleado.",
+    );
+    this.name = "MissingEmployeeError";
+  }
+}
 
 const incidentsApi = axios.create({
   baseURL: env.VITE_API_URL.replace(/\/api\/?$/, ""),
@@ -39,7 +53,13 @@ export const createIncident = async ({
   images = [],
 }: CreateIncidentPayload): Promise<CreateIncidentResponse> => {
   const sessionId = localStorage.getItem("sessionId");
-  const employeeId = localStorage.getItem("employeeId");
+  const employeeId = getEmployeeId();
+
+  // Sin employeeId el backend responde 400; avisar aquí evita que el usuario
+  // vea un "Intente nuevamente" que nunca va a funcionar.
+  if (employeeId === null) {
+    throw new MissingEmployeeError();
+  }
 
   const formData = new FormData();
   formData.append("buildingId", buildingId);
