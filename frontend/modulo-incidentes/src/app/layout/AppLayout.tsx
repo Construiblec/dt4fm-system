@@ -1,6 +1,8 @@
 import type { ReactNode } from "react";
 import { useLocation } from "react-router-dom";
 import { GlobalTaskIndicator } from "@/shared/components/GlobalTaskIndicator";
+import { InstallAppBanner } from "@/shared/components/InstallAppBanner";
+import { useInstallPrompt } from "@/shared/hooks/useInstallPrompt";
 import {
   canExecuteTasks,
   getCurrentRole,
@@ -26,6 +28,13 @@ const isIndicatorBlockedRoute = (pathname: string) =>
   pathname === "/visitor-form" ||
   pathname.startsWith("/owner");
 
+/**
+ * El banner de instalacion tiene su propia lista: los propietarios si son
+ * destinatarios validos, y solo estorba en el formulario de invitado, que es
+ * un flujo de un solo uso.
+ */
+const isInstallBlockedRoute = (pathname: string) => pathname === "/visitor-form";
+
 export const AppLayout = ({ children, className = "bg-white" }: AppLayoutProps) => {
   const location = useLocation();
   const activeTask = useCleaningTaskExecutionStore((state) => state.activeTask);
@@ -46,11 +55,27 @@ export const AppLayout = ({ children, className = "bg-white" }: AppLayoutProps) 
     !isExecutionRoute
   );
 
+  const { mode, install, dismiss } = useInstallPrompt();
+  const showInstall =
+    mode !== "hidden" && !isInstallBlockedRoute(location.pathname);
+
+  // Cada barra fija mide 56px (pt-14) y se apilan.
+  const bars = (showIndicator ? 1 : 0) + (showInstall ? 1 : 0);
+  const topPadding = bars === 2 ? "pt-28" : bars === 1 ? "pt-14" : undefined;
+
   return (
     <div className="min-h-screen bg-gray-100 flex justify-center">
       <div className={`min-h-screen w-full max-w-md ${className}`}>
         {showIndicator ? <GlobalTaskIndicator /> : null}
-        <div className={showIndicator ? "pt-14" : undefined}>{children}</div>
+        {showInstall ? (
+          <InstallAppBanner
+            mode={mode}
+            offsetTop={showIndicator}
+            onInstall={() => void install()}
+            onDismiss={dismiss}
+          />
+        ) : null}
+        <div className={topPadding}>{children}</div>
       </div>
     </div>
   );
