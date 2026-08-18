@@ -36,7 +36,7 @@ export const InstallAppBanner = ({
             <div className="min-w-0">
               <p className="truncate text-sm font-semibold">Instala Construiblec</p>
               <p className="text-xs text-white/90">
-                Acceso directo y mas rapido desde tu inicio
+                Acceso directo y más rápido desde tu inicio
               </p>
             </div>
           </div>

@@ -24,7 +24,7 @@ const isIos = () => {
   );
 };
 
-/** Solo Safari en iOS ofrece "Anadir a pantalla de inicio". */
+/** Solo Safari en iOS ofrece "Añadir a pantalla de inicio". */
 const isIosSafari = () =>
   isIos() && !/CriOS|FxiOS|EdgiOS|OPiOS/.test(window.navigator.userAgent);
 
@@ -61,7 +61,7 @@ export const useInstallPrompt = () => {
 
   const install = useCallback(async () => {
     const outcome = await consumeInstallPrompt();
-    // Rechazar el dialogo nativo tambien silencia el banner 14 dias.
+    // Rechazar el diálogo nativo también silencia el banner 14 días.
     if (outcome === "dismissed") dismiss();
     return outcome;
   }, [dismiss]);

@@ -2,8 +2,8 @@ import { RefreshCw } from "lucide-react";
 import { useServiceWorkerUpdate } from "@/shared/hooks/useServiceWorkerUpdate";
 
 /**
- * Ademas del aviso, este componente es quien registra el service worker: debe
- * estar montado siempre, no detras de una condicion de ruta.
+ * Además del aviso, este componente es quien registra el service worker: debe
+ * estar montado siempre, no detrás de una condición de ruta.
  */
 export const UpdateAppToast = () => {
   const { needRefresh, dismiss, reload } = useServiceWorkerUpdate();
@@ -18,7 +18,7 @@ export const UpdateAppToast = () => {
         <div className="flex min-w-0 items-center gap-2">
           <RefreshCw className="h-4 w-4 shrink-0" />
           <p className="truncate text-sm font-semibold">
-            Hay una version nueva disponible
+            Hay una versión nueva disponible
           </p>
         </div>
 

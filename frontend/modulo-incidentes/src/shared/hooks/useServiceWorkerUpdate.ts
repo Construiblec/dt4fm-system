@@ -3,8 +3,8 @@ import { useRegisterSW } from "virtual:pwa-register/react";
 const UPDATE_CHECK_INTERVAL_MS = 60 * 60 * 1000;
 
 /**
- * Registra el service worker y avisa cuando hay una version nueva esperando.
- * Con `injectRegister: null` en vite.config, este hook es el unico registro:
+ * Registra el service worker y avisa cuando hay una versión nueva esperando.
+ * Con `injectRegister: null` en vite.config, este hook es el único registro:
  * si nadie lo llama, la app no es instalable.
  */
 export const useServiceWorkerUpdate = () => {
@@ -15,7 +15,7 @@ export const useServiceWorkerUpdate = () => {
     onRegisteredSW(_swUrl, registration) {
       if (!registration) return;
 
-      // Una sesion instalada puede vivir horas sin navegar: hay que sondear.
+      // Una sesión instalada puede vivir horas sin navegar: hay que sondear.
       setInterval(() => {
         if (registration.installing || !navigator.onLine) return;
         void registration.update();

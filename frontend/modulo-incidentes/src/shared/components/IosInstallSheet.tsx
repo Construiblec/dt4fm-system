@@ -7,10 +7,10 @@ type IosInstallSheetProps = {
 
 const steps = [
   { icon: Share, text: "Toca Compartir en la barra inferior de Safari." },
-  { icon: SquarePlus, text: "Desliza y elige Anadir a pantalla de inicio." },
+  { icon: SquarePlus, text: "Desliza y elige Añadir a pantalla de inicio." },
 ];
 
-/** Safari no expone `beforeinstallprompt`: en iOS solo queda la guia manual. */
+/** Safari no expone `beforeinstallprompt`: en iOS solo queda la guía manual. */
 export const IosInstallSheet = ({ open, onClose }: IosInstallSheetProps) => {
   if (!open) {
     return null;
@@ -31,7 +31,7 @@ export const IosInstallSheet = ({ open, onClose }: IosInstallSheetProps) => {
               Instalar en tu iPhone
             </h2>
             <p className="mt-1 text-sm text-slate-500">
-              Tendras Construiblec como una app mas en tu pantalla de inicio.
+              Tendrás Construiblec como una app más en tu pantalla de inicio.
             </p>
           </div>
 

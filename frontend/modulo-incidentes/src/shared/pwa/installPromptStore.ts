@@ -11,9 +11,9 @@ const listeners = new Set<() => void>();
 const emit = () => listeners.forEach((listener) => listener());
 
 /**
- * Los listeners se registran al evaluar el modulo, no en un efecto: el
+ * Los listeners se registran al evaluar el módulo, no en un efecto: el
  * navegador dispara `beforeinstallprompt` antes de que React monte y el evento
- * se pierde si nadie lo esta esperando.
+ * se pierde si nadie lo está esperando.
  */
 window.addEventListener("beforeinstallprompt", (event) => {
   event.preventDefault();
