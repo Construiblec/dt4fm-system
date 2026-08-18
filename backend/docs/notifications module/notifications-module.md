@@ -65,12 +65,15 @@ Define **cómo** se envía un correo, sin conocer su contenido ni su origen.
 
 * `mail/mail-provider.interface.ts` – Contrato `MailProvider` que todo proveedor debe implementar, más los tipos `MailMessage` y `MailSendResult`, y el token de inyección `MAIL_PROVIDER`.
 * `mail/smtp-mail.provider.ts` – Implementación SMTP basada en **nodemailer**. Sirve para cualquier servidor SMTP cambiando únicamente las credenciales.
+* `mail/resend-mail.provider.ts` – Implementación sobre la **API HTTP de Resend**, sin SMTP. Es la que hay que usar en Render y plataformas similares, que bloquean las conexiones SMTP salientes.
 
 ### 4.2. Capa de envío (motor)
 
 Toma uno o varios mensajes ya construidos y los envía con control de ritmo.
 
-* `mail/mailer.service.ts` – `MailerService`. Expone `sendOne`, `sendBulk` y `verifyProvider`. No conoce plantillas ni openMAINT.
+* `mail/mailer.service.ts` – `MailerService`. Expone `sendOne`, `sendBulk` y `verifyProvider`. No conoce plantillas.
+
+Además, cada envío exitoso queda registrado como card en la clase **`HistorialEmail`** de openMAINT (`Desde`, `Para`, `Asunto`). Es un registro *best-effort*: si falla, se anota una advertencia en el log pero **no afecta al envío**. Se desactiva con `HISTORIAL_EMAIL_ENABLED=false`, útil en entornos sin openMAINT. Es la única dependencia de openMAINT en esta capa.
 
 ### 4.3. Capa de negocio
 
@@ -92,13 +95,17 @@ modules
   ├ notifications.module.ts
   ├ notifications.controller.ts
   ├ notifications.service.ts
+  ├ email-templates.controller.ts     CRUD de plantillas sobre openMAINT
+  ├ email-templates.service.ts
+  ├ html-templates.ts                 maquetas HTML base
   ├ template-renderer.service.ts
-  ├ recipient-scope.enum.ts
+  ├ recipient-scope.enum.ts           (sin uso; ver sección 7)
   ├ dto
   │ └ send-bulk.dto.ts
   └ mail
     ├ mail-provider.interface.ts
     ├ smtp-mail.provider.ts
+    ├ resend-mail.provider.ts
     └ mailer.service.ts
 ```
 
@@ -134,16 +141,16 @@ Body:
 
 | Campo        | Tipo                       | Obligatorio | Descripción                                                  |
 | ------------ | -------------------------- | ----------- | ------------------------------------------------------------ |
-| `scope`      | string (`all`/`owners`/`tenants`) | Sí   | A quién se envía el comunicado                               |
 | `templateId` | string                     | Sí          | ID de la card de plantilla en openMAINT                      |
+| `recipients` | array de emails            | Sí          | Lista de destinatarios ya resuelta; mínimo uno               |
 | `extraVars`  | objeto `{ clave: valor }`  | No          | Variables globales adicionales para el render de la plantilla |
 
 Ejemplo:
 
 ```json
 {
-  "scope": "owners",
   "templateId": "12",
+  "recipients": ["ana@example.com", "luis@example.com"],
   "extraVars": {
     "periodo": "Marzo 2026"
   }
@@ -183,20 +190,16 @@ Respuesta:
 
 ## 7. Resolución de destinatarios
 
-Los destinatarios se leen de la clase `Tenant` de openMAINT. El alcance (`scope`) se traduce en un filtro sobre el atributo lookup `OccupancyType`.
+**La resolución no la hace el backend.** La página personalizada de openMAINT decide a quién enviar (edificio, alcance, relaciones) y manda la lista de correos ya resuelta en `recipients`. El backend solo renderiza y envía: no conoce edificios ni la clase `Tenant`.
 
-| scope    | Filtro aplicado                                              |
-| -------- | ----------------------------------------------------------- |
-| `all`    | Sin filtro: todos los Tenant                                |
-| `owners` | `OccupancyType = OPENMAINT_OCCUPANCY_OWNER_CODE`            |
-| `tenants`| `OccupancyType = OPENMAINT_OCCUPANCY_TENANT_CODE`          |
+Sobre la lista recibida se aplican dos pasos:
 
-Los códigos del lookup **no están escritos en el código**: se configuran por variables de entorno para no acoplar el backend a los IDs concretos de la instancia de openMAINT. Si no se configuran, el envío va a todos los Tenant y se registra una advertencia en el log.
+* **Validación**: cada elemento debe ser un email con formato válido (`@IsEmail` en el DTO); si alguno falla, la petición se rechaza con 400.
+* **Deduplicación** por correo normalizado en minúsculas, de modo que un mismo email nunca recibe el comunicado dos veces.
 
-Antes de enviar, la lista de destinatarios se procesa:
+Si tras deduplicar no queda ninguno, se responde 404.
 
-* Se descartan los correos vacíos o con formato inválido.
-* Se **deduplica por correo**, de modo que un mismo email nunca recibe el comunicado dos veces.
+> **Nota histórica.** Una versión anterior aceptaba un campo `scope` (`all`/`owners`/`tenants`) y resolvía los destinatarios contra `Tenant.OccupancyType` usando las variables `OPENMAINT_OCCUPANCY_OWNER_CODE` y `OPENMAINT_OCCUPANCY_TENANT_CODE`. Ese comportamiento ya no existe: el enum `RecipientScope` quedó en el código sin uso, y esas dos variables de entorno no las lee nadie.
 
 ---
 
@@ -235,10 +238,14 @@ Los marcadores sin valor se reemplazan por cadena vacía para no dejar texto cru
 ## 9. Configuración (variables de entorno)
 
 ```env
-# Proveedor de correo activo (por ahora solo "smtp")
+# Proveedor de correo activo: "smtp" | "resend"
 MAIL_PROVIDER=smtp
 
-# Configuración SMTP
+# Opción A: Resend (API HTTP). Obligatoria en Render, que bloquea SMTP saliente.
+RESEND_API_KEY=
+RESEND_FROM_EMAIL=DT4FM <no-reply@tu-dominio.com>
+
+# Opción B: SMTP
 SMTP_HOST=sandbox.smtp.mailtrap.io
 SMTP_PORT=2525
 SMTP_SECURE=false
@@ -249,12 +256,11 @@ SMTP_FROM=DT4FM <no-reply@example.com>
 # Pausa en milisegundos entre cada envío del lote
 MAIL_THROTTLE_MS=200
 
+# Registrar cada envío exitoso en la clase HistorialEmail de openMAINT
+HISTORIAL_EMAIL_ENABLED=true
+
 # Clase de plantillas en openMAINT
 OPENMAINT_TEMPLATE_CLASS=EmailTemplate
-
-# Códigos del lookup OccupancyType para filtrar destinatarios
-OPENMAINT_OCCUPANCY_OWNER_CODE=
-OPENMAINT_OCCUPANCY_TENANT_CODE=
 ```
 
 Ejemplos de configuración SMTP por proveedor:
@@ -265,14 +271,18 @@ Ejemplos de configuración SMTP por proveedor:
 | Brevo     | smtp-relay.brevo.com      | 587       | false       |
 | Amazon SES| email-smtp.\<region\>.amazonaws.com | 587 | false   |
 
+> **Mailtrap "sandbox" no entrega los correos** al destinatario real: los captura en una bandeja web. Es lo que se quiere en desarrollo, pero en producción hace que todo parezca enviado sin que llegue nada.
+
+**Verificación del dominio.** Con Resend —y con cualquier proveedor que entregue de verdad— el dominio del remitente debe estar verificado mediante registros SPF y DKIM en el DNS. Resend los coloca en subdominios (`resend._domainkey.<dominio>` y `send.<dominio>`), no en el dominio raíz: consultar solo el raíz da la falsa impresión de que no está configurado.
+
 ---
 
 ## 10. Dependencias
 
-El módulo requiere **nodemailer**. Instalación (en la carpeta `backend`):
+El módulo requiere **nodemailer** (proveedor SMTP) y **resend** (proveedor HTTP). Ambos ya están en `package.json`; para una instalación desde cero, en la carpeta `backend`:
 
 ```bash
-npm install nodemailer
+npm install nodemailer resend
 npm install -D @types/nodemailer
 ```
 
@@ -280,11 +290,13 @@ npm install -D @types/nodemailer
 
 ## 11. Cómo cambiar de proveedor de correo
 
-Hay dos escenarios:
+Hay tres escenarios:
 
 **Mismo transporte SMTP, otro servidor** (Mailtrap → Brevo, etc.): solo se cambian las variables de entorno `SMTP_*`. No se toca código.
 
-**Transporte distinto** (por ejemplo, usar el SDK/API nativa de un proveedor en lugar de SMTP):
+**Entre SMTP y Resend**: ambos ya están implementados. Basta cambiar `MAIL_PROVIDER` entre `smtp` y `resend` y rellenar las variables del elegido. No se toca código.
+
+**Un transporte nuevo** (otro SDK o API):
 
 1. Crear una clase nueva en `mail/` que implemente la interfaz `MailProvider`.
 2. Añadir un `case` en el factory `mailProviderFactory` de `notifications.module.ts`.
