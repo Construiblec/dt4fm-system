@@ -4,7 +4,7 @@ import { VitePWA } from 'vite-plugin-pwa'
 import path from 'path'
 
 // https://vite.dev/config/
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   plugins: [
     react(),
     VitePWA({
@@ -20,7 +20,7 @@ export default defineConfig({
         name: 'Construiblec',
         short_name: 'Construiblec',
         description:
-          'Gestion de incidentes, mantenimientos preventivos y tareas de limpieza en campo.',
+          'Gestión de incidentes, mantenimientos preventivos y tareas de limpieza en campo.',
         lang: 'es',
         dir: 'ltr',
         start_url: '/',
@@ -62,9 +62,10 @@ export default defineConfig({
         navigateFallbackDenylist: [/^\/api\//, /^\/_vercel\//],
       },
 
-      // Activar solo para depurar el SW: SW_DEV=true npm run dev
+      // El SW no corre en `npm run dev`: con HMR activo sirve módulos rancios.
+      // Para probar la instalación sin build usar `npm run dev:pwa`.
       devOptions: {
-        enabled: process.env.SW_DEV === 'true',
+        enabled: mode === 'pwa',
         type: 'module',
         navigateFallback: 'index.html',
       },
@@ -75,6 +76,6 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
-})
+}))
 
 //Comentario para validar pipeline
