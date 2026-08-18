@@ -961,6 +961,18 @@ export class CleaningTasksService {
 
   // ─── Actualización directa ────────────────────────────────────────────────
 
+  /**
+   * Escribe en OpenMAINT solo los campos que llegan en el dto.
+   *
+   * Asignar un empleado NO toca `PlannedStartTime`. Antes se sobrescribía con
+   * la hora actual, lo que tenía dos efectos malos: borraba el horario previsto
+   * que vive en OpenMAINT, y pisaba incluso un `plannedStartTime` enviado
+   * explícitamente en la misma petición. Como consecuencia, el retraso que
+   * calcula `startTask` se medía contra el momento de la asignación en vez de
+   * contra el horario planificado, y siempre salía cercano a cero.
+   *
+   * Para fijar una hora planificada hay que mandarla en `plannedStartTime`.
+   */
   async updateCleaningTask(taskId: number, dto: UpdateCleaningTaskDto) {
     const body: Record<string, unknown> = {};
     if (dto.phase) body.phase = dto.phase;
@@ -971,7 +983,7 @@ export class CleaningTasksService {
     if (dto.actualEndTime) body.ActualEndTime = dto.actualEndTime;
     if (dto.executionTime != null) body.ExecutionTime = dto.executionTime;
     if (dto.observations) body.Observations = dto.observations;
-    if (dto.employeeId) body.PlannedStartTime = new Date().toISOString();
+
     const response = await this.openmaintService.updateCleaningTask(
       taskId,
       body,
