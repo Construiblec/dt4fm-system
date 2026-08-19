@@ -4,11 +4,17 @@ import { formatDuration } from "@/shared/utils/dateUtils";
 
 export const useActiveTaskTimer = () => {
   const activeTask = useCleaningTaskExecutionStore((state) => state.activeTask);
-  // Se cuenta desde que el empleado tocó "Iniciar" en la tarjeta, nada más.
+  // Cero del cronómetro: el arranque de la ejecución en curso según OpenMAINT, con
+  // la marca local como respaldo. Manda el servidor porque es lo único idéntico en
+  // todas las ventanas; cuando el cero vivía solo en el navegador, cada carga de
+  // página lo reinventaba y el conteo volvía a empezar.
   // Sin respaldo a actualStartTime a propósito: en una tarea reabierta ese campo
-  // sigue apuntando al primer inicio histórico y el cronómetro arrancaría con el
-  // tiempo transcurrido desde entonces en vez de en cero.
-  const startTime = activeTask?.executionStartedAt;
+  // sigue apuntando al primer inicio histórico.
+  const startTime = activeTask?.sessionStartedAt ?? activeTask?.executionStartedAt;
+  // Con cuánto arranca, según lo que diga el servidor: al reanudar una pausa
+  // continúa desde el tiempo ya guardado, y al reabrir una tarea vuelve a cero
+  // aunque ese tiempo se siga sumando al acumulado por debajo.
+  const baseMs = Math.max(0, activeTask?.sessionBaseMinutes ?? 0) * 60_000;
   const plannedStartTime = activeTask?.plannedStartTime;
   const plannedEndTime = activeTask?.plannedEndTime;
   const [now, setNow] = useState(() => Date.now());
@@ -27,7 +33,8 @@ export const useActiveTaskTimer = () => {
 
   return useMemo(() => {
     const startedAtMs = startTime ? new Date(startTime).getTime() : null;
-    const elapsedMs = startedAtMs !== null ? Math.max(0, now - startedAtMs) : 0;
+    const elapsedMs =
+      startedAtMs !== null ? baseMs + Math.max(0, now - startedAtMs) : 0;
     const plannedStartMs = plannedStartTime
       ? new Date(plannedStartTime).getTime()
       : null;
@@ -59,5 +66,5 @@ export const useActiveTaskTimer = () => {
       overtimeMs,
       overtimeFormatted: overtimeMs > 0 ? formatDuration(overtimeMs) : null,
     };
-  }, [startTime, plannedStartTime, plannedEndTime, now]);
+  }, [startTime, baseMs, plannedStartTime, plannedEndTime, now]);
 };

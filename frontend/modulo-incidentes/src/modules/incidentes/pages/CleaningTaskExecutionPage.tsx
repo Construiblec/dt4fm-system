@@ -1,3 +1,4 @@
+import { PauseCircle } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 import { AppLayout } from "@/app/layout/AppLayout";
 import { CleaningTaskChecklist } from "@/modules/incidentes/components/CleaningTaskChecklist";
@@ -5,6 +6,8 @@ import { CleaningTaskHeader } from "@/modules/incidentes/components/CleaningTask
 import { CleaningTaskObservations } from "@/modules/incidentes/components/CleaningTaskObservations";
 import { CleaningTaskPhotoUpload } from "@/modules/incidentes/components/CleaningTaskPhotoUpload";
 import { CleaningTaskTimer } from "@/modules/incidentes/components/CleaningTaskTimer";
+import { PauseCleaningTaskModal } from "@/modules/incidentes/components/PauseCleaningTaskModal";
+import { useActiveTaskTimer } from "@/modules/incidentes/hooks/useActiveTaskTimer";
 import { useCleaningTaskExecution } from "@/modules/incidentes/hooks/useCleaningTaskExecution";
 import { ErrorModal } from "@/shared/components/ErrorModal";
 import { LoadingModal } from "@/shared/components/LoadingModal";
@@ -24,12 +27,21 @@ export const CleaningTaskExecutionPage = () => {
     canComplete,
     validationMessage,
     isCompleting,
+    attachments,
+    canPause,
+    isPausing,
+    pauseModalOpen,
+    pauseSuccessOpen,
     successOpen,
     errorMessage,
     setSuccessOpen,
+    setPauseModalOpen,
+    setPauseSuccessOpen,
     setErrorMessage,
     completeTask,
+    pauseTask,
   } = useCleaningTaskExecution(taskId);
+  const { elapsedFormatted } = useActiveTaskTimer();
 
   if (!Number.isFinite(taskId) || taskId <= 0) {
     return (
@@ -89,7 +101,11 @@ export const CleaningTaskExecutionPage = () => {
 
 
               <CleaningTaskObservations />
-              <CleaningTaskPhotoUpload taskId={taskId} onError={setErrorMessage} />
+              <CleaningTaskPhotoUpload
+                taskId={taskId}
+                attachments={attachments}
+                onError={setErrorMessage}
+              />
 
               <section className="rounded-3xl bg-white p-5 shadow-sm">
                 <div className="rounded-2xl bg-slate-50 p-4">
@@ -114,14 +130,50 @@ export const CleaningTaskExecutionPage = () => {
                 >
                   {isCompleting ? "Finalizando tarea..." : "Finalizar tarea"}
                 </button>
+
+                {canPause ? (
+                  <button
+                    type="button"
+                    onClick={() => setPauseModalOpen(true)}
+                    disabled={isCompleting || isPausing}
+                    className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-4 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <PauseCircle className="h-4 w-4" />
+                    Pausar tarea
+                  </button>
+                ) : null}
               </section>
             </>
           ) : null}
         </div>
 
+        <PauseCleaningTaskModal
+          open={pauseModalOpen}
+          isSubmitting={isPausing}
+          elapsedFormatted={elapsedFormatted}
+          onConfirm={pauseTask}
+          onCancel={() => setPauseModalOpen(false)}
+        />
         <LoadingModal
-          open={isLoading || isCompleting}
-          message={isCompleting ? "Finalizando tarea..." : "Cargando tarea..."}
+          open={isLoading || isCompleting || isPausing}
+          message={
+            isCompleting
+              ? "Finalizando tarea..."
+              : isPausing
+                ? "Pausando tarea..."
+                : "Cargando tarea..."
+          }
+        />
+        <SuccessModal
+          open={pauseSuccessOpen}
+          incidentId={taskId}
+          title="Tarea pausada"
+          message="El tiempo trabajado quedó guardado. Al reanudar, el cronómetro continúa desde ahí."
+          buttonLabel="Volver al Dashboard"
+          onClose={() => {
+            setPauseSuccessOpen(false);
+            navigate("/dashboard");
+          }}
         />
         <SuccessModal
           open={successOpen}

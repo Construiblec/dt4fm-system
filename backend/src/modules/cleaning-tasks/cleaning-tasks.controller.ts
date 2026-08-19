@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   ForbiddenException,
   Get,
   Headers,
@@ -39,6 +40,7 @@ import { CreateCleaningTaskDto } from './dto/create-cleaning-task.dto';
 import { GetAllCleaningTasksQueryDto } from './dto/get-all-cleaning-tasks-query.dto';
 import { GetCleaningTasksQueryDto } from './dto/get-cleaning-tasks-query.dto';
 import { GetCheckoutsQueryDto } from './dto/get-checkouts-query.dto';
+import { PauseTaskDto } from './dto/pause-task.dto';
 import { ReopenTaskDto } from './dto/reopen-task.dto';
 import { ReviewTaskDto } from './dto/review-task.dto';
 import { UpdateCleaningTaskDto } from './dto/update-cleaning-task.dto';
@@ -403,6 +405,55 @@ export class CleaningTasksController {
   }
 
   /**
+   * PATCH /cleaning-tasks/:taskId/pause
+   * Pausa una tarea en curso (InExecution → Assigned). Guarda el motivo en
+   * TeamObservations tras la marca "[Pausado: 2026-08-19 | 10:20]" y reemplaza
+   * ExecutionTime con el
+   * tiempo trabajado hasta la pausa, para que al reanudar el cronómetro continúe
+   * desde ahí. Se reanuda con el mismo endpoint de inicio (/start).
+   */
+  @Patch(':taskId/pause')
+  @ApiOperation({
+    summary:
+      'Pausar una tarea de limpieza en curso (InExecution → Assigned, [Pausado])',
+  })
+  @ApiParam({ name: 'taskId', description: 'ID de la tarea', type: 'integer' })
+  @ApiHeader({
+    name: 'x-session-token',
+    description: 'Token de sesión',
+    required: true,
+  })
+  @ApiHeader({
+    name: 'x-cleaning-employee-id',
+    description: 'ID de empleado de limpieza',
+    required: true,
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Tarea pausada. El tiempo trabajado queda guardado.',
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'La tarea no está en ejecución o falta el motivo de la pausa.',
+  })
+  async pauseTask(
+    @Param('taskId', ParseIntPipe) taskId: number,
+    @Body(new ValidationPipe({ transform: true })) dto: PauseTaskDto,
+    @Headers('x-session-token') sessionToken: string,
+    @Headers('x-cleaning-employee-id') cleaningEmployeeId: string,
+  ) {
+    this.requireSessionToken(sessionToken);
+    const employeeId = this.parseEmployeeId(cleaningEmployeeId);
+
+    return this.cleaningTasksService.pauseTask(
+      taskId,
+      employeeId,
+      dto,
+      sessionToken,
+    );
+  }
+
+  /**
    * PATCH /cleaning-tasks/:taskId/complete
    * Transición InExecution → Completed. Registra ActualEndTime y observaciones.
    */
@@ -758,6 +809,54 @@ export class CleaningTasksController {
       employeeId,
       file,
       dto,
+      sessionToken,
+    );
+  }
+
+  /**
+   * DELETE /cleaning-tasks/:taskId/attachments/:attachmentId
+   * Borra una foto de evidencia de la tarea.
+   */
+  @Delete(':taskId/attachments/:attachmentId')
+  @ApiOperation({ summary: 'Borrar un archivo adjunto de la tarea' })
+  @ApiParam({
+    name: 'taskId',
+    description: 'ID de la tarea de limpieza',
+    type: 'integer',
+  })
+  @ApiParam({
+    name: 'attachmentId',
+    description: 'ID del archivo adjunto en OpenMAINT',
+    type: 'string',
+  })
+  @ApiHeader({
+    name: 'x-session-token',
+    description: 'Token de sesión',
+    required: true,
+  })
+  @ApiHeader({
+    name: 'x-cleaning-employee-id',
+    description: 'ID de empleado de limpieza',
+    required: true,
+  })
+  @ApiResponse({ status: 200, description: 'Adjunto borrado correctamente.' })
+  @ApiResponse({
+    status: 400,
+    description: 'La fase de la tarea no permite borrar adjuntos.',
+  })
+  async deleteAttachment(
+    @Param('taskId', ParseIntPipe) taskId: number,
+    @Param('attachmentId') attachmentId: string,
+    @Headers('x-session-token') sessionToken: string,
+    @Headers('x-cleaning-employee-id') cleaningEmployeeId: string,
+  ) {
+    this.requireSessionToken(sessionToken);
+    const employeeId = this.parseEmployeeId(cleaningEmployeeId);
+
+    return this.cleaningTasksService.deleteAttachment(
+      taskId,
+      employeeId,
+      attachmentId,
       sessionToken,
     );
   }
