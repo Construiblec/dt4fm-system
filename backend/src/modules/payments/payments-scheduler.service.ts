@@ -7,6 +7,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { PaymentsService } from './payments.service';
 import { PaymentReminderService } from './payment-reminder.service';
+import { OverdueNoticeService } from './overdue-notice.service';
 
 /**
  * Scheduler que ejecuta la verificacion de pagos diariamente.
@@ -24,6 +25,7 @@ export class PaymentsSchedulerService implements OnModuleInit, OnModuleDestroy {
   constructor(
     private readonly paymentsService: PaymentsService,
     private readonly reminderService: PaymentReminderService,
+    private readonly overdueNoticeService: OverdueNoticeService,
     private readonly configService: ConfigService,
   ) {}
 
@@ -149,6 +151,35 @@ export class PaymentsSchedulerService implements OnModuleInit, OnModuleDestroy {
     } catch (error) {
       this.logger.error(
         `Verificacion de recordatorios fallida: ${(error as Error).message}`,
+      );
+    }
+
+    // 3) Avisos de valores vencidos (se activan solo los días 1 y 15).
+    //    Independiente de los pasos anteriores, igual que ellos entre sí.
+    try {
+      const overdue = await this.overdueNoticeService.sendOverdueNotices();
+
+      if (overdue.skippedReason) {
+        this.logger.log(
+          `Verificacion de avisos de mora finalizada: ${overdue.skippedReason}`,
+        );
+      } else {
+        this.logger.log(
+          `Avisos de mora completados -> ` +
+            `propietariosConVencidos:${overdue.propietariosConVencidos} ` +
+            `notificados:${overdue.propietariosNotificados} ` +
+            `correos[enviados:${overdue.emailsSent} fallidos:${overdue.emailsFailed} sinEmail:${overdue.emailsSkipped}]`,
+        );
+
+        if (overdue.errors.length > 0) {
+          this.logger.warn(
+            `Errores en avisos de mora:\n${overdue.errors.join('\n')}`,
+          );
+        }
+      }
+    } catch (error) {
+      this.logger.error(
+        `Verificacion de avisos de mora fallida: ${(error as Error).message}`,
       );
     }
   }

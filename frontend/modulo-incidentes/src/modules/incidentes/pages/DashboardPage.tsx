@@ -35,6 +35,12 @@ export const DashboardPage = () => {
   const clearActiveTask = useCleaningTaskExecutionStore(
     (state) => state.clearActiveTask,
   );
+  const releaseActiveTask = useCleaningTaskExecutionStore(
+    (state) => state.releaseActiveTask,
+  );
+  const contextTaskId = useCleaningTaskExecutionStore(
+    (state) => state.contextTaskId,
+  );
 
   // ── Tab activo ──────────────────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState<Tab>("maintenance");
@@ -121,6 +127,17 @@ export const DashboardPage = () => {
     );
 
     if (!backendActiveTask) {
+      // Una tarea pausada tampoco está activa, pero su checklist, observaciones y
+      // foto deben sobrevivir hasta que se reanude.
+      const isContextTaskPaused = cleaningTasks.some(
+        (task) => task.id === contextTaskId && task.isPaused,
+      );
+
+      if (isContextTaskPaused) {
+        releaseActiveTask();
+        return;
+      }
+
       clearActiveTask();
       return;
     }
@@ -132,6 +149,11 @@ export const DashboardPage = () => {
       phase: backendActiveTask.phase,
       actualStartTime:
         backendActiveTask.actualStartTime ?? new Date().toISOString(),
+      // Cero del cronómetro según OpenMAINT. Sin esto, una ventana recién abierta
+      // no tenía de dónde sacarlo y empezaba a contar desde cero.
+      sessionStartedAt: backendActiveTask.sessionStartedAt,
+      sessionBaseMinutes: backendActiveTask.sessionBaseMinutes ?? 0,
+      accumulatedMinutes: backendActiveTask.executionTime ?? 0,
       plannedStartTime: backendActiveTask.plannedStartTime,
       plannedEndTime: backendActiveTask.plannedEndTime,
       unitDescription:
@@ -143,6 +165,8 @@ export const DashboardPage = () => {
     cleaningError,
     cleaningTasks,
     clearActiveTask,
+    contextTaskId,
+    releaseActiveTask,
     syncActiveTask,
   ]);
 

@@ -29,7 +29,14 @@ export const PHASE_DESC_TO_ID: Record<string, PhaseId> = {
 /** Transiciones válidas por fase */
 export const PHASE_TRANSITIONS: Record<PhaseId, PhaseId[]> = {
   [PHASE_IDS.ASSIGNED]: [PHASE_IDS.IN_EXECUTION, PHASE_IDS.CANCELLED],
-  [PHASE_IDS.IN_EXECUTION]: [PHASE_IDS.COMPLETED, PHASE_IDS.CANCELLED],
+  // ASSIGNED es la vuelta atrás por una pausa del empleado: OpenMAINT no tiene una
+  // fase "Paused", así que una tarea pausada vuelve a Assigned y se distingue por la
+  // marca [Pausado] al final de TeamObservations (ver isPausedTask).
+  [PHASE_IDS.IN_EXECUTION]: [
+    PHASE_IDS.COMPLETED,
+    PHASE_IDS.CANCELLED,
+    PHASE_IDS.ASSIGNED,
+  ],
   [PHASE_IDS.COMPLETED]: [PHASE_IDS.REVIEWED, PHASE_IDS.IN_EXECUTION, PHASE_IDS.ASSIGNED],
   [PHASE_IDS.REVIEWED]: [PHASE_IDS.IN_EXECUTION, PHASE_IDS.ASSIGNED],
   [PHASE_IDS.CANCELLED]: [],

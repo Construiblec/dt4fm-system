@@ -2,12 +2,13 @@ import { z } from "zod";
 
 export const observationsSchema = z.string().max(1000, "Las observaciones no pueden superar 1000 caracteres");
 
+// La foto es opcional para cerrar la tarea, así que no entra en la validación:
+// la evidencia se gestiona aparte, contra la lista que devuelve OpenMAINT.
 export const completeTaskSchema = z.object({
   observations: observationsSchema.optional().default(""),
   checklistComplete: z.boolean().refine((value) => value === true, {
     message: "Debes completar todas las actividades del checklist",
   }),
-  photoUploaded: z.boolean(),
 });
 
 export const photoUploadSchema = z.object({

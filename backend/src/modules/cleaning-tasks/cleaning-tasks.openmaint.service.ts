@@ -339,6 +339,30 @@ export class CleaningTasksOpenmaintService {
   }
 
   /**
+   * Borra un attachment de una tarea.
+   */
+  async deleteAttachment(
+    taskId: number,
+    attachmentId: string,
+    sessionToken: string,
+  ): Promise<any> {
+    try {
+      return await this.client.delete(
+        `/classes/CleaningTask/cards/${taskId}/attachments/${attachmentId}`,
+        sessionToken,
+      );
+    } catch (error) {
+      this.logger.error(
+        `Error al borrar attachment ${attachmentId} de tarea ${taskId}:`,
+        error.message,
+      );
+      throw new InternalServerErrorException(
+        'Error al borrar archivo en OpenMAINT',
+      );
+    }
+  }
+
+  /**
    * Sube un attachment a una tarea.
    * OpenMAINT espera multipart/form-data con los campos "attachment" (JSON) y "file" (binario).
    * La categoría se convierte de código legible ("Photo") al ID numérico de DMS (390625).
