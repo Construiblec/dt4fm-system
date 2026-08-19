@@ -10,6 +10,7 @@ import { ApiBody, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { PaymentsService } from './payments.service';
 import { PaymentsSchedulerService } from './payments-scheduler.service';
 import { PaymentReminderService } from './payment-reminder.service';
+import { OverdueNoticeService } from './overdue-notice.service';
 
 @ApiTags('Pagos')
 @Controller('payments')
@@ -20,6 +21,7 @@ export class PaymentsController {
     private readonly paymentsService: PaymentsService,
     private readonly paymentsSchedulerService: PaymentsSchedulerService,
     private readonly reminderService: PaymentReminderService,
+    private readonly overdueNoticeService: OverdueNoticeService,
   ) {}
 
   /**
@@ -141,5 +143,61 @@ export class PaymentsController {
     );
 
     return this.reminderService.sendDueReminders(periodo, force);
+  }
+
+  /**
+   * POST /payments/overdue-notices
+   * Disparo manual del aviso de valores vencidos.
+   * Body opcional:
+   *   - force: true — saltea la validación de que hoy sea día 1 o 15, para
+   *     poder probar el envío cualquier día.
+   */
+  @Post('overdue-notices')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Enviar manualmente los avisos de valores vencidos (mora)',
+  })
+  @ApiBody({
+    required: false,
+    schema: {
+      type: 'object',
+      properties: {
+        force: {
+          type: 'boolean',
+          description:
+            'Si es true, saltea la validación de día (1 y 15) y envía igual.',
+          example: true,
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Resumen del resultado del envío de avisos.',
+    schema: {
+      type: 'object',
+      properties: {
+        fecha: { type: 'string', example: '2026-08-15' },
+        propietariosConVencidos: { type: 'integer', example: 5 },
+        propietariosNotificados: { type: 'integer', example: 4 },
+        emailsSent: { type: 'integer', example: 4 },
+        emailsFailed: { type: 'integer', example: 0 },
+        emailsSkipped: { type: 'integer', example: 1 },
+        errors: { type: 'array', items: { type: 'string' } },
+        skippedReason: {
+          type: 'string',
+          example: 'Hoy (día 7) no es día de aviso (1 y 15) - no se notifica',
+        },
+      },
+    },
+  })
+  async sendOverdueNotices(@Body() body?: { force?: boolean }) {
+    const force = body?.force === true;
+
+    this.logger.log(
+      `[PaymentsController] Disparo manual de avisos de mora${force ? ' (force)' : ''}`,
+    );
+
+    return this.overdueNoticeService.sendOverdueNotices(force);
   }
 }

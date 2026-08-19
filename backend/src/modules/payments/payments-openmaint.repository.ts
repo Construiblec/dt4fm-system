@@ -181,10 +181,24 @@ export class PaymentsOpenmaintRepository {
    */
   async getPendingPayments(sessionId: string): Promise<PagoCard[]> {
     try {
-      const cql = encodeURIComponent(`Estado = ${LOOKUP_ESTADO_PENDIENTE}`);
+      // Se filtra con el parámetro `filter` (JSON), no con `cql`: esta versión
+      // de OpenMAINT ACEPTA el cql pero lo ignora en silencio y devuelve todas
+      // las cards, pagadas incluidas. Verificado contra la instancia: el cql
+      // devolvía 4 cards (3 ya pagadas) donde el filter devuelve 1.
+      const filter = {
+        attribute: {
+          simple: {
+            attribute: 'Estado',
+            operator: 'equal',
+            value: LOOKUP_ESTADO_PENDIENTE,
+          },
+        },
+      };
 
       const response = (await this.openmaintClient.get(
-        `/classes/${OPENMAINT_PAYMENTS_CLASS}/cards?cql=${cql}&limit=9999`,
+        `/classes/${OPENMAINT_PAYMENTS_CLASS}/cards?limit=9999&filter=${encodeURIComponent(
+          JSON.stringify(filter),
+        )}`,
         sessionId,
       )) as { data?: PagoCard[] };
 
