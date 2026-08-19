@@ -19,6 +19,7 @@ import { CancelTaskDto } from './dto/cancel-task.dto';
 import { CompleteTaskDto } from './dto/complete-task.dto';
 import { CreateCleaningTaskDto } from './dto/create-cleaning-task.dto';
 import { GetCheckoutsQueryDto } from './dto/get-checkouts-query.dto';
+import { PauseTaskDto } from './dto/pause-task.dto';
 import { ReopenTaskDto } from './dto/reopen-task.dto';
 import { ReviewTaskDto } from './dto/review-task.dto';
 import { UpdateCleaningTaskDto } from './dto/update-cleaning-task.dto';
@@ -42,6 +43,203 @@ export const SUPERVISOR_ROLES = ['SuperUser', 'SupervisorLimpieza'];
 
 export const isSupervisorRole = (role?: string) =>
   Boolean(role && SUPERVISOR_ROLES.includes(role));
+
+/**
+ * Prefijos de las marcas que se escriben en TeamObservations. La marca completa
+ * lleva dentro la fecha y hora del evento:
+ *
+ *   [Pausado: 2026-08-19 | 10:20]: se acabó el detergente
+ *   [Reanudado: 2026-08-19 | 10:34]
+ *
+ * Se buscan por prefijo, así que las notas del formato anterior (`[Pausado]:` y
+ * `[Reanudado]:`) siguen reconociéndose.
+ */
+const PAUSE_MARKER = '[Pausado';
+const RESUME_MARKER = '[Reanudado';
+/**
+ * Arranque de una tarea reabierta, que no es lo mismo que reanudar una pausa: el
+ * cronómetro vuelve a cero y lo que se trabaje se suma a lo que ya había. Por eso
+ * hace falta distinguirlos en la bitácora y no solo por la fase.
+ *
+ * La marca lleva además el tiempo que la tarea ya tenía al reabrirse:
+ *
+ *   [Reiniciado: 2026-08-19 | 10:34 | 25min]
+ *
+ * OpenMAINT guarda una sola cifra de tiempo, la total. Sin ese número, al
+ * reanudar una pausa hecha dentro de una sesión reabierta no habría forma de
+ * saber qué parte del acumulado pertenece a esta sesión, y el cronómetro
+ * reaparecería con el histórico incluido.
+ */
+const RESTART_MARKER = '[Reiniciado';
+
+/**
+ * Una tarea está en pausa si volvió a Assigned y la última marca escrita en
+ * TeamObservations es la de pausa (no la de reanudación).
+ *
+ * OpenMAINT no tiene una fase "Paused" y no se creó una a propósito, así que el
+ * estado vive en la bitácora del empleado. Por eso el backend lo resuelve una sola
+ * vez aquí y lo expone como el booleano `isPaused`: ninguna vista debe leer el
+ * texto de las observaciones para deducirlo.
+ */
+export const isPausedTask = (task: any): boolean => {
+  const phaseDesc = task?._phase_description ?? String(task?.phase ?? '');
+  if (phaseDesc !== PHASE_NAMES[PHASE_IDS.ASSIGNED]) return false;
+
+  const notes = String(task?.TeamObservations ?? '');
+  const lastPause = notes.lastIndexOf(PAUSE_MARKER);
+  return lastPause !== -1 && lastPause > notes.lastIndexOf(RESUME_MARKER);
+};
+
+/**
+ * Bloque de borrador al final de TeamObservations: `{lo que el empleado llevaba
+ * escrito}`. Va anclado al final justo para que el recorte de longitud se coma la
+ * bitácora vieja antes que el texto vivo, y para no confundirlo con unas llaves
+ * escritas en medio de una observación.
+ */
+const DRAFT_BLOCK = /\s*\{([\s\S]*)\}\s*$/;
+
+/** Tope de TeamObservations, bitácora y borrador incluidos. */
+const MAX_TEAM_OBSERVATIONS = 500;
+
+/**
+ * Lo que el empleado llevaba escrito en el campo "Observaciones" cuando pausó.
+ *
+ * Es un borrador, no una observación: se guarda en OpenMAINT para que sobreviva a
+ * la pausa (y a que cierre la app), pero nunca se muestra. Por eso viaja aparte y
+ * `teamObservations` sale siempre limpio de este bloque.
+ */
+export const extractDraftObservations = (
+  text: string | null | undefined,
+): string | null => {
+  const draft = DRAFT_BLOCK.exec(text ?? '')?.[1]?.trim();
+  return draft ? draft : null;
+};
+
+/** El texto visible: la bitácora sin el borrador. */
+export const stripDraftObservations = (
+  text: string | null | undefined,
+): string | null => {
+  const stripped = (text ?? '').replace(DRAFT_BLOCK, '').trim();
+  return stripped ? stripped : null;
+};
+
+/**
+ * Instante en que arrancó la ejecución que está corriendo AHORA, o null si la
+ * tarea no está en ejecución.
+ *
+ * Es el cero del cronómetro, y vive en OpenMAINT para que no dependa del
+ * navegador: dos ventanas, otro dispositivo o una recarga calculan todas el mismo
+ * tiempo transcurrido. Antes esta marca solo existía en el localStorage del
+ * equipo, así que cada carga de página la reinventaba y el conteo volvía a cero.
+ *
+ * De dónde sale, en orden:
+ * 1. La última nota de reanudación que escribe startTask a partir del segundo
+ *    arranque (reanudar una pausa o reabrir). Se lee tanto el formato actual,
+ *    `[Reanudado: 2026-08-19 | 10:34]`, como el anterior, `[Reanudado]: <ISO>`.
+ * 2. ActualStartTime, válido solo mientras la tarea no acumule tiempo: es su
+ *    primera y única ejecución.
+ * Si no hay ninguno (tarea que ya venía corriendo desde antes de esta versión),
+ * devuelve null y el front cae a su marca local.
+ *
+ * La hora legible va sin segundos, así que el cero queda redondeado al minuto:
+ * el tiempo contado puede quedar hasta 59 s por encima del real, nunca por debajo.
+ */
+export const resolveSessionStartedAt = (task: any): string | null => {
+  const phaseDesc = task?._phase_description ?? String(task?.phase ?? '');
+  if (phaseDesc !== PHASE_NAMES[PHASE_IDS.IN_EXECUTION]) return null;
+
+  const notes = String(task?.TeamObservations ?? '');
+  // Gana la marca que aparezca más tarde en el texto, sin importar su formato.
+  let lastIndex = -1;
+  let lastResume: Date | null = null;
+
+  const remember = (index: number, date: Date) => {
+    if (index >= lastIndex && !isNaN(date.getTime())) {
+      lastIndex = index;
+      lastResume = date;
+    }
+  };
+
+  // El corchete puede traer cosas después de la hora (la marca de reinicio lleva
+  // el tiempo histórico), así que se admite lo que venga hasta el cierre.
+  for (const match of notes.matchAll(
+    /\[(?:Reanudado|Reiniciado):\s*(\d{4})-(\d{2})-(\d{2})\s*\|\s*(\d{1,2}):(\d{2})[^\]]*\]/g,
+  )) {
+    // Los componentes se interpretan en la zona horaria del servidor, que es la
+    // misma con la que se escribieron.
+    remember(
+      match.index ?? 0,
+      new Date(
+        Number(match[1]),
+        Number(match[2]) - 1,
+        Number(match[3]),
+        Number(match[4]),
+        Number(match[5]),
+      ),
+    );
+  }
+
+  for (const match of notes.matchAll(/\[Reanudado\]:\s*(\S+)/g)) {
+    remember(match.index ?? 0, new Date(match[1]));
+  }
+
+  if (lastResume) return (lastResume as Date).toISOString();
+
+  const accumulated = Number(task?.ExecutionTime);
+  const hasAccumulated = !isNaN(accumulated) && accumulated > 0;
+  return hasAccumulated ? null : (task?.ActualStartTime ?? null);
+};
+
+/**
+ * Minutos con los que ARRANCA el cronómetro de la ejecución en curso.
+ *
+ * Distingue los dos arranques que no son el primero, y por eso se decide en el
+ * servidor y no en el navegador:
+ * - Reanudar una pausa continúa el conteo: parte del tiempo ya guardado.
+ * - Reabrir una tarea empieza de cero, y lo que se trabaje se suma al acumulado.
+ *
+ * Ojo: esto es solo lo que se muestra. El total que se registra en ExecutionTime
+ * siempre es `acumulado + lo de esta sesión`, así que en una tarea reabierta el
+ * cronómetro marca menos que el tiempo total de la tarea, a propósito.
+ */
+export const resolveSessionBaseMinutes = (task: any): number => {
+  const phaseDesc = task?._phase_description ?? String(task?.phase ?? '');
+  if (phaseDesc !== PHASE_NAMES[PHASE_IDS.IN_EXECUTION]) return 0;
+
+  const notes = String(task?.TeamObservations ?? '');
+  const lastResume = notes.lastIndexOf(RESUME_MARKER);
+  if (lastResume === -1) return 0;
+  if (notes.lastIndexOf(RESTART_MARKER) > lastResume) return 0;
+
+  const accumulated = Number(task?.ExecutionTime);
+  if (isNaN(accumulated) || accumulated <= 0) return 0;
+
+  // Se reanuda una pausa: el reloj sigue desde lo trabajado en ESTA sesión, o sea
+  // el acumulado menos lo que la tarea ya arrastraba cuando se reabrió.
+  return Math.max(0, accumulated - resolveSessionCarryMinutes(task));
+};
+
+/**
+ * Minutos que la tarea ya tenía cuando se reabrió, leídos de la última marca de
+ * reinicio. No pertenecen a la sesión en curso: el cronómetro los ignora, aunque
+ * sigan sumando en el total de OpenMAINT.
+ *
+ * Cero si la tarea nunca se reabrió, o si la marca es de una versión anterior que
+ * todavía no anotaba el número.
+ */
+export const resolveSessionCarryMinutes = (task: any): number => {
+  const notes = String(task?.TeamObservations ?? '');
+  let carry = 0;
+
+  for (const match of notes.matchAll(
+    /\[Reiniciado:[^\]]*\|\s*([\d.]+)\s*min\s*\]/g,
+  )) {
+    const parsed = Number(match[1]);
+    if (!isNaN(parsed) && parsed >= 0) carry = parsed;
+  }
+
+  return carry;
+};
 const ALLOWED_UPLOAD_PHASES = ['InExecution', 'Completed'];
 const ALLOWED_MIME_TYPES = [
   'image/jpeg',
@@ -51,8 +249,12 @@ const ALLOWED_MIME_TYPES = [
 ];
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
 const MAX_ATTACHMENTS = 10;
-/** Tope defensivo, en minutos, para el tiempo de una sola ejecución reportado por el front. */
-const MAX_SESSION_MINUTES = 1440;
+/**
+ * Tope defensivo, en minutos, para el tiempo total de ejecución reportado por el
+ * front. Es un acumulado entre pausas y reaperturas, así que se deja holgado
+ * (7 días) y solo ataja valores absurdos.
+ */
+const MAX_TOTAL_EXECUTION_MINUTES = 1440 * 7;
 /** Ventana máxima consultable de checkouts, para acotar el costo hacia Hostaway. */
 const MAX_CHECKOUT_RANGE_DAYS = 92;
 
@@ -150,7 +352,10 @@ export class CleaningTasksService {
         delayTime: task.DelayTime ?? null,
         taskObservations: task.Observations ?? null,
         supervisionObserv: task.SupervisionObserv ?? null,
-        teamObservations: task.TeamObservations ?? null,
+        teamObservations: stripDraftObservations(task.TeamObservations),
+        isPaused: isPausedTask(task),
+        sessionStartedAt: resolveSessionStartedAt(task),
+        sessionBaseMinutes: resolveSessionBaseMinutes(task),
         hostawayReservationId: task.HostawayReservation ?? null,
         checkoutDate: task.CheckoutDate ?? null,
         source: task._Source_description ?? task.Source ?? null,
@@ -283,7 +488,10 @@ export class CleaningTasksService {
       delayTime: task.DelayTime ?? null,
       taskObservations: task.Observations ?? null,
       supervisionObserv: task.SupervisionObserv ?? null,
-      teamObservations: task.TeamObservations ?? null,
+      teamObservations: stripDraftObservations(task.TeamObservations),
+      isPaused: isPausedTask(task),
+      sessionStartedAt: resolveSessionStartedAt(task),
+      sessionBaseMinutes: resolveSessionBaseMinutes(task),
       hostawayReservation: task.HostawayReservation ?? null,
       checkoutDate: task.CheckoutDate ?? null,
       source: task._Source_description ?? task.Source ?? null,
@@ -338,7 +546,10 @@ export class CleaningTasksService {
       delayTime: task.DelayTime ?? null,
       taskObservations: task.Observations ?? null,
       supervisionObserv: task.SupervisionObserv ?? null,
-      teamObservations: task.TeamObservations ?? null,
+      teamObservations: stripDraftObservations(task.TeamObservations),
+      isPaused: isPausedTask(task),
+      sessionStartedAt: resolveSessionStartedAt(task),
+      sessionBaseMinutes: resolveSessionBaseMinutes(task),
       hostawayReservation: task.HostawayReservation ?? null,
       checkoutDate: task.CheckoutDate ?? null,
       source: task._Source_description ?? task.Source ?? null,
@@ -393,11 +604,15 @@ export class CleaningTasksService {
         ? this.fetchUnitInfo(task.Unit, sessionToken)
         : Promise.resolve(null),
     ]);
+    // downloadUrl es imprescindible: sin él la vista de ejecución no tiene de
+    // dónde pintar las fotos ya subidas, que era justo lo que fallaba al reanudar
+    // o reabrir una tarea.
     const attachments = (attResponse?.data ?? []).map((a) => ({
       id: a._id,
       fileName: a.fileName,
       category: a._category_description ?? a.category,
       uploadDate: a.created ?? a.modified ?? null,
+      downloadUrl: `/cleaning-tasks/${task._id}/attachments/${a._id}/download`,
     }));
     return {
       success: true,
@@ -417,7 +632,13 @@ export class CleaningTasksService {
         delayTime: task.DelayTime ?? null,
         taskObservations: task.Observations ?? null,
         supervisionObserv: task.SupervisionObserv ?? null,
-        teamObservations: task.TeamObservations ?? null,
+        teamObservations: stripDraftObservations(task.TeamObservations),
+        // Borrador de la observación en curso. Solo lo consume el campo de
+        // escritura de la pantalla de ejecución; no se muestra como observación.
+        draftObservations: extractDraftObservations(task.TeamObservations),
+        isPaused: isPausedTask(task),
+        sessionStartedAt: resolveSessionStartedAt(task),
+        sessionBaseMinutes: resolveSessionBaseMinutes(task),
         hostawayReservation: task.HostawayReservation ?? null,
         checkoutDate: task.CheckoutDate ?? null,
         source: task._Source_description ?? task.Source ?? null,
@@ -428,6 +649,7 @@ export class CleaningTasksService {
         attachments,
         canStart: phaseDesc === 'Assigned',
         canComplete: phaseDesc === 'InExecution',
+        canPause: phaseDesc === 'InExecution',
         canReview: phaseDesc === 'Completed',
         canReopen: phaseDesc === 'Completed' || phaseDesc === 'Reviewed',
         canCancel: phaseDesc === 'Assigned' || phaseDesc === 'InExecution',
@@ -489,7 +711,8 @@ export class CleaningTasksService {
     const phaseDesc = task._phase_description ?? String(task.phase);
     this.validatePhaseTransition(phaseDesc, PHASE_IDS.IN_EXECUTION);
     const now = new Date().toISOString();
-    
+    const wasPaused = isPausedTask(task);
+
     const body: Record<string, unknown> = { phase: PHASE_IDS.IN_EXECUTION };
 
     // ActualStartTime y DelayTime se registran UNA SOLA VEZ: en el primer inicio real.
@@ -510,6 +733,29 @@ export class CleaningTasksService {
       if (delayMinutes > 0) {
         body.DelayTime = this.roundMinutes(delayMinutes);
       }
+    } else {
+      // Segundo arranque en adelante. La nota deja el instante en que empezó ESTA
+      // ejecución, que es el ancla del cronómetro (ver resolveSessionStartedAt):
+      // en el primer inicio la da ActualStartTime, pero después ese campo apunta al
+      // inicio histórico y ya no sirve.
+      //
+      // Y la marca distingue los dos casos, porque el cronómetro no arranca igual:
+      // reanudar una pausa continúa el conteo, reabrir lo empieza de cero (ver
+      // resolveSessionBaseMinutes). De paso, la de reanudación cierra la pausa.
+      // La de reinicio anota además el tiempo que la tarea ya arrastraba, para
+      // poder descontarlo si esta sesión se pausa y se reanuda.
+      const note = wasPaused
+        ? `${RESUME_MARKER}: ${this.formatNoteTimestamp(now)}]`
+        : `${RESTART_MARKER}: ${this.formatNoteTimestamp(now)} | ${this.formatMinutesForNote(
+            this.toNumber(task.ExecutionTime),
+          )}min]`;
+
+      // El borrador se conserva tal cual: la nota entra en la bitácora y el bloque
+      // entre llaves vuelve al final. Se borra solo al completar la tarea.
+      body.TeamObservations = this.withDraftObservations(
+        this.appendNote(stripDraftObservations(task.TeamObservations), note),
+        extractDraftObservations(task.TeamObservations),
+      );
     }
 
     const response = await this.openmaintService.updateTaskWithSession(
@@ -523,6 +769,103 @@ export class CleaningTasksService {
         id: response?.data?._id ?? taskId,
         phase: PHASE_NAMES[PHASE_IDS.IN_EXECUTION],
         actualStartTime: response?.data?.ActualStartTime ?? task.ActualStartTime ?? now,
+        isPaused: false,
+        resumed: wasPaused,
+        // Ancla del cronómetro: el instante en que arrancó esta ejecución. Queda
+        // guardado en OpenMAINT, así que cualquier ventana o dispositivo calcula
+        // el mismo tiempo transcurrido.
+        sessionStartedAt: now,
+        // Con cuántos minutos arranca el cronómetro: lo trabajado en esta sesión si
+        // se reanuda una pausa (sin el histórico que la tarea arrastre de antes de
+        // reabrirse), y cero si la tarea se acaba de reabrir.
+        sessionBaseMinutes: wasPaused
+          ? Math.max(
+              0,
+              this.toNumber(task.ExecutionTime) -
+                resolveSessionCarryMinutes(task),
+            )
+          : 0,
+        // Lo acumulado en OpenMAINT, que es la base del total que se registrará al
+        // pausar o completar (independiente de lo que muestre el cronómetro).
+        executionTime: this.toNumber(task.ExecutionTime),
+      },
+    };
+  }
+
+  /**
+   * Pausa una tarea en ejecución: vuelve a Assigned y registra el motivo en
+   * TeamObservations con la marca [Pausado], que es lo que después la identifica
+   * como pausada (ver isPausedTask).
+   *
+   * ExecutionTime se REEMPLAZA por el total trabajado hasta la pausa, para que al
+   * reanudar el cronómetro arranque justo donde quedó. ActualStartTime y DelayTime
+   * no se tocan: siguen describiendo el primer inicio real y su retraso.
+   */
+  async pauseTask(
+    taskId: number,
+    employeeId: number,
+    dto: PauseTaskDto,
+    sessionToken: string,
+  ) {
+    const task = await this.fetchAndValidateOwnership(
+      taskId,
+      employeeId,
+      sessionToken,
+    );
+    const phaseDesc = task._phase_description ?? String(task.phase);
+    // Assigned → Assigned no es una transición válida, así que esto también ataja
+    // el intento de pausar una tarea que ya está pausada.
+    this.validatePhaseTransition(phaseDesc, PHASE_IDS.ASSIGNED);
+    if (!task.ActualStartTime) {
+      throw new BadRequestException('Task must be started before pausing');
+    }
+
+    const reason = dto.reason?.trim();
+    if (!reason) {
+      throw new BadRequestException('Debes indicar el motivo de la pausa');
+    }
+
+    const now = new Date().toISOString();
+    const prevExecution = this.toNumber(task.ExecutionTime);
+    const executionTime = this.roundMinutes(
+      this.resolveTotalExecutionMinutes(
+        taskId,
+        task,
+        dto.executionMinutes,
+        prevExecution,
+        now,
+      ),
+    );
+
+    const body: Record<string, unknown> = {
+      phase: PHASE_IDS.ASSIGNED,
+      ExecutionTime: executionTime,
+      // La nota de pausa entra en la bitácora; el borrador de la observación en
+      // curso se guarda aparte, entre llaves y al final, para poder devolvérselo
+      // al empleado cuando reanude sin que llegue a mostrarse como observación.
+      TeamObservations: this.withDraftObservations(
+        this.appendNote(
+          stripDraftObservations(task.TeamObservations),
+          `${PAUSE_MARKER}: ${this.formatNoteTimestamp(now)}]: ${this.escapeBraces(reason)}`,
+        ),
+        dto.draftObservations,
+      ),
+    };
+
+    const response = await this.openmaintService.updateTaskWithSession(
+      taskId,
+      body,
+      sessionToken,
+    );
+    return {
+      success: true,
+      data: {
+        id: response?.data?._id ?? taskId,
+        phase: PHASE_NAMES[PHASE_IDS.ASSIGNED],
+        isPaused: true,
+        reason,
+        executionTime:
+          this.toNumber(response?.data?.ExecutionTime) || executionTime,
       },
     };
   }
@@ -544,17 +887,29 @@ export class CleaningTasksService {
       throw new BadRequestException('Task must be started before completing');
     const now = new Date().toISOString();
     const prevExecution = this.toNumber(task.ExecutionTime);
-    const sessionMinutes = this.resolveExecutionMinutes(taskId, task, dto, prevExecution, now);
-    const executionTime = this.roundMinutes(prevExecution + sessionMinutes);
+    const executionTime = this.roundMinutes(
+      this.resolveTotalExecutionMinutes(
+        taskId,
+        task,
+        dto.executionMinutes,
+        prevExecution,
+        now,
+      ),
+    );
 
     const body: Record<string, unknown> = {
       phase: PHASE_IDS.COMPLETED,
       ActualEndTime: now,
       ExecutionTime: executionTime,
     };
-    if (dto.observations) {
-      body.TeamObservations = this.appendNote(task.TeamObservations, dto.observations);
-    }
+    // Al completar, el borrador deja de existir: o se convierte en la observación
+    // final que manda el empleado, o se descarta. En ningún caso sobrevive entre
+    // llaves a una tarea ya terminada.
+    const log = stripDraftObservations(task.TeamObservations);
+    body.TeamObservations = dto.observations
+      ? this.appendNote(log, this.escapeBraces(dto.observations))
+      : (log ?? '');
+
     const response = await this.openmaintService.updateTaskWithSession(taskId, body, sessionToken);
     return {
       success: true,
@@ -563,53 +918,64 @@ export class CleaningTasksService {
         phase: PHASE_NAMES[PHASE_IDS.COMPLETED],
         actualEndTime: response?.data?.ActualEndTime ?? now,
         observations: dto.observations ?? null,
-        duration: Math.round(sessionMinutes),
+        duration: Math.round(executionTime),
         executionTime: this.toNumber(response?.data?.ExecutionTime) || executionTime,
       },
     };
   }
 
   /**
-   * Minutos trabajados en ESTA ejecución, los que se sumarán al acumulado.
+   * Tiempo TOTAL trabajado en la tarea, en minutos: el valor que se escribe tal
+   * cual en ExecutionTime. REEMPLAZA al acumulado anterior, no se le suma.
    *
-   * La fuente es el cronómetro del front, que arranca en cero cuando el empleado
-   * toca "Iniciar" en la tarjeta. Se mide allá de punta a punta con el mismo reloj,
-   * así que no le afecta un desfase horario entre el dispositivo y el servidor.
+   * La fuente es el cronómetro del front, que ya no arranca en cero: parte del
+   * ExecutionTime que la tarea traía de OpenMAINT y sigue corriendo. Por eso lo
+   * que llega es el total y no hay nada que sumarle. Se mide de punta a punta con
+   * el mismo reloj, así que no le afecta un desfase entre el dispositivo y el
+   * servidor.
    *
    * Respaldos cuando el front no manda el dato:
-   * - Primera ejecución: ActualStartTime es el arranque de esta única sesión y sirve.
-   * - Tarea reabierta: ActualStartTime apunta al primer inicio histórico; usarlo
-   *   sumaría los días que la tarea estuvo cerrada, así que se acumula 0.
+   * - Primera ejecución: ActualStartTime es el arranque de la única sesión y sirve.
+   * - Tarea reanudada o reabierta: ActualStartTime apunta al primer inicio
+   *   histórico; usarlo sumaría el tiempo que estuvo detenida, así que se conserva
+   *   el acumulado tal cual.
    */
-  private resolveExecutionMinutes(
+  private resolveTotalExecutionMinutes(
     taskId: number,
     task: any,
-    dto: CompleteTaskDto,
+    reported: number | undefined,
     prevExecution: number,
     now: string,
   ): number {
-    const reported = dto.executionMinutes;
     if (typeof reported === 'number' && isFinite(reported) && reported >= 0) {
-      if (reported > MAX_SESSION_MINUTES) {
+      if (reported > MAX_TOTAL_EXECUTION_MINUTES) {
         this.logger.warn(
-          `Tarea ${taskId}: el front reportó ${reported} min de ejecución, por encima del ` +
-            `máximo de ${MAX_SESSION_MINUTES} min. Se acota para no corromper el acumulado.`,
+          `Tarea ${taskId}: el front reportó ${reported} min de ejecución total, por encima ` +
+            `del máximo de ${MAX_TOTAL_EXECUTION_MINUTES} min. Se acota para no corromper el dato.`,
         );
-        return MAX_SESSION_MINUTES;
+        return Math.max(MAX_TOTAL_EXECUTION_MINUTES, prevExecution);
+      }
+      if (reported < prevExecution) {
+        this.logger.warn(
+          `Tarea ${taskId}: el front reportó ${reported} min de ejecución total, por debajo del ` +
+            `acumulado en OpenMAINT (${prevExecution} min). Se conserva el acumulado: el tiempo ` +
+            `total nunca decrece.`,
+        );
+        return prevExecution;
       }
       return reported;
     }
 
-    const wasReopened = prevExecution > 0;
-    if (!wasReopened && task.ActualStartTime) {
+    const hasPreviousTime = prevExecution > 0;
+    if (!hasPreviousTime && task.ActualStartTime) {
       return Math.max(0, this.calculateDurationMinutes(task.ActualStartTime, now));
     }
 
     this.logger.warn(
-      `Tarea ${taskId}: se completó sin executionMinutes y no es deducible (acumulado ` +
-        `actual: ${prevExecution} min). No se acumula tiempo para no inflar ExecutionTime.`,
+      `Tarea ${taskId}: se cerró la ejecución sin executionMinutes y no es deducible (acumulado ` +
+        `actual: ${prevExecution} min). Se conserva el acumulado tal cual.`,
     );
-    return 0;
+    return prevExecution;
   }
 
   async reviewTask(
@@ -852,6 +1218,36 @@ export class CleaningTasksService {
     };
   }
 
+  /**
+   * Borra una foto de la tarea. Mismas fases que la subida: mientras la tarea
+   * está en ejecución o recién completada, la evidencia sigue siendo del empleado.
+   */
+  async deleteAttachment(
+    taskId: number,
+    employeeId: number,
+    attachmentId: string,
+    sessionToken: string,
+  ) {
+    const task = await this.fetchAndValidateOwnership(
+      taskId,
+      employeeId,
+      sessionToken,
+    );
+    const phaseDesc = task._phase_description ?? String(task.phase);
+    if (!ALLOWED_UPLOAD_PHASES.includes(phaseDesc)) {
+      throw new BadRequestException(
+        'Photos can only be deleted when task is InExecution or Completed',
+      );
+    }
+
+    await this.openmaintService.deleteAttachment(
+      taskId,
+      attachmentId,
+      sessionToken,
+    );
+    return { success: true, data: { id: attachmentId, deleted: true } };
+  }
+
   async streamAttachment(
     taskId: number,
     attachmentId: string,
@@ -939,6 +1335,71 @@ export class CleaningTasksService {
    */
   private roundMinutes(minutes: number): number {
     return Math.round(minutes * 100) / 100;
+  }
+
+  /**
+   * Fecha y hora para las marcas de la bitácora: `2026-08-19 | 10:20`, en la zona
+   * horaria del servidor. Formateada a mano y no con toLocaleString para que no
+   * dependa del locale de la máquina: la marca de reanudación se vuelve a leer
+   * después para reconstruir el cero del cronómetro.
+   */
+  private formatNoteTimestamp(isoDate: string): string {
+    const date = new Date(isoDate);
+    const pad = (value: number) => String(value).padStart(2, '0');
+    const day = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+    return `${day} | ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  }
+
+  /**
+   * Minutos para la marca de reinicio, sin ceros de relleno: 25, 25.5, 25.53.
+   * Se conserva el decimal porque de este número sale el cero del cronómetro al
+   * reanudar, y redondear a minutos enteros lo desplazaría.
+   */
+  private formatMinutesForNote(minutes: number): string {
+    return String(Number(this.roundMinutes(Math.max(0, minutes)).toFixed(2)));
+  }
+
+  /**
+   * Las llaves delimitan el borrador, así que un texto del empleado que las
+   * contenga se leería después como tal y desaparecería de la vista. Se cambian
+   * por paréntesis antes de guardarlo.
+   */
+  private escapeBraces(text: string): string {
+    return text.replace(/\{/g, '(').replace(/\}/g, ')');
+  }
+
+  /**
+   * Deja la bitácora con el borrador pegado al final, o sin él si no hay.
+   *
+   * El bloque del borrador se reserva su espacio primero y entero: si se recortara
+   * el total por la izquierda podría perder su llave de apertura, y entonces ni se
+   * podría recuperar el texto ni dejaría de verse. Lo que cede sitio es la
+   * bitácora, empezando por lo más viejo.
+   */
+  private withDraftObservations(
+    log: string | null | undefined,
+    draft: string | null | undefined,
+  ): string {
+    const cleanLog = stripDraftObservations(log) ?? '';
+    const cleanDraft = draft?.trim() ? this.escapeBraces(draft.trim()) : null;
+
+    if (!cleanDraft) {
+      return cleanLog.length > MAX_TEAM_OBSERVATIONS
+        ? cleanLog.substring(cleanLog.length - MAX_TEAM_OBSERVATIONS)
+        : cleanLog;
+    }
+
+    // Del borrador se conserva el principio: es lo que el empleado escribió primero.
+    const block = `{${cleanDraft.substring(0, MAX_TEAM_OBSERVATIONS - 2)}}`;
+    const logBudget = MAX_TEAM_OBSERVATIONS - block.length - 2; // los dos saltos
+    if (logBudget <= 0 || !cleanLog) return block;
+
+    const trimmedLog =
+      cleanLog.length > logBudget
+        ? cleanLog.substring(cleanLog.length - logBudget)
+        : cleanLog;
+
+    return `${trimmedLog}\n\n${block}`;
   }
 
   private appendNote(existingText: string | null | undefined, newText: string): string {
