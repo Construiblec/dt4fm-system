@@ -24,6 +24,12 @@ export const canExecuteTasks = (role?: string | null) => {
 
 export const getCurrentRole = () => localStorage.getItem("role");
 
+/** Los proveedores solo manejan mantenimiento; nunca tareas de limpieza. */
+export const isSupplier = (role?: string | null) => {
+  const resolved = role ?? getCurrentRole();
+  return normalizeRole(resolved) === "supplier";
+};
+
 /** Roles cuyo inicio es el panel de supervisión, no el de tareas propias. */
 const SUPERVISOR_HOME_ROLES = ["SupervisorLimpieza"];
 

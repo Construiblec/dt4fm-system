@@ -1,7 +1,8 @@
 import { AppLayout } from "@/app/layout/AppLayout";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import logo from "@/shared/assets/images/construiblec-logo.png";
 import { useLogout } from "@/modules/auth/hooks/useLogout";
+import { isSupplier } from "@/shared/auth/session";
 import { FloatingReportButton } from "@/modules/incidentes/components/FloatingReportButton";
 import { TaskCard } from "@/modules/incidentes/components/TaskCard";
 import { CleaningTaskCard } from "@/modules/incidentes/components/CleaningTaskCard";
@@ -29,6 +30,7 @@ const ITEMS_PER_PAGE = 5;
 
 export const DashboardPage = () => {
   const logout = useLogout();
+  const supplierUser = useMemo(() => isSupplier(), []);
   const syncActiveTask = useCleaningTaskExecutionStore(
     (state) => state.syncActiveTask,
   );
@@ -97,6 +99,12 @@ export const DashboardPage = () => {
   }, []);
 
   useEffect(() => {
+    // Los proveedores no manejan limpiezas; evitar la llamada.
+    if (supplierUser) {
+      setCleaningLoading(false);
+      return;
+    }
+
     const load = async () => {
       try {
         setCleaningLoading(true);
@@ -111,10 +119,11 @@ export const DashboardPage = () => {
     };
 
     void load();
-  }, []);
+  }, [supplierUser]);
 
   // ── Sincronización con el store de tarea activa ────────────────────────────
   useEffect(() => {
+    if (supplierUser) return;
     if (cleaningLoading) return;
 
     if (cleaningError) {
@@ -161,6 +170,7 @@ export const DashboardPage = () => {
     });
 
   }, [
+    supplierUser,
     cleaningLoading,
     cleaningError,
     cleaningTasks,
@@ -246,34 +256,36 @@ export const DashboardPage = () => {
         <section className="flex-1 px-4 pb-32">
           <div className="mx-auto w-full max-w-sm space-y-5">
             <h1 className="text-center text-2xl font-bold text-slate-900">
-              Mantenimiento y Limpieza
+              {supplierUser ? "Mantenimientos" : "Mantenimiento y Limpieza"}
             </h1>
 
             <h2 className="text-xl font-bold text-slate-900">Mis tareas</h2>
 
-            {/* Tab switcher */}
-            <div className="flex rounded-xl bg-white p-1 shadow-sm">
-              <button
-                type="button"
-                onClick={() => setActiveTab("maintenance")}
-                className={`flex-1 rounded-lg py-2 text-sm font-semibold transition ${activeTab === "maintenance"
-                  ? "bg-slate-900 text-white"
-                  : "text-slate-500 hover:text-slate-700"
-                  }`}
-              >
-                Mantenimiento
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveTab("cleaning")}
-                className={`flex-1 rounded-lg py-2 text-sm font-semibold transition ${activeTab === "cleaning"
-                  ? "bg-slate-900 text-white"
-                  : "text-slate-500 hover:text-slate-700"
-                  }`}
-              >
-                Limpieza
-              </button>
-            </div>
+            {/* Tab switcher — oculto para proveedores (solo ven mantenimiento) */}
+            {!supplierUser && (
+              <div className="flex rounded-xl bg-white p-1 shadow-sm">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("maintenance")}
+                  className={`flex-1 rounded-lg py-2 text-sm font-semibold transition ${activeTab === "maintenance"
+                    ? "bg-slate-900 text-white"
+                    : "text-slate-500 hover:text-slate-700"
+                    }`}
+                >
+                  Mantenimiento
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("cleaning")}
+                  className={`flex-1 rounded-lg py-2 text-sm font-semibold transition ${activeTab === "cleaning"
+                    ? "bg-slate-900 text-white"
+                    : "text-slate-500 hover:text-slate-700"
+                    }`}
+                >
+                  Limpieza
+                </button>
+              </div>
+            )}
 
             {/* ── Tab: Mantenimiento ─────────────────────────────────────── */}
             {activeTab === "maintenance" ? (
@@ -392,8 +404,8 @@ export const DashboardPage = () => {
               </>
             ) : null}
 
-            {/* ── Tab: Limpieza ──────────────────────────────────────────── */}
-            {activeTab === "cleaning" ? (
+            {/* ── Tab: Limpieza (oculto para proveedores) ─────────────────── */}
+            {!supplierUser && activeTab === "cleaning" ? (
               <>
                 {!cleaningLoading &&
                   !cleaningError &&
