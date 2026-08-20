@@ -67,6 +67,7 @@ describe('PreventiveMaintenanceService', () => {
   beforeEach(async () => {
     const openmaintMock: OpenmaintGatewayMock = {
       findByAssignee: jest.fn(),
+      findAll: jest.fn().mockResolvedValue({ data: [] }),
       findByEquipment: jest.fn().mockResolvedValue({ data: [] }),
       findById: jest.fn(),
       findWithTasklist: jest.fn(),

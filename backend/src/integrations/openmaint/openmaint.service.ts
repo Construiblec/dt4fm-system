@@ -8,6 +8,12 @@ import { OpenmaintClient } from './openmaint.client';
 
 type EmployeeCard = {
   _id: number;
+  /** Subclase de la ficha; `SupplierEmployee` identifica a un proveedor */
+  _type?: string;
+  Description?: string | null;
+  Team?: number | null;
+  _Team_code?: string | null;
+  _Team_description?: string | null;
 };
 
 type EmployeeCardsResponse = {
@@ -272,6 +278,41 @@ export class OpenmaintService {
     } catch {
       return null;
     }
+  }
+
+  /**
+   * Empleados candidatos a cesionario, opcionalmente acotados a un equipo.
+   *
+   * `_type` viene con la subclase de la ficha (`InternalEmployee`,
+   * `ExternalEmployee`, `SupplierEmployee`, `CustomerEmployee`): es lo único
+   * que distingue a un proveedor, porque la clase `Team` no tiene ningún flag
+   * para ello.
+   */
+  async getEmployees(
+    sessionId: string,
+    teamId?: number,
+  ): Promise<EmployeeCardsResponse> {
+    const params = new URLSearchParams({ limit: '500' });
+
+    if (teamId !== undefined) {
+      params.set(
+        'filter',
+        JSON.stringify({
+          attribute: {
+            simple: {
+              attribute: 'Team',
+              operator: 'equal',
+              value: [String(teamId)],
+            },
+          },
+        }),
+      );
+    }
+
+    return (await this.client.get(
+      `/classes/Employee/cards?${params.toString()}`,
+      sessionId,
+    )) as EmployeeCardsResponse;
   }
 
   async getEmployeeCard(employeeId: number, sessionId: string): Promise<any> {

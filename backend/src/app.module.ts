@@ -12,6 +12,7 @@ import { OwnersModule } from './modules/owners/owners.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { MeetingRemindersModule } from './modules/meeting-reminders/meeting-reminders.module';
 import { PreventiveMaintenanceModule } from './modules/preventive-maintenance/preventive-maintenance.module';
+import { MaintenanceSupervisionModule } from './modules/maintenance-supervision/maintenance-supervision.module';
 import { PasswordRecoveryModule } from './modules/password-recovery/password-recovery.module';
 
 @Module({
@@ -24,6 +25,7 @@ import { PasswordRecoveryModule } from './modules/password-recovery/password-rec
     PasswordRecoveryModule,
     IncidentsModule,
     PreventiveMaintenanceModule,
+    MaintenanceSupervisionModule,
     BuildingsModule,
     CleaningTasksModule,
     BillingModule,

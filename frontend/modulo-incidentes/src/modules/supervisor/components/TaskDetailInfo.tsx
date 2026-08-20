@@ -1,23 +1,11 @@
 import { AlertTriangle, User, MapPin, Hash } from "lucide-react";
+import {
+  getCleaningPhaseLabel,
+  getCleaningPhasePill,
+} from "@/modules/incidentes/constants/cleaningPhase";
 import type { CleaningTaskDetail } from "@/modules/supervisor/types/SupervisorTask";
 import { formatEmployeeName } from "@/shared/utils/nameUtils";
 import { cleanObservationText } from "@/shared/utils/textUtils";
-
-const phaseStyles: Record<string, string> = {
-  Assigned: "bg-blue-100 text-blue-700",
-  InExecution: "bg-amber-100 text-amber-700",
-  Completed: "bg-violet-100 text-violet-700",
-  Reviewed: "bg-emerald-100 text-emerald-700",
-  Cancelled: "bg-red-100 text-red-700",
-};
-
-const phaseLabels: Record<string, string> = {
-  Assigned: "Asignada",
-  InExecution: "En ejecución",
-  Completed: "Completada",
-  Reviewed: "Revisada",
-  Cancelled: "Cancelada",
-};
 
 function formatDateTime(iso: string | null): string {
   if (!iso) return "—";
@@ -74,7 +62,6 @@ type Props = {
 };
 
 export const TaskDetailInfo = ({ detail }: Props) => {
-  const phaseStyle = phaseStyles[detail.phase] ?? "bg-slate-100 text-slate-700";
   // ExecutionTime es el tiempo realmente trabajado, sumando todas las ejecuciones.
   // El respaldo por resta solo aplica a tareas antiguas que nunca lo registraron.
   const duration =
@@ -114,8 +101,8 @@ export const TaskDetailInfo = ({ detail }: Props) => {
     <section className="rounded-2xl bg-white p-4 shadow-sm space-y-4">
       {/* Phase + taskNumber */}
       <div className="flex items-center justify-between">
-        <span className={`rounded-lg px-3 py-1 text-xs font-bold ${phaseStyle}`}>
-          {phaseLabels[detail.phase] ?? detail.phase}
+        <span className={getCleaningPhasePill(detail.phase)}>
+          {getCleaningPhaseLabel(detail.phase)}
         </span>
         <div className="flex items-center gap-1 text-xs text-slate-400">
           <Hash className="h-3 w-3" />

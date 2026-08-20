@@ -30,8 +30,14 @@ export const isSupplier = (role?: string | null) => {
   return normalizeRole(resolved) === "supplier";
 };
 
-/** Roles cuyo inicio es el panel de supervisión, no el de tareas propias. */
-const SUPERVISOR_HOME_ROLES = ["SupervisorLimpieza"];
+/**
+ * Roles cuyo inicio es un panel de supervisión, no el de tareas propias. Cada
+ * supervisor tiene el suyo: limpieza y mantenimiento no comparten vista.
+ */
+const SUPERVISOR_HOME_ROUTES: Record<string, string> = {
+  SupervisorLimpieza: "/supervisor",
+  SupervisorMantenimiento: "/supervisor-mantenimiento",
+};
 
 /**
  * Dashboard que le corresponde al rol. Única fuente de verdad para el destino
@@ -40,9 +46,7 @@ const SUPERVISOR_HOME_ROLES = ["SupervisorLimpieza"];
  */
 export const getHomeRoute = (role?: string | null) => {
   const resolved = role ?? getCurrentRole();
-  return resolved && SUPERVISOR_HOME_ROLES.includes(resolved)
-    ? "/supervisor"
-    : "/dashboard";
+  return (resolved && SUPERVISOR_HOME_ROUTES[resolved]) ?? "/dashboard";
 };
 
 /**

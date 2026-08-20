@@ -65,6 +65,10 @@ export const PM_ACTIVE_STATUS_IDS: PmStatusId[] = [
  * guarda `Action: null` y aplica la transición por defecto del paso.
  */
 export const PM_ACTIONS = {
+  /** `PM01-Advance` («Start maintenance»): Planificación → Aceptación */
+  ASSIGN: 278763,
+  /** `PM01-Reject` («Cancel maintenance»): Planificación → Cancelado */
+  CANCEL: 278765,
   /** `PM02-Advance`: Aceptación → Ejecución */
   START_EXECUTION: 266618,
   /** `PM03-Advance`: Ejecución → Completado */

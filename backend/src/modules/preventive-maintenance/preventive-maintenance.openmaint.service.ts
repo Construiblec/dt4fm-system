@@ -28,6 +28,10 @@ export type PreventiveMaintCard = {
   _FlowStatus_code?: string | null;
   Site?: number | null;
   _Site_description?: string | null;
+  /** El atributo existe, pero en la instancia llega siempre nulo */
+  Priority?: number | null;
+  _Priority_description?: string | null;
+  _Priority_description_translation?: string | null;
   Assignee?: number | null;
   _Assignee_description?: string | null;
   Team?: number | null;
@@ -189,9 +193,17 @@ export type FindByEquipmentOptions = FindByAssigneeOptions & {
   equipmentId: number;
 };
 
+export type FindAllOptions = FindByAssigneeOptions & {
+  /**
+   * `true` → solo los que ya tienen cesionario; `false` → solo los que no lo
+   * tienen; `undefined` → sin filtrar.
+   */
+  assigned?: boolean;
+};
+
 /** Condición de filtro de OpenMAINT, ya sea simple o compuesta. */
 type FilterCondition =
-  | { simple: { attribute: string; operator: string; value: string[] } }
+  | { simple: { attribute: string; operator: string; value?: string[] } }
   | { or: FilterCondition[] }
   | { and: FilterCondition[] };
 
@@ -252,6 +264,43 @@ export class PreventiveMaintenanceOpenmaintService {
         (statusIds?.length
           ? ` con ProcessStatus in [${statusIds.join(',')}]`
           : ''),
+    );
+
+    return (await this.client.get(
+      `${INSTANCES_PATH}?${params.toString()}`,
+      sessionId,
+    )) as PreventiveMaintCardsResponse;
+  }
+
+  /**
+   * Todos los preventivos visibles para la sesión, sin filtrar por `Assignee`.
+   * Lo usa el panel del supervisor de mantenimiento: OpenMAINT ya recorta el
+   * resultado según los permisos de grupo del usuario.
+   */
+  async findAll(
+    sessionId: string,
+    { limit, offset, statusIds, assigned }: FindAllOptions,
+  ): Promise<PreventiveMaintCardsResponse> {
+    const params = new URLSearchParams({
+      include_tasklist: 'false',
+      onlyGridAttrs: 'true',
+      start: String(offset),
+      limit: String(limit),
+      sort: JSON.stringify([{ property: 'Sorting', direction: 'DESC' }]),
+      filter: JSON.stringify(
+        this.buildFilter([
+          this.statusCondition(statusIds),
+          this.assignedCondition(assigned),
+        ]),
+      ),
+    });
+
+    this.logger.log(
+      'Consultando todos los mantenimientos preventivos' +
+        (statusIds?.length
+          ? ` con ProcessStatus in [${statusIds.join(',')}]`
+          : '') +
+        (assigned === undefined ? '' : ` y assigned=${assigned}`),
     );
 
     return (await this.client.get(
@@ -561,6 +610,12 @@ export class PreventiveMaintenanceOpenmaintService {
       (condition): condition is FilterCondition => condition !== null,
     );
 
+    // Sin condiciones no se manda `attribute`: un `{and:[]}` vacío hace que
+    // CMDBuild devuelva 500.
+    if (present.length === 0) {
+      return {};
+    }
+
     return {
       attribute: present.length === 1 ? present[0] : { and: present },
     };
@@ -583,5 +638,19 @@ export class PreventiveMaintenanceOpenmaintService {
     );
 
     return conditions.length === 1 ? conditions[0] : { or: conditions };
+  }
+
+  /** Con o sin cesionario, para aislar los que esperan asignación. */
+  private assignedCondition(assigned?: boolean): FilterCondition | null {
+    if (assigned === undefined) {
+      return null;
+    }
+
+    return {
+      simple: {
+        attribute: 'Assignee',
+        operator: assigned ? 'isnotnull' : 'isnull',
+      },
+    };
   }
 }

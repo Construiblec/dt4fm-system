@@ -6,7 +6,7 @@ import { AttachmentListSection } from "@/modules/incidentes/components/Attachmen
 import { ReadOnlyPreventiveChecklist } from "@/modules/incidentes/components/ReadOnlyPreventiveChecklist";
 import {
   getPreventiveStatusLabel,
-  PREVENTIVE_STATUS_BADGE_CLASSES,
+  getPreventiveStatusPill,
 } from "@/modules/incidentes/constants/preventiveStatus";
 import {
   getPreventiveMaintenanceAttachments,
@@ -144,13 +144,7 @@ export const PastPreventiveMaintenancePage = () => {
             </div>
 
             {maintenance ? (
-              <span
-                className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                  PREVENTIVE_STATUS_BADGE_CLASSES[
-                    maintenance.statusCode ?? ""
-                  ] ?? "bg-slate-100 text-slate-700"
-                }`}
-              >
+              <span className={getPreventiveStatusPill(maintenance.statusCode)}>
                 {getPreventiveStatusLabel(
                   maintenance.statusCode,
                   maintenance.status,

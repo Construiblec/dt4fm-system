@@ -1,4 +1,5 @@
 import { Eraser } from "lucide-react";
+import { PRIORITY_LABELS, PRIORITY_ORDER } from "@/shared/constants/priority";
 
 type Props = {
   priorityFilter: string;
@@ -35,9 +36,11 @@ export const MaintenanceFilters = ({
         className="flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-slate-400"
       >
         <option value="ALL">Prioridad</option>
-        <option value="Alto">Alto</option>
-        <option value="Medio">Medio</option>
-        <option value="Bajo">Bajo</option>
+        {PRIORITY_ORDER.map((code) => (
+          <option key={code} value={PRIORITY_LABELS[code]}>
+            {PRIORITY_LABELS[code]}
+          </option>
+        ))}
       </select>
 
       <button
