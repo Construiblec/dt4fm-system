@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 225 225" width="225" height="225" role="img" aria-label="Construiblec">
+  <rect width="225" height="225" fill="#FFFFFF"/>
+  <path d="M46 107 H80 L128 156 H46 A4 4 0 0 1 42 152 V111 A4 4 0 0 1 46 107 Z" fill="#FF0A2E"/>
+  <path d="M106 59 L129 82 V156 L75 99 V90 Z" fill="#004095"/>
+  <rect x="131" y="70" width="50" height="87" rx="9" fill="#1AB100"/>
+</svg>
