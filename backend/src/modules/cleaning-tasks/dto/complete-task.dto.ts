@@ -14,9 +14,9 @@ export class CompleteTaskDto {
 
   @ApiPropertyOptional({
     description:
-      'Tiempo trabajado en esta ejecución, en minutos (double). Lo mide el front ' +
-      'desde que el empleado toca "Iniciar" en la tarjeta (el cronómetro que ' +
-      'arranca en cero). Se suma al ExecutionTime ya acumulado en OpenMAINT.',
+      'Tiempo TOTAL trabajado en la tarea, en minutos (double). Lo mide el front: ' +
+      'el acumulado que traía la tarea más lo transcurrido desde que el empleado ' +
+      'tocó "Iniciar"/"Reanudar". REEMPLAZA a ExecutionTime en OpenMAINT, no se suma.',
     example: 90,
   })
   @IsOptional()

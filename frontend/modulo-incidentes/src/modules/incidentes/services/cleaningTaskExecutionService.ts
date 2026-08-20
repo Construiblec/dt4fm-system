@@ -1,10 +1,12 @@
 import axios from "axios";
 import { env } from "@/config/env";
+import { buildAttachmentUrl } from "@/shared/utils/attachmentUrl";
 import type {
   CleaningTaskAttachment,
   CleaningTaskCompleteResponse,
   CleaningTaskDetailResponse,
   CleaningTaskExecutionDetail,
+  CleaningTaskPauseResponse,
   CleaningTaskStartResponse,
   CleaningTaskUploadResponse,
 } from "@/modules/incidentes/types/CleaningTaskExecution";
@@ -37,11 +39,34 @@ const extractDetailPayload = (
   return response as CleaningTaskExecutionDetail;
 };
 
-export const getAttachmentUrl = (attachment?: CleaningTaskAttachment | null) =>
-  attachment?.url ??
-  attachment?.fileUrl ??
-  attachment?.path ??
-  attachment?.downloadUrl;
+/**
+ * URL con la que se pinta una foto ya subida. El backend devuelve una ruta
+ * relativa a su propio endpoint, que hay que completar con el host y el token
+ * (un `<img src>` no puede mandar cabeceras).
+ */
+export const getAttachmentUrl = (attachment?: CleaningTaskAttachment | null) => {
+  const direct = attachment?.url ?? attachment?.fileUrl ?? attachment?.path;
+  if (direct) return direct;
+
+  return attachment?.downloadUrl
+    ? buildAttachmentUrl(attachment.downloadUrl)
+    : undefined;
+};
+
+export const deleteCleaningTaskAttachment = async (
+  taskId: number,
+  attachmentId: number | string,
+): Promise<void> => {
+  try {
+    await cleaningExecutionApi.delete(
+      `/cleaning-tasks/${taskId}/attachments/${attachmentId}`,
+      { headers: getCleaningHeaders() },
+    );
+  } catch (error) {
+    redirectIfUnauthorized(error);
+    throw error;
+  }
+};
 
 export const startCleaningTask = async (
   taskId: number,
@@ -56,6 +81,36 @@ export const startCleaningTask = async (
     );
 
     return extractDetailPayload(data);
+  } catch (error) {
+    redirectIfUnauthorized(error);
+    throw error;
+  }
+};
+
+/**
+ * Pausa la tarea en curso. `executionMinutes` es el TOTAL trabajado (acumulado
+ * previo + lo del cronómetro): reemplaza a ExecutionTime en OpenMAINT para que al
+ * reanudar el conteo siga desde ahí. Se reanuda con startCleaningTask.
+ */
+export const pauseCleaningTask = async (
+  taskId: number,
+  reason: string,
+  executionMinutes?: number,
+  draftObservations?: string,
+): Promise<CleaningTaskPauseResponse> => {
+  try {
+    const { data } = await cleaningExecutionApi.patch<CleaningTaskPauseResponse>(
+      `/cleaning-tasks/${taskId}/pause`,
+      { reason, executionMinutes, draftObservations },
+      {
+        headers: {
+          ...getCleaningHeaders(),
+          "Content-Type": "application/json",
+        },
+      },
+    );
+
+    return data;
   } catch (error) {
     redirectIfUnauthorized(error);
     throw error;

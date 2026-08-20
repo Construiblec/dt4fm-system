@@ -68,6 +68,12 @@ export type CleaningTaskDetail = {
   taskObservations: string | null;
   supervisionObserv: string | null;
   teamObservations: string | null;
+  /** Pausada por el empleado: volvió a Assigned con la marca [Pausado]. */
+  isPaused: boolean;
+  /** Arranque de la ejecución en curso; null si la tarea no está corriendo. */
+  sessionStartedAt: string | null;
+  /** Minutos con los que arrancó el cronómetro de la ejecución en curso. */
+  sessionBaseMinutes: number;
   hostawayReservation: string | null;
   checkoutDate: string | null;
   source: string;

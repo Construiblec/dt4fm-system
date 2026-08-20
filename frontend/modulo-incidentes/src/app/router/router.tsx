@@ -1,5 +1,7 @@
 import { createBrowserRouter } from "react-router-dom";
 import { LoginPage } from "@/modules/auth/pages/LoginPage";
+import { ForgotPasswordPage } from "@/modules/auth/pages/ForgotPasswordPage";
+import { ResetPasswordPage } from "@/modules/auth/pages/ResetPasswordPage";
 import { VisitorFormPage } from "@/modules/auth/pages/VisitorFormPage";
 import { CleaningTaskExecutionPage } from "@/modules/incidentes/pages/CleaningTaskExecutionPage";
 import { DashboardPage } from "@/modules/incidentes/pages/DashboardPage";
@@ -19,6 +21,8 @@ import { OwnerReservationDetailPage } from "@/modules/owners/pages/reservation/O
 export const router = createBrowserRouter([
   { path: "/", element: <LoginPage /> },
   { path: "/login", element: <LoginPage /> },
+  { path: "/forgot-password", element: <ForgotPasswordPage /> },
+  { path: "/reset-password", element: <ResetPasswordPage /> },
   { path: "/dashboard", element: <DashboardPage /> },
   { path: "/cleaning-tasks/:id/execute", element: <CleaningTaskExecutionPage /> },
   { path: "/visitor-form", element: <VisitorFormPage /> },

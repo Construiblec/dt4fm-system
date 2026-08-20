@@ -5,6 +5,7 @@ import { PaymentsController } from './payments.controller';
 import { PaymentsService } from './payments.service';
 import { PaymentsSchedulerService } from './payments-scheduler.service';
 import { PaymentReminderService } from './payment-reminder.service';
+import { OverdueNoticeService } from './overdue-notice.service';
 import { PaymentsOpenmaintRepository } from './payments-openmaint.repository';
 
 @Module({
@@ -14,8 +15,9 @@ import { PaymentsOpenmaintRepository } from './payments-openmaint.repository';
     PaymentsOpenmaintRepository,
     PaymentsService,
     PaymentReminderService,
+    OverdueNoticeService,
     PaymentsSchedulerService,
   ],
-  exports: [PaymentsService, PaymentReminderService],
+  exports: [PaymentsService, PaymentReminderService, OverdueNoticeService],
 })
 export class PaymentsModule {}

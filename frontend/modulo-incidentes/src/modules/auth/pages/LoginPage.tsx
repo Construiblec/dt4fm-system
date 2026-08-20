@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import { AppLayout } from "@/app/layout/AppLayout";
 import { LoginForm } from "@/modules/auth/components/LoginForm";
 import logo from "@/shared/assets/images/construiblec-logo.png";
@@ -31,6 +32,15 @@ export const LoginPage = () => {
             </div>
 
             <LoginForm />
+
+            <div className="mt-5 text-center">
+              <Link
+                to="/forgot-password"
+                className="text-sm font-medium text-brand transition hover:text-brand-hover"
+              >
+                {"¿"}Olvidaste tu contrase{"ñ"}a?
+              </Link>
+            </div>
 
             <footer className="mt-8 text-center text-[10px] font-medium uppercase tracking-[0.16em] text-slate-400">
               &copy; 2026 CONSTRUIBLEC {"\u00b7"} TODOS LOS DERECHOS RESERVADOS

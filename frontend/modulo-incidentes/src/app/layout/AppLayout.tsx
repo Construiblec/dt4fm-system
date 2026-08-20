@@ -25,6 +25,8 @@ type AppLayoutProps = {
 const isIndicatorBlockedRoute = (pathname: string) =>
   pathname === "/" ||
   pathname === "/login" ||
+  pathname === "/forgot-password" ||
+  pathname === "/reset-password" ||
   pathname === "/visitor-form" ||
   pathname.startsWith("/owner");
 
