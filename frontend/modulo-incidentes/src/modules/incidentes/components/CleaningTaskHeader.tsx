@@ -1,5 +1,9 @@
 import { ArrowLeft, MapPin } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import {
+  getCleaningPhaseLabel,
+  getCleaningPhasePill,
+} from "@/modules/incidentes/constants/cleaningPhase";
 import type { CleaningTaskExecutionDetail } from "@/modules/incidentes/types/CleaningTaskExecution";
 
 type CleaningTaskHeaderProps = {
@@ -26,8 +30,8 @@ export const CleaningTaskHeader = ({ task }: CleaningTaskHeaderProps) => {
           </p>
           <div className="mt-1 flex flex-wrap items-center gap-2">
             <h1 className="text-base font-semibold text-slate-900">{task.taskNumber}</h1>
-            <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-700">
-              {task.phase}
+            <span className={getCleaningPhasePill(task.phase)}>
+              {getCleaningPhaseLabel(task.phase)}
             </span>
           </div>
           <p className="mt-2 text-sm text-slate-600">{task.description}</p>

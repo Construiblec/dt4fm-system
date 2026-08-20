@@ -11,6 +11,8 @@ import { PreventiveMaintenanceDetailPage } from "@/modules/incidentes/pages/Prev
 import { ReportIncidentPage } from "@/modules/incidentes/pages/ReportIncidentPage";
 import { SupervisorDashboardPage } from "@/modules/supervisor/pages/SupervisorDashboardPage";
 import { SupervisorTaskDetailPage } from "@/modules/supervisor/pages/SupervisorTaskDetailPage";
+import { MaintenanceSupervisorDashboardPage } from "@/modules/supervisor-mantenimiento/pages/MaintenanceSupervisorDashboardPage";
+import { MaintenanceSupervisorDetailPage } from "@/modules/supervisor-mantenimiento/pages/MaintenanceSupervisorDetailPage";
 import { OwnerAuthPage } from "@/modules/owners/pages/OwnerAuthPage";
 import { OwnerDashboardPage } from "@/modules/owners/pages/OwnerDashboardPage";
 import { OwnerPaymentsPage } from "@/modules/owners/pages/OwnerPaymentsPage";
@@ -39,6 +41,15 @@ export const router = createBrowserRouter([
   { path: "/reportar-incidente", element: <ReportIncidentPage /> },
   { path: "/supervisor", element: <SupervisorDashboardPage /> },
   { path: "/supervisor/tasks/:id", element: <SupervisorTaskDetailPage /> },
+  // ── Supervisión de mantenimiento ──────────────────────────────────────────
+  {
+    path: "/supervisor-mantenimiento",
+    element: <MaintenanceSupervisorDashboardPage />,
+  },
+  {
+    path: "/supervisor-mantenimiento/:kind/:id",
+    element: <MaintenanceSupervisorDetailPage />,
+  },
   // ── Propietarios ──────────────────────────────────────────────────────────
   { path: "/owner/auth", element: <OwnerAuthPage /> },
   { path: "/owner/dashboard", element: <OwnerDashboardPage /> },

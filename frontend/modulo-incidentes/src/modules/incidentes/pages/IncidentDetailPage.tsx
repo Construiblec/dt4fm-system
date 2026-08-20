@@ -11,34 +11,20 @@ import { completeIncident } from "@/modules/incidentes/services/completeIncident
 import { getIncidentById } from "@/modules/incidentes/services/incidentDetailService";
 import type { IncidentDetail } from "@/modules/incidentes/types/IncidentDetail";
 import { ConfirmModal } from "@/shared/components/ConfirmModal";
+import {
+  getCorrectiveStatusLabel,
+  getCorrectiveStatusPill,
+  toCorrectiveStatusCode,
+} from "@/modules/incidentes/constants/correctiveStatus";
+import {
+  getPriorityLabel,
+  PRIORITY_PILL_CLASSES,
+  toPriorityCode,
+} from "@/shared/constants/priority";
+import { PILL_SHAPE } from "@/shared/constants/statusPalette";
 import { ErrorModal } from "@/shared/components/ErrorModal";
 import { LoadingModal } from "@/shared/components/LoadingModal";
 import { SuccessModal } from "@/shared/components/SuccessModal";
-
-const statusStyles: Record<string, string> = {
-  Ejecucion: "bg-blue-100 text-blue-700",
-  Ejecución: "bg-blue-100 text-blue-700",
-  Completado: "bg-emerald-100 text-emerald-700",
-  Cancelado: "bg-red-100 text-red-700",
-};
-
-const priorityStyles: Record<string, string> = {
-  Alto: "bg-red-50 text-red-700 ring-red-200",
-  Medio: "bg-amber-50 text-amber-700 ring-amber-200",
-  Bajo: "bg-emerald-50 text-emerald-700 ring-emerald-200",
-};
-
-const statusMap: Record<string, string> = {
-  Execution: "Ejecución",
-  Completed: "Completado",
-  Canceled: "Cancelado",
-};
-
-const priorityMap: Record<string, string> = {
-  High: "Alto",
-  Medium: "Medio",
-  Low: "Bajo",
-};
 
 const formatDate = (value: string) =>
   new Date(value).toLocaleString(undefined, {
@@ -114,13 +100,13 @@ export const IncidentDetailPage = () => {
     };
   }, [resolutionImage]);
 
+  // El endpoint antiguo devuelve la etiqueta ya traducida, no el código estable
+  const statusCode = incident ? toCorrectiveStatusCode(incident.status) : null;
   const normalizedStatus = incident
-    ? (statusMap[incident.status] ?? incident.status)
+    ? getCorrectiveStatusLabel(statusCode, incident.status)
     : "";
 
-  const normalizedPriority = incident
-    ? (priorityMap[incident.priority] ?? incident.priority)
-    : "";
+  const priorityCode = incident ? toPriorityCode(incident.priority) : null;
 
   const handleResolutionImageChange = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0] ?? null;
@@ -186,12 +172,7 @@ export const IncidentDetailPage = () => {
             </div>
 
             {incident ? (
-              <span
-                className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                  statusStyles[normalizedStatus] ??
-                  "bg-slate-100 text-slate-700"
-                }`}
-              >
+              <span className={getCorrectiveStatusPill(statusCode)}>
                 {normalizedStatus}
               </span>
             ) : null}
@@ -225,12 +206,13 @@ export const IncidentDetailPage = () => {
                   </div>
 
                   <span
-                    className={`rounded-full px-3 py-1 text-xs font-semibold ring-1 ${
-                      priorityStyles[normalizedPriority] ??
-                      "bg-slate-50 text-slate-700 ring-slate-200"
+                    className={`${PILL_SHAPE} ring-1 ${
+                      priorityCode
+                        ? PRIORITY_PILL_CLASSES[priorityCode]
+                        : "bg-slate-50 text-slate-700 ring-slate-200"
                     }`}
                   >
-                    Prioridad {normalizedPriority}
+                    Prioridad {getPriorityLabel(priorityCode)}
                   </span>
                 </div>
 

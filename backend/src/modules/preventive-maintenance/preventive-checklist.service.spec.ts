@@ -89,6 +89,13 @@ describe('PreventiveChecklistService', () => {
   beforeEach(async () => {
     const mock: GatewayMock = {
       findByAssignee: jest.fn(),
+      findAll: jest.fn(),
+      findByEquipment: jest.fn(),
+      downloadAttachment: jest.fn(),
+      deleteAttachment: jest.fn(),
+      findManualAttachments: jest.fn(),
+      downloadManualAttachment: jest.fn(),
+      findMaintenanceConfig: jest.fn(),
       findById: jest.fn(),
       findWithTasklist: jest.fn(),
       advance: jest.fn(),

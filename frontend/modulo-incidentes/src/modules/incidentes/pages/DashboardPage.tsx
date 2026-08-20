@@ -1,15 +1,17 @@
 import { AppLayout } from "@/app/layout/AppLayout";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import logo from "@/shared/assets/images/construiblec-logo.png";
 import { useLogout } from "@/modules/auth/hooks/useLogout";
+import { isSupplier } from "@/shared/auth/session";
 import { FloatingReportButton } from "@/modules/incidentes/components/FloatingReportButton";
-import { TaskCard } from "@/modules/incidentes/components/TaskCard";
 import { CleaningTaskCard } from "@/modules/incidentes/components/CleaningTaskCard";
 import { ListStateMessage } from "@/modules/incidentes/components/ListStateMessage";
 import { MaintenanceFilters } from "@/modules/incidentes/components/MaintenanceFilters";
 import { CleaningFilters } from "@/modules/incidentes/components/CleaningFilters";
 import { PreventiveFilters } from "@/modules/incidentes/components/PreventiveFilters";
-import { PreventiveMaintenanceCard } from "@/modules/incidentes/components/PreventiveMaintenanceCard";
+import { toCorrectiveStatusCode } from "@/modules/incidentes/constants/correctiveStatus";
+import { MaintenanceCard } from "@/shared/components/MaintenanceCard";
 import { useListPagination } from "@/modules/incidentes/hooks/useListPagination";
 import { useMyPreventiveMaintenances } from "@/modules/incidentes/hooks/useMyPreventiveMaintenances";
 import { getMyIncidents } from "@/modules/incidentes/services/incidentsService";
@@ -20,7 +22,7 @@ import {
   isActiveCleaningTaskPhase,
   useCleaningTaskExecutionStore,
 } from "@/store/cleaningTaskExecutionStore";
-import { Pagination } from "../components/Pagination";
+import { Pagination } from "@/shared/components/Pagination";
 
 type Tab = "maintenance" | "cleaning";
 type MaintenanceKind = "corrective" | "preventive";
@@ -29,6 +31,8 @@ const ITEMS_PER_PAGE = 5;
 
 export const DashboardPage = () => {
   const logout = useLogout();
+  const navigate = useNavigate();
+  const supplierUser = useMemo(() => isSupplier(), []);
   const syncActiveTask = useCleaningTaskExecutionStore(
     (state) => state.syncActiveTask,
   );
@@ -97,6 +101,12 @@ export const DashboardPage = () => {
   }, []);
 
   useEffect(() => {
+    // Los proveedores no manejan limpiezas; evitar la llamada.
+    if (supplierUser) {
+      setCleaningLoading(false);
+      return;
+    }
+
     const load = async () => {
       try {
         setCleaningLoading(true);
@@ -111,10 +121,11 @@ export const DashboardPage = () => {
     };
 
     void load();
-  }, []);
+  }, [supplierUser]);
 
   // ── Sincronización con el store de tarea activa ────────────────────────────
   useEffect(() => {
+    if (supplierUser) return;
     if (cleaningLoading) return;
 
     if (cleaningError) {
@@ -161,6 +172,7 @@ export const DashboardPage = () => {
     });
 
   }, [
+    supplierUser,
     cleaningLoading,
     cleaningError,
     cleaningTasks,
@@ -246,34 +258,36 @@ export const DashboardPage = () => {
         <section className="flex-1 px-4 pb-32">
           <div className="mx-auto w-full max-w-sm space-y-5">
             <h1 className="text-center text-2xl font-bold text-slate-900">
-              Mantenimiento y Limpieza
+              {supplierUser ? "Mantenimientos" : "Mantenimiento y Limpieza"}
             </h1>
 
             <h2 className="text-xl font-bold text-slate-900">Mis tareas</h2>
 
-            {/* Tab switcher */}
-            <div className="flex rounded-xl bg-white p-1 shadow-sm">
-              <button
-                type="button"
-                onClick={() => setActiveTab("maintenance")}
-                className={`flex-1 rounded-lg py-2 text-sm font-semibold transition ${activeTab === "maintenance"
-                  ? "bg-slate-900 text-white"
-                  : "text-slate-500 hover:text-slate-700"
-                  }`}
-              >
-                Mantenimiento
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveTab("cleaning")}
-                className={`flex-1 rounded-lg py-2 text-sm font-semibold transition ${activeTab === "cleaning"
-                  ? "bg-slate-900 text-white"
-                  : "text-slate-500 hover:text-slate-700"
-                  }`}
-              >
-                Limpieza
-              </button>
-            </div>
+            {/* Tab switcher — oculto para proveedores (solo ven mantenimiento) */}
+            {!supplierUser && (
+              <div className="flex rounded-xl bg-white p-1 shadow-sm">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("maintenance")}
+                  className={`flex-1 rounded-lg py-2 text-sm font-semibold transition ${activeTab === "maintenance"
+                    ? "bg-slate-900 text-white"
+                    : "text-slate-500 hover:text-slate-700"
+                    }`}
+                >
+                  Mantenimiento
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("cleaning")}
+                  className={`flex-1 rounded-lg py-2 text-sm font-semibold transition ${activeTab === "cleaning"
+                    ? "bg-slate-900 text-white"
+                    : "text-slate-500 hover:text-slate-700"
+                    }`}
+                >
+                  Limpieza
+                </button>
+              </div>
+            )}
 
             {/* ── Tab: Mantenimiento ─────────────────────────────────────── */}
             {activeTab === "maintenance" ? (
@@ -331,9 +345,41 @@ export const DashboardPage = () => {
                     {!loading && !error && filteredIncidents.length > 0 ? (
                       <>
                         <div className="space-y-4">
-                          {maintenancePagination.pageItems.map((incident) => (
-                            <TaskCard key={incident.id} {...incident} />
-                          ))}
+                          {maintenancePagination.pageItems.map((incident) => {
+                            const statusCode = toCorrectiveStatusCode(
+                              incident.status,
+                            );
+                            // El técnico solo entra a lo que está en ejecución
+                            const canOpen = statusCode === "Execution";
+
+                            return (
+                              <MaintenanceCard
+                                key={incident.id}
+                                maintenance={{
+                                  id: incident.id,
+                                  kind: "corrective",
+                                  number: incident.number,
+                                  subject: incident.building,
+                                  statusCode,
+                                  status: incident.status,
+                                  site: incident.building,
+                                  target: incident.location,
+                                  assignee: null,
+                                  priorityCode: incident.priority,
+                                  openingDate: incident.createdAt,
+                                  plannedStart: null,
+                                  dueDate: null,
+                                  isOverdue: false,
+                                }}
+                                onOpen={() =>
+                                  navigate(`/incidents/${incident.id}`)
+                                }
+                                disabledReason={
+                                  canOpen ? null : "Aún no está en ejecución"
+                                }
+                              />
+                            );
+                          })}
                         </div>
                         <Pagination
                           currentPage={maintenancePagination.page}
@@ -373,12 +419,43 @@ export const DashboardPage = () => {
                       filteredPreventives.length > 0 ? (
                       <>
                         <div className="space-y-4">
-                          {preventivePagination.pageItems.map((maintenance) => (
-                            <PreventiveMaintenanceCard
-                              key={maintenance.id}
-                              {...maintenance}
-                            />
-                          ))}
+                          {preventivePagination.pageItems.map((maintenance) => {
+                            // Reanudar un suspendido se hace en OpenMAINT
+                            const isSuspended =
+                              maintenance.statusCode === "Suspension";
+
+                            return (
+                              <MaintenanceCard
+                                key={maintenance.id}
+                                maintenance={{
+                                  id: maintenance.id,
+                                  kind: "preventive",
+                                  number: maintenance.number,
+                                  subject: maintenance.subject,
+                                  statusCode: maintenance.statusCode,
+                                  status: maintenance.status,
+                                  site: maintenance.site,
+                                  target: maintenance.equipment,
+                                  assignee: null,
+                                  priorityCode: null,
+                                  openingDate: maintenance.dueDate,
+                                  plannedStart: maintenance.expectedStartDate,
+                                  dueDate: maintenance.dueDate,
+                                  isOverdue: maintenance.isOverdue,
+                                }}
+                                onOpen={() =>
+                                  navigate(
+                                    `/preventive-maintenance/${maintenance.id}`,
+                                  )
+                                }
+                                disabledReason={
+                                  isSuspended
+                                    ? "Se reanuda desde OpenMAINT"
+                                    : null
+                                }
+                              />
+                            );
+                          })}
                         </div>
                         <Pagination
                           currentPage={preventivePagination.page}
@@ -392,8 +469,8 @@ export const DashboardPage = () => {
               </>
             ) : null}
 
-            {/* ── Tab: Limpieza ──────────────────────────────────────────── */}
-            {activeTab === "cleaning" ? (
+            {/* ── Tab: Limpieza (oculto para proveedores) ─────────────────── */}
+            {!supplierUser && activeTab === "cleaning" ? (
               <>
                 {!cleaningLoading &&
                   !cleaningError &&

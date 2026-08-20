@@ -20,7 +20,7 @@ import { UploadDocumentSheet } from "@/modules/incidentes/components/UploadDocum
 import { PREVENTIVE_UPLOAD_ENABLED } from "@/modules/incidentes/constants/preventiveDocuments";
 import {
   getPreventiveStatusLabel,
-  PREVENTIVE_STATUS_BADGE_CLASSES,
+  getPreventiveStatusPill,
 } from "@/modules/incidentes/constants/preventiveStatus";
 import { usePreventiveChecklist } from "@/modules/incidentes/hooks/usePreventiveChecklist";
 import { usePreventiveMaintenanceAttachments } from "@/modules/incidentes/hooks/usePreventiveMaintenanceAttachments";
@@ -297,13 +297,7 @@ export const PreventiveMaintenanceDetailPage = () => {
             </div>
 
             {maintenance ? (
-              <span
-                className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                  PREVENTIVE_STATUS_BADGE_CLASSES[
-                    maintenance.statusCode ?? ""
-                  ] ?? "bg-slate-100 text-slate-700"
-                }`}
-              >
+              <span className={getPreventiveStatusPill(maintenance.statusCode)}>
                 {getPreventiveStatusLabel(
                   maintenance.statusCode,
                   maintenance.status,
