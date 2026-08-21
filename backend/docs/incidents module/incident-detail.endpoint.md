@@ -30,6 +30,7 @@ id number ID del incidente en OpenMAINT
 "number": "CM.2026.0076",
 "location": "01/09",
 "building": "REP3 - Proy2",
+"statusCode": "Completed",
 "status": "Completed",
 "priority": "High",
 "createdAt": "2026-03-17T15:56:43Z",
@@ -44,6 +45,7 @@ id \_id
 number Number
 location ShortDescr
 building \_Site_description
+statusCode \_ProcessStatus_code (vía CM_STATUS_CODE_TO_NAME)
 status \_ProcessStatus_description
 priority \_Priority_description
 createdAt OpeningDate

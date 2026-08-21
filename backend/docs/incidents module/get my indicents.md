@@ -61,9 +61,11 @@ El backend transforma la respuesta y devuelve un formato limpio al frontend.
       "number": string,
       "location": string,
       "priority": string,
+      "statusCode": string | null,
       "status": string,
       "building": string,
-      "createdAt": string
+      "createdAt": string,
+      "plannedStart": string | null
     }
   ]
 }
@@ -74,19 +76,23 @@ El backend transforma la respuesta y devuelve un formato limpio al frontend.
       "id": 783231,
       "number": "CM.2026.0076",
       "location": "01/09",
-      "priority": "High",
-      "status": "Execution",
+      "priority": "Alto",
+      "statusCode": "Execution",
+      "status": "Ejecución",
       "building": "REP3 - Proy2",
-      "createdAt": "2026-03-17T15:56:43Z"
+      "createdAt": "2026-03-17T15:56:43Z",
+      "plannedStart": "2026-03-18T09:00:00Z"
     },
     {
       "id": 660570,
       "number": "CM.2026.0030",
       "location": "P103",
-      "priority": "Medium",
-      "status": "Execution",
+      "priority": "Medio",
+      "statusCode": "Accounting",
+      "status": "Contabilidad",
       "building": "R - Republica",
-      "createdAt": "2026-03-09T17:09:27Z"
+      "createdAt": "2026-03-09T17:09:27Z",
+      "plannedStart": null
     }
   ]
 }
@@ -95,22 +101,40 @@ OpenMAINT	Backend
 _id	id
 Number	number
 ShortDescr	location
-_Priority_description	priority
-_ProcessStatus_description	status
+_Priority_description_translation	priority
+_ProcessStatus_code	statusCode
+_ProcessStatus_description_translation	status
 _Site_description	building
 OpeningDate	createdAt
+ExpExecStartDate	plannedStart
+
+⚠️ statusCode vs status
+
+`status` es la etiqueta que OpenMAINT traduce según el idioma de la sesión
+(«Ejecución», «Contabilidad»…). Sirve para mostrar, nunca para decidir.
+
+`statusCode` es el nombre estable derivado de `_ProcessStatus_code`
+(«Execution», «Accounting»…) mediante `CM_STATUS_CODE_TO_NAME`. Es el que
+debe gobernar la lógica del frontend: qué tarjetas se pueden abrir, los
+colores de estado y los filtros.
+
+Antes solo se exponía la etiqueta traducida y el frontend deducía el código
+comparando ese texto contra una tabla escrita a mano. Ya fallaba en la
+práctica: OpenMAINT rotula `CM-Management` como «Administración» mientras la
+tabla decía «Gestión».
+
 🔹 Consideraciones
 ✅ Autenticación basada en sesión
 
-El endpoint depende únicamente del sessionId
+El endpoint depende del sessionId para autenticarse ante OpenMAINT
 
-OpenMAINT determina automáticamente los incidentes del usuario
+✅ Filtro por cesionario
 
-❌ No se utilizan filtros manuales
+Se envía filter con Assignee = x-employee-id, de modo que cada persona ve
+solo los correctivos que tiene asignados
 
-No se envía filter en la consulta
-
-Evita inconsistencias con Requester/Assignee
+No se filtra por estado ni por estado de flujo: llegan también los cerrados
+(`closed.completed`), que incluyen completados y cancelados
 
 ✅ Ordenamiento
 
