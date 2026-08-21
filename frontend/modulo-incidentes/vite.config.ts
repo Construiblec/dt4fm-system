@@ -17,10 +17,10 @@ export default defineConfig(({ mode }) => ({
 
       manifest: {
         id: '/',
-        name: 'Construiblec',
-        short_name: 'Construiblec',
+        name: 'DT4F™',
+        short_name: 'DT4F™',
         description:
-          'Gestión de incidentes, mantenimientos preventivos y tareas de limpieza en campo.',
+          'Gemelo Digital para Gestión de Instalaciones.',
         lang: 'es',
         dir: 'ltr',
         start_url: '/',
