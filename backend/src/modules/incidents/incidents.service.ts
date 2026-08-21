@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { extractRegisterNotes } from '../../common/utils/openmaint-register.util';
 import { OpenmaintService } from '../../integrations/openmaint/openmaint.service';
+import { CM_STATUS_CODE_TO_NAME } from '../maintenance-supervision/constants/corrective-maint.constants';
 import { NotificationsService } from '../notifications/notifications.service';
 import { CompleteIncidentDto } from './dto/complete-incident.dto';
 import { CreateIncidentDto } from './dto/create-incident.dto';
@@ -22,9 +23,13 @@ type OpenmaintIncidentListItem = {
   Number: string;
   ShortDescr: string;
   _Priority_description_translation: string;
+  /** Código estable del estado (`CM-Execution`, `CM-Assignment`, …). */
+  _ProcessStatus_code?: string | null;
   _ProcessStatus_description_translation: string;
   _Site_description: string;
   OpeningDate: string;
+  /** Fecha prevista de inicio que fija el supervisor al asignar. */
+  ExpExecStartDate?: string | null;
 };
 
 type OpenmaintIncidentListResponse = {
@@ -37,6 +42,8 @@ type OpenmaintIncidentDetail = {
   ShortDescr: string;
   _Site_description?: string | null;
   Site_description?: string | null;
+  /** Código estable del estado (`CM-Execution`, `CM-Assignment`, …). */
+  _ProcessStatus_code?: string | null;
   _ProcessStatus_description?: string | null;
   ProcessStatus_description?: string | null;
   _Priority_description?: string | null;
@@ -194,6 +201,9 @@ export class IncidentsService {
       number: incident.Number ?? null,
       location: incident.ShortDescr ?? null,
       building: incident._Site_description ?? incident.Site_description ?? null,
+      // Código estable para la lógica; `status` queda como etiqueta visible.
+      statusCode:
+        CM_STATUS_CODE_TO_NAME[incident._ProcessStatus_code ?? ''] ?? null,
       status:
         incident._ProcessStatus_description ??
         incident.ProcessStatus_description ??
@@ -226,9 +236,15 @@ export class IncidentsService {
         number: incident.Number,
         location: incident.ShortDescr,
         priority: incident._Priority_description_translation,
+        // El código estable es el que debe gobernar la lógica del front.
+        // `_ProcessStatus_description_translation` viaja traducido según el
+        // idioma de la sesión, así que solo sirve como etiqueta visible.
+        statusCode:
+          CM_STATUS_CODE_TO_NAME[incident._ProcessStatus_code ?? ''] ?? null,
         status: incident._ProcessStatus_description_translation,
         building: incident._Site_description,
         createdAt: incident.OpeningDate,
+        plannedStart: incident.ExpExecStartDate ?? null,
       })),
     };
   }

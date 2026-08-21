@@ -14,7 +14,6 @@ import { ConfirmModal } from "@/shared/components/ConfirmModal";
 import {
   getCorrectiveStatusLabel,
   getCorrectiveStatusPill,
-  toCorrectiveStatusCode,
 } from "@/modules/incidentes/constants/correctiveStatus";
 import {
   getPriorityLabel,
@@ -100,8 +99,7 @@ export const IncidentDetailPage = () => {
     };
   }, [resolutionImage]);
 
-  // El endpoint antiguo devuelve la etiqueta ya traducida, no el código estable
-  const statusCode = incident ? toCorrectiveStatusCode(incident.status) : null;
+  const statusCode = incident?.statusCode ?? null;
   const normalizedStatus = incident
     ? getCorrectiveStatusLabel(statusCode, incident.status)
     : "";

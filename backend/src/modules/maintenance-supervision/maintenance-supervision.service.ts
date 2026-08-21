@@ -221,9 +221,10 @@ export class MaintenanceSupervisionService {
    * Asigna cesionario y equipo a un correctivo (`CM02-Advance`).
    *
    * Ojo con el efecto colateral: este avance deja la instancia en
-   * `CM-Execution` y OpenMAINT rellena `ExecStartDate` con la fecha prevista.
-   * El mapeo público lo compensa exponiendo el estado derivado «Assigned»
-   * mientras no haya un inicio real — ver `toCorrective`.
+   * `CM-Execution` y OpenMAINT rellena `ExecStartDate` con la fecha prevista,
+   * de modo que el trabajo figuraría como iniciado antes de que el técnico lo
+   * arranque. Por eso se vacía a continuación — ver `clearAutoFilledExecStart`,
+   * que es lo que hace viable el estado derivado «Assigned» de `toCorrective`.
    */
   async assignCorrective(
     sessionId: string,
@@ -266,7 +267,55 @@ export class MaintenanceSupervisionService {
       'OpenMAINT aceptó la petición pero no aplicó la asignación del correctivo',
     );
 
-    return { success: true, data: this.toCorrective(updated) };
+    const assigned = await this.clearAutoFilledExecStart(sessionId, id, updated);
+
+    return { success: true, data: this.toCorrective(assigned) };
+  }
+
+  /**
+   * Vacía el `ExecStartDate` que OpenMAINT rellena por su cuenta al entrar en
+   * Ejecución, copiando la fecha prevista.
+   *
+   * Sin esto el trabajo aparece iniciado desde el instante en que se asigna: el
+   * estado derivado «Assigned» no se activaría nunca y el técnico vería una hora
+   * de inicio que no puso. El inicio real lo sella él al empezar.
+   *
+   * Es best-effort a propósito. La asignación ya se aplicó, así que un fallo
+   * aquí no debe reportarse como asignación fallida; solo se pierde el matiz de
+   * «Assigned» y el correctivo se muestra como «Execution», que es como estaba
+   * antes de este arreglo.
+   */
+  private async clearAutoFilledExecStart(
+    sessionId: string,
+    id: number,
+    assigned: CorrectiveMaintCard,
+  ): Promise<CorrectiveMaintCard> {
+    if (!assigned.ExecStartDate) {
+      return assigned;
+    }
+
+    try {
+      const withTask = await this.corrective.findWithTasklist(sessionId, id);
+      const activityId = withTask.data?._tasklist?.[0]?._id;
+
+      if (!activityId) {
+        return assigned;
+      }
+
+      await this.corrective.saveFields(sessionId, id, {
+        activityId,
+        fields: { ExecStartDate: null },
+      });
+
+      return (await this.corrective.findById(sessionId, id)).data ?? assigned;
+    } catch (error) {
+      this.logger.warn(
+        `No se pudo vaciar ExecStartDate del correctivo ${id}: se mostrará como ` +
+          `«Execution» en vez de «Assigned». ${(error as Error)?.message ?? ''}`,
+      );
+
+      return assigned;
+    }
   }
 
   /** Rechaza y cierra un correctivo sin ejecutarlo (`CM02-Reject`). */

@@ -10,12 +10,12 @@ import {
  * `preventiveStatus.ts`.
  *
  * El flujo tiene nueve estados, cuatro de ellos administrativos (presupuesto,
- * contabilidad, control y gestión). El técnico solo veía «Ejecución» y
- * comparaba contra el texto en castellano; aquí se usa el `statusCode` estable
- * que devuelve el backend.
+ * contabilidad, control y administración). Todas las vistas usan el `statusCode`
+ * estable que devuelve el backend; estas etiquetas son solo para mostrar.
  *
  * `Assigned` **no existe en openMAINT**: asignar avanza CM02 directo a
- * Ejecución, así que el backend lo deriva mientras no haya un inicio real.
+ * Ejecución, así que el backend vacía `ExecStartDate` y lo deriva mientras no
+ * haya un inicio real.
  */
 export const CORRECTIVE_STATUS_LABELS: Record<string, string> = {
   Opening: "Apertura",
@@ -25,7 +25,9 @@ export const CORRECTIVE_STATUS_LABELS: Record<string, string> = {
   Control: "Control",
   Execution: "Ejecución",
   Accounting: "Contabilidad",
-  Management: "Gestión",
+  // OpenMAINT rotula este paso «Administración»; se respeta para que coincida
+  // con lo que se ve en su propia interfaz.
+  Management: "Administración",
   Completed: "Completado",
   Canceled: "Cancelado",
 };
@@ -93,25 +95,34 @@ export const getCorrectiveStatusLabel = (
 export const CORRECTIVE_PENDING_REVIEW_STATUS = "Accounting";
 
 /**
- * El listado antiguo (`GET /incidents/my`) devuelve la etiqueta ya traducida en
- * vez del código estable. Esto la reduce al código para poder pintarla igual
- * que todo lo demás, hasta que ese endpoint se alinee con el resto.
+ * Por qué el técnico no puede abrir un correctivo, o `null` si sí puede.
+ *
+ * El motivo depende del estado: decir «aún no está en ejecución» en un trabajo
+ * ya completado o pendiente de revisión confunde, porque esos pasos van
+ * *después* de la ejecución, no antes. Los textos son cortos a propósito: la
+ * tarjeta los recorta si no caben.
  */
-export const toCorrectiveStatusCode = (
-  value: string | null | undefined,
+export const getCorrectiveBlockedReason = (
+  statusCode: string | null,
 ): string | null => {
-  if (!value) return null;
-
-  const normalized = value.trim().toLowerCase();
-
-  const byCode = Object.keys(CORRECTIVE_STATUS_LABELS).find(
-    (code) => code.toLowerCase() === normalized,
-  );
-  if (byCode) return byCode;
-
-  const byLabel = Object.entries(CORRECTIVE_STATUS_LABELS).find(
-    ([, label]) => label.toLowerCase() === normalized,
-  );
-
-  return byLabel ? byLabel[0] : null;
+  switch (statusCode) {
+    case "Execution":
+      return null;
+    case "Opening":
+    case "Assignment":
+    case "Assigned":
+      return "Aún no está en ejecución";
+    case "Accounting":
+      return "Pendiente de revisión";
+    case "Estimate":
+    case "Control":
+    case "Management":
+      return "En gestión administrativa";
+    case "Completed":
+      return "Trabajo completado";
+    case "Canceled":
+      return "Trabajo cancelado";
+    default:
+      return "No disponible";
+  }
 };
