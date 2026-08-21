@@ -40,19 +40,30 @@ El grupo `SupervisorMantenimiento` (id `7882034`, `admin_limited`) necesita:
 `Team` no se necesita porque la ficha de `Employee` ya trae `Team` (id numérico), `_Team_code` y
 `_Team_description` resueltos: la lista de equipos del selector se **deriva de los empleados**.
 
-### ⚠️ El performer no es el supervisor
+### ✅ El performer no es el supervisor, pero `wf_plus` basta
 
 Los pasos del flujo tienen como *performer* a `MaintOffice` (PM01, CM02, CM05, CM07), `Team`
-(CM03) y `Supplier` (CM04) — **nunca `SupervisorMantenimiento`**. El grupo tiene `wf_plus`, que
-podría bastar para ejecutar actividades de otro performer, pero **no está verificado**.
+(CM03) y `Supplier` (CM04) — **nunca `SupervisorMantenimiento`**.
 
-Esto importa porque **openMAINT responde 200 a un `_advance` aunque no avance**: guarda los
-atributos y deja el proceso donde estaba. Por eso toda escritura de este módulo **relee la tarjeta
-y comprueba el estado** (`assertCorrectiveReached` / `assertPreventiveReached`); sin eso la UI le
+**Verificado contra el clon el 2026-08-21** con la sesión de un usuario del grupo: el `_tasklist`
+de una actividad cuyo performer es `MaintOffice` llega con `writable: true`, y las tres
+transiciones se aplicaron de verdad sobre `CM.2026.0126`:
+
+| Acción | Resultado |
+|---|---|
+| `CM02-Advance` | Asignación → Ejecución ✅ |
+| `CM03-Advance` | Ejecución → Contabilidad ✅ |
+| `CM05-Back` | Contabilidad → Asignación ✅ |
+
+**No hace falta tocar los performers en el diseñador de procesos.**
+
+Aun así, la comprobación de estado se mantiene: **openMAINT responde 200 a un `_advance` aunque no
+avance** —guarda los atributos y deja el proceso donde estaba—, así que toda escritura **relee la
+tarjeta y verifica** (`assertCorrectiveReached` / `assertPreventiveReached`). Sin eso la UI le
 diría al supervisor que asignó un trabajo que sigue sin asignar.
 
-Si la prueba de humo falla, la salida es añadir el grupo como performer de `PM01-Opening`,
-`CM02-Assignment` y `CM05-Accounting` en el diseñador de procesos.
+> Dato útil del mismo ensayo: `CM05-Back` **limpia `ExecStartDate` y `ExpExecStartDate`, pero
+> conserva el `Assignee`**. Un correctivo devuelto de revisión queda en Asignación con cesionario.
 
 ---
 
@@ -98,22 +109,30 @@ transición por defecto del paso.
 ## 4. El estado derivado «Asignado»
 
 `CorrectiveMaint` **no tiene** un estado «asignado pero no iniciado»: `CM02-Advance` lleva la
-instancia directamente a `CM-Execution`, y openMAINT rellena `ExecStartDate` con la fecha
+instancia directamente a `CM-Execution`, y openMAINT rellena `ExecStartDate` copiando la fecha
 *prevista*. El técnico vería una hora de inicio que no puso.
 
-La app lo compensa en el mapeo (`toCorrective`): si el estado es `Execution` **y** no hay
-`ExecStartDate`, expone `statusCode: "Assigned"` — un estado que no existe en openMAINT. Es el
-mismo problema que el preventivo ya resolvía al revés en `registerExecutionStart`:
+**Confirmado en el clon**: tras un `CM02-Advance` con `ExpExecStartDate` a las 10:00, la tarjeta
+vuelve con `ExecStartDate` en esas mismas 10:00, sin haberlo enviado. Lo mismo en las cinco
+instancias que ya estaban en Ejecución: en todas `ExecStartDate === ExpExecStartDate`.
 
-> `ExecStartDate` solo es escribible en PM03… OpenMAINT lo rellena al entrar con la fecha
-> *prevista* y aquí se sobrescribe con la real.
+Por eso no basta con derivarlo en el mapeo. `assignCorrective` **vacía el campo** con un
+`saveFields` justo después de que el avance se confirme (`clearAutoFilledExecStart`) — se verificó
+que `ExecStartDate` se puede poner a `null` y reescribir por API en `CM03-Execution`. Recién
+entonces `toCorrective` puede exponer `statusCode: "Assigned"` cuando el estado es `Execution` y no
+hay `ExecStartDate`.
+
+El vaciado es **best-effort a propósito**: la asignación ya se aplicó, así que un fallo al limpiar
+se registra como warning y el correctivo se muestra como «Execution», en vez de reportar una
+asignación fallida.
 
 `Assigned` **no se puede usar como filtro** contra openMAINT (no existe allí), por eso
 `CORRECTIVE_FILTERABLE_STATUSES` lo excluye.
 
 > **Pendiente**: falta cerrar el ciclo con un `POST /incidents/:id/start` que selle la hora real
-> cuando el técnico arranca, y permitir abrir el detalle de un correctivo «Asignado» desde
-> `TaskCard.tsx` (hoy solo deja abrir los que están en «Ejecución»).
+> cuando el técnico arranca, y permitir abrir el detalle de un correctivo «Asignado» desde la
+> tarjeta del equipo (hoy solo deja abrir los que están en «Ejecución»). La tarjeta ya no es
+> `TaskCard.tsx`: la comparten los dos roles en `shared/components/MaintenanceCard.tsx`.
 
 ---
 
@@ -187,12 +206,21 @@ servicio responde 409 y la UI muestra el formulario bloqueado con el motivo.
 **Hecho**: listados con filtros y paginación de 10, detalle, asignación, rechazo, reasignación,
 revisión de cierre y fecha prevista.
 
+**Probado contra el clon (2026-08-21)**, con la sesión de `usuario.proveedor`:
+
+1. ✅ **Prueba de humo del rol.** `wf_plus` basta: `CM02-Advance`, `CM03-Advance` y `CM05-Back` se
+   aplicaron de verdad. Ver §2.
+2. ✅ **`ExecStartDate` acepta `null`.** El estado «Asignado» se sostiene por ausencia de fecha; no
+   hace falta la marca `[Asignado: <iso>]` en `Register`. Ver §4.
+
 **Pendiente**:
 
-1. **Prueba de humo con un usuario real del rol** — hoy el único usuario del grupo es
-   `usuario.proveedor` ("Proveedor Prueba"), que además no debería estar ahí. Sin ella no se sabe
-   si `wf_plus` basta o hay que tocar los performers. **Ninguna escritura está probada contra
-   openMAINT todavía.**
-2. **¿`ExecStartDate` acepta `null` en CM03?** Decide si el estado «Asignado» se sostiene por
-   ausencia de fecha o hace falta una marca `[Asignado: <iso>]` en `Register`.
-3. **`POST /incidents/:id/start`** y los ajustes en la vista del técnico (§4).
+1. **`POST /incidents/:id/start`** y los ajustes en la vista del técnico (§4).
+2. **Correctivos anteriores a este arreglo** siguen con el `ExecStartDate` autorrellenado, así que
+   se muestran como «En ejecución» aunque nadie los haya empezado. Eran 5 en el clon. O se dejan
+   así, o se limpian una vez.
+3. **`assignCorrective` no valida que el cesionario pertenezca al equipo** que fija, a diferencia
+   de `updateAssignee`. La API REST no aplica las reglas de validación del formulario de openMAINT,
+   así que la comprobación tendría que hacerla el servicio.
+4. **Sin cobertura**: `CM04` (proveedor) y los pasos `Estimate` / `Control`; y en preventivos, un
+   suspendido no se puede reanudar desde la app pese a que `PM_ACTIONS.RESUME` existe.
