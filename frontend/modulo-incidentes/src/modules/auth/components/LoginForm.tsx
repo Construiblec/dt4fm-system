@@ -55,6 +55,10 @@ export const LoginForm = () => {
       storeEmployeeId(response.employeeId);
       localStorage.setItem("username", response.username);
       localStorage.setItem("role", response.role);
+      // El alta de la suscripción push lo usa para resolver el rol real.
+      if (response.userId !== undefined && response.userId !== null) {
+        localStorage.setItem("userId", String(response.userId));
+      }
       if (response.cleaningEmployeeId !== undefined) {
         localStorage.setItem(
           "cleaningEmployeeId",

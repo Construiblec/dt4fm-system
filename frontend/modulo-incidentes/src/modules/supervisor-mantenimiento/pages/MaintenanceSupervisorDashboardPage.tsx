@@ -1,6 +1,6 @@
 import { ClipboardList } from "lucide-react";
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { AppLayout } from "@/app/layout/AppLayout";
 import { useLogout } from "@/modules/auth/hooks/useLogout";
 import { FloatingReportButton } from "@/modules/incidentes/components/FloatingReportButton";
@@ -17,7 +17,11 @@ import { formatEmployeeName } from "@/shared/utils/nameUtils";
 export const MaintenanceSupervisorDashboardPage = () => {
   const logout = useLogout();
   const navigate = useNavigate();
-  const [kind, setKind] = useState<MaintenanceKind>("corrective");
+  // El deep link de una notificación preselecciona el tipo: ?kind=preventive
+  const [searchParams] = useSearchParams();
+  const [kind, setKind] = useState<MaintenanceKind>(() =>
+    searchParams.get("kind") === "preventive" ? "preventive" : "corrective",
+  );
 
   const {
     items,

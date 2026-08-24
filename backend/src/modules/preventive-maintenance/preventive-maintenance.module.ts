@@ -1,12 +1,13 @@
 import { Module } from '@nestjs/common';
 import { OpenmaintModule } from '../../integrations/openmaint/openmaint.module';
+import { PushNotificationsModule } from '../push-notifications/push-notifications.module';
 import { PreventiveChecklistService } from './preventive-checklist.service';
 import { PreventiveMaintenanceController } from './preventive-maintenance.controller';
 import { PreventiveMaintenanceOpenmaintService } from './preventive-maintenance.openmaint.service';
 import { PreventiveMaintenanceService } from './preventive-maintenance.service';
 
 @Module({
-  imports: [OpenmaintModule],
+  imports: [OpenmaintModule, PushNotificationsModule],
   controllers: [PreventiveMaintenanceController],
   providers: [
     PreventiveMaintenanceService,

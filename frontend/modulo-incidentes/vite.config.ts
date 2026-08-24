@@ -15,6 +15,12 @@ export default defineConfig(({ mode }) => ({
       // El registro lo hace useServiceWorkerUpdate, no un script inyectado.
       injectRegister: null,
 
+      // SW propio (src/sw.ts) en vez del generado: Workbox no emite listeners
+      // de `push` ni `notificationclick`, que son el punto de esta migración.
+      strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'sw.ts',
+
       manifest: {
         id: '/',
         name: 'DT4F™',
@@ -51,15 +57,11 @@ export default defineConfig(({ mode }) => ({
         ],
       },
 
-      workbox: {
+      // Con injectManifest el resto del comportamiento (cleanupOutdatedCaches,
+      // navigateFallback y el NO llamar a skipWaiting/clientsClaim) vive en
+      // src/sw.ts, no aquí.
+      injectManifest: {
         globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2}'],
-        cleanupOutdatedCaches: true,
-        // Coherente con 'prompt': el SW nuevo no secuestra pestanas que ya
-        // cargaron el index.html viejo.
-        skipWaiting: false,
-        clientsClaim: false,
-        navigateFallback: '/index.html',
-        navigateFallbackDenylist: [/^\/api\//, /^\/_vercel\//],
       },
 
       // El SW no corre en `npm run dev`: con HMR activo sirve módulos rancios.

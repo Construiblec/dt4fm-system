@@ -20,6 +20,14 @@ type EmployeeCardsResponse = {
   data?: EmployeeCard[];
 };
 
+/** Recurso `/users/{id}`: el único que trae los grupos del usuario. */
+export type OpenmaintUserAccount = {
+  _id: number;
+  username: string;
+  defaultUserGroup?: number | null;
+  userGroups?: { _id: number; name: string }[];
+};
+
 type TenantCard = {
   _id: number;
   Description: string;
@@ -250,6 +258,25 @@ export class OpenmaintService {
       body,
       sessionId,
     );
+  }
+
+  /**
+   * `GET /users/{id}` es el único recurso que devuelve los grupos del usuario.
+   * Se usa para verificar el rol contra openMAINT en vez de creerle al header
+   * `x-role`, que sale de localStorage y es manipulable desde el cliente.
+   *
+   * No captura errores a propósito: un 401 debe cortar el flujo que lo llama.
+   */
+  async getUserAccount(
+    userId: number,
+    sessionId: string,
+  ): Promise<OpenmaintUserAccount | null> {
+    const response = (await this.client.get(
+      `/users/${userId}`,
+      sessionId,
+    )) as { data?: OpenmaintUserAccount };
+
+    return response?.data ?? null;
   }
 
   async resolveEmployeeId(

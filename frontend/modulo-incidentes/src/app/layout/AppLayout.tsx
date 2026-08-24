@@ -1,8 +1,10 @@
 import type { ReactNode } from "react";
 import { useLocation } from "react-router-dom";
 import { GlobalTaskIndicator } from "@/shared/components/GlobalTaskIndicator";
+import { EnableNotificationsBanner } from "@/shared/components/EnableNotificationsBanner";
 import { InstallAppBanner } from "@/shared/components/InstallAppBanner";
 import { useInstallPrompt } from "@/shared/hooks/useInstallPrompt";
+import { useNotificationPrompt } from "@/shared/hooks/useNotificationPrompt";
 import {
   canExecuteTasks,
   getCurrentRole,
@@ -61,8 +63,17 @@ export const AppLayout = ({ children, className = "bg-white" }: AppLayoutProps) 
   const showInstall =
     mode !== "hidden" && !isInstallBlockedRoute(location.pathname);
 
+  // Instalar va primero: en iOS el push no llega hasta que la app está en la
+  // pantalla de inicio, así que pedir el permiso antes no serviría de nada.
+  const notifications = useNotificationPrompt();
+  const showNotifications =
+    !showInstall &&
+    notifications.mode !== "hidden" &&
+    !isInstallBlockedRoute(location.pathname);
+
   // Cada barra fija mide 56px (pt-14) y se apilan.
-  const bars = (showIndicator ? 1 : 0) + (showInstall ? 1 : 0);
+  const bars =
+    (showIndicator ? 1 : 0) + (showInstall ? 1 : 0) + (showNotifications ? 1 : 0);
   const topPadding = bars === 2 ? "pt-28" : bars === 1 ? "pt-14" : undefined;
 
   return (
@@ -75,6 +86,14 @@ export const AppLayout = ({ children, className = "bg-white" }: AppLayoutProps) 
             offsetTop={showIndicator}
             onInstall={() => void install()}
             onDismiss={dismiss}
+          />
+        ) : null}
+        {showNotifications ? (
+          <EnableNotificationsBanner
+            mode={notifications.mode}
+            stackIndex={showIndicator ? 1 : 0}
+            onEnable={() => void notifications.enable()}
+            onDismiss={notifications.dismiss}
           />
         ) : null}
         <div className={topPadding}>{children}</div>

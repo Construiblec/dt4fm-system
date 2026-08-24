@@ -8,6 +8,7 @@ import {
 import { extractRegisterNotes } from '../../common/utils/openmaint-register.util';
 import { OpenmaintService } from '../../integrations/openmaint/openmaint.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { PushDispatchService } from '../push-notifications/push-dispatch.service';
 import { CompleteIncidentDto } from './dto/complete-incident.dto';
 import { CreateIncidentDto } from './dto/create-incident.dto';
 
@@ -43,6 +44,11 @@ type OpenmaintIncidentDetail = {
   Priority_description?: string | null;
   OpeningDate?: string | null;
   Register?: string | null;
+  // Los devuelve openMAINT en el detalle y hacen falta para notificar.
+  _Requester_description?: string | null;
+  _Assignee_description?: string | null;
+  _Unit_description?: string | null;
+  _Floor_description?: string | null;
 };
 
 type OpenmaintIncidentDetailResponse = {
@@ -89,6 +95,7 @@ export class IncidentsService {
   constructor(
     private readonly openmaintService: OpenmaintService,
     private readonly notificationsService: NotificationsService,
+    private readonly pushDispatch: PushDispatchService,
   ) {}
 
   async completeIncident(
@@ -202,6 +209,10 @@ export class IncidentsService {
         incident._Priority_description ?? incident.Priority_description ?? null,
       createdAt: incident.OpeningDate ?? null,
       notes: extractRegisterNotes(incident.Register ?? null),
+      requesterName: incident._Requester_description ?? null,
+      assigneeName: incident._Assignee_description ?? null,
+      unit: incident._Unit_description ?? null,
+      floor: incident._Floor_description ?? null,
       images,
     };
   }
@@ -346,6 +357,15 @@ export class IncidentsService {
         notes,
         images,
       );
+
+      // Push a los supervisores de mantenimiento (apertura).
+      await this.pushDispatch.notifyCorrectiveOpened({
+        id: incidentId,
+        requesterName: incidentDetail?.requesterName,
+        unitName: incidentDetail?.unit,
+        floorName: incidentDetail?.floor,
+        buildingName: incidentDetail?.building,
+      });
     } catch (error) {
       console.error(
         'Error al enviar la notificación del incidente en segundo plano:',
@@ -384,6 +404,15 @@ export class IncidentsService {
         notes,
         images,
       );
+
+      // Push a los supervisores de mantenimiento (pasa a Contabilidad).
+      await this.pushDispatch.notifyCorrectiveCompleted({
+        id: incidentId,
+        assigneeName: incidentDetail?.assigneeName,
+        unitName: incidentDetail?.unit,
+        floorName: incidentDetail?.floor,
+        buildingName: incidentDetail?.building,
+      });
     } catch (error) {
       console.error(
         'Error al enviar la notificación de incidente finalizado en segundo plano:',

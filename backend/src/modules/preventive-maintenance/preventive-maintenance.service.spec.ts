@@ -6,6 +6,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
+import { PushDispatchService } from '../push-notifications/push-dispatch.service';
 import {
   PM_ACTIONS,
   PM_OUTCOME_POSITIVE,
@@ -103,6 +104,10 @@ describe('PreventiveMaintenanceService', () => {
           useValue: openmaintMock,
         },
         { provide: PreventiveChecklistService, useValue: checklistMock },
+        {
+          provide: PushDispatchService,
+          useValue: { notifyPreventiveSuspended: jest.fn() },
+        },
       ],
     }).compile();
 
