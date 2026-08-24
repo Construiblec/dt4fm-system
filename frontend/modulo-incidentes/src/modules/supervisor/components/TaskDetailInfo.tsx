@@ -7,15 +7,7 @@ import type { CleaningTaskDetail } from "@/modules/supervisor/types/SupervisorTa
 import { formatEmployeeName } from "@/shared/utils/nameUtils";
 import { cleanObservationText } from "@/shared/utils/textUtils";
 
-function formatDateTime(iso: string | null): string {
-  if (!iso) return "—";
-  return new Date(iso).toLocaleString("es-EC", {
-    day: "numeric",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
+import { formatDayMonthTime as formatDateTime } from "@/shared/utils/dateUtils";
 
 function calcDuration(start: string | null, end: string | null): string {
   if (!start || !end) return "—";

@@ -22,14 +22,14 @@ import {
 import {
   CM_ACTIONS,
   CM_ASSIGNEE_WRITABLE_STATUS,
-  CM_DERIVED_ASSIGNED,
   CM_PENDING_REVIEW_STATUS,
   CM_PLANNED_START_WRITABLE_STATUS,
   CM_PRIORITY_CODES,
-  CM_STATUS_CODE_TO_NAME,
   CM_STATUS_IDS,
   CM_STATUS_NAME_TO_ID,
+  CM_TEAM_WRITABLE_STATUS,
   CmStatusId,
+  resolveCorrectiveStatus,
 } from './constants/corrective-maint.constants';
 import { SUPPLIER_EMPLOYEE_TYPE } from './constants/supervision-roles.constants';
 import {
@@ -72,6 +72,11 @@ export type SupervisedMaintenance = {
   isOverdue: boolean;
   execStartDate: string | null;
   execEndDate: string | null;
+  /**
+   * Motivo por el que está suspendido. Solo lo traen los preventivos, y solo
+   * mientras lo están: OpenMAINT lo limpia al reanudar.
+   */
+  suspensionReason?: string | null;
 };
 
 export type Assignee = {
@@ -82,7 +87,31 @@ export type Assignee = {
   isSupplier: boolean;
 };
 
+/** Foto de evidencia ya resuelta a base64, lista para pintar. */
+export type MaintenanceEvidence = {
+  id: string;
+  name: string | null;
+  uploadDate: string | null;
+  /** `data:image/...;base64,…`, listo para un `<img src>` */
+  dataUrl: string;
+};
+
 type Kind = 'corrective' | 'preventive';
+
+/** Forma mínima común a los adjuntos de ambos procesos. */
+type RawAttachment = {
+  _id: string;
+  name?: string | null;
+  fileName?: string | null;
+  created?: string | null;
+  modified?: string | null;
+};
+
+type RawPreview = {
+  data?: { hasPreview?: boolean; dataUrl?: string };
+};
+
+const IMAGE_FILE = /\.(png|jpe?g|webp|heic|heif)$/i;
 
 @Injectable()
 export class MaintenanceSupervisionService {
@@ -116,6 +145,11 @@ export class MaintenanceSupervisionService {
 
     const cards = response.data ?? [];
 
+    const [pendingReview, unassigned] = await Promise.all([
+      this.countPendingReview(sessionId),
+      this.countUnassigned('corrective', sessionId),
+    ]);
+
     return {
       success: true,
       data: cards.map((card) => this.toCorrective(card)),
@@ -123,17 +157,29 @@ export class MaintenanceSupervisionService {
         total: response.meta?.total ?? cards.length,
         limit,
         offset,
-        pendingReview: await this.countPendingReview(sessionId),
+        pendingReview,
+        unassigned,
       },
     };
   }
 
+  /**
+   * `from`/`to` filtran por **inicio previsto** (`ExpExecStartDate`), que es la
+   * fecha con la que se planifica la carga de trabajo. Es el único listado con
+   * rango de fechas: el correctivo nace de una incidencia y no se programa.
+   */
   async listPreventive(sessionId: string, query: ListMaintenancesQueryDto) {
     const limit = query.limit ?? 10;
     const offset = query.offset ?? 0;
     const statusIds = query.status
       ? [this.resolvePreventiveStatus(query.status)]
       : undefined;
+
+    if (query.from && query.to && new Date(query.from) > new Date(query.to)) {
+      throw new BadRequestException(
+        'La fecha de inicio no puede ser posterior a la de fin',
+      );
+    }
 
     const response = await this.call(
       () =>
@@ -142,6 +188,8 @@ export class MaintenanceSupervisionService {
           offset,
           statusIds,
           assigned: query.assigned,
+          from: query.from,
+          to: query.to,
         }),
       'Error al consultar mantenimientos preventivos en OpenMAINT',
     );
@@ -158,6 +206,7 @@ export class MaintenanceSupervisionService {
         // El preventivo no tiene paso de revisión: `PM03-Advance` cierra
         // directo y un proceso cerrado ya no admite acciones.
         pendingReview: null,
+        unassigned: await this.countUnassigned('preventive', sessionId),
       },
     };
   }
@@ -182,6 +231,91 @@ export class MaintenanceSupervisionService {
       success: true,
       data: this.toPreventive(await this.fetchPreventive(sessionId, id)),
     };
+  }
+
+  /**
+   * Fotos de evidencia de un mantenimiento, en solo lectura.
+   *
+   * OpenMAINT ofrece una vista previa en base64 por adjunto, así que se
+   * devuelven ya resueltas: el navegador las pinta sin necesidad de un endpoint
+   * de descarga y sin que la sesión de OpenMAINT salga del backend.
+   *
+   * Se filtran por extensión de imagen y se descartan los adjuntos que no
+   * ofrezcan vista previa (un PDF, por ejemplo, no la tiene). Si listar los
+   * adjuntos falla se devuelve vacío en vez de propagar el error: la evidencia
+   * es complementaria y no debe tumbar la pantalla de detalle.
+   */
+  async getEvidence(sessionId: string, kind: Kind, id: number) {
+    // Valida de paso que el mantenimiento exista y sea visible para la sesión
+    if (kind === 'corrective') {
+      await this.fetchCorrective(sessionId, id);
+    } else {
+      await this.fetchPreventive(sessionId, id);
+    }
+
+    const attachments = await this.listImageAttachments(sessionId, kind, id);
+
+    const previews = await Promise.allSettled(
+      attachments.map((attachment) =>
+        kind === 'corrective'
+          ? this.openmaint.getAttachmentPreview(id, attachment._id, sessionId)
+          : this.preventive.findAttachmentPreview(sessionId, id, attachment._id),
+      ),
+    );
+
+    const data = attachments.reduce<MaintenanceEvidence[]>(
+      (accumulator, attachment, index) => {
+        const result = previews[index];
+
+        if (result.status !== 'fulfilled') {
+          return accumulator;
+        }
+
+        const preview = (result.value as RawPreview).data;
+
+        if (preview?.hasPreview !== true || typeof preview.dataUrl !== 'string') {
+          return accumulator;
+        }
+
+        accumulator.push({
+          id: attachment._id,
+          name: attachment.name ?? attachment.fileName ?? null,
+          uploadDate: attachment.created ?? attachment.modified ?? null,
+          dataUrl: preview.dataUrl,
+        });
+
+        return accumulator;
+      },
+      [],
+    );
+
+    return { success: true, data, meta: { total: data.length } };
+  }
+
+  private async listImageAttachments(
+    sessionId: string,
+    kind: Kind,
+    id: number,
+  ): Promise<RawAttachment[]> {
+    try {
+      const response =
+        kind === 'corrective'
+          ? await this.openmaint.getIncidentAttachments(id, sessionId)
+          : await this.preventive.findAttachments(sessionId, id);
+
+      const all = (response as { data?: RawAttachment[] }).data ?? [];
+
+      return all.filter((attachment) =>
+        IMAGE_FILE.test(attachment.name ?? attachment.fileName ?? ''),
+      );
+    } catch (error) {
+      this.logger.warn(
+        `No se pudieron listar los adjuntos del ${kind} ${id}: ` +
+          `${(error as Error)?.message ?? ''}`,
+      );
+
+      return [];
+    }
   }
 
   /**
@@ -221,9 +355,15 @@ export class MaintenanceSupervisionService {
    * Asigna cesionario y equipo a un correctivo (`CM02-Advance`).
    *
    * Ojo con el efecto colateral: este avance deja la instancia en
-   * `CM-Execution` y OpenMAINT rellena `ExecStartDate` con la fecha prevista.
-   * El mapeo público lo compensa exponiendo el estado derivado «Assigned»
-   * mientras no haya un inicio real — ver `toCorrective`.
+   * `CM-Execution` y OpenMAINT rellena `ExecStartDate` con la fecha prevista,
+   * de modo que el trabajo figuraría como iniciado antes de que el técnico lo
+   * arranque. Por eso se vacía a continuación — ver `clearAutoFilledExecStart`,
+   * que es lo que hace viable el estado derivado «Assigned» de `toCorrective`.
+   *
+   * **El inicio previsto es obligatorio.** Vale que venga en el DTO o que ya
+   * esté en la tarjeta, pero alguno tiene que haber: `ExpExecStartDate` solo es
+   * escribible en CM02, así que si el correctivo sale de aquí sin fecha se
+   * queda sin planificar para siempre. Ver `CM_PLANNED_START_WRITABLE_STATUS`.
    */
   async assignCorrective(
     sessionId: string,
@@ -237,6 +377,13 @@ export class MaintenanceSupervisionService {
       [CM_STATUS_IDS.ASSIGNMENT],
       'El correctivo no está en el paso de asignación',
     );
+
+    if (!dto.plannedStart && !card.ExpExecStartDate) {
+      throw new BadRequestException(
+        'Hay que fijar el inicio previsto antes de asignar el correctivo: ' +
+          'después de asignar, OpenMAINT bloquea el campo',
+      );
+    }
 
     const fields: Record<string, unknown> = { Assignee: dto.assigneeId };
 
@@ -266,7 +413,55 @@ export class MaintenanceSupervisionService {
       'OpenMAINT aceptó la petición pero no aplicó la asignación del correctivo',
     );
 
-    return { success: true, data: this.toCorrective(updated) };
+    const assigned = await this.clearAutoFilledExecStart(sessionId, id, updated);
+
+    return { success: true, data: this.toCorrective(assigned) };
+  }
+
+  /**
+   * Vacía el `ExecStartDate` que OpenMAINT rellena por su cuenta al entrar en
+   * Ejecución, copiando la fecha prevista.
+   *
+   * Sin esto el trabajo aparece iniciado desde el instante en que se asigna: el
+   * estado derivado «Assigned» no se activaría nunca y el técnico vería una hora
+   * de inicio que no puso. El inicio real lo sella él al empezar.
+   *
+   * Es best-effort a propósito. La asignación ya se aplicó, así que un fallo
+   * aquí no debe reportarse como asignación fallida; solo se pierde el matiz de
+   * «Assigned» y el correctivo se muestra como «Execution», que es como estaba
+   * antes de este arreglo.
+   */
+  private async clearAutoFilledExecStart(
+    sessionId: string,
+    id: number,
+    assigned: CorrectiveMaintCard,
+  ): Promise<CorrectiveMaintCard> {
+    if (!assigned.ExecStartDate) {
+      return assigned;
+    }
+
+    try {
+      const withTask = await this.corrective.findWithTasklist(sessionId, id);
+      const activityId = withTask.data?._tasklist?.[0]?._id;
+
+      if (!activityId) {
+        return assigned;
+      }
+
+      await this.corrective.saveFields(sessionId, id, {
+        activityId,
+        fields: { ExecStartDate: null },
+      });
+
+      return (await this.corrective.findById(sessionId, id)).data ?? assigned;
+    } catch (error) {
+      this.logger.warn(
+        `No se pudo vaciar ExecStartDate del correctivo ${id}: se mostrará como ` +
+          `«Execution» en vez de «Assigned». ${(error as Error)?.message ?? ''}`,
+      );
+
+      return assigned;
+    }
   }
 
   /** Rechaza y cierra un correctivo sin ejecutarlo (`CM02-Reject`). */
@@ -351,17 +546,67 @@ export class MaintenanceSupervisionService {
   }
 
   /**
-   * Cambia el cesionario sin mover el flujo. `Assignee` es escribible en todos
-   * los pasos abiertos de ambos procesos, así que basta un `saveFields`; no
-   * hace falta la acción `*-Return`, que además obligaría a avanzar.
+   * Devuelve a ejecución un preventivo suspendido (`PM04-Advance`).
    *
-   * El equipo nunca cambia: solo se elige otra persona dentro del mismo.
+   * El paso `PM04-Suspension` solo ofrece dos acciones —«Resume execution» y
+   * «Change assignee»—, así que reanudar es la única forma de sacarlo de ahí.
+   * Hasta ahora había que hacerlo desde la interfaz de openMAINT.
+   *
+   * **El motivo de suspensión lo limpia openMAINT solo**: no hay que enviar
+   * `SuspensionReason: null`. Verificado en el clon (2026-08-24) sobre
+   * `PM.2026.0331`, que volvió a `PM-Execution` con la actividad `PM03`.
+   *
+   * Las actividades marcadas «N.D.» durante la suspensión no se tocan aquí: se
+   * limpian cuando el técnico abre el mantenimiento, porque `startExecution`
+   * llama a `clearNotDone` en cuanto la ficha está en ejecución.
+   */
+  async resumePreventive(sessionId: string, id: number) {
+    const card = await this.fetchPreventiveWithTask(sessionId, id);
+
+    this.assertStatusIn(
+      card.ProcessStatus,
+      [PM_STATUS_IDS.SUSPENSION],
+      'Solo se puede reanudar un preventivo suspendido',
+    );
+
+    await this.call(
+      () =>
+        this.preventive.advance(sessionId, id, {
+          activityId: this.requireActivityId(card._tasklist, id),
+          action: PM_ACTIONS.RESUME,
+        }),
+      'Error al reanudar el preventivo en OpenMAINT',
+    );
+
+    const updated = await this.assertPreventiveReached(
+      sessionId,
+      id,
+      PM_STATUS_IDS.EXECUTION,
+      'OpenMAINT aceptó la petición pero no reanudó el preventivo',
+    );
+
+    return { success: true, data: this.toPreventive(updated) };
+  }
+
+  /**
+   * Cambia el cesionario sin mover el flujo.
+   *
+   * En la mayoría de los pasos basta un `saveFields`. La excepción es un
+   * preventivo **suspendido**, donde se usa `PM04-Return` porque el flujo
+   * declara esa acción para exactamente esto (ver más abajo).
+   *
+   * **El equipo se puede cambiar en algunos pasos.** En correctivo `Team` es
+   * escribible en `CM02-Assignment` y `CM07-Management`, no en
+   * `CM03-Execution` (ver `CM_TEAM_WRITABLE_STATUS`); en preventivo no lo es en
+   * ninguno. Cuando el paso no lo admite se ignora y se registra en el log, en
+   * vez de fallar: OpenMAINT lo descartaría en silencio de todos modos.
    */
   async updateAssignee(
     sessionId: string,
     kind: Kind,
     id: number,
     assigneeId: number,
+    teamId?: number,
   ) {
     const nextAssignee = await this.findAssignee(sessionId, assigneeId);
 
@@ -380,19 +625,54 @@ export class MaintenanceSupervisionService {
         'El correctivo está en un paso que no permite cambiar el cesionario',
       );
 
-      await this.assertReassignable(sessionId, card.Assignee, card.Team, nextAssignee);
+      const puedeCambiarEquipo =
+        card.ProcessStatus != null &&
+        CM_TEAM_WRITABLE_STATUS.includes(card.ProcessStatus as CmStatusId);
+
+      if (teamId !== undefined && !puedeCambiarEquipo) {
+        this.logger.warn(
+          `Se ignora teamId=${teamId} en el correctivo ${id}: Team no es ` +
+            `escribible en ${card._ProcessStatus_code}`,
+        );
+      }
+
+      const nuevoEquipo =
+        teamId !== undefined && puedeCambiarEquipo ? teamId : undefined;
+
+      // El cesionario se valida contra el equipo **de destino**: si se está
+      // cambiando el equipo, exigir que pertenezca al anterior haría imposible
+      // el cambio, que es justo lo que CM02 y CM07 sí permiten.
+      await this.assertReassignable(
+        sessionId,
+        card.Assignee,
+        nuevoEquipo ?? card.Team,
+        nextAssignee,
+      );
+
+      const fields: Record<string, unknown> = { Assignee: assigneeId };
+
+      if (nuevoEquipo !== undefined) {
+        fields.Team = nuevoEquipo;
+      }
 
       await this.call(
         () =>
           this.corrective.saveFields(sessionId, id, {
             activityId: this.requireActivityId(card._tasklist, id),
-            fields: { Assignee: assigneeId },
+            fields,
           }),
         'Error al reasignar el correctivo en OpenMAINT',
       );
 
       const updated = await this.fetchCorrective(sessionId, id);
       return { success: true, data: this.toCorrective(updated) };
+    }
+
+    if (teamId !== undefined) {
+      this.logger.warn(
+        `Se ignora teamId=${teamId} en el preventivo ${id}: Team no es ` +
+          'escribible en PreventiveMaint',
+      );
     }
 
     const card = await this.fetchPreventiveWithTask(sessionId, id);
@@ -405,10 +685,49 @@ export class MaintenanceSupervisionService {
 
     await this.assertReassignable(sessionId, card.Assignee, card.Team, nextAssignee);
 
+    const activityId = this.requireActivityId(card._tasklist, id);
+
+    /**
+     * Estando suspendido se usa la acción del propio flujo, `PM04-Return`
+     * («Change assignee»), en vez de escribir el campo a pelo.
+     *
+     * `PM04-Suspension` declara exactamente dos salidas —reanudar y cambiar
+     * cesionario— y esta es la segunda. Un `saveFields` también cambia el
+     * campo, pero pasa de largo del flujo: la bitácora del proceso no registra
+     * que hubo una reasignación. Reanudar sigue siendo una acción aparte.
+     *
+     * Pese al nombre, `PM04-Return` **no mueve el proceso**: vuelve a entrar en
+     * `PM04` conservando estado y motivo de suspensión. Comprobado en el clon
+     * (2026-08-24); la nota que decía que las acciones `*-Return` obligaban a
+     * avanzar era falsa.
+     */
+    if (card.ProcessStatus === PM_STATUS_IDS.SUSPENSION) {
+      await this.call(
+        () =>
+          this.preventive.advance(sessionId, id, {
+            activityId,
+            action: PM_ACTIONS.CHANGE_ASSIGNEE,
+            fields: { Assignee: assigneeId },
+          }),
+        'Error al reasignar el preventivo suspendido en OpenMAINT',
+      );
+
+      // OpenMAINT responde 200 aunque no aplique nada, así que se comprueba
+      // que siga suspendido en vez de dar por bueno el avance.
+      const resuspendido = await this.assertPreventiveReached(
+        sessionId,
+        id,
+        PM_STATUS_IDS.SUSPENSION,
+        'OpenMAINT aceptó la petición pero sacó el preventivo de suspensión',
+      );
+
+      return { success: true, data: this.toPreventive(resuspendido) };
+    }
+
     await this.call(
       () =>
         this.preventive.saveFields(sessionId, id, {
-          activityId: this.requireActivityId(card._tasklist, id),
+          activityId,
           fields: { Assignee: assigneeId },
         }),
       'Error al reasignar el preventivo en OpenMAINT',
@@ -529,8 +848,6 @@ export class MaintenanceSupervisionService {
   // ── Mapeo al contrato público ──────────────────────────────────────────────
 
   private toCorrective(card: CorrectiveMaintCard): SupervisedMaintenance {
-    const code = card._ProcessStatus_code ?? null;
-    const name = code ? (CM_STATUS_CODE_TO_NAME[code] ?? code) : null;
     const isClosed = (card._FlowStatus_code ?? '').startsWith('closed');
     const dueDate = card.DueExecEndDate ?? null;
 
@@ -539,11 +856,10 @@ export class MaintenanceSupervisionService {
       kind: 'corrective',
       number: card.Number ?? null,
       subject: card.ShortDescr ?? null,
-      // Asignar avanza CM02 directo a Ejecución, así que OpenMAINT marca el
-      // trabajo como en curso antes de que el técnico lo arranque. Mientras no
-      // haya un inicio real, la app lo presenta como «Asignado».
-      statusCode:
-        name === 'Execution' && !card.ExecStartDate ? CM_DERIVED_ASSIGNED : name,
+      statusCode: resolveCorrectiveStatus(
+        card._ProcessStatus_code,
+        card.ExecStartDate,
+      ),
       status:
         card._ProcessStatus_description_translation ??
         card._ProcessStatus_description ??
@@ -590,6 +906,12 @@ export class MaintenanceSupervisionService {
       isOverdue: this.isOverdue(dueDate, isClosed),
       execStartDate: card.ExecStartDate ?? null,
       execEndDate: card.ExecEndDate ?? null,
+      // Contexto para decidir si reanudar. OpenMAINT lo limpia al hacerlo, así
+      // que solo trae valor mientras está suspendido.
+      suspensionReason:
+        card._SuspensionReason_description_translation ??
+        card._SuspensionReason_description ??
+        null,
     };
   }
 
@@ -660,10 +982,28 @@ export class MaintenanceSupervisionService {
 
   private async countPendingReview(sessionId: string): Promise<number | null> {
     try {
-      return await this.corrective.countByStatus(
-        sessionId,
-        CM_PENDING_REVIEW_STATUS,
-      );
+      return await this.corrective.count(sessionId, {
+        statusIds: [CM_PENDING_REVIEW_STATUS],
+      });
+    } catch {
+      // El contador es informativo: si falla, el listado sigue sirviendo.
+      return null;
+    }
+  }
+
+  /**
+   * Cuántos mantenimientos esperan cesionario. Es el trabajo que el supervisor
+   * tiene pendiente de despachar, así que va en un contador propio y no
+   * depende del filtro que tenga puesto en la lista.
+   */
+  private async countUnassigned(
+    kind: Kind,
+    sessionId: string,
+  ): Promise<number | null> {
+    try {
+      return kind === 'corrective'
+        ? await this.corrective.count(sessionId, { assigned: false })
+        : await this.preventive.count(sessionId, { assigned: false });
     } catch {
       // El contador es informativo: si falla, el listado sigue sirviendo.
       return null;
@@ -856,6 +1196,13 @@ export class MaintenanceSupervisionService {
         throw new NotFoundException('El mantenimiento no existe o no es accesible');
       }
 
+      if (this.isStaleActivity(error)) {
+        throw new ConflictException(
+          'El mantenimiento cambió de estado mientras se enviaba la acción. ' +
+            'Vuelve a cargarlo e inténtalo de nuevo',
+        );
+      }
+
       this.logger.error(reason, error as Error);
       throw new BadGatewayException(reason);
     }
@@ -872,6 +1219,31 @@ export class MaintenanceSupervisionService {
       ?.message;
 
     return typeof message === 'string' && message.includes('card not existing');
+  }
+
+  /**
+   * La actividad que se envió ya no existe porque el flujo avanzó entretanto.
+   *
+   * Cada avance **consume** el `_tasklist[0]._id` y crea otro para el paso
+   * siguiente. Los servicios lo releen justo antes de actuar, pero si dos
+   * acciones se solapan —doble clic, dos pestañas, o la propia interfaz de
+   * openMAINT abierta al lado— la segunda llega con un id ya gastado y
+   * openMAINT responde con un 500 y un volcado de Java:
+   *
+   *     WorkflowException: error building task for card = Flow{…},
+   *     user task id = …, caused by NullPointerException: task not found
+   *
+   * Traducirlo a un 409 evita enseñar la traza y dice qué hacer: recargar.
+   */
+  private isStaleActivity(error: unknown): boolean {
+    const data = (error as { response?: { data?: unknown } })?.response?.data;
+    const message = (data as { messages?: { message?: string }[] })
+      ?.messages?.[0]?.message;
+
+    return (
+      typeof message === 'string' &&
+      message.includes('task not found for instanceId')
+    );
   }
 
   private getErrorStatus(error: unknown): number | undefined {

@@ -74,6 +74,37 @@ export class IncidentsController {
     return this.incidentsService.getMyIncidents(employeeId, sessionId);
   }
 
+  @Post(':id/start')
+  @ApiOperation({
+    summary: 'Registrar el inicio real del trabajo de una incidencia',
+    description:
+      'Sella `ExecStartDate` sin avanzar el flujo: el correctivo pasa de ' +
+      '«Asignado» a «Ejecución». Es idempotente — si ya estaba iniciado ' +
+      'devuelve la marca original sin sobrescribirla.',
+  })
+  @ApiParam({ name: 'id', description: 'ID de la incidencia', type: 'integer' })
+  @ApiHeader({
+    name: 'authorization',
+    description: 'Token de sesión de OpenMAINT',
+    required: true,
+  })
+  @ApiResponse({ status: 201, description: 'Inicio registrado con éxito' })
+  @ApiResponse({
+    status: 400,
+    description:
+      'Cabecera de autorización faltante, o el incidente no está asignado',
+  })
+  async startIncident(
+    @Param('id', ParseIntPipe) id: number,
+    @Headers('authorization') sessionId: string,
+  ) {
+    if (!sessionId) {
+      throw new BadRequestException('Authorization header is required');
+    }
+
+    return this.incidentsService.startIncident(id, sessionId);
+  }
+
   @Post(':id/complete')
   @UseInterceptors(
     FileInterceptor('file', {

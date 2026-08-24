@@ -25,20 +25,12 @@ import {
 const toOpenMaintTimestamp = (date: string, time: string): string =>
   `${date}T${time}:00`;
 
+import { formatDayMonthTime } from "@/shared/utils/dateUtils";
+
 /** Formatea timestamp de OpenMAINT a texto legible */
 const formatTimestamp = (ts: string | null): string => {
   if (!ts) return "—";
-  try {
-    return new Date(ts).toLocaleString("es-EC", {
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  } catch {
-    return ts;
-  }
+  return formatDayMonthTime(ts);
 };
 
 /** Calcula las horas entre dos timestamps */

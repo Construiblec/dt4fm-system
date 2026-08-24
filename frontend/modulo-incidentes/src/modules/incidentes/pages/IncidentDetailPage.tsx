@@ -5,16 +5,20 @@ import {
   CalendarDays,
   Image as ImageIcon,
   MapPin,
+  Play,
 } from "lucide-react";
 import { AppLayout } from "@/app/layout/AppLayout";
-import { completeIncident } from "@/modules/incidentes/services/completeIncidentService";
+import {
+  completeIncident,
+  startIncident,
+} from "@/modules/incidentes/services/completeIncidentService";
 import { getIncidentById } from "@/modules/incidentes/services/incidentDetailService";
 import type { IncidentDetail } from "@/modules/incidentes/types/IncidentDetail";
 import { ConfirmModal } from "@/shared/components/ConfirmModal";
 import {
+  getCorrectiveBlockedReason,
   getCorrectiveStatusLabel,
   getCorrectiveStatusPill,
-  toCorrectiveStatusCode,
 } from "@/modules/incidentes/constants/correctiveStatus";
 import {
   getPriorityLabel,
@@ -26,11 +30,7 @@ import { ErrorModal } from "@/shared/components/ErrorModal";
 import { LoadingModal } from "@/shared/components/LoadingModal";
 import { SuccessModal } from "@/shared/components/SuccessModal";
 
-const formatDate = (value: string) =>
-  new Date(value).toLocaleString(undefined, {
-    dateStyle: "medium",
-    timeStyle: "short",
-  });
+import { formatDateTime as formatDate } from "@/shared/utils/dateUtils";
 
 export const IncidentDetailPage = () => {
   const navigate = useNavigate();
@@ -48,6 +48,7 @@ export const IncidentDetailPage = () => {
   const [isCompleting, setIsCompleting] = useState(false);
   const [successComplete, setSuccessComplete] = useState(false);
   const [errorComplete, setErrorComplete] = useState<string | null>(null);
+  const [isStarting, setIsStarting] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -100,19 +101,49 @@ export const IncidentDetailPage = () => {
     };
   }, [resolutionImage]);
 
-  // El endpoint antiguo devuelve la etiqueta ya traducida, no el código estable
-  const statusCode = incident ? toCorrectiveStatusCode(incident.status) : null;
+  const statusCode = incident?.statusCode ?? null;
   const normalizedStatus = incident
     ? getCorrectiveStatusLabel(statusCode, incident.status)
     : "";
 
   const priorityCode = incident ? toPriorityCode(incident.priority) : null;
 
-  const handleResolutionImageChange = (event: ChangeEvent<HTMLInputElement>) => {
+  // «Asignado» significa que el trabajo está despachado pero sin arrancar: no
+  // tiene `ExecStartDate`, y sin inicio el backend no deja finalizarlo.
+  const isAssigned = statusCode === "Assigned";
+  const isInExecution = statusCode === "Execution";
+  const blockedReason = incident
+    ? getCorrectiveBlockedReason(statusCode)
+    : null;
+
+  const handleResolutionImageChange = (
+    event: ChangeEvent<HTMLInputElement>,
+  ) => {
     const file = event.target.files?.[0] ?? null;
 
     setResolutionImage(file);
     event.target.value = "";
+  };
+
+  const handleStart = async () => {
+    if (!incident) {
+      return;
+    }
+
+    try {
+      setIsStarting(true);
+      setErrorComplete(null);
+
+      const result = await startIncident(incident.id);
+
+      // El backend devuelve el estado ya resuelto; si el trabajo venía iniciado
+      // conserva el inicio original en vez de pisarlo.
+      setIncident({ ...incident, statusCode: result.statusCode });
+    } catch {
+      setErrorComplete("No se pudo iniciar el trabajo");
+    } finally {
+      setIsStarting(false);
+    }
   };
 
   const handleConfirmComplete = async () => {
@@ -287,69 +318,103 @@ export const IncidentDetailPage = () => {
                 </section>
               ) : null}
 
-              <section className="rounded-3xl bg-white p-5 shadow-sm">
-                <h2 className="text-base font-semibold text-slate-900">
-                  Acciones de resolución
-                </h2>
+              {isAssigned ? (
+                <section className="rounded-3xl bg-white p-5 shadow-sm">
+                  <h2 className="text-base font-semibold text-slate-900">
+                    Trabajo asignado
+                  </h2>
+                  <p className="mt-2 text-sm leading-6 text-slate-600">
+                    Pulsa «Iniciar trabajo» al empezar. Desde ese momento se
+                    cuenta la duración, y hasta entonces no se puede finalizar.
+                  </p>
 
-                <div className="mt-4 space-y-4">
-                  <div className="space-y-2">
-                    <label
-                      htmlFor="resolutionNotes"
-                      className="text-sm font-medium text-slate-700"
-                    >
-                      Observaciones
-                    </label>
-                    <textarea
-                      id="resolutionNotes"
-                      rows={5}
-                      placeholder="Describe las acciones realizadas para atender el incidente"
-                      className="w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-900 outline-none transition focus:border-brand focus:ring-4 focus:ring-brand/20"
-                      value={resolutionNotes}
-                      onChange={(event) => setResolutionNotes(event.target.value)}
-                    />
-                  </div>
+                  <button
+                    type="button"
+                    onClick={handleStart}
+                    disabled={isStarting}
+                    className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl bg-brand px-4 py-4 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-hover focus:outline-none focus:ring-4 focus:ring-brand/30 disabled:opacity-60"
+                  >
+                    <Play className="h-4 w-4" />
+                    {isStarting ? "Iniciando..." : "Iniciar trabajo"}
+                  </button>
+                </section>
+              ) : null}
 
-                  <label className="block cursor-pointer rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-center">
-                    <ImageIcon className="mx-auto h-5 w-5 text-slate-400" />
-                    <p className="mt-2 text-sm font-medium text-slate-700">
-                      Adjuntar evidencia de resolución
-                    </p>
-                    <p className="mt-1 text-xs text-slate-400">
-                      Selecciona una imagen opcional
-                    </p>
+              {!isAssigned && !isInExecution ? (
+                <section className="rounded-3xl bg-white p-5 text-sm text-slate-500 shadow-sm">
+                  {blockedReason ?? "Este incidente no admite acciones"}
+                </section>
+              ) : null}
 
-                    {resolutionPreview ? (
-                      <img
-                        src={resolutionPreview}
-                        alt="Vista previa de evidencia de resolución"
-                        className="mx-auto mt-4 h-32 w-32 rounded-2xl object-cover shadow-sm"
-                      />
-                    ) : null}
+              {isInExecution ? (
+                <>
+                  <section className="rounded-3xl bg-white p-5 shadow-sm">
+                    <h2 className="text-base font-semibold text-slate-900">
+                      Acciones de resolución
+                    </h2>
 
-                    {resolutionImage ? (
-                      <p className="mt-3 text-xs font-medium text-slate-600">
-                        {resolutionImage.name}
-                      </p>
-                    ) : null}
+                    <div className="mt-4 space-y-4">
+                      <div className="space-y-2">
+                        <label
+                          htmlFor="resolutionNotes"
+                          className="text-sm font-medium text-slate-700"
+                        >
+                          Observaciones
+                        </label>
+                        <textarea
+                          id="resolutionNotes"
+                          rows={5}
+                          placeholder="Describe las acciones realizadas para atender el incidente"
+                          className="w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-900 outline-none transition focus:border-brand focus:ring-4 focus:ring-brand/20"
+                          value={resolutionNotes}
+                          onChange={(event) =>
+                            setResolutionNotes(event.target.value)
+                          }
+                        />
+                      </div>
 
-                    <input
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      onChange={handleResolutionImageChange}
-                    />
-                  </label>
-                </div>
-              </section>
+                      <label className="block cursor-pointer rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-center">
+                        <ImageIcon className="mx-auto h-5 w-5 text-slate-400" />
+                        <p className="mt-2 text-sm font-medium text-slate-700">
+                          Adjuntar evidencia de resolución
+                        </p>
+                        <p className="mt-1 text-xs text-slate-400">
+                          Selecciona una imagen opcional
+                        </p>
 
-              <button
-                type="button"
-                onClick={() => setShowConfirmModal(true)}
-                className="w-full rounded-2xl bg-brand px-4 py-4 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-hover focus:outline-none focus:ring-4 focus:ring-brand/30"
-              >
-                Finalizar Incidente
-              </button>
+                        {resolutionPreview ? (
+                          <img
+                            src={resolutionPreview}
+                            alt="Vista previa de evidencia de resolución"
+                            className="mx-auto mt-4 h-32 w-32 rounded-2xl object-cover shadow-sm"
+                          />
+                        ) : null}
+
+                        {resolutionImage ? (
+                          <p className="mt-3 text-xs font-medium text-slate-600">
+                            {resolutionImage.name}
+                          </p>
+                        ) : null}
+
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={handleResolutionImageChange}
+                        />
+                      </label>
+                    </div>
+                  </section>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmModal(true)}
+                    className="w-full rounded-2xl bg-brand px-4 py-4 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-hover focus:outline-none focus:ring-4 focus:ring-brand/30"
+                  >
+                    Finalizar Incidente
+                  </button>
+                </>
+              ) : null}
             </>
           ) : null}
         </div>

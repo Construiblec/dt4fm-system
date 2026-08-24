@@ -1,6 +1,13 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
-import { IsBoolean, IsInt, IsOptional, IsString, Min } from 'class-validator';
+import {
+  IsBoolean,
+  IsInt,
+  IsISO8601,
+  IsOptional,
+  IsString,
+  Min,
+} from 'class-validator';
 
 /**
  * Query del listado del supervisor. `status` no se valida contra un `@IsIn`
@@ -56,4 +63,25 @@ export class ListMaintenancesQueryDto {
   })
   @IsBoolean()
   assigned?: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      'Filtra por `ExpExecStartDate` (inicio previsto) desde este instante, ' +
+      '**incluido**. ISO-8601. Se espera el comienzo del día en la zona del ' +
+      'usuario, porque es quien sabe en qué huso está.',
+    example: '2026-06-18T05:00:00.000Z',
+  })
+  @IsOptional()
+  @IsISO8601()
+  from?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Filtra por `ExpExecStartDate` hasta este instante, **incluido**. ' +
+      'ISO-8601, normalmente el final del día en la zona del usuario.',
+    example: '2026-06-19T04:59:59.999Z',
+  })
+  @IsOptional()
+  @IsISO8601()
+  to?: string;
 }

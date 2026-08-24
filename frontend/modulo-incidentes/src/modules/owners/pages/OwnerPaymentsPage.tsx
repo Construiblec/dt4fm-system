@@ -29,11 +29,13 @@ type Step = "list" | "method" | "voucher" | "success";
 
 const today = () => new Date().toISOString().split("T")[0];
 
+import { formatMonthYear } from "@/shared/utils/dateUtils";
+
 const formatPeriod = (period: string) => {
   try {
     const [year, month] = period.split("-");
-    const date = new Date(Number(year), Number(month) - 1);
-    return date.toLocaleString("es-EC", { month: "long", year: "numeric" });
+    const iso = new Date(Number(year), Number(month) - 1).toISOString();
+    return formatMonthYear(iso);
   } catch {
     return period;
   }

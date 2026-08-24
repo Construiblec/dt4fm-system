@@ -8,22 +8,7 @@ import {
 import type { CleaningTask } from "@/modules/incidentes/types/CleaningTask";
 
 import { formatEmployeeName } from "@/shared/utils/nameUtils";
-
-function formatDate(iso: string | null): string {
-  if (!iso) return "—";
-  return new Date(iso).toLocaleDateString("es-EC", {
-    day: "numeric",
-    month: "short",
-  });
-}
-
-function formatTime(iso: string | null): string {
-  if (!iso) return "—";
-  return new Date(iso).toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
+import { formatDayMonth as formatDate, formatTime } from "@/shared/utils/dateUtils";
 
 type Props = {
   task: CleaningTask;

@@ -14,6 +14,10 @@ import {
   isActiveCleaningTaskPhase,
   useCleaningTaskExecutionStore,
 } from "@/store/cleaningTaskExecutionStore";
+import {
+  formatDayMonth as formatTaskDate,
+  formatTime,
+} from "@/shared/utils/dateUtils";
 
 const actionablePhases = new Set(["Assigned", "InProgress", "InExecution"]);
 
@@ -56,22 +60,7 @@ function formatMinutes(minutes: number): string {
   return `${h}h ${m}min`;
 }
 
-function formatTaskDate(dateStr?: string | null): string {
-  if (!dateStr) return "Sin asignar";
-  return new Date(dateStr).toLocaleDateString(undefined, {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-  });
-}
 
-function formatTime(isoStr?: string | null): string {
-  if (!isoStr) return "—";
-  return new Date(isoStr).toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
 
 function formatOverdue(ms: number): string {
   const totalSeconds = Math.max(0, Math.floor(ms / 1000));

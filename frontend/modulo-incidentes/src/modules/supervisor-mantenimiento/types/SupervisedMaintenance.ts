@@ -31,6 +31,11 @@ export type SupervisedMaintenance = {
   isOverdue: boolean;
   execStartDate: string | null;
   execEndDate: string | null;
+  /**
+   * Motivo de la suspensión. Solo en preventivos, y solo mientras lo están:
+   * openMAINT lo limpia al reanudar.
+   */
+  suspensionReason?: string | null;
 };
 
 export type Assignee = {
@@ -46,6 +51,13 @@ export type ListParams = {
   assigned?: boolean;
   limit?: number;
   offset?: number;
+  /**
+   * Rango de inicio previsto, **inclusivo**, en ISO-8601. Solo lo admite el
+   * listado de preventivos. Se mandan instantes y no fechas sueltas porque el
+   * corte del día depende del huso del usuario, que el navegador sí conoce.
+   */
+  from?: string;
+  to?: string;
 };
 
 export type ListResponse = {
@@ -57,12 +69,31 @@ export type ListResponse = {
     offset: number;
     /** Cuántos esperan revisión; `null` en preventivo, que no tiene ese paso */
     pendingReview: number | null;
+    /**
+     * Cuántos esperan cesionario. Es el trabajo pendiente de despachar y no
+     * depende del filtro activo. `null` si el conteo falló.
+     */
+    unassigned: number | null;
   };
 };
 
 export type AssigneesResponse = {
   success: boolean;
   data: Assignee[];
+  meta: { total: number };
+};
+
+/** Foto de evidencia; `dataUrl` viene en base64 y se pinta tal cual. */
+export type MaintenanceEvidence = {
+  id: string;
+  name: string | null;
+  uploadDate: string | null;
+  dataUrl: string;
+};
+
+export type EvidenceResponse = {
+  success: boolean;
+  data: MaintenanceEvidence[];
   meta: { total: number };
 };
 

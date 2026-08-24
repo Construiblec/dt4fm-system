@@ -1,4 +1,5 @@
 import type { PreventiveChecklistItem } from "@/modules/incidentes/types/PreventiveChecklist";
+import { formatMediumDate, formatMediumDateTime } from "@/shared/utils/dateUtils";
 
 /** OpenMAINT etiqueta el Flag «Hecho / Que hacer»; al técnico le dice más un sí/no. */
 export const FLAG_LABELS = ["Sí", "No"];
@@ -29,12 +30,9 @@ export const formatChecklistOutcome = (
     const date = new Date(raw);
 
     if (!Number.isNaN(date.getTime())) {
-      return date.toLocaleString(
-        "es-EC",
-        item.kind === "date"
-          ? { dateStyle: "medium" }
-          : { dateStyle: "medium", timeStyle: "short" },
-      );
+      return item.kind === "date"
+        ? formatMediumDate(raw)
+        : formatMediumDateTime(raw);
     }
   }
 
