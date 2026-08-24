@@ -20,12 +20,15 @@ type EmployeeCardsResponse = {
   data?: EmployeeCard[];
 };
 
-/** Recurso `/users/{id}`: el único que trae los grupos del usuario. */
-export type OpenmaintUserAccount = {
-  _id: number;
+/** Recurso `/sessions/current`: identidad y rol del llamante. */
+export type OpenmaintSession = {
+  _id: string;
   username: string;
-  defaultUserGroup?: number | null;
-  userGroups?: { _id: number; name: string }[];
+  userId: number;
+  role: string;
+  /** Grupos entre los que el usuario puede alternar. */
+  availableRoles?: string[];
+  multigroup?: boolean;
 };
 
 type TenantCard = {
@@ -261,20 +264,19 @@ export class OpenmaintService {
   }
 
   /**
-   * `GET /users/{id}` es el único recurso que devuelve los grupos del usuario.
-   * Se usa para verificar el rol contra openMAINT en vez de creerle al header
-   * `x-role`, que sale de localStorage y es manipulable desde el cliente.
+   * Sesión del llamante. Se usa para verificar identidad y rol contra
+   * openMAINT en vez de creerle al header `x-role`, que sale de localStorage.
    *
-   * No captura errores a propósito: un 401 debe cortar el flujo que lo llama.
+   * `/sessions/current` la resuelve desde la propia cabecera de autorización:
+   * a diferencia de `/users/{id}` no exige privilegios de administrador, y ata
+   * el rol a la sesión, así que nadie puede suscribirse en nombre de otro.
+   *
+   * No captura errores a propósito: quien llama decide qué hacer con ellos.
    */
-  async getUserAccount(
-    userId: number,
-    sessionId: string,
-  ): Promise<OpenmaintUserAccount | null> {
-    const response = (await this.client.get(
-      `/users/${userId}`,
-      sessionId,
-    )) as { data?: OpenmaintUserAccount };
+  async getSession(sessionId: string): Promise<OpenmaintSession | null> {
+    const response = (await this.client.get('/sessions/current', sessionId)) as {
+      data?: OpenmaintSession;
+    };
 
     return response?.data ?? null;
   }

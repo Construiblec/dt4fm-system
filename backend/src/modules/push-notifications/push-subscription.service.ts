@@ -1,18 +1,21 @@
 import {
-  BadRequestException,
+  BadGatewayException,
   Injectable,
+  Logger,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
   OpenmaintService,
-  OpenmaintUserAccount,
+  OpenmaintSession,
 } from '../../integrations/openmaint/openmaint.service';
 import { CreatePushSubscriptionDto } from './dto/create-push-subscription.dto';
 import { PushSubscriptionRepository } from './push-subscription.repository';
 
 @Injectable()
 export class PushSubscriptionService {
+  private readonly logger = new Logger(PushSubscriptionService.name);
+
   constructor(
     private readonly repository: PushSubscriptionRepository,
     private readonly openmaintService: OpenmaintService,
@@ -25,44 +28,39 @@ export class PushSubscriptionService {
 
   /**
    * Da de alta la suscripción resolviendo la identidad contra openMAINT. La
-   * llamada a `/users/{id}` cumple doble función: valida que el sessionId sea
-   * real (un 401 corta aquí) y devuelve los grupos para fijar el rol.
+   * sesión es la única fuente: de ella salen el usuario y el rol, así que el
+   * cliente no puede suscribirse como otra persona ni inventarse un rol.
    */
   async subscribe(
     sessionId: string,
     claimedRole: string | undefined,
     dto: CreatePushSubscriptionDto,
   ): Promise<void> {
-    const userId = Number(dto.userId);
-
-    if (!Number.isInteger(userId) || userId <= 0) {
-      throw new BadRequestException('userId inválido');
-    }
-
-    let account: OpenmaintUserAccount | null;
-    try {
-      account = await this.openmaintService.getUserAccount(userId, sessionId);
-    } catch {
-      throw new UnauthorizedException('Sesión de openMAINT no válida');
-    }
-
-    if (!account) {
-      throw new UnauthorizedException('Usuario no encontrado en openMAINT');
-    }
-
-    const role = this.resolveRole(account, claimedRole);
+    const session = await this.fetchSession(sessionId);
+    const role = this.resolveRole(session, claimedRole);
 
     const [employeeId, cleaningEmployeeId] = await Promise.all([
-      this.openmaintService.resolveEmployeeId(userId, sessionId),
+      this.openmaintService.resolveEmployeeId(session.userId, sessionId),
       this.openmaintService.resolveCleaningEmployeeId(
-        account.username,
+        session.username,
         sessionId,
       ),
     ]);
 
+    // Sin ficha de empleado solo llegan las notificaciones por rol. Se avisa
+    // porque el síntoma (no recibir nada al ser asignado) no tiene otra pista:
+    // suele ser que al Employee de openMAINT le falta el atributo LoginUser.
+    if (employeeId === null && cleaningEmployeeId === null) {
+      this.logger.warn(
+        `El usuario ${session.username} (id ${session.userId}) no tiene ` +
+          'Employee asociado: no recibirá avisos de tareas asignadas, solo ' +
+          'los de su rol.',
+      );
+    }
+
     await this.repository.saveSubscription({
-      userId: String(userId),
-      username: account.username,
+      userId: String(session.userId),
+      username: session.username,
       role,
       employeeId,
       cleaningEmployeeId,
@@ -71,38 +69,58 @@ export class PushSubscriptionService {
       auth: dto.keys.auth,
       userAgent: dto.userAgent ?? null,
     });
+
+    this.logger.log(
+      `Suscripción push registrada: ${session.username} rol=${role} ` +
+        `employeeId=${employeeId ?? '-'} ` +
+        `cleaningEmployeeId=${cleaningEmployeeId ?? '-'}`,
+    );
   }
 
   async unsubscribe(endpoint: string): Promise<void> {
     await this.repository.deleteByEndpoint(endpoint);
   }
 
-  /**
-   * Acepta el rol que declara el cliente solo si el usuario pertenece de verdad
-   * a ese grupo en openMAINT; si no, cae al grupo por defecto de la cuenta.
-   * Un usuario puede estar en varios grupos, de ahí que no baste con el primero.
-   */
-  private resolveRole(
-    account: OpenmaintUserAccount,
-    claimedRole?: string,
-  ): string {
-    const groups = account.userGroups ?? [];
-    const names = groups.map((group) => group.name);
+  private async fetchSession(sessionId: string): Promise<OpenmaintSession> {
+    let session: OpenmaintSession | null;
 
-    if (claimedRole && names.includes(claimedRole)) {
-      return claimedRole;
-    }
+    try {
+      session = await this.openmaintService.getSession(sessionId);
+    } catch (error) {
+      const status = (error as { response?: { status?: number } })?.response
+        ?.status;
 
-    const fallback =
-      groups.find((group) => group._id === account.defaultUserGroup)?.name ??
-      names[0];
+      // openMAINT responde 400 a una sesión inexistente, no 401.
+      if (status === 400 || status === 401 || status === 403) {
+        throw new UnauthorizedException('Sesión de openMAINT no válida');
+      }
 
-    if (!fallback) {
-      throw new BadRequestException(
-        'El usuario no pertenece a ningún grupo de openMAINT',
+      throw new BadGatewayException(
+        `openMAINT no respondió al validar la sesión: ${(error as Error)?.message}`,
       );
     }
 
-    return fallback;
+    if (!session?.userId || !session.username) {
+      throw new UnauthorizedException(
+        'openMAINT no devolvió la identidad de la sesión',
+      );
+    }
+
+    return session;
+  }
+
+  /**
+   * Acepta el rol que declara el cliente solo si es uno de los que el usuario
+   * puede asumir de verdad; si no, se queda con el rol activo de la sesión.
+   */
+  private resolveRole(
+    session: OpenmaintSession,
+    claimedRole?: string,
+  ): string {
+    const available = session.availableRoles ?? [];
+
+    return claimedRole && available.includes(claimedRole)
+      ? claimedRole
+      : session.role;
   }
 }

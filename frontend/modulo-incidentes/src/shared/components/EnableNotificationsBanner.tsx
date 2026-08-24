@@ -1,9 +1,9 @@
-import { Bell, X } from "lucide-react";
+import { AlertTriangle, Bell, X } from "lucide-react";
 import type { NotificationPromptMode } from "@/shared/hooks/useNotificationPrompt";
 
 type EnableNotificationsBannerProps = {
   mode: NotificationPromptMode;
-  /** Cuántas barras fijas hay ya por encima (0, 1 o 2). */
+  error: string | null;
   stackIndex: number;
   onEnable: () => void;
   onDismiss: () => void;
@@ -13,6 +13,7 @@ const TOP_BY_INDEX = ["top-0", "top-14", "top-28"];
 
 export const EnableNotificationsBanner = ({
   mode,
+  error,
   stackIndex,
   onEnable,
   onDismiss,
@@ -21,19 +22,33 @@ export const EnableNotificationsBanner = ({
     return null;
   }
 
+  const isError = mode === "error";
+
   return (
     <div
-      className={`fixed left-0 right-0 z-40 border-b border-blue-800 bg-brand text-white shadow-lg ${
-        TOP_BY_INDEX[stackIndex] ?? "top-0"
-      }`}
+      className={`fixed left-0 right-0 z-40 border-b shadow-lg ${
+        isError
+          ? "border-amber-700 bg-amber-600 text-white"
+          : "border-blue-800 bg-brand text-white"
+      } ${TOP_BY_INDEX[stackIndex] ?? "top-0"}`}
     >
       <div className="mx-auto flex w-full max-w-md items-center justify-between gap-3 px-4 py-2.5">
         <div className="flex min-w-0 items-center gap-2">
-          <Bell className="h-4 w-4 shrink-0" />
+          {isError ? (
+            <AlertTriangle className="h-4 w-4 shrink-0" />
+          ) : (
+            <Bell className="h-4 w-4 shrink-0" />
+          )}
           <div className="min-w-0">
-            <p className="truncate text-sm font-semibold">Activa las notificaciones</p>
+            <p className="truncate text-sm font-semibold">
+              {isError
+                ? "No se activaron las notificaciones"
+                : "Activa las notificaciones"}
+            </p>
             <p className="text-xs text-white/90">
-              Entérate al instante de tus tareas asignadas
+              {isError
+                ? error
+                : "Entérate al instante de tus tareas asignadas"}
             </p>
           </div>
         </div>
@@ -42,9 +57,11 @@ export const EnableNotificationsBanner = ({
           <button
             type="button"
             onClick={onEnable}
-            className="rounded-full bg-white px-3 py-1.5 text-xs font-bold text-brand"
+            className={`rounded-full bg-white px-3 py-1.5 text-xs font-bold ${
+              isError ? "text-amber-700" : "text-brand"
+            }`}
           >
-            Activar
+            {isError ? "Reintentar" : "Activar"}
           </button>
           <button
             type="button"

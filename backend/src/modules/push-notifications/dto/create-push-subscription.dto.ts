@@ -20,11 +20,6 @@ export class PushSubscriptionKeysDto {
 }
 
 export class CreatePushSubscriptionDto {
-  @ApiProperty({ description: 'userId de openMAINT devuelto por el login' })
-  @IsString()
-  @IsNotEmpty()
-  userId: string;
-
   @ApiProperty({ description: 'Endpoint del push service del navegador' })
   @IsString()
   @IsNotEmpty()
