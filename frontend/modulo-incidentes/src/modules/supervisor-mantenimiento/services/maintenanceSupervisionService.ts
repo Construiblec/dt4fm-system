@@ -3,6 +3,7 @@ import { env } from "@/config/env";
 import type {
   AssigneesResponse,
   AssignPayload,
+  EvidenceResponse,
   ListParams,
   ListResponse,
   MaintenanceKind,
@@ -80,6 +81,25 @@ export const getMaintenanceDetail = async (
   try {
     const { data } = await api.get<MaintenanceResponse>(
       `/maintenance-supervision/${kind}/${id}`,
+      { headers: getAuthHeaders() },
+    );
+    return data;
+  } catch (error) {
+    return handleUnauthorized(error);
+  }
+};
+
+/**
+ * Fotos de evidencia. Llegan ya en base64 desde el backend, así que se pintan
+ * directamente sin pasar la sesión de OpenMAINT al navegador.
+ */
+export const getMaintenanceEvidence = async (
+  kind: MaintenanceKind,
+  id: number,
+): Promise<EvidenceResponse> => {
+  try {
+    const { data } = await api.get<EvidenceResponse>(
+      `/maintenance-supervision/${kind}/${id}/attachments`,
       { headers: getAuthHeaders() },
     );
     return data;

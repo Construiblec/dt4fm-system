@@ -12,26 +12,26 @@ import {
   getPreventiveStatusPill,
 } from "@/modules/incidentes/constants/preventiveStatus";
 import { AssignAssigneeModal } from "@/modules/supervisor-mantenimiento/components/AssignAssigneeModal";
+import { MaintenanceEvidence } from "@/modules/supervisor-mantenimiento/components/MaintenanceEvidence";
 import { NotesReasonModal } from "@/modules/supervisor-mantenimiento/components/NotesReasonModal";
 import { PlannedStartModal } from "@/modules/supervisor-mantenimiento/components/PlannedStartModal";
 import {
   getApiErrorMessage,
   getMaintenanceDetail,
+  getMaintenanceEvidence,
   rejectCorrective,
   reviewCorrective,
 } from "@/modules/supervisor-mantenimiento/services/maintenanceSupervisionService";
 import type {
+  MaintenanceEvidence as MaintenanceEvidenceItem,
   MaintenanceKind,
   SupervisedMaintenance,
 } from "@/modules/supervisor-mantenimiento/types/SupervisedMaintenance";
 
+import { formatMediumDateTime } from "@/shared/utils/dateUtils";
+
 const formatDateTime = (value: string | null) =>
-  value
-    ? new Date(value).toLocaleString("es-EC", {
-        dateStyle: "medium",
-        timeStyle: "short",
-      })
-    : "—";
+  formatMediumDateTime(value, "—");
 
 type RowProps = { label: string; value: string | null; highlight?: string };
 
@@ -64,6 +64,8 @@ export const MaintenanceSupervisorDetailPage = () => {
   const [error, setError] = useState<string | null>(null);
   const [modal, setModal] = useState<Modal>(null);
   const [banner, setBanner] = useState<string | null>(null);
+  const [evidence, setEvidence] = useState<MaintenanceEvidenceItem[]>([]);
+  const [evidenceLoading, setEvidenceLoading] = useState(true);
 
   const load = useCallback(async () => {
     try {
@@ -81,6 +83,34 @@ export const MaintenanceSupervisorDetailPage = () => {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // La evidencia se pide aparte para que las fotos no retrasen el detalle, y un
+  // fallo al traerlas no impida supervisar el mantenimiento.
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadEvidence = async () => {
+      setEvidenceLoading(true);
+
+      try {
+        const response = await getMaintenanceEvidence(
+          maintenanceKind,
+          Number(id),
+        );
+        if (!cancelled) setEvidence(response.data);
+      } catch {
+        if (!cancelled) setEvidence([]);
+      } finally {
+        if (!cancelled) setEvidenceLoading(false);
+      }
+    };
+
+    void loadEvidence();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [id, maintenanceKind]);
 
   const applyUpdate = (updated: SupervisedMaintenance, message: string) => {
     setMaintenance(updated);
@@ -315,6 +345,11 @@ export const MaintenanceSupervisorDetailPage = () => {
                   </p>
                 ) : null}
               </section>
+
+              <MaintenanceEvidence
+                images={evidence}
+                loading={evidenceLoading}
+              />
 
               <section className="rounded-3xl bg-white p-5 shadow-sm">
                 <h2 className="mb-3 text-sm font-bold text-slate-900">

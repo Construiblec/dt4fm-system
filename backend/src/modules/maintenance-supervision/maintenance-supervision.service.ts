@@ -82,7 +82,31 @@ export type Assignee = {
   isSupplier: boolean;
 };
 
+/** Foto de evidencia ya resuelta a base64, lista para pintar. */
+export type MaintenanceEvidence = {
+  id: string;
+  name: string | null;
+  uploadDate: string | null;
+  /** `data:image/...;base64,…`, listo para un `<img src>` */
+  dataUrl: string;
+};
+
 type Kind = 'corrective' | 'preventive';
+
+/** Forma mínima común a los adjuntos de ambos procesos. */
+type RawAttachment = {
+  _id: string;
+  name?: string | null;
+  fileName?: string | null;
+  created?: string | null;
+  modified?: string | null;
+};
+
+type RawPreview = {
+  data?: { hasPreview?: boolean; dataUrl?: string };
+};
+
+const IMAGE_FILE = /\.(png|jpe?g|webp|heic|heif)$/i;
 
 @Injectable()
 export class MaintenanceSupervisionService {
@@ -116,6 +140,11 @@ export class MaintenanceSupervisionService {
 
     const cards = response.data ?? [];
 
+    const [pendingReview, unassigned] = await Promise.all([
+      this.countPendingReview(sessionId),
+      this.countUnassigned('corrective', sessionId),
+    ]);
+
     return {
       success: true,
       data: cards.map((card) => this.toCorrective(card)),
@@ -123,7 +152,8 @@ export class MaintenanceSupervisionService {
         total: response.meta?.total ?? cards.length,
         limit,
         offset,
-        pendingReview: await this.countPendingReview(sessionId),
+        pendingReview,
+        unassigned,
       },
     };
   }
@@ -158,6 +188,7 @@ export class MaintenanceSupervisionService {
         // El preventivo no tiene paso de revisión: `PM03-Advance` cierra
         // directo y un proceso cerrado ya no admite acciones.
         pendingReview: null,
+        unassigned: await this.countUnassigned('preventive', sessionId),
       },
     };
   }
@@ -182,6 +213,91 @@ export class MaintenanceSupervisionService {
       success: true,
       data: this.toPreventive(await this.fetchPreventive(sessionId, id)),
     };
+  }
+
+  /**
+   * Fotos de evidencia de un mantenimiento, en solo lectura.
+   *
+   * OpenMAINT ofrece una vista previa en base64 por adjunto, así que se
+   * devuelven ya resueltas: el navegador las pinta sin necesidad de un endpoint
+   * de descarga y sin que la sesión de OpenMAINT salga del backend.
+   *
+   * Se filtran por extensión de imagen y se descartan los adjuntos que no
+   * ofrezcan vista previa (un PDF, por ejemplo, no la tiene). Si listar los
+   * adjuntos falla se devuelve vacío en vez de propagar el error: la evidencia
+   * es complementaria y no debe tumbar la pantalla de detalle.
+   */
+  async getEvidence(sessionId: string, kind: Kind, id: number) {
+    // Valida de paso que el mantenimiento exista y sea visible para la sesión
+    if (kind === 'corrective') {
+      await this.fetchCorrective(sessionId, id);
+    } else {
+      await this.fetchPreventive(sessionId, id);
+    }
+
+    const attachments = await this.listImageAttachments(sessionId, kind, id);
+
+    const previews = await Promise.allSettled(
+      attachments.map((attachment) =>
+        kind === 'corrective'
+          ? this.openmaint.getAttachmentPreview(id, attachment._id, sessionId)
+          : this.preventive.findAttachmentPreview(sessionId, id, attachment._id),
+      ),
+    );
+
+    const data = attachments.reduce<MaintenanceEvidence[]>(
+      (accumulator, attachment, index) => {
+        const result = previews[index];
+
+        if (result.status !== 'fulfilled') {
+          return accumulator;
+        }
+
+        const preview = (result.value as RawPreview).data;
+
+        if (preview?.hasPreview !== true || typeof preview.dataUrl !== 'string') {
+          return accumulator;
+        }
+
+        accumulator.push({
+          id: attachment._id,
+          name: attachment.name ?? attachment.fileName ?? null,
+          uploadDate: attachment.created ?? attachment.modified ?? null,
+          dataUrl: preview.dataUrl,
+        });
+
+        return accumulator;
+      },
+      [],
+    );
+
+    return { success: true, data, meta: { total: data.length } };
+  }
+
+  private async listImageAttachments(
+    sessionId: string,
+    kind: Kind,
+    id: number,
+  ): Promise<RawAttachment[]> {
+    try {
+      const response =
+        kind === 'corrective'
+          ? await this.openmaint.getIncidentAttachments(id, sessionId)
+          : await this.preventive.findAttachments(sessionId, id);
+
+      const all = (response as { data?: RawAttachment[] }).data ?? [];
+
+      return all.filter((attachment) =>
+        IMAGE_FILE.test(attachment.name ?? attachment.fileName ?? ''),
+      );
+    } catch (error) {
+      this.logger.warn(
+        `No se pudieron listar los adjuntos del ${kind} ${id}: ` +
+          `${(error as Error)?.message ?? ''}`,
+      );
+
+      return [];
+    }
   }
 
   /**
@@ -709,10 +825,28 @@ export class MaintenanceSupervisionService {
 
   private async countPendingReview(sessionId: string): Promise<number | null> {
     try {
-      return await this.corrective.countByStatus(
-        sessionId,
-        CM_PENDING_REVIEW_STATUS,
-      );
+      return await this.corrective.count(sessionId, {
+        statusIds: [CM_PENDING_REVIEW_STATUS],
+      });
+    } catch {
+      // El contador es informativo: si falla, el listado sigue sirviendo.
+      return null;
+    }
+  }
+
+  /**
+   * Cuántos mantenimientos esperan cesionario. Es el trabajo que el supervisor
+   * tiene pendiente de despachar, así que va en un contador propio y no
+   * depende del filtro que tenga puesto en la lista.
+   */
+  private async countUnassigned(
+    kind: Kind,
+    sessionId: string,
+  ): Promise<number | null> {
+    try {
+      return kind === 'corrective'
+        ? await this.corrective.count(sessionId, { assigned: false })
+        : await this.preventive.count(sessionId, { assigned: false });
     } catch {
       // El contador es informativo: si falla, el listado sigue sirviendo.
       return null;

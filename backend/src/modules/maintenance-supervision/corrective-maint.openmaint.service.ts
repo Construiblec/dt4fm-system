@@ -101,6 +101,13 @@ export type SaveFieldsOptions = {
   fields: Record<string, unknown>;
 };
 
+/** Criterios de `count`. Sin ninguno cuenta todas las instancias. */
+export type CountOptions = {
+  statusIds?: CmStatusId[];
+  /** `false` → solo los que no tienen cesionario; `true` → solo los que sí. */
+  assigned?: boolean;
+};
+
 /** Condición de filtro de OpenMAINT, ya sea simple o compuesta. */
 type FilterCondition =
   | { simple: { attribute: string; operator: string; value?: string[] } }
@@ -158,17 +165,25 @@ export class CorrectiveMaintOpenmaintService {
     )) as CorrectiveMaintCardsResponse;
   }
 
-  /** Cuántos correctivos hay en un estado dado, sin traerse las tarjetas. */
-  async countByStatus(
+  /**
+   * Cuántos correctivos cumplen un criterio, sin traerse las tarjetas: pide
+   * `limit=1` y se queda con `meta.total`.
+   */
+  async count(
     sessionId: string,
-    statusId: CmStatusId,
+    { statusIds, assigned }: CountOptions = {},
   ): Promise<number> {
     const params = new URLSearchParams({
       include_tasklist: 'false',
       onlyGridAttrs: 'true',
       start: '0',
       limit: '1',
-      filter: JSON.stringify(this.buildFilter([this.statusCondition([statusId])])),
+      filter: JSON.stringify(
+        this.buildFilter([
+          this.statusCondition(statusIds),
+          this.assignedCondition(assigned),
+        ]),
+      ),
     });
 
     const response = (await this.client.get(

@@ -12,6 +12,37 @@ import type {
 } from "@/modules/supervisor-mantenimiento/types/SupervisedMaintenance";
 import { toDateTimeLocal } from "@/shared/utils/dateTimeInput";
 
+/**
+ * Convierte un valor datetime-local ("2026-08-25T09:00") a DD/MM/YYYY.
+ * Si el valor está vacío o inválido devuelve "".
+ */
+const toDMY = (dtLocal: string): string => {
+  if (!dtLocal) return "";
+  const [datePart] = dtLocal.split("T");
+  const [y, m, d] = datePart.split("-");
+  if (!y || !m || !d) return "";
+  return `${d}/${m}/${y}`;
+};
+
+/** Extrae la parte HH:mm de un datetime-local. */
+const toTime = (dtLocal: string): string => {
+  if (!dtLocal) return "";
+  const [, timePart] = dtLocal.split("T");
+  return timePart ?? "";
+};
+
+/**
+ * Reconstruye el datetime-local a partir de DD/MM/YYYY y HH:mm.
+ * Devuelve "" si la fecha es incompleta.
+ */
+const fromDMYTime = (dmy: string, time: string): string => {
+  const parts = dmy.split("/");
+  if (parts.length !== 3) return "";
+  const [d, m, y] = parts;
+  if (!d || !m || !y || y.length !== 4) return "";
+  return `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}T${time || "00:00"}`;
+};
+
 type Props = {
   maintenance: SupervisedMaintenance;
   /** `reassign` mantiene el equipo fijo y solo cambia la persona */
@@ -47,8 +78,14 @@ export const AssignAssigneeModal = ({
     isReassign ? (maintenance.team?.id ?? null) : null,
   );
   const [assigneeId, setAssigneeId] = useState<number | null>(null);
-  const [plannedStart, setPlannedStart] = useState(
-    toDateTimeLocal(maintenance.plannedStart),
+
+  // Fecha y hora separadas para mostrar DD/MM/YYYY al usuario
+  const initialDTLocal = toDateTimeLocal(maintenance.plannedStart);
+  const [plannedDate, setPlannedDate] = useState(() => toDMY(initialDTLocal));
+  const [plannedTime, setPlannedTime] = useState(() => toTime(initialDTLocal));
+  const plannedStart = useMemo(
+    () => fromDMYTime(plannedDate, plannedTime),
+    [plannedDate, plannedTime],
   );
 
   useEffect(() => {
@@ -238,12 +275,30 @@ export const AssignAssigneeModal = ({
               {!isReassign && !blockedBySupplier ? (
                 <div>
                   {label("Inicio previsto (opcional)")}
-                  <input
-                    type="datetime-local"
-                    value={plannedStart}
-                    onChange={(event) => setPlannedStart(event.target.value)}
-                    className={selectClass}
-                  />
+                  <div className="grid grid-cols-2 gap-2">
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      placeholder="DD/MM/AAAA"
+                      maxLength={10}
+                      value={plannedDate}
+                      onChange={(event) => {
+                        // Permitir solo dígitos y '/'
+                        const raw = event.target.value.replace(/[^\d/]/g, "");
+                        setPlannedDate(raw);
+                      }}
+                      className={selectClass}
+                    />
+                    <input
+                      type="time"
+                      value={plannedTime}
+                      onChange={(event) => setPlannedTime(event.target.value)}
+                      className={selectClass}
+                    />
+                  </div>
+                  <p className="mt-1.5 text-xs text-slate-400">
+                    Formato: día/mes/año · hora
+                  </p>
                   {isCorrective ? (
                     <p className="mt-1.5 text-xs text-amber-700">
                       Última oportunidad para fijarla: al asignar, el correctivo

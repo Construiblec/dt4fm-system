@@ -201,6 +201,13 @@ export type FindAllOptions = FindByAssigneeOptions & {
   assigned?: boolean;
 };
 
+/** Criterios de `count`. Sin ninguno cuenta todas las instancias. */
+export type PreventiveCountOptions = {
+  statusIds?: PmStatusId[];
+  /** `false` → solo los que no tienen cesionario; `true` → solo los que sí. */
+  assigned?: boolean;
+};
+
 /** Condición de filtro de OpenMAINT, ya sea simple o compuesta. */
 type FilterCondition =
   | { simple: { attribute: string; operator: string; value?: string[] } }
@@ -307,6 +314,36 @@ export class PreventiveMaintenanceOpenmaintService {
       `${INSTANCES_PATH}?${params.toString()}`,
       sessionId,
     )) as PreventiveMaintCardsResponse;
+  }
+
+  /**
+   * Cuántos preventivos cumplen un criterio, sin traerse las tarjetas: pide
+   * `limit=1` y se queda con `meta.total`. Espejo de `count` en el gateway
+   * correctivo.
+   */
+  async count(
+    sessionId: string,
+    { statusIds, assigned }: PreventiveCountOptions = {},
+  ): Promise<number> {
+    const params = new URLSearchParams({
+      include_tasklist: 'false',
+      onlyGridAttrs: 'true',
+      start: '0',
+      limit: '1',
+      filter: JSON.stringify(
+        this.buildFilter([
+          this.statusCondition(statusIds),
+          this.assignedCondition(assigned),
+        ]),
+      ),
+    });
+
+    const response = (await this.client.get(
+      `${INSTANCES_PATH}?${params.toString()}`,
+      sessionId,
+    )) as PreventiveMaintCardsResponse;
+
+    return response.meta?.total ?? 0;
   }
 
   /** Mantenimientos preventivos ejecutados sobre un mismo equipo. */

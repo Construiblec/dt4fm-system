@@ -118,6 +118,28 @@ export class MaintenanceSupervisionController {
     return this.service.getDetail(sessionId, this.parseKind(kind), id);
   }
 
+  @Get(':kind/:id/attachments')
+  @ApiOperation({
+    summary: 'Fotos de evidencia de un mantenimiento',
+    description:
+      'Devuelve las imágenes ya resueltas a base64 desde la vista previa de ' +
+      'OpenMAINT, así el navegador las pinta sin un endpoint de descarga. Los ' +
+      'adjuntos que no son imagen o no ofrecen vista previa se omiten.',
+  })
+  @ApiParam({ name: 'kind', enum: ['corrective', 'preventive'] })
+  @ApiParam({ name: 'id', type: 'integer' })
+  @ApiResponse({ status: 200, description: 'Evidencia obtenida con éxito' })
+  @ApiResponse({ status: 404, description: 'No encontrado' })
+  async getEvidence(
+    @Headers('authorization') sessionId: string,
+    @Headers('x-role') role: string,
+    @Param('kind') kind: string,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    this.authorize(sessionId, role);
+    return this.service.getEvidence(sessionId, this.parseKind(kind), id);
+  }
+
   // ── Asignación ─────────────────────────────────────────────────────────────
 
   @Post('corrective/:id/assign')

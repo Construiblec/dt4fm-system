@@ -25,11 +25,7 @@ import { ErrorModal } from "@/shared/components/ErrorModal";
 import { LoadingModal } from "@/shared/components/LoadingModal";
 import { SuccessModal } from "@/shared/components/SuccessModal";
 
-const formatDate = (value: string) =>
-  new Date(value).toLocaleString(undefined, {
-    dateStyle: "medium",
-    timeStyle: "short",
-  });
+import { formatDateTime as formatDate } from "@/shared/utils/dateUtils";
 
 export const IncidentDetailPage = () => {
   const navigate = useNavigate();

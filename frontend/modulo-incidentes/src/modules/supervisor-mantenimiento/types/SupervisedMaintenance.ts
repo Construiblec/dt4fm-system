@@ -57,12 +57,31 @@ export type ListResponse = {
     offset: number;
     /** Cuántos esperan revisión; `null` en preventivo, que no tiene ese paso */
     pendingReview: number | null;
+    /**
+     * Cuántos esperan cesionario. Es el trabajo pendiente de despachar y no
+     * depende del filtro activo. `null` si el conteo falló.
+     */
+    unassigned: number | null;
   };
 };
 
 export type AssigneesResponse = {
   success: boolean;
   data: Assignee[];
+  meta: { total: number };
+};
+
+/** Foto de evidencia; `dataUrl` viene en base64 y se pinta tal cual. */
+export type MaintenanceEvidence = {
+  id: string;
+  name: string | null;
+  uploadDate: string | null;
+  dataUrl: string;
+};
+
+export type EvidenceResponse = {
+  success: boolean;
+  data: MaintenanceEvidence[];
   meta: { total: number };
 };
 

@@ -23,6 +23,7 @@ export const MaintenanceSupervisorDashboardPage = () => {
     items,
     total,
     pendingReview,
+    unassigned,
     loading,
     error,
     status,
@@ -80,6 +81,14 @@ export const MaintenanceSupervisorDashboardPage = () => {
                 <p className="text-2xl font-bold text-slate-900">{total}</p>
                 <p className="mt-0.5 text-xs text-slate-400">Total</p>
               </div>
+
+              {/* Trabajo pendiente de despachar; no depende del filtro activo */}
+              {unassigned !== null ? (
+                <div className="flex-1 rounded-xl bg-rose-50 p-3 text-center shadow-sm">
+                  <p className="text-2xl font-bold text-rose-700">{unassigned}</p>
+                  <p className="mt-0.5 text-xs text-rose-500">Sin asignar</p>
+                </div>
+              ) : null}
 
               {/* El preventivo no tiene paso de revisión: el backend manda null */}
               {pendingReview !== null ? (

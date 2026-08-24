@@ -166,8 +166,9 @@ Base `/maintenance-supervision`. Cabeceras: `authorization` (sesión openMAINT) 
 
 | Verbo | Ruta | Notas |
 |---|---|---|
-| GET | `/corrective` · `/preventive` | `?status=&assigned=&limit=10&offset=0`. `meta.pendingReview` solo en correctivo |
+| GET | `/corrective` · `/preventive` | `?status=&assigned=&limit=10&offset=0`. `meta.unassigned` en ambos; `meta.pendingReview` solo en correctivo |
 | GET | `/:kind/:id` | Detalle en solo lectura |
+| GET | `/:kind/:id/attachments` | Evidencia fotográfica, ya en base64 |
 | GET | `/assignees?teamId=` | `isSupplier` sale de la subclase de la ficha |
 | POST | `/corrective/:id/assign` | `CM02-Advance` con Assignee + Team + ExpExecStartDate |
 | POST | `/corrective/:id/reject` | `CM02-Reject`; motivo obligatorio |
@@ -175,6 +176,37 @@ Base `/maintenance-supervision`. Cabeceras: `authorization` (sesión openMAINT) 
 | PUT | `/:kind/:id/assignee` | `saveFields`, sin mover el flujo |
 | POST | `/corrective/:id/review` | `CM05-Advance` / `CM05-Back` |
 | PUT | `/:kind/:id/planned-start` | `ExpExecStartDate`; solo en CM02 / PM02 |
+
+### Los contadores de la cabecera
+
+`meta.total` responde al filtro activo, así que no sirve para saber cuánto trabajo queda por
+despachar. Por eso hay dos contadores independientes que se calculan aparte, cada uno con un
+`count` que pide `limit=1` y se queda con `meta.total`:
+
+| Contador | Criterio | Disponible en |
+|---|---|---|
+| `unassigned` | `Assignee isnull` | correctivo y preventivo |
+| `pendingReview` | `ProcessStatus = CM-Accounting` | solo correctivo |
+
+Ambos son **informativos**: si el conteo falla se devuelve `null` y el listado sigue sirviendo. La
+UI oculta la tarjeta cuando llega `null`, en vez de pintar un cero engañoso — el mismo criterio que
+ya se usaba con `pendingReview` en preventivos.
+
+### La evidencia fotográfica
+
+`GET /:kind/:id/attachments` devuelve las imágenes **ya resueltas a base64**, aprovechando el
+endpoint `preview` que OpenMAINT ofrece por adjunto. Así el navegador las pinta directamente: no
+hace falta un endpoint de descarga que reenvíe el binario ni que la sesión de OpenMAINT salga del
+backend.
+
+Se filtran por extensión (`png`, `jpg`, `jpeg`, `webp`, `heic`, `heif`) y se descartan los adjuntos
+sin vista previa —un PDF, por ejemplo, no la ofrece—. Si listar los adjuntos falla se devuelve
+vacío en vez de propagar el error: la evidencia es complementaria y no debe tumbar la pantalla de
+detalle. En el frontend se pide en paralelo al detalle, por lo mismo.
+
+Cada proceso tiene su propio gateway de adjuntos y se reutilizan tal cual: `getIncidentAttachments`
+/ `getAttachmentPreview` en correctivos y `findAttachments` / `findAttachmentPreview` en
+preventivos.
 
 ### Por qué hay un detalle propio
 

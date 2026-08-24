@@ -8,13 +8,10 @@ type Props = {
   onOpen: (id: number) => void;
 };
 
-const formatDate = (value: string | null) => {
-  if (!value) {
-    return "Sin fecha de cierre";
-  }
+import { formatMediumDate } from "@/shared/utils/dateUtils";
 
-  return new Date(value).toLocaleDateString("es-EC", { dateStyle: "medium" });
-};
+const formatDate = (value: string | null) =>
+  formatMediumDate(value, "Sin fecha de cierre");
 
 const StateMessage = ({ children }: { children: string }) => (
   <div className="mt-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center">

@@ -22,6 +22,7 @@ export const useSupervisedMaintenances = (kind: MaintenanceKind) => {
   const [items, setItems] = useState<SupervisedMaintenance[]>([]);
   const [total, setTotal] = useState(0);
   const [pendingReview, setPendingReview] = useState<number | null>(null);
+  const [unassigned, setUnassigned] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -42,9 +43,11 @@ export const useSupervisedMaintenances = (kind: MaintenanceKind) => {
       setItems(response.data);
       setTotal(response.meta.total);
       setPendingReview(response.meta.pendingReview);
+      setUnassigned(response.meta.unassigned);
     } catch (err) {
       setItems([]);
       setTotal(0);
+      setUnassigned(null);
       setError(
         getApiErrorMessage(err, "No se pudieron cargar los mantenimientos"),
       );
@@ -74,6 +77,7 @@ export const useSupervisedMaintenances = (kind: MaintenanceKind) => {
     items,
     total,
     pendingReview,
+    unassigned,
     loading,
     error,
     status,

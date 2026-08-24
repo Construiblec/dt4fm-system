@@ -69,23 +69,11 @@ type Props = {
   openLabel?: string;
 };
 
-const formatShortDate = (value: string | null) => {
-  if (!value) return "Sin fecha";
+import { formatShortDate as formatShortDateUtil, formatMediumDateTime as formatDateTime } from "@/shared/utils/dateUtils";
 
-  return new Date(value).toLocaleDateString("es-EC", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
-};
+const formatShortDate = (value: string | null) =>
+  formatShortDateUtil(value, "Sin fecha");
 
-const formatDateTime = (value: string | null) =>
-  value
-    ? new Date(value).toLocaleString("es-EC", {
-        dateStyle: "medium",
-        timeStyle: "short",
-      })
-    : null;
 
 /**
  * Tarjeta única de mantenimiento, para correctivo y preventivo y para las dos
