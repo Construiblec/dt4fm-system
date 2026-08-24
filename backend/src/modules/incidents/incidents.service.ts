@@ -7,7 +7,10 @@ import {
 } from '@nestjs/common';
 import { extractRegisterNotes } from '../../common/utils/openmaint-register.util';
 import { OpenmaintService } from '../../integrations/openmaint/openmaint.service';
-import { CM_STATUS_CODE_TO_NAME } from '../maintenance-supervision/constants/corrective-maint.constants';
+import {
+  CM_DERIVED_ASSIGNED,
+  resolveCorrectiveStatus,
+} from '../maintenance-supervision/constants/corrective-maint.constants';
 import { NotificationsService } from '../notifications/notifications.service';
 import { CompleteIncidentDto } from './dto/complete-incident.dto';
 import { CreateIncidentDto } from './dto/create-incident.dto';
@@ -30,6 +33,8 @@ type OpenmaintIncidentListItem = {
   OpeningDate: string;
   /** Fecha prevista de inicio que fija el supervisor al asignar. */
   ExpExecStartDate?: string | null;
+  /** Inicio real. Vacío mientras el técnico no haya arrancado el trabajo. */
+  ExecStartDate?: string | null;
 };
 
 type OpenmaintIncidentListResponse = {
@@ -46,6 +51,8 @@ type OpenmaintIncidentDetail = {
   _ProcessStatus_code?: string | null;
   _ProcessStatus_description?: string | null;
   ProcessStatus_description?: string | null;
+  /** Inicio real. Vacío mientras el técnico no haya arrancado el trabajo. */
+  ExecStartDate?: string | null;
   _Priority_description?: string | null;
   Priority_description?: string | null;
   OpeningDate?: string | null;
@@ -71,16 +78,16 @@ type OpenmaintAttachmentsResponse = {
 };
 
 type OpenmaintIncidentTaskContext = {
-  data?:
-    | {
-        _id?: number;
-        _tasklist?: OpenmaintTaskItem[];
-      }
-    | OpenmaintIncidentTaskContextData;
+  data?: OpenmaintIncidentTaskContextData;
 };
 
 type OpenmaintIncidentTaskContextData = {
   _id?: number;
+  /** Código estable del estado (`CM-Execution`, `CM-Assignment`, …). */
+  _ProcessStatus_code?: string | null;
+  /** Inicio real. Vacío mientras el técnico no haya pulsado «Iniciar». */
+  ExecStartDate?: string | null;
+  ExecEndDate?: string | null;
   _tasklist?: OpenmaintTaskItem[];
 };
 
@@ -98,18 +105,99 @@ export class IncidentsService {
     private readonly notificationsService: NotificationsService,
   ) {}
 
+  /**
+   * Sella el inicio real del trabajo, que es lo que separa «Asignado» de
+   * «Ejecución».
+   *
+   * OpenMAINT no tiene un paso para esto: al asignar, el correctivo ya entra en
+   * CM03 y el módulo de supervisión vacía el `ExecStartDate` que se autorrellena
+   * (ver `clearAutoFilledExecStart`). Este endpoint es el único momento en que
+   * la aplicación lo escribe.
+   *
+   * Es idempotente a propósito: si ya hay un inicio no se pisa, porque
+   * reescribirlo acortaría la duración del trabajo ya registrada.
+   */
+  async startIncident(id: number, sessionId: string) {
+    const { incident, activityId } = await this.getIncidentActivity(
+      id,
+      sessionId,
+    );
+
+    const statusCode = resolveCorrectiveStatus(
+      incident._ProcessStatus_code,
+      incident.ExecStartDate,
+    );
+
+    if (incident.ExecStartDate) {
+      // Ya estaba en marcha: se devuelve el inicio original sin tocar nada.
+      return {
+        success: true,
+        alreadyStarted: true,
+        statusCode,
+        execStartDate: incident.ExecStartDate,
+        message: 'El trabajo ya estaba iniciado',
+      };
+    }
+
+    if (statusCode !== CM_DERIVED_ASSIGNED) {
+      throw new BadRequestException(
+        'Solo se puede iniciar un incidente asignado y pendiente de arrancar',
+      );
+    }
+
+    const execStartDate = new Date().toISOString();
+
+    try {
+      await this.openmaintService.startIncident(
+        id,
+        activityId,
+        execStartDate,
+        sessionId,
+      );
+    } catch (error) {
+      if (this.getErrorStatus(error) === 404) {
+        throw new NotFoundException('Incidente no encontrado');
+      }
+
+      throw new BadGatewayException(
+        'Error al registrar el inicio del incidente en OpenMAINT',
+      );
+    }
+
+    return {
+      success: true,
+      alreadyStarted: false,
+      statusCode: 'Execution',
+      execStartDate,
+      message: 'Trabajo iniciado correctamente',
+    };
+  }
+
   async completeIncident(
     id: number,
     sessionId: string,
     dto: CompleteIncidentDto,
     file?: UploadedImage,
   ) {
-    const activityId = await this.getActivityId(id, sessionId);
+    const { incident, activityId } = await this.getIncidentActivity(
+      id,
+      sessionId,
+    );
+
+    // El parte necesita inicio y fin para tener duración. La API de OpenMAINT
+    // no lo valida — avanza igual y deja el trabajo cerrado sin fechas —, así
+    // que el corte se hace aquí.
+    if (!incident.ExecStartDate) {
+      throw new BadRequestException(
+        'Hay que iniciar el trabajo antes de finalizarlo',
+      );
+    }
 
     await this.advanceIncident(
       id,
       activityId,
       dto.notes?.trim() || null,
+      new Date().toISOString(),
       sessionId,
     );
 
@@ -202,8 +290,10 @@ export class IncidentsService {
       location: incident.ShortDescr ?? null,
       building: incident._Site_description ?? incident.Site_description ?? null,
       // Código estable para la lógica; `status` queda como etiqueta visible.
-      statusCode:
-        CM_STATUS_CODE_TO_NAME[incident._ProcessStatus_code ?? ''] ?? null,
+      statusCode: resolveCorrectiveStatus(
+        incident._ProcessStatus_code,
+        incident.ExecStartDate,
+      ),
       status:
         incident._ProcessStatus_description ??
         incident.ProcessStatus_description ??
@@ -239,8 +329,12 @@ export class IncidentsService {
         // El código estable es el que debe gobernar la lógica del front.
         // `_ProcessStatus_description_translation` viaja traducido según el
         // idioma de la sesión, así que solo sirve como etiqueta visible.
-        statusCode:
-          CM_STATUS_CODE_TO_NAME[incident._ProcessStatus_code ?? ''] ?? null,
+        // Se deriva con la misma regla que usa el supervisor, para que los dos
+        // roles vean el mismo estado: «Asignado» mientras no haya inicio real.
+        statusCode: resolveCorrectiveStatus(
+          incident._ProcessStatus_code,
+          incident.ExecStartDate,
+        ),
         status: incident._ProcessStatus_description_translation,
         building: incident._Site_description,
         createdAt: incident.OpeningDate,
@@ -408,7 +502,20 @@ export class IncidentsService {
     }
   }
 
-  private async getActivityId(id: number, sessionId: string) {
+  /**
+   * La instancia junto al `_id` de su actividad activa, que es lo que hay que
+   * mandar en `_activity` para escribir o avanzar el flujo.
+   *
+   * Devuelve las dos cosas porque quien avanza el flujo casi siempre necesita
+   * también mirar el estado o las fechas antes de hacerlo.
+   */
+  private async getIncidentActivity(
+    id: number,
+    sessionId: string,
+  ): Promise<{
+    incident: OpenmaintIncidentTaskContextData;
+    activityId: string;
+  }> {
     let response: OpenmaintIncidentTaskContext;
 
     try {
@@ -428,20 +535,16 @@ export class IncidentsService {
       );
     }
 
-    const incident =
-      response.data && '_tasklist' in response.data
-        ? response.data
-        : response.data;
-
+    const incident = response.data;
     const task = incident?._tasklist?.[0];
 
-    if (!task) {
+    if (!incident || !task) {
       throw new BadRequestException(
         'El incidente no tiene una actividad disponible para cierre',
       );
     }
 
-    return task._id;
+    return { incident, activityId: task._id };
   }
 
   private async uploadAttachment(
@@ -466,6 +569,7 @@ export class IncidentsService {
     incidentId: number,
     activityId: string,
     notes: string | null,
+    execEndDate: string,
     sessionId: string,
   ) {
     try {
@@ -473,6 +577,7 @@ export class IncidentsService {
         incidentId,
         activityId,
         notes,
+        execEndDate,
         sessionId,
       );
     } catch (error) {

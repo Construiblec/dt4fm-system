@@ -22,14 +22,13 @@ import {
 import {
   CM_ACTIONS,
   CM_ASSIGNEE_WRITABLE_STATUS,
-  CM_DERIVED_ASSIGNED,
   CM_PENDING_REVIEW_STATUS,
   CM_PLANNED_START_WRITABLE_STATUS,
   CM_PRIORITY_CODES,
-  CM_STATUS_CODE_TO_NAME,
   CM_STATUS_IDS,
   CM_STATUS_NAME_TO_ID,
   CmStatusId,
+  resolveCorrectiveStatus,
 } from './constants/corrective-maint.constants';
 import { SUPPLIER_EMPLOYEE_TYPE } from './constants/supervision-roles.constants';
 import {
@@ -341,6 +340,11 @@ export class MaintenanceSupervisionService {
    * de modo que el trabajo figuraría como iniciado antes de que el técnico lo
    * arranque. Por eso se vacía a continuación — ver `clearAutoFilledExecStart`,
    * que es lo que hace viable el estado derivado «Assigned» de `toCorrective`.
+   *
+   * **El inicio previsto es obligatorio.** Vale que venga en el DTO o que ya
+   * esté en la tarjeta, pero alguno tiene que haber: `ExpExecStartDate` solo es
+   * escribible en CM02, así que si el correctivo sale de aquí sin fecha se
+   * queda sin planificar para siempre. Ver `CM_PLANNED_START_WRITABLE_STATUS`.
    */
   async assignCorrective(
     sessionId: string,
@@ -354,6 +358,13 @@ export class MaintenanceSupervisionService {
       [CM_STATUS_IDS.ASSIGNMENT],
       'El correctivo no está en el paso de asignación',
     );
+
+    if (!dto.plannedStart && !card.ExpExecStartDate) {
+      throw new BadRequestException(
+        'Hay que fijar el inicio previsto antes de asignar el correctivo: ' +
+          'después de asignar, OpenMAINT bloquea el campo',
+      );
+    }
 
     const fields: Record<string, unknown> = { Assignee: dto.assigneeId };
 
@@ -694,8 +705,6 @@ export class MaintenanceSupervisionService {
   // ── Mapeo al contrato público ──────────────────────────────────────────────
 
   private toCorrective(card: CorrectiveMaintCard): SupervisedMaintenance {
-    const code = card._ProcessStatus_code ?? null;
-    const name = code ? (CM_STATUS_CODE_TO_NAME[code] ?? code) : null;
     const isClosed = (card._FlowStatus_code ?? '').startsWith('closed');
     const dueDate = card.DueExecEndDate ?? null;
 
@@ -704,11 +713,10 @@ export class MaintenanceSupervisionService {
       kind: 'corrective',
       number: card.Number ?? null,
       subject: card.ShortDescr ?? null,
-      // Asignar avanza CM02 directo a Ejecución, así que OpenMAINT marca el
-      // trabajo como en curso antes de que el técnico lo arranque. Mientras no
-      // haya un inicio real, la app lo presenta como «Asignado».
-      statusCode:
-        name === 'Execution' && !card.ExecStartDate ? CM_DERIVED_ASSIGNED : name,
+      statusCode: resolveCorrectiveStatus(
+        card._ProcessStatus_code,
+        card.ExecStartDate,
+      ),
       status:
         card._ProcessStatus_description_translation ??
         card._ProcessStatus_description ??
@@ -1039,6 +1047,13 @@ export class MaintenanceSupervisionService {
         throw new NotFoundException('El mantenimiento no existe o no es accesible');
       }
 
+      if (this.isStaleActivity(error)) {
+        throw new ConflictException(
+          'El mantenimiento cambió de estado mientras se enviaba la acción. ' +
+            'Vuelve a cargarlo e inténtalo de nuevo',
+        );
+      }
+
       this.logger.error(reason, error as Error);
       throw new BadGatewayException(reason);
     }
@@ -1055,6 +1070,31 @@ export class MaintenanceSupervisionService {
       ?.message;
 
     return typeof message === 'string' && message.includes('card not existing');
+  }
+
+  /**
+   * La actividad que se envió ya no existe porque el flujo avanzó entretanto.
+   *
+   * Cada avance **consume** el `_tasklist[0]._id` y crea otro para el paso
+   * siguiente. Los servicios lo releen justo antes de actuar, pero si dos
+   * acciones se solapan —doble clic, dos pestañas, o la propia interfaz de
+   * openMAINT abierta al lado— la segunda llega con un id ya gastado y
+   * openMAINT responde con un 500 y un volcado de Java:
+   *
+   *     WorkflowException: error building task for card = Flow{…},
+   *     user task id = …, caused by NullPointerException: task not found
+   *
+   * Traducirlo a un 409 evita enseñar la traza y dice qué hacer: recargar.
+   */
+  private isStaleActivity(error: unknown): boolean {
+    const data = (error as { response?: { data?: unknown } })?.response?.data;
+    const message = (data as { messages?: { message?: string }[] })
+      ?.messages?.[0]?.message;
+
+    return (
+      typeof message === 'string' &&
+      message.includes('task not found for instanceId')
+    );
   }
 
   private getErrorStatus(error: unknown): number | undefined {

@@ -82,6 +82,30 @@ export const VALID_CM_STATUSES = Object.values(CM_STATUS_NAMES);
 export const CM_DERIVED_ASSIGNED = 'Assigned';
 
 /**
+ * Estado público de un correctivo, a partir de su código y su inicio real.
+ *
+ * Asignar avanza CM02 directo a `CM-Execution`, así que el trabajo figuraría en
+ * curso desde que se despacha. Mientras no haya un inicio real se expone
+ * `Assigned`, que no existe en OpenMAINT.
+ *
+ * Vive aquí, y no en cada servicio, para que la vista del supervisor y la del
+ * técnico deriven el estado con la **misma** regla: si difirieran, cada rol
+ * vería algo distinto del mismo trabajo.
+ */
+export const resolveCorrectiveStatus = (
+  processStatusCode: string | null | undefined,
+  execStartDate: string | null | undefined,
+): string | null => {
+  if (!processStatusCode) {
+    return null;
+  }
+
+  const name = CM_STATUS_CODE_TO_NAME[processStatusCode] ?? processStatusCode;
+
+  return name === 'Execution' && !execStartDate ? CM_DERIVED_ASSIGNED : name;
+};
+
+/**
  * IDs del lookup `Process - Action`. Ojo: hay que mandar el ID numérico, no el
  * código — con el código OpenMAINT guarda `Action: null` y aplica la
  * transición por defecto del paso.

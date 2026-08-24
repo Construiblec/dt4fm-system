@@ -143,9 +143,16 @@ export class MaintenanceSupervisionController {
   // ── Asignación ─────────────────────────────────────────────────────────────
 
   @Post('corrective/:id/assign')
-  @ApiOperation({ summary: 'Asignar cesionario y equipo a un correctivo' })
+  @ApiOperation({
+    summary: 'Asignar cesionario y equipo a un correctivo',
+    description:
+      'Requiere inicio previsto: o viene en `plannedStart`, o el correctivo ' +
+      'ya lo tiene. `ExpExecStartDate` solo es escribible en CM02, así que un ' +
+      'correctivo asignado sin fecha se queda sin planificar para siempre.',
+  })
   @ApiParam({ name: 'id', type: 'integer' })
   @ApiResponse({ status: 201, description: 'Correctivo asignado' })
+  @ApiResponse({ status: 400, description: 'Falta el inicio previsto' })
   @ApiResponse({ status: 409, description: 'El correctivo no está en asignación' })
   @ApiResponse({ status: 502, description: 'OpenMAINT no aplicó el avance' })
   async assignCorrective(

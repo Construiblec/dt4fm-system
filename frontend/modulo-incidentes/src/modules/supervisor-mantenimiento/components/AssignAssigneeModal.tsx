@@ -10,38 +10,7 @@ import type {
   Assignee,
   SupervisedMaintenance,
 } from "@/modules/supervisor-mantenimiento/types/SupervisedMaintenance";
-import { toDateTimeLocal } from "@/shared/utils/dateTimeInput";
-
-/**
- * Convierte un valor datetime-local ("2026-08-25T09:00") a DD/MM/YYYY.
- * Si el valor está vacío o inválido devuelve "".
- */
-const toDMY = (dtLocal: string): string => {
-  if (!dtLocal) return "";
-  const [datePart] = dtLocal.split("T");
-  const [y, m, d] = datePart.split("-");
-  if (!y || !m || !d) return "";
-  return `${d}/${m}/${y}`;
-};
-
-/** Extrae la parte HH:mm de un datetime-local. */
-const toTime = (dtLocal: string): string => {
-  if (!dtLocal) return "";
-  const [, timePart] = dtLocal.split("T");
-  return timePart ?? "";
-};
-
-/**
- * Reconstruye el datetime-local a partir de DD/MM/YYYY y HH:mm.
- * Devuelve "" si la fecha es incompleta.
- */
-const fromDMYTime = (dmy: string, time: string): string => {
-  const parts = dmy.split("/");
-  if (parts.length !== 3) return "";
-  const [d, m, y] = parts;
-  if (!d || !m || !y || y.length !== 4) return "";
-  return `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}T${time || "00:00"}`;
-};
+import { getEmployeeId } from "@/shared/auth/session";
 
 type Props = {
   maintenance: SupervisedMaintenance;
@@ -74,19 +43,13 @@ export const AssignAssigneeModal = ({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Se arranca con el equipo que ya tenga. Al reasignar es fijo; al asignar
+  // ahorra un paso en el caso que trajo este arreglo: un correctivo devuelto
+  // desde la revisión, que vuelve con equipo y cesionario puestos.
   const [teamId, setTeamId] = useState<number | null>(
-    isReassign ? (maintenance.team?.id ?? null) : null,
+    maintenance.team?.id ?? null,
   );
   const [assigneeId, setAssigneeId] = useState<number | null>(null);
-
-  // Fecha y hora separadas para mostrar DD/MM/YYYY al usuario
-  const initialDTLocal = toDateTimeLocal(maintenance.plannedStart);
-  const [plannedDate, setPlannedDate] = useState(() => toDMY(initialDTLocal));
-  const [plannedTime, setPlannedTime] = useState(() => toTime(initialDTLocal));
-  const plannedStart = useMemo(
-    () => fromDMYTime(plannedDate, plannedTime),
-    [plannedDate, plannedTime],
-  );
 
   useEffect(() => {
     const load = async () => {
@@ -96,7 +59,9 @@ export const AssignAssigneeModal = ({
         const response = await listAssignees();
         setEmployees(response.data);
       } catch (err) {
-        setError(getApiErrorMessage(err, "No se pudieron cargar los empleados"));
+        setError(
+          getApiErrorMessage(err, "No se pudieron cargar los empleados"),
+        );
       } finally {
         setLoading(false);
       }
@@ -125,21 +90,46 @@ export const AssignAssigneeModal = ({
   /** Un proveedor pertenece a un solo equipo: su trabajo no se reasigna. */
   const blockedBySupplier = isReassign && Boolean(currentAssignee?.isSupplier);
 
+  /**
+   * Nadie se asigna trabajo a sí mismo: quien supervisa reparte, no ejecuta.
+   * `null` cuando la sesión no tiene ficha de empleado, y entonces no se filtra
+   * a nadie.
+   */
+  const selfId = getEmployeeId();
+
+  /**
+   * El cesionario actual **sí** aparece. Un correctivo devuelto desde la
+   * revisión conserva a quien lo tenía, y lo normal es que lo repita la misma
+   * persona; excluirla dejaba sin salida el caso más frecuente.
+   *
+   * Los proveedores quedan fuera al reasignar porque pertenecen a un solo
+   * equipo y su trabajo no se traspasa.
+   */
   const candidates = useMemo(() => {
     const sameTeam = employees.filter(
       (employee) => teamId === null || employee.team?.id === teamId,
     );
 
-    return isReassign
-      ? sameTeam.filter(
-          (employee) =>
-            employee.id !== maintenance.assignee?.id && !employee.isSupplier,
-        )
-      : sameTeam;
-  }, [employees, teamId, isReassign, maintenance.assignee?.id]);
+    return sameTeam.filter(
+      (employee) =>
+        employee.id !== selfId && !(isReassign && employee.isSupplier),
+    );
+  }, [employees, teamId, isReassign, selfId]);
+
+  /**
+   * Red de seguridad: el detalle ya deshabilita «Asignar» sin inicio previsto,
+   * pero la fecha puede haberse quedado atrás (otra pestaña, un rechazo que la
+   * borró). El backend responde 400 igualmente; esto solo evita el viaje.
+   */
+  const faltaPlanificar =
+    isCorrective && !isReassign && !maintenance.plannedStart;
 
   const canSubmit =
-    !saving && !blockedBySupplier && assigneeId !== null && (isReassign || teamId !== null);
+    !saving &&
+    !blockedBySupplier &&
+    !faltaPlanificar &&
+    assigneeId !== null &&
+    (isReassign || teamId !== null);
 
   const handleSubmit = async () => {
     if (assigneeId === null) return;
@@ -155,12 +145,9 @@ export const AssignAssigneeModal = ({
             // En preventivo el backend lo ignora: `Team` no es escribible en
             // ningún paso de su flujo.
             ...(isCorrective && teamId !== null ? { teamId } : {}),
-            // Viaja en el mismo avance porque después ya no se puede: al
-            // asignar, el correctivo pasa a Ejecución y openMAINT bloquea
-            // `ExpExecStartDate`.
-            ...(plannedStart
-              ? { plannedStart: new Date(plannedStart).toISOString() }
-              : {}),
+            // El inicio previsto no viaja aquí: se fija en «Planificar inicio
+            // de ejecución», que es el único sitio donde se pone. Tenerlo
+            // también en este modal daba dos formularios para el mismo dato.
           });
 
       onSuccess(response.data);
@@ -209,7 +196,9 @@ export const AssignAssigneeModal = ({
                   <select
                     value={teamId ?? ""}
                     onChange={(event) => {
-                      setTeamId(event.target.value ? Number(event.target.value) : null);
+                      setTeamId(
+                        event.target.value ? Number(event.target.value) : null,
+                      );
                       setAssigneeId(null);
                     }}
                     className={selectClass}
@@ -226,8 +215,8 @@ export const AssignAssigneeModal = ({
                 <div className="flex items-start gap-2 rounded-xl bg-slate-50 p-3 text-xs text-slate-500">
                   <Info className="h-4 w-4 shrink-0" />
                   <p>
-                    En preventivos el equipo lo define el plan de mantenimiento y
-                    no se puede cambiar: aquí solo se elige la persona.
+                    En preventivos el equipo lo define el plan de mantenimiento
+                    y no se puede cambiar: aquí solo se elige la persona.
                   </p>
                 </div>
               )}
@@ -236,8 +225,8 @@ export const AssignAssigneeModal = ({
                 <div className="flex items-start gap-2 rounded-xl bg-slate-100 p-3 text-xs text-slate-600">
                   <Lock className="h-4 w-4 shrink-0" />
                   <p>
-                    <strong>{maintenance.assignee?.name}</strong> es un proveedor
-                    externo y pertenece a un solo equipo, así que este
+                    <strong>{maintenance.assignee?.name}</strong> es un
+                    proveedor externo y pertenece a un solo equipo, así que este
                     mantenimiento no es reasignable.
                   </p>
                 </div>
@@ -247,7 +236,9 @@ export const AssignAssigneeModal = ({
                   <select
                     value={assigneeId ?? ""}
                     onChange={(event) =>
-                      setAssigneeId(event.target.value ? Number(event.target.value) : null)
+                      setAssigneeId(
+                        event.target.value ? Number(event.target.value) : null,
+                      )
                     }
                     disabled={isCorrective && !isReassign && teamId === null}
                     className={selectClass}
@@ -272,39 +263,14 @@ export const AssignAssigneeModal = ({
                 </div>
               )}
 
-              {!isReassign && !blockedBySupplier ? (
-                <div>
-                  {label("Inicio previsto (opcional)")}
-                  <div className="grid grid-cols-2 gap-2">
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      placeholder="DD/MM/AAAA"
-                      maxLength={10}
-                      value={plannedDate}
-                      onChange={(event) => {
-                        // Permitir solo dígitos y '/'
-                        const raw = event.target.value.replace(/[^\d/]/g, "");
-                        setPlannedDate(raw);
-                      }}
-                      className={selectClass}
-                    />
-                    <input
-                      type="time"
-                      value={plannedTime}
-                      onChange={(event) => setPlannedTime(event.target.value)}
-                      className={selectClass}
-                    />
-                  </div>
-                  <p className="mt-1.5 text-xs text-slate-400">
-                    Formato: día/mes/año · hora
+              {faltaPlanificar ? (
+                <div className="flex items-start gap-2 rounded-xl bg-amber-50 p-3 text-xs text-amber-800">
+                  <Info className="h-4 w-4 shrink-0" />
+                  <p>
+                    Falta el <strong>inicio previsto</strong>. Cierra esto y
+                    fíjalo en «Planificar inicio de ejecución»: después de
+                    asignar, openMAINT ya no deja ponerlo.
                   </p>
-                  {isCorrective ? (
-                    <p className="mt-1.5 text-xs text-amber-700">
-                      Última oportunidad para fijarla: al asignar, el correctivo
-                      pasa a Ejecución y openMAINT bloquea el campo.
-                    </p>
-                  ) : null}
                 </div>
               ) : null}
 
@@ -319,11 +285,26 @@ export const AssignAssigneeModal = ({
                   </p>
                 </div>
               ) : null}
+
+              {/* Devuelto desde la revisión: vuelve con cesionario puesto */}
+              {isCorrective && !isReassign && maintenance.assignee ? (
+                <div className="flex items-start gap-2 rounded-xl bg-slate-50 p-3 text-xs text-slate-600">
+                  <Info className="h-4 w-4 shrink-0" />
+                  <p>
+                    Venía asignado a{" "}
+                    <strong>{maintenance.assignee.name}</strong>; puedes
+                    dejárselo o elegir a otra persona. Al devolverlo, openMAINT
+                    borró las horas de inicio y fin del intento anterior.
+                  </p>
+                </div>
+              ) : null}
             </>
           )}
 
           {error ? (
-            <p className="rounded-xl bg-red-50 p-3 text-xs text-red-600">{error}</p>
+            <p className="rounded-xl bg-red-50 p-3 text-xs text-red-600">
+              {error}
+            </p>
           ) : null}
         </div>
 

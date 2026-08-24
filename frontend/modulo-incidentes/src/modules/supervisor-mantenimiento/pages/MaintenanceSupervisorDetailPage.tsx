@@ -1,4 +1,11 @@
-import { ArrowLeft, CalendarClock, CheckCircle2, ClipboardCheck, Clock, Lock } from "lucide-react";
+import {
+  ArrowLeft,
+  CalendarClock,
+  CheckCircle2,
+  ClipboardCheck,
+  Clock,
+  Lock,
+} from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { AppLayout } from "@/app/layout/AppLayout";
@@ -47,25 +54,26 @@ const InfoRow = ({ label, value, highlight }: RowProps) => (
 );
 
 type Modal =
-  | "assign"
-  | "reassign"
-  | "reject"
-  | "review-reject"
-  | "planned-start"
-  | null;
+  "assign" | "reassign" | "reject" | "review-reject" | "planned-start" | null;
 
 export const MaintenanceSupervisorDetailPage = () => {
   const navigate = useNavigate();
   const { kind = "corrective", id = "" } = useParams();
   const maintenanceKind = kind as MaintenanceKind;
 
-  const [maintenance, setMaintenance] = useState<SupervisedMaintenance | null>(null);
+  const [maintenance, setMaintenance] = useState<SupervisedMaintenance | null>(
+    null,
+  );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [modal, setModal] = useState<Modal>(null);
   const [banner, setBanner] = useState<string | null>(null);
   const [evidence, setEvidence] = useState<MaintenanceEvidenceItem[]>([]);
   const [evidenceLoading, setEvidenceLoading] = useState(true);
+  // Cada avance consume la actividad del paso: si una segunda petición sale
+  // antes de que vuelva la primera, llega con un id ya gastado y openMAINT
+  // responde con un volcado de Java. Este cerrojo lo evita.
+  const [approving, setApproving] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -131,23 +139,48 @@ export const MaintenanceSupervisorDetailPage = () => {
       : getPreventiveStatusLabel(maintenance.statusCode, maintenance.status)
     : "";
 
-  // Asignar solo desde el paso de asignación de cada flujo
+  /**
+   * Asignar solo desde el paso de asignación de cada flujo.
+   *
+   * Depende del **estado**, no de si ya hay cesionario. Un correctivo devuelto
+   * desde la revisión vuelve a asignación **conservando el cesionario**: si se
+   * exigiera que estuviera vacío, la única acción ofrecida sería «Reasignar»,
+   * que cambia el campo sin avanzar el flujo — y el trabajo se quedaría en
+   * asignación para siempre, sin que el técnico pudiera arrancarlo.
+   */
   const canAssign =
     maintenance !== null &&
-    !maintenance.assignee &&
     (isCorrective ? code === "Assignment" : code === "Planning");
+
+  /**
+   * En correctivo el inicio previsto es requisito para asignar: `CM02` es el
+   * único paso donde `ExpExecStartDate` es escribible, así que un correctivo
+   * que salga de aquí sin fecha se queda sin planificar para siempre.
+   *
+   * En preventivo es al revés y **no se puede exigir**: `PM02-Advance` va de
+   * Planificación a Aceptación, y la fecha solo se escribe una vez en
+   * Aceptación — es decir, después de asignar.
+   */
+  const faltaPlanificar =
+    canAssign && isCorrective && !maintenance?.plannedStart;
 
   const canReject = isCorrective && code === "Assignment";
 
+  /**
+   * Reasignar es cambiar de persona **sin mover el flujo**, así que solo tiene
+   * sentido una vez despachado. En asignación la acción correcta es «Asignar»,
+   * que sí avanza.
+   */
   const canReassign =
     maintenance !== null &&
     Boolean(maintenance.assignee) &&
     !maintenance.isClosed &&
     (isCorrective
-      ? ["Assignment", "Assigned", "Execution", "Management"].includes(code)
+      ? ["Assigned", "Execution", "Management"].includes(code)
       : ["Acceptance", "Execution", "Suspension"].includes(code));
 
-  const pendingReview = isCorrective && code === CORRECTIVE_PENDING_REVIEW_STATUS;
+  const pendingReview =
+    isCorrective && code === CORRECTIVE_PENDING_REVIEW_STATUS;
 
   /**
    * `ExpExecStartDate` solo es escribible en CM02 (correctivo) y PM02
@@ -182,13 +215,7 @@ export const MaintenanceSupervisorDetailPage = () => {
               </div>
             </div>
 
-            {maintenance ? (
-              <span
-                className={badge}
-              >
-                {statusLabel}
-              </span>
-            ) : null}
+            {maintenance ? <span className={badge}>{statusLabel}</span> : null}
           </div>
         </header>
 
@@ -218,7 +245,9 @@ export const MaintenanceSupervisorDetailPage = () => {
                 <div className="flex items-start gap-3 rounded-2xl bg-amber-50 p-4 text-sm text-amber-800">
                   <Clock className="h-5 w-5 shrink-0" />
                   <p>
-                    <span className="font-semibold">Asignado, aún sin iniciar.</span>{" "}
+                    <span className="font-semibold">
+                      Asignado, aún sin iniciar.
+                    </span>{" "}
                     En openMAINT el proceso ya avanzó a Ejecución al asignarlo,
                     pero la app no da por iniciado el trabajo ni muestra hora de
                     inicio hasta que el técnico lo arranque.
@@ -250,8 +279,12 @@ export const MaintenanceSupervisorDetailPage = () => {
                     </button>
                     <button
                       type="button"
+                      disabled={approving}
                       onClick={async () => {
+                        if (approving) return;
+
                         try {
+                          setApproving(true);
                           const response = await reviewCorrective(
                             maintenance.id,
                             true,
@@ -259,13 +292,18 @@ export const MaintenanceSupervisorDetailPage = () => {
                           applyUpdate(response.data, "Cierre aprobado.");
                         } catch (err) {
                           setError(
-                            getApiErrorMessage(err, "No se pudo aprobar el cierre"),
+                            getApiErrorMessage(
+                              err,
+                              "No se pudo aprobar el cierre",
+                            ),
                           );
+                        } finally {
+                          setApproving(false);
                         }
                       }}
-                      className="rounded-xl bg-brand px-4 py-3 text-sm font-semibold text-white transition hover:bg-brand-hover"
+                      className="rounded-xl bg-brand px-4 py-3 text-sm font-semibold text-white transition hover:bg-brand-hover disabled:opacity-60"
                     >
-                      Aprobar
+                      {approving ? "Aprobando..." : "Aprobar"}
                     </button>
                   </div>
                 </section>
@@ -298,7 +336,9 @@ export const MaintenanceSupervisorDetailPage = () => {
                         ? formatDateTime(maintenance.plannedStart)
                         : "Sin planificar"
                     }
-                    highlight={maintenance.plannedStart ? undefined : "text-slate-400"}
+                    highlight={
+                      maintenance.plannedStart ? undefined : "text-slate-400"
+                    }
                   />
                   <InfoRow
                     label="Inicio real de ejecución"
@@ -341,7 +381,10 @@ export const MaintenanceSupervisorDetailPage = () => {
                     <Lock className="h-4 w-4 shrink-0" />
                     El inicio previsto solo se puede fijar mientras el
                     mantenimiento está en{" "}
-                    {isCorrective ? "asignación" : "asignación (tras planificarlo)"}.
+                    {isCorrective
+                      ? "asignación"
+                      : "asignación (tras planificarlo)"}
+                    .
                   </p>
                 ) : null}
               </section>
@@ -364,7 +407,9 @@ export const MaintenanceSupervisorDetailPage = () => {
                   <InfoRow
                     label="Cesionario"
                     value={maintenance.assignee?.name ?? "Sin cesionario"}
-                    highlight={maintenance.assignee ? undefined : "text-amber-700"}
+                    highlight={
+                      maintenance.assignee ? undefined : "text-amber-700"
+                    }
                   />
                 </div>
 
@@ -378,13 +423,31 @@ export const MaintenanceSupervisorDetailPage = () => {
 
                 <div className="mt-4 space-y-3">
                   {canAssign ? (
-                    <button
-                      type="button"
-                      onClick={() => setModal("assign")}
-                      className="w-full rounded-2xl bg-brand px-4 py-4 text-sm font-semibold text-white transition hover:bg-brand-hover"
-                    >
-                      Asignar cesionario
-                    </button>
+                    <div>
+                      <button
+                        type="button"
+                        onClick={() => setModal("assign")}
+                        disabled={faltaPlanificar}
+                        className="w-full rounded-2xl bg-brand px-4 py-4 text-sm font-semibold text-white transition hover:bg-brand-hover disabled:cursor-not-allowed disabled:bg-slate-300 disabled:hover:bg-slate-300"
+                      >
+                        Asignar cesionario
+                      </button>
+
+                      {faltaPlanificar ? (
+                        <button
+                          type="button"
+                          onClick={() => setModal("planned-start")}
+                          className="mt-2 flex w-full items-start gap-2 rounded-xl bg-amber-50 p-3 text-left text-xs text-amber-800 transition hover:bg-amber-100"
+                        >
+                          <CalendarClock className="h-4 w-4 shrink-0" />
+                          <span>
+                            Falta el <strong>inicio previsto</strong>, y después
+                            de asignar openMAINT ya no deja ponerlo. Toca aquí
+                            para planificarlo.
+                          </span>
+                        </button>
+                      ) : null}
+                    </div>
                   ) : null}
 
                   {canReassign ? (
@@ -477,7 +540,10 @@ export const MaintenanceSupervisorDetailPage = () => {
                 false,
                 notes,
               );
-              applyUpdate(response.data, "Cierre rechazado: vuelve a asignación.");
+              applyUpdate(
+                response.data,
+                "Cierre rechazado: vuelve a asignación.",
+              );
             } catch (err) {
               throw new Error(
                 getApiErrorMessage(err, "No se pudo rechazar el cierre"),

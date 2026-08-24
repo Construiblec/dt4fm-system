@@ -102,7 +102,7 @@ _id	id
 Number	number
 ShortDescr	location
 _Priority_description_translation	priority
-_ProcessStatus_code	statusCode
+_ProcessStatus_code + ExecStartDate	statusCode
 _ProcessStatus_description_translation	status
 _Site_description	building
 OpeningDate	createdAt
@@ -114,7 +114,7 @@ ExpExecStartDate	plannedStart
 («Ejecución», «Contabilidad»…). Sirve para mostrar, nunca para decidir.
 
 `statusCode` es el nombre estable derivado de `_ProcessStatus_code`
-(«Execution», «Accounting»…) mediante `CM_STATUS_CODE_TO_NAME`. Es el que
+(«Execution», «Accounting»…) mediante `resolveCorrectiveStatus`. Es el que
 debe gobernar la lógica del frontend: qué tarjetas se pueden abrir, los
 colores de estado y los filtros.
 
@@ -122,6 +122,12 @@ Antes solo se exponía la etiqueta traducida y el frontend deducía el código
 comparando ese texto contra una tabla escrita a mano. Ya fallaba en la
 práctica: OpenMAINT rotula `CM-Management` como «Administración» mientras la
 tabla decía «Gestión».
+
+Un caso no es traducción directa: con `CM-Execution` y `ExecStartDate` vacío
+se devuelve **`"Assigned"`**, un estado que no existe en OpenMAINT y que
+significa «asignado, pero el técnico no lo ha arrancado». Se sella pulsando
+«Iniciar» — ver `incident-execution.endpoints.md`. La misma función la usa la
+vista del supervisor, para que los dos roles no discrepen.
 
 🔹 Consideraciones
 ✅ Autenticación basada en sesión

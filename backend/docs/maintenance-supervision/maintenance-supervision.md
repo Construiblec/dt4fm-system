@@ -65,6 +65,25 @@ diría al supervisor que asignó un trabajo que sigue sin asignar.
 > Dato útil del mismo ensayo: `CM05-Back` **limpia `ExecStartDate` y `ExpExecStartDate`, pero
 > conserva el `Assignee`**. Un correctivo devuelto de revisión queda en Asignación con cesionario.
 
+### Devolver un correctivo tiene dos consecuencias que conviene tener presentes
+
+**Se pierden las horas del intento anterior.** `CM05-Back` borra `ExecStartDate` y `ExecEndDate`, y
+no se pueden reponer: el paso `CM02-Assignment` **ni siquiera declara esos atributos** (sí
+`ExpExecStartDate`, `Assignee`, `Team`). Lo único que sobrevive del intento fallido es el motivo del
+rechazo, que se escribe en la bitácora del proceso. Si hiciera falta conservar la duración habría
+que registrarla ahí explícitamente al devolver.
+
+**Hay que volver a asignarlo, no solo reasignarlo.** Como el `Assignee` sobrevive, es tentador
+ofrecer «Reasignar» — pero eso es un `saveFields` que cambia el campo **sin avanzar el flujo**, y el
+correctivo se queda en Asignación para siempre: el técnico lo ve bloqueado y nunca puede arrancarlo.
+La acción correcta es `CM02-Advance` otra vez, **incluso hacia la misma persona**, que es lo normal
+cuando se pide repetir el trabajo. Por eso la vista ofrece «Asignar» según el **estado**, no según
+si hay cesionario, y «Reasignar» solo una vez despachado.
+
+Comprobado de punta a punta el 2026-08-24 sobre `CM.2026.0140`:
+asignar → iniciar → finalizar (duración registrada) → rechazar (fechas borradas) → **asignar de
+nuevo al mismo cesionario** → vuelve a «Asignado» y el técnico puede arrancarlo.
+
 ---
 
 ## 3. Estados y acciones (IDs verificados)
@@ -104,6 +123,37 @@ transición por defecto del paso.
 > persona; el equipo lo define el plan. El DTO acepta `teamId` por simetría pero el servicio lo
 > ignora y lo registra en el log.
 
+### El inicio previsto se fija en un solo sitio, y es obligatorio
+
+`ExpExecStartDate` se pone desde **«Planificar inicio de ejecución»**, y solo desde ahí. El modal de
+asignación llegó a tener su propio campo —era «la última oportunidad» antes de que CM02 lo
+bloqueara— pero eso dejaba **dos formularios para el mismo dato**, con dos formatos y dos sitios
+donde equivocarse.
+
+No se pierde nada: `updatePlannedStart` escribe en CM02, el mismo paso donde vive «Asignar», así que
+basta con planificar antes de asignar.
+
+**`assignCorrective` lo exige**: si no viene en el DTO ni está ya en la tarjeta, responde **400**. Es
+la única oportunidad — pasado CM02 el campo queda bloqueado y el correctivo se quedaría sin
+planificar para siempre. En la UI, «Asignar cesionario» aparece deshabilitado con un atajo al panel
+de planificación.
+
+> **En preventivo no se puede exigir lo mismo**, y no es un descuido: `PM02-Advance` va de
+> Planificación a **Aceptación**, y `ExpExecStartDate` solo es escribible en Aceptación — o sea,
+> *después* de asignar. Exigirlo al asignar dejaría el preventivo en un callejón sin salida.
+
+`AssignAssigneeDto` sigue aceptando `plannedStart` —la API no se recorta por un cambio de
+pantalla—, simplemente la UI ya no lo manda: cuando llega, vale como fecha y la asignación pasa.
+
+Comprobado contra el clon el 2026-08-24: asignar sin fecha da 400 y **deja el correctivo intacto**;
+planificar y luego asignar da 201; y mandar `plannedStart` en el DTO también.
+
+> **Formato de fecha.** `<input type="date">` y `datetime-local` se pintan según el idioma del
+> **navegador**, no el de la página: con Chrome en inglés salía `mm/dd/yyyy`, y no hay atributo ni
+> CSS que lo cambie. Por eso el calendario es propio (`shared/components/DateField.tsx`) y garantiza
+> `dd/mm/aaaa`. La hora sigue siendo un `<input type="time">` nativo, que no es ambiguo.
+> Los helpers de conversión están en `shared/utils/dateTimeInput.ts`.
+
 ---
 
 ## 4. El estado derivado «Asignado»
@@ -129,10 +179,13 @@ asignación fallida.
 `Assigned` **no se puede usar como filtro** contra openMAINT (no existe allí), por eso
 `CORRECTIVE_FILTERABLE_STATUSES` lo excluye.
 
-> **Pendiente**: falta cerrar el ciclo con un `POST /incidents/:id/start` que selle la hora real
-> cuando el técnico arranca, y permitir abrir el detalle de un correctivo «Asignado» desde la
-> tarjeta del equipo (hoy solo deja abrir los que están en «Ejecución»). La tarjeta ya no es
-> `TaskCard.tsx`: la comparten los dos roles en `shared/components/MaintenanceCard.tsx`.
+La derivación vive en `resolveCorrectiveStatus` (`constants/corrective-maint.constants.ts`) y la
+usan **los dos roles**: `toCorrective` en supervisión y los dos mapeos de `incidents.service.ts`. Es
+deliberado que sea una sola función: cuando cada servicio derivaba lo suyo, el supervisor veía
+«Asignado» y el técnico «Ejecución» sobre el mismo trabajo.
+
+El ciclo se cierra con `POST /incidents/:id/start`, que sella la hora real cuando el técnico
+arranca — ver `docs/incidents module/incident-execution.endpoints.md`.
 
 ---
 
@@ -233,6 +286,40 @@ servicio responde 409 y la UI muestra el formulario bloqueado con el motivo.
 
 ---
 
+## 7 bis. Quién aparece en la lista de cesionarios
+
+Dos reglas, y ninguna de las dos es «el que ya lo tiene»:
+
+- **Nadie se asigna trabajo a sí mismo.** El empleado de la sesión se descarta de la lista: quien
+  supervisa reparte, no ejecuta. Sale de `getEmployeeId()` en el navegador; si la sesión no tiene
+  ficha de empleado no se filtra a nadie.
+- **El cesionario actual sí aparece.** Excluirlo dejaba sin salida el caso más frecuente: un
+  correctivo devuelto desde la revisión, que vuelve con cesionario puesto y que casi siempre debe
+  repetir la misma persona.
+
+Los proveedores solo se descartan al **reasignar**, por lo de §7.
+
+---
+
+## 7 ter. Actividades caducadas (`task not found`)
+
+Cada avance **consume** el `_tasklist[0]._id` y crea otro para el paso siguiente. Si llega una
+petición con un id ya gastado, openMAINT responde **500** con un volcado de Java:
+
+```
+org.cmdbuild.workflow.model.WorkflowException: error building task for card = Flow{…},
+user task id = …, caused by: java.lang.NullPointerException: task not found for instanceId = …
+```
+
+Los servicios releen la tarjeta justo antes de actuar, así que la ventana es corta — pero existe si
+dos acciones se solapan: doble clic, dos pestañas, o la interfaz de openMAINT abierta al lado.
+
+Dos medidas: los botones que avanzan el flujo se bloquean mientras hay una petición en vuelo, y
+`call()` traduce ese error a un **409** con instrucción de recargar (`isStaleActivity`), en vez de
+enseñar la traza.
+
+---
+
 ## 8. Estado de la implementación
 
 **Hecho**: listados con filtros y paginación de 10, detalle, asignación, rechazo, reasignación,
@@ -245,14 +332,22 @@ revisión de cierre y fecha prevista.
 2. ✅ **`ExecStartDate` acepta `null`.** El estado «Asignado» se sostiene por ausencia de fecha; no
    hace falta la marca `[Asignado: <iso>]` en `Register`. Ver §4.
 
+**Probado contra el clon (2026-08-24)**, con la sesión de `wilmer.palma` (`MaintOffice`), sobre
+`CM.2026.0152`: el ciclo iniciar → finalizar del técnico, restaurando el registro al terminar. Ver
+`docs/incidents module/incident-execution.endpoints.md`.
+
+**Ciclo completo (2026-08-24)** sobre `CM.2026.0140`, por los endpoints del backend y devolviendo el
+registro a su estado inicial: asignar → iniciar → finalizar → rechazar → **asignar de nuevo al mismo
+cesionario**. Confirma las tres cosas de §2: la duración se registra, devolver la borra, y volver a
+asignar a la misma persona funciona.
+
 **Pendiente**:
 
-1. **`POST /incidents/:id/start`** y los ajustes en la vista del técnico (§4).
-2. **Correctivos anteriores a este arreglo** siguen con el `ExecStartDate` autorrellenado, así que
+1. **Correctivos anteriores a este arreglo** siguen con el `ExecStartDate` autorrellenado, así que
    se muestran como «En ejecución» aunque nadie los haya empezado. Eran 5 en el clon. O se dejan
    así, o se limpian una vez.
-3. **`assignCorrective` no valida que el cesionario pertenezca al equipo** que fija, a diferencia
+2. **`assignCorrective` no valida que el cesionario pertenezca al equipo** que fija, a diferencia
    de `updateAssignee`. La API REST no aplica las reglas de validación del formulario de openMAINT,
    así que la comprobación tendría que hacerla el servicio.
-4. **Sin cobertura**: `CM04` (proveedor) y los pasos `Estimate` / `Control`; y en preventivos, un
+3. **Sin cobertura**: `CM04` (proveedor) y los pasos `Estimate` / `Control`; y en preventivos, un
    suspendido no se puede reanudar desde la app pese a que `PM_ACTIONS.RESUME` existe.

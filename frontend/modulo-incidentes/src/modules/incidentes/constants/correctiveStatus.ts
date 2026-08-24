@@ -101,16 +101,19 @@ export const CORRECTIVE_PENDING_REVIEW_STATUS = "Accounting";
  * ya completado o pendiente de revisión confunde, porque esos pasos van
  * *después* de la ejecución, no antes. Los textos son cortos a propósito: la
  * tarjeta los recorta si no caben.
+ *
+ * `Assigned` sí se abre: es trabajo ya despachado al técnico, solo que todavía
+ * sin arrancar. Bloquearlo lo dejaría sin manera de empezarlo.
  */
 export const getCorrectiveBlockedReason = (
   statusCode: string | null,
 ): string | null => {
   switch (statusCode) {
+    case "Assigned":
     case "Execution":
       return null;
     case "Opening":
     case "Assignment":
-    case "Assigned":
       return "Aún no está en ejecución";
     case "Accounting":
       return "Pendiente de revisión";
