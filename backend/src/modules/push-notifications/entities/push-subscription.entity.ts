@@ -12,7 +12,6 @@ import {
  * el alta reasigna el usuario en lugar de insertar una fila nueva.
  */
 @Entity('push_subscriptions')
-@Index(['role'])
 @Index(['employeeId'])
 @Index(['cleaningEmployeeId'])
 export class PushSubscription {
@@ -25,9 +24,8 @@ export class PushSubscription {
   @Column({ name: 'username', type: 'text' })
   username: string;
 
-  /** Resuelto contra OpenMAINT al suscribirse; nunca el header `x-role`. */
-  @Column({ name: 'role', type: 'text' })
-  role: string;
+  @Column({ name: 'roles', type: 'text', array: true })
+  roles: string[];
 
   /** Employee vía `LoginUser`: direcciona correctivos y preventivos. */
   @Column({ name: 'employee_id', type: 'int', nullable: true })

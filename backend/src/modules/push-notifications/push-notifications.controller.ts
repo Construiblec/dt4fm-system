@@ -33,21 +33,20 @@ export class PushNotificationsController {
   @ApiOperation({
     summary: 'Registra la suscripción push del dispositivo',
     description:
-      'El rol se resuelve contra openMAINT, no se toma del header x-role. ' +
-      'El alta es un upsert sobre el endpoint: en dispositivos compartidos ' +
-      'reasigna la suscripción al usuario que acaba de iniciar sesión.',
+      'La identidad y TODOS los roles del usuario se resuelven de la sesión ' +
+      'de openMAINT; el header x-role no interviene. El alta es un upsert ' +
+      'sobre el endpoint: en dispositivos compartidos reasigna la suscripción ' +
+      'al usuario que acaba de iniciar sesión.',
   })
   @ApiResponse({ status: 204, description: 'Suscripción registrada' })
   @ApiResponse({ status: 401, description: 'Sesión de openMAINT no válida' })
   async subscribe(
     @Headers('authorization') authorization: string,
     @Headers('x-session-token') sessionToken: string,
-    @Headers('x-role') role: string,
     @Body() dto: CreatePushSubscriptionDto,
   ): Promise<void> {
     await this.subscriptionService.subscribe(
       this.requireSessionId(authorization, sessionToken),
-      role,
       dto,
     );
   }

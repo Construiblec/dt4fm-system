@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+import { Repository } from 'typeorm';
 import { Notification } from './entities/notification.entity';
 import { NotificationDispatchLog } from './entities/notification-dispatch-log.entity';
 import { PushSubscription } from './entities/push-subscription.entity';
@@ -9,7 +9,7 @@ import { PushMessage } from './notification-catalog';
 export type SaveSubscriptionInput = {
   userId: string;
   username: string;
-  role: string;
+  roles: string[];
   employeeId: number | null;
   cleaningEmployeeId: number | null;
   endpoint: string;
@@ -46,7 +46,10 @@ export class PushSubscriptionRepository {
   }
 
   findByRoles(roles: string[]): Promise<PushSubscription[]> {
-    return this.subscriptions.find({ where: { role: In(roles) } });
+    return this.subscriptions
+      .createQueryBuilder('sub')
+      .where('sub.roles && :roles', { roles })
+      .getMany();
   }
 
   findByEmployeeId(employeeId: number): Promise<PushSubscription[]> {

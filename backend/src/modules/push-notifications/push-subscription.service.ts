@@ -28,16 +28,15 @@ export class PushSubscriptionService {
 
   /**
    * Da de alta la suscripción resolviendo la identidad contra openMAINT. La
-   * sesión es la única fuente: de ella salen el usuario y el rol, así que el
+   * sesión es la única fuente: de ella salen el usuario y sus roles, así que el
    * cliente no puede suscribirse como otra persona ni inventarse un rol.
    */
   async subscribe(
     sessionId: string,
-    claimedRole: string | undefined,
     dto: CreatePushSubscriptionDto,
   ): Promise<void> {
     const session = await this.fetchSession(sessionId);
-    const role = this.resolveRole(session, claimedRole);
+    const roles = this.resolveRoles(session);
 
     const [employeeId, cleaningEmployeeId] = await Promise.all([
       this.openmaintService.resolveEmployeeId(session.userId, sessionId),
@@ -61,7 +60,7 @@ export class PushSubscriptionService {
     await this.repository.saveSubscription({
       userId: String(session.userId),
       username: session.username,
-      role,
+      roles,
       employeeId,
       cleaningEmployeeId,
       endpoint: dto.endpoint,
@@ -71,8 +70,8 @@ export class PushSubscriptionService {
     });
 
     this.logger.log(
-      `Suscripción push registrada: ${session.username} rol=${role} ` +
-        `employeeId=${employeeId ?? '-'} ` +
+      `Suscripción push registrada: ${session.username} ` +
+        `roles=[${roles.join(', ')}] employeeId=${employeeId ?? '-'} ` +
         `cleaningEmployeeId=${cleaningEmployeeId ?? '-'}`,
     );
   }
@@ -109,18 +108,11 @@ export class PushSubscriptionService {
     return session;
   }
 
-  /**
-   * Acepta el rol que declara el cliente solo si es uno de los que el usuario
-   * puede asumir de verdad; si no, se queda con el rol activo de la sesión.
-   */
-  private resolveRole(
-    session: OpenmaintSession,
-    claimedRole?: string,
-  ): string {
-    const available = session.availableRoles ?? [];
+  private resolveRoles(session: OpenmaintSession): string[] {
+    const roles = new Set(
+      [...(session.availableRoles ?? []), session.role].filter(Boolean),
+    );
 
-    return claimedRole && available.includes(claimedRole)
-      ? claimedRole
-      : session.role;
+    return [...roles];
   }
 }

@@ -25,7 +25,13 @@ export type AssignedCleaningTaskCard = {
   _phase_description?: string | null;
 };
 
-const QUERY_LIMIT = 200;
+const PAGE_SIZE = 200;
+
+/**
+ * Tope de seguridad para no barrer indefinidamente si el filtro falla. Con 354
+ * preventivos en planificación hoy, 20 páginas dan margen de sobra.
+ */
+const MAX_PAGES = 20;
 
 /**
  * Consultas propias de los schedulers de push. Vive aquí y no en los gateways
@@ -74,71 +80,88 @@ export class PushSchedulerGateway {
     this.cachedSessionId = null;
   }
 
-  /** Preventivos en Planificación, con todos los atributos (sin onlyGridAttrs). */
-  async findPlanningPreventives(
+  private async fetchAllPages<T>(
+    path: string,
+    baseParams: Record<string, string>,
     sessionId: string,
-  ): Promise<PlanningPreventiveCard[]> {
-    const params = new URLSearchParams({
-      include_tasklist: 'false',
-      limit: String(QUERY_LIMIT),
-      filter: JSON.stringify({
-        attribute: {
-          simple: {
-            attribute: 'ProcessStatus',
-            operator: 'equal',
-            value: [String(PM_STATUS_IDS.PLANNING)],
-          },
-        },
-      }),
-    });
+    what: string,
+  ): Promise<T[]> {
+    const all: T[] = [];
 
     try {
-      const response = (await this.client.get(
-        `/processes/PreventiveMaint/instances?${params.toString()}`,
-        sessionId,
-      )) as { data?: PlanningPreventiveCard[] };
+      for (let page = 0; page < MAX_PAGES; page += 1) {
+        const params = new URLSearchParams({
+          ...baseParams,
+          start: String(page * PAGE_SIZE),
+          limit: String(PAGE_SIZE),
+        });
 
-      return response.data ?? [];
+        const response = (await this.client.get(
+          `${path}?${params.toString()}`,
+          sessionId,
+        )) as { data?: T[]; meta?: { total?: number } };
+
+        const batch = response.data ?? [];
+        all.push(...batch);
+
+        const total = response.meta?.total;
+        if (batch.length < PAGE_SIZE || (total !== undefined && all.length >= total)) {
+          return all;
+        }
+      }
+
+      this.logger.warn(
+        `${what}: se alcanzó el tope de ${MAX_PAGES} páginas; puede faltar información.`,
+      );
+      return all;
     } catch (error) {
       this.invalidateSession();
-      this.logger.warn(
-        `No se pudieron leer los preventivos en planificación: ${(error as Error)?.message}`,
-      );
-      return [];
+      this.logger.warn(`No se pudo leer ${what}: ${(error as Error)?.message}`);
+      return all;
     }
   }
 
+  /** Preventivos en Planificación, con todos los atributos (sin onlyGridAttrs). */
+  findPlanningPreventives(sessionId: string): Promise<PlanningPreventiveCard[]> {
+    return this.fetchAllPages<PlanningPreventiveCard>(
+      '/processes/PreventiveMaint/instances',
+      {
+        include_tasklist: 'false',
+        filter: JSON.stringify({
+          attribute: {
+            simple: {
+              attribute: 'ProcessStatus',
+              operator: 'equal',
+              value: [String(PM_STATUS_IDS.PLANNING)],
+            },
+          },
+        }),
+      },
+      sessionId,
+      'los preventivos en planificación',
+    );
+  }
+
   /** Tareas de limpieza en fase Assigned (las candidatas a estar atrasadas). */
-  async findAssignedCleaningTasks(
+  findAssignedCleaningTasks(
     sessionId: string,
   ): Promise<AssignedCleaningTaskCard[]> {
-    const params = new URLSearchParams({
-      limit: String(QUERY_LIMIT),
-      filter: JSON.stringify({
-        attribute: {
-          simple: {
-            attribute: 'phase',
-            operator: 'equal',
-            value: [String(PHASE_IDS.ASSIGNED)],
+    return this.fetchAllPages<AssignedCleaningTaskCard>(
+      '/classes/CleaningTask/cards',
+      {
+        filter: JSON.stringify({
+          attribute: {
+            simple: {
+              attribute: 'phase',
+              operator: 'equal',
+              value: [String(PHASE_IDS.ASSIGNED)],
+            },
           },
-        },
-      }),
-    });
-
-    try {
-      const response = (await this.client.get(
-        `/classes/CleaningTask/cards?${params.toString()}`,
-        sessionId,
-      )) as { data?: AssignedCleaningTaskCard[] };
-
-      return response.data ?? [];
-    } catch (error) {
-      this.invalidateSession();
-      this.logger.warn(
-        `No se pudieron leer las tareas de limpieza asignadas: ${(error as Error)?.message}`,
-      );
-      return [];
-    }
+        }),
+      },
+      sessionId,
+      'las tareas de limpieza asignadas',
+    );
   }
 
   /** Edificio de una unidad; el texto de la notificación lo necesita. */
