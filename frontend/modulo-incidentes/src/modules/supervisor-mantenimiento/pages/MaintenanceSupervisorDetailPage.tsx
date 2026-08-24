@@ -5,6 +5,8 @@ import {
   ClipboardCheck,
   Clock,
   Lock,
+  PauseCircle,
+  PlayCircle,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
@@ -27,6 +29,7 @@ import {
   getMaintenanceDetail,
   getMaintenanceEvidence,
   rejectCorrective,
+  resumePreventive,
   reviewCorrective,
 } from "@/modules/supervisor-mantenimiento/services/maintenanceSupervisionService";
 import type {
@@ -72,8 +75,9 @@ export const MaintenanceSupervisorDetailPage = () => {
   const [evidenceLoading, setEvidenceLoading] = useState(true);
   // Cada avance consume la actividad del paso: si una segunda petición sale
   // antes de que vuelva la primera, llega con un id ya gastado y openMAINT
-  // responde con un volcado de Java. Este cerrojo lo evita.
+  // responde con un volcado de Java. Estos cerrojos lo evitan.
   const [approving, setApproving] = useState(false);
+  const [resuming, setResuming] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -167,9 +171,12 @@ export const MaintenanceSupervisorDetailPage = () => {
   const canReject = isCorrective && code === "Assignment";
 
   /**
-   * Reasignar es cambiar de persona **sin mover el flujo**, así que solo tiene
-   * sentido una vez despachado. En asignación la acción correcta es «Asignar»,
-   * que sí avanza.
+   * Reasignar cambia cesionario —y equipo, donde el paso lo permita— **sin
+   * mover el flujo**, así que solo tiene sentido una vez despachado el trabajo.
+   *
+   * En asignación no se ofrece: ahí la acción es «Asignar», que hace lo mismo y
+   * además avanza. Si fuera la única opción, el correctivo se quedaría en
+   * asignación para siempre.
    */
   const canReassign =
     maintenance !== null &&
@@ -181,6 +188,13 @@ export const MaintenanceSupervisorDetailPage = () => {
 
   const pendingReview =
     isCorrective && code === CORRECTIVE_PENDING_REVIEW_STATUS;
+
+  /**
+   * `PM04-Suspension` solo ofrece reanudar o cambiar cesionario, así que sin
+   * este botón un preventivo suspendido solo salía de ahí desde la interfaz de
+   * openMAINT.
+   */
+  const canResume = !isCorrective && code === "Suspension";
 
   /**
    * `ExpExecStartDate` solo es escribible en CM02 (correctivo) y PM02
@@ -253,6 +267,52 @@ export const MaintenanceSupervisorDetailPage = () => {
                     inicio hasta que el técnico lo arranque.
                   </p>
                 </div>
+              ) : null}
+
+              {canResume ? (
+                <section className="rounded-3xl bg-white p-5 shadow-sm">
+                  <div className="flex items-center gap-2">
+                    <PauseCircle className="h-5 w-5 text-slate-400" />
+                    <h2 className="text-sm font-bold text-slate-900">
+                      Mantenimiento suspendido
+                    </h2>
+                  </div>
+                  <p className="mt-2 text-sm text-slate-500">
+                    {maintenance.suspensionReason
+                      ? `Se suspendió por: ${maintenance.suspensionReason}.`
+                      : "Está detenido a la espera de poder continuar."}{" "}
+                    Al reanudarlo vuelve a ejecución y{" "}
+                    {maintenance.assignee?.name ?? "el cesionario"} puede
+                    retomar el checklist donde lo dejó.
+                  </p>
+
+                  <button
+                    type="button"
+                    disabled={resuming}
+                    onClick={async () => {
+                      if (resuming) return;
+
+                      try {
+                        setResuming(true);
+                        const response = await resumePreventive(maintenance.id);
+                        applyUpdate(response.data, "Mantenimiento reanudado.");
+                      } catch (err) {
+                        setError(
+                          getApiErrorMessage(
+                            err,
+                            "No se pudo reanudar el mantenimiento",
+                          ),
+                        );
+                      } finally {
+                        setResuming(false);
+                      }
+                    }}
+                    className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl bg-brand px-4 py-4 text-sm font-semibold text-white transition hover:bg-brand-hover disabled:cursor-not-allowed disabled:bg-slate-300"
+                  >
+                    <PlayCircle className="h-4 w-4" />
+                    {resuming ? "Reanudando..." : "Reanudar tarea"}
+                  </button>
+                </section>
               ) : null}
 
               {pendingReview ? (
@@ -441,9 +501,12 @@ export const MaintenanceSupervisorDetailPage = () => {
                         >
                           <CalendarClock className="h-4 w-4 shrink-0" />
                           <span>
-                            Falta el <strong>inicio previsto</strong>, y después
-                            de asignar openMAINT ya no deja ponerlo. Toca aquí
-                            para planificarlo.
+                            <strong>
+                              Falta la fecha y hora de inicio previsto
+                            </strong>
+                            , por eso no se puede asignar todavía. Toca aquí
+                            para fijarla — después de asignar, openMAINT ya no
+                            deja ponerla.
                           </span>
                         </button>
                       ) : null}

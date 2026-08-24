@@ -38,6 +38,24 @@ export const AssignAssigneeModal = ({
   const isCorrective = maintenance.kind === "corrective";
   const isReassign = mode === "reassign";
 
+  /**
+   * Si el equipo se puede cambiar depende del paso, no del modo.
+   *
+   * Verificado en el clon leyendo los metadatos de cada actividad: en
+   * correctivo `Team` es escribible en `CM02-Assignment` y `CM07-Management`,
+   * **no** en `CM03-Execution`. En preventivo no lo es en ninguno: lo fija el
+   * plan de mantenimiento.
+   *
+   * Antes se daba por hecho que reasignar nunca podía cambiarlo, y eso era
+   * falso en dos de los tres pasos donde se ofrece.
+   *
+   * Ojo con «Assigned»: es `CM-Execution` por dentro, así que el equipo ahí ya
+   * está bloqueado aunque el trabajo no haya arrancado.
+   */
+  const teamEditable =
+    isCorrective &&
+    ["Assignment", "Management"].includes(maintenance.statusCode ?? "");
+
   const [employees, setEmployees] = useState<Assignee[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -124,12 +142,36 @@ export const AssignAssigneeModal = ({
   const faltaPlanificar =
     isCorrective && !isReassign && !maintenance.plannedStart;
 
+  /**
+   * Solo se exige equipo cuando hay selector con el que elegirlo. Si no lo hay
+   * —preventivo, o un correctivo ya despachado— pedirlo dejaría el botón muerto
+   * para siempre.
+   */
+  const faltaEquipo = teamEditable && teamId === null;
+
   const canSubmit =
     !saving &&
     !blockedBySupplier &&
     !faltaPlanificar &&
-    assigneeId !== null &&
-    (isReassign || teamId !== null);
+    !faltaEquipo &&
+    assigneeId !== null;
+
+  /**
+   * Qué falta para poder guardar, o `null` si no falta nada.
+   *
+   * El botón se puede bloquear por tres motivos distintos y ninguno es obvio
+   * mirándolo: sin decirlo, el usuario solo ve un botón gris. El caso del
+   * proveedor no entra aquí porque ya tiene su propio aviso, con nombre y todo.
+   */
+  const falta = blockedBySupplier
+    ? null
+    : faltaPlanificar
+      ? "Falta fijar el inicio previsto."
+      : faltaEquipo
+        ? "Elige el equipo de trabajo."
+        : assigneeId === null
+          ? "Elige a la persona que se hará cargo."
+          : null;
 
   const handleSubmit = async () => {
     if (assigneeId === null) return;
@@ -139,12 +181,19 @@ export const AssignAssigneeModal = ({
       setError(null);
 
       const response = isReassign
-        ? await updateAssignee(maintenance.kind, maintenance.id, assigneeId)
+        ? await updateAssignee(
+            maintenance.kind,
+            maintenance.id,
+            assigneeId,
+            // Solo viaja si el paso admite cambiarlo; si no, el backend lo
+            // descartaría igual.
+            teamEditable && teamId !== null ? teamId : undefined,
+          )
         : await assignMaintenance(maintenance.kind, maintenance.id, {
             assigneeId,
             // En preventivo el backend lo ignora: `Team` no es escribible en
             // ningún paso de su flujo.
-            ...(isCorrective && teamId !== null ? { teamId } : {}),
+            ...(teamEditable && teamId !== null ? { teamId } : {}),
             // El inicio previsto no viaja aquí: se fija en «Planificar inicio
             // de ejecución», que es el único sitio donde se pone. Tenerlo
             // también en este modal daba dos formularios para el mismo dato.
@@ -176,21 +225,8 @@ export const AssignAssigneeModal = ({
             <p className="text-sm text-slate-500">Cargando empleados...</p>
           ) : (
             <>
-              {/* Equipo: fijo al reasignar, y ausente en preventivo al asignar */}
-              {isReassign ? (
-                <div>
-                  {label("Equipo de trabajo")}
-                  <div className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-                    <span className="text-sm text-slate-500">
-                      {maintenance.team?.name ?? "Sin equipo"}
-                    </span>
-                    <Lock className="h-4 w-4 shrink-0 text-slate-400" />
-                  </div>
-                  <p className="mt-1.5 text-xs text-slate-400">
-                    El equipo no se puede cambiar; solo la persona dentro de él.
-                  </p>
-                </div>
-              ) : isCorrective ? (
+              {/* El equipo se edita donde el paso lo permita, no según el modo */}
+              {teamEditable ? (
                 <div>
                   {label("Equipo de trabajo")}
                   <select
@@ -210,6 +246,20 @@ export const AssignAssigneeModal = ({
                       </option>
                     ))}
                   </select>
+                </div>
+              ) : isCorrective ? (
+                <div>
+                  {label("Equipo de trabajo")}
+                  <div className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                    <span className="text-sm text-slate-500">
+                      {maintenance.team?.name ?? "Sin equipo"}
+                    </span>
+                    <Lock className="h-4 w-4 shrink-0 text-slate-400" />
+                  </div>
+                  <p className="mt-1.5 text-xs text-slate-400">
+                    Con el trabajo ya despachado openMAINT no deja cambiar de
+                    equipo; solo la persona dentro de él.
+                  </p>
                 </div>
               ) : (
                 <div className="flex items-start gap-2 rounded-xl bg-slate-50 p-3 text-xs text-slate-500">
@@ -240,11 +290,11 @@ export const AssignAssigneeModal = ({
                         event.target.value ? Number(event.target.value) : null,
                       )
                     }
-                    disabled={isCorrective && !isReassign && teamId === null}
+                    disabled={faltaEquipo}
                     className={selectClass}
                   >
                     <option value="">
-                      {isCorrective && !isReassign && teamId === null
+                      {faltaEquipo
                         ? "Elige primero el equipo"
                         : "Selecciona una persona…"}
                     </option>
@@ -308,7 +358,13 @@ export const AssignAssigneeModal = ({
           ) : null}
         </div>
 
-        <div className="mt-6 grid grid-cols-2 gap-3">
+        {!loading && falta ? (
+          <p className="mt-5 rounded-xl bg-amber-50 p-3 text-xs font-medium text-amber-800">
+            {falta}
+          </p>
+        ) : null}
+
+        <div className="mt-4 grid grid-cols-2 gap-3">
           <button
             type="button"
             onClick={onClose}

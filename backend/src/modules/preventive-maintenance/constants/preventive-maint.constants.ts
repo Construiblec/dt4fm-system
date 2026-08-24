@@ -75,8 +75,17 @@ export const PM_ACTIONS = {
   CONCLUDE: 266622,
   /** `PM03-Back`: Ejecución → Suspensión */
   SUSPEND: 266624,
-  /** `PM04-Advance`: Suspensión → Ejecución. Hoy solo se hace desde OpenMAINT. */
+  /** `PM04-Advance` («Resume execution»): Suspensión → Ejecución */
   RESUME: 266626,
+  /**
+   * `PM04-Return` («Change assignee»): cambia el cesionario **sin salir de
+   * Suspensión**.
+   *
+   * Pese al nombre no devuelve el proceso a ningún sitio: vuelve a entrar en
+   * `PM04`, conservando estado y motivo de suspensión. Comprobado en el clon
+   * (2026-08-24) sobre `PM.2026.0331`.
+   */
+  CHANGE_ASSIGNEE: 384554,
 } as const;
 
 /** Lookup `MaintProcess - Outcome`: cierre satisfactorio. */

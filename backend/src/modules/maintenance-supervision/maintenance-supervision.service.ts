@@ -27,6 +27,7 @@ import {
   CM_PRIORITY_CODES,
   CM_STATUS_IDS,
   CM_STATUS_NAME_TO_ID,
+  CM_TEAM_WRITABLE_STATUS,
   CmStatusId,
   resolveCorrectiveStatus,
 } from './constants/corrective-maint.constants';
@@ -71,6 +72,11 @@ export type SupervisedMaintenance = {
   isOverdue: boolean;
   execStartDate: string | null;
   execEndDate: string | null;
+  /**
+   * Motivo por el que está suspendido. Solo lo traen los preventivos, y solo
+   * mientras lo están: OpenMAINT lo limpia al reanudar.
+   */
+  suspensionReason?: string | null;
 };
 
 export type Assignee = {
@@ -157,12 +163,23 @@ export class MaintenanceSupervisionService {
     };
   }
 
+  /**
+   * `from`/`to` filtran por **inicio previsto** (`ExpExecStartDate`), que es la
+   * fecha con la que se planifica la carga de trabajo. Es el único listado con
+   * rango de fechas: el correctivo nace de una incidencia y no se programa.
+   */
   async listPreventive(sessionId: string, query: ListMaintenancesQueryDto) {
     const limit = query.limit ?? 10;
     const offset = query.offset ?? 0;
     const statusIds = query.status
       ? [this.resolvePreventiveStatus(query.status)]
       : undefined;
+
+    if (query.from && query.to && new Date(query.from) > new Date(query.to)) {
+      throw new BadRequestException(
+        'La fecha de inicio no puede ser posterior a la de fin',
+      );
+    }
 
     const response = await this.call(
       () =>
@@ -171,6 +188,8 @@ export class MaintenanceSupervisionService {
           offset,
           statusIds,
           assigned: query.assigned,
+          from: query.from,
+          to: query.to,
         }),
       'Error al consultar mantenimientos preventivos en OpenMAINT',
     );
@@ -527,17 +546,67 @@ export class MaintenanceSupervisionService {
   }
 
   /**
-   * Cambia el cesionario sin mover el flujo. `Assignee` es escribible en todos
-   * los pasos abiertos de ambos procesos, así que basta un `saveFields`; no
-   * hace falta la acción `*-Return`, que además obligaría a avanzar.
+   * Devuelve a ejecución un preventivo suspendido (`PM04-Advance`).
    *
-   * El equipo nunca cambia: solo se elige otra persona dentro del mismo.
+   * El paso `PM04-Suspension` solo ofrece dos acciones —«Resume execution» y
+   * «Change assignee»—, así que reanudar es la única forma de sacarlo de ahí.
+   * Hasta ahora había que hacerlo desde la interfaz de openMAINT.
+   *
+   * **El motivo de suspensión lo limpia openMAINT solo**: no hay que enviar
+   * `SuspensionReason: null`. Verificado en el clon (2026-08-24) sobre
+   * `PM.2026.0331`, que volvió a `PM-Execution` con la actividad `PM03`.
+   *
+   * Las actividades marcadas «N.D.» durante la suspensión no se tocan aquí: se
+   * limpian cuando el técnico abre el mantenimiento, porque `startExecution`
+   * llama a `clearNotDone` en cuanto la ficha está en ejecución.
+   */
+  async resumePreventive(sessionId: string, id: number) {
+    const card = await this.fetchPreventiveWithTask(sessionId, id);
+
+    this.assertStatusIn(
+      card.ProcessStatus,
+      [PM_STATUS_IDS.SUSPENSION],
+      'Solo se puede reanudar un preventivo suspendido',
+    );
+
+    await this.call(
+      () =>
+        this.preventive.advance(sessionId, id, {
+          activityId: this.requireActivityId(card._tasklist, id),
+          action: PM_ACTIONS.RESUME,
+        }),
+      'Error al reanudar el preventivo en OpenMAINT',
+    );
+
+    const updated = await this.assertPreventiveReached(
+      sessionId,
+      id,
+      PM_STATUS_IDS.EXECUTION,
+      'OpenMAINT aceptó la petición pero no reanudó el preventivo',
+    );
+
+    return { success: true, data: this.toPreventive(updated) };
+  }
+
+  /**
+   * Cambia el cesionario sin mover el flujo.
+   *
+   * En la mayoría de los pasos basta un `saveFields`. La excepción es un
+   * preventivo **suspendido**, donde se usa `PM04-Return` porque el flujo
+   * declara esa acción para exactamente esto (ver más abajo).
+   *
+   * **El equipo se puede cambiar en algunos pasos.** En correctivo `Team` es
+   * escribible en `CM02-Assignment` y `CM07-Management`, no en
+   * `CM03-Execution` (ver `CM_TEAM_WRITABLE_STATUS`); en preventivo no lo es en
+   * ninguno. Cuando el paso no lo admite se ignora y se registra en el log, en
+   * vez de fallar: OpenMAINT lo descartaría en silencio de todos modos.
    */
   async updateAssignee(
     sessionId: string,
     kind: Kind,
     id: number,
     assigneeId: number,
+    teamId?: number,
   ) {
     const nextAssignee = await this.findAssignee(sessionId, assigneeId);
 
@@ -556,19 +625,54 @@ export class MaintenanceSupervisionService {
         'El correctivo está en un paso que no permite cambiar el cesionario',
       );
 
-      await this.assertReassignable(sessionId, card.Assignee, card.Team, nextAssignee);
+      const puedeCambiarEquipo =
+        card.ProcessStatus != null &&
+        CM_TEAM_WRITABLE_STATUS.includes(card.ProcessStatus as CmStatusId);
+
+      if (teamId !== undefined && !puedeCambiarEquipo) {
+        this.logger.warn(
+          `Se ignora teamId=${teamId} en el correctivo ${id}: Team no es ` +
+            `escribible en ${card._ProcessStatus_code}`,
+        );
+      }
+
+      const nuevoEquipo =
+        teamId !== undefined && puedeCambiarEquipo ? teamId : undefined;
+
+      // El cesionario se valida contra el equipo **de destino**: si se está
+      // cambiando el equipo, exigir que pertenezca al anterior haría imposible
+      // el cambio, que es justo lo que CM02 y CM07 sí permiten.
+      await this.assertReassignable(
+        sessionId,
+        card.Assignee,
+        nuevoEquipo ?? card.Team,
+        nextAssignee,
+      );
+
+      const fields: Record<string, unknown> = { Assignee: assigneeId };
+
+      if (nuevoEquipo !== undefined) {
+        fields.Team = nuevoEquipo;
+      }
 
       await this.call(
         () =>
           this.corrective.saveFields(sessionId, id, {
             activityId: this.requireActivityId(card._tasklist, id),
-            fields: { Assignee: assigneeId },
+            fields,
           }),
         'Error al reasignar el correctivo en OpenMAINT',
       );
 
       const updated = await this.fetchCorrective(sessionId, id);
       return { success: true, data: this.toCorrective(updated) };
+    }
+
+    if (teamId !== undefined) {
+      this.logger.warn(
+        `Se ignora teamId=${teamId} en el preventivo ${id}: Team no es ` +
+          'escribible en PreventiveMaint',
+      );
     }
 
     const card = await this.fetchPreventiveWithTask(sessionId, id);
@@ -581,10 +685,49 @@ export class MaintenanceSupervisionService {
 
     await this.assertReassignable(sessionId, card.Assignee, card.Team, nextAssignee);
 
+    const activityId = this.requireActivityId(card._tasklist, id);
+
+    /**
+     * Estando suspendido se usa la acción del propio flujo, `PM04-Return`
+     * («Change assignee»), en vez de escribir el campo a pelo.
+     *
+     * `PM04-Suspension` declara exactamente dos salidas —reanudar y cambiar
+     * cesionario— y esta es la segunda. Un `saveFields` también cambia el
+     * campo, pero pasa de largo del flujo: la bitácora del proceso no registra
+     * que hubo una reasignación. Reanudar sigue siendo una acción aparte.
+     *
+     * Pese al nombre, `PM04-Return` **no mueve el proceso**: vuelve a entrar en
+     * `PM04` conservando estado y motivo de suspensión. Comprobado en el clon
+     * (2026-08-24); la nota que decía que las acciones `*-Return` obligaban a
+     * avanzar era falsa.
+     */
+    if (card.ProcessStatus === PM_STATUS_IDS.SUSPENSION) {
+      await this.call(
+        () =>
+          this.preventive.advance(sessionId, id, {
+            activityId,
+            action: PM_ACTIONS.CHANGE_ASSIGNEE,
+            fields: { Assignee: assigneeId },
+          }),
+        'Error al reasignar el preventivo suspendido en OpenMAINT',
+      );
+
+      // OpenMAINT responde 200 aunque no aplique nada, así que se comprueba
+      // que siga suspendido en vez de dar por bueno el avance.
+      const resuspendido = await this.assertPreventiveReached(
+        sessionId,
+        id,
+        PM_STATUS_IDS.SUSPENSION,
+        'OpenMAINT aceptó la petición pero sacó el preventivo de suspensión',
+      );
+
+      return { success: true, data: this.toPreventive(resuspendido) };
+    }
+
     await this.call(
       () =>
         this.preventive.saveFields(sessionId, id, {
-          activityId: this.requireActivityId(card._tasklist, id),
+          activityId,
           fields: { Assignee: assigneeId },
         }),
       'Error al reasignar el preventivo en OpenMAINT',
@@ -763,6 +906,12 @@ export class MaintenanceSupervisionService {
       isOverdue: this.isOverdue(dueDate, isClosed),
       execStartDate: card.ExecStartDate ?? null,
       execEndDate: card.ExecEndDate ?? null,
+      // Contexto para decidir si reanudar. OpenMAINT lo limpia al hacerlo, así
+      // que solo trae valor mientras está suspendido.
+      suspensionReason:
+        card._SuspensionReason_description_translation ??
+        card._SuspensionReason_description ??
+        null,
     };
   }
 

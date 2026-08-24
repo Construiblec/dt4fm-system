@@ -28,6 +28,9 @@ export const MaintenanceSupervisorDashboardPage = () => {
     error,
     status,
     changeStatus,
+    from,
+    to,
+    applyDateRange,
     clearFilters,
     page,
     setPage,
@@ -56,7 +59,8 @@ export const MaintenanceSupervisorDashboardPage = () => {
                 Construiblec
               </p>
               <p className="text-base font-medium text-slate-900">
-                Bienvenido, {formatEmployeeName(localStorage.getItem("username"))}
+                Bienvenido,{" "}
+                {formatEmployeeName(localStorage.getItem("username"))}
               </p>
             </div>
           </div>
@@ -85,7 +89,9 @@ export const MaintenanceSupervisorDashboardPage = () => {
               {/* Trabajo pendiente de despachar; no depende del filtro activo */}
               {unassigned !== null ? (
                 <div className="flex-1 rounded-xl bg-rose-50 p-3 text-center shadow-sm">
-                  <p className="text-2xl font-bold text-rose-700">{unassigned}</p>
+                  <p className="text-2xl font-bold text-rose-700">
+                    {unassigned}
+                  </p>
                   <p className="mt-0.5 text-xs text-rose-500">Sin asignar</p>
                 </div>
               ) : null}
@@ -93,7 +99,9 @@ export const MaintenanceSupervisorDashboardPage = () => {
               {/* El preventivo no tiene paso de revisión: el backend manda null */}
               {pendingReview !== null ? (
                 <div className="flex-1 rounded-xl bg-amber-50 p-3 text-center shadow-sm">
-                  <p className="text-2xl font-bold text-amber-700">{pendingReview}</p>
+                  <p className="text-2xl font-bold text-amber-700">
+                    {pendingReview}
+                  </p>
                   <p className="mt-0.5 text-xs text-amber-500">Por revisar</p>
                 </div>
               ) : null}
@@ -120,6 +128,9 @@ export const MaintenanceSupervisorDashboardPage = () => {
               kind={kind}
               status={status}
               onStatusChange={changeStatus}
+              from={from}
+              to={to}
+              onDateRangeApply={applyDateRange}
               onClear={clearFilters}
             />
 

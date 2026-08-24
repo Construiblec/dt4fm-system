@@ -122,6 +122,20 @@ transición por defecto del paso.
 > **`Team` no es escribible en NINGÚN paso de `PreventiveMaint`.** En preventivos solo se asigna la
 > persona; el equipo lo define el plan. El DTO acepta `teamId` por simetría pero el servicio lo
 > ignora y lo registra en el log.
+>
+> Consecuencia en la UI: el selector de equipo **solo existe al asignar un correctivo**, así que el
+> botón de guardar no puede exigir `teamId` en los demás casos — no habría ningún control con el que
+> rellenarlo, y el botón quedaría gris sin salida.
+
+### Todo botón bloqueado dice por qué
+
+Los tres formularios de supervisión pueden deshabilitar su botón por motivos distintos —falta el
+inicio previsto, falta el equipo, falta la persona, falta la hora— y ninguno se adivina mirando un
+botón gris. Cada modal calcula un `falta` con el motivo concreto y lo pinta junto al botón; el
+detalle, además, convierte el aviso de «falta planificar» en un atajo al panel de planificación.
+
+La única excepción es el bloqueo por proveedor, que ya tiene su propio aviso con el nombre de la
+persona (§7).
 
 ### El inicio previsto se fija en un solo sitio, y es obligatorio
 
@@ -189,6 +203,38 @@ arranca — ver `docs/incidents module/incident-execution.endpoints.md`.
 
 ---
 
+## 4 bis. Filtrar preventivos por rango de fechas
+
+`GET /maintenance-supervision/preventive` acepta `from` y `to`: filtran por **inicio previsto**
+(`ExpExecStartDate`), que es la fecha con la que se planifica la carga de trabajo. Solo el
+preventivo lo tiene — un correctivo nace de una incidencia y no se programa —, así que el correctivo
+ignora los dos parámetros.
+
+**Los dos extremos son inclusivos**, y conseguirlo tiene truco. Comprobado contra el clon
+(2026-08-24) sobre las 433 tarjetas con fecha:
+
+| Operador | Qué hace de verdad |
+|---|---|
+| `between` | **exclusivo en ambos lados**: el mismo día en los dos campos devuelve **0** |
+| `greater` / `less` | funcionan, pero son **estrictos** y comparan la marca de tiempo completa |
+| `greaterOrEqual` / `lessOrEqual` | **no existen**: 500 |
+| `gt` / `lt` | tampoco: 500 |
+
+`between` queda descartado porque «filtrar solo este día» —lo primero que hace cualquiera— daría
+cero resultados. Se usan `greater`/`less` desplazando un milisegundo cada extremo, que convierte los
+estrictos en inclusivos (`plannedStartRange`).
+
+> **Cuidado con el huso.** Los cortes de día los calcula el **navegador**, no el backend
+> (`startOfDayIso` / `endOfDayIso`), y viajan como instantes ISO. El usuario elige «18/06» pensando
+> en su día: construir el corte en UTC lo movería cinco horas en Ecuador y dejaría fuera los
+> mantenimientos de última hora de la tarde.
+
+Verificado comparando el `meta.total` del endpoint contra el recuento a mano en siete rangos —día
+suelto, abiertos por un extremo, vacío— más la combinación con el filtro de estado. El rango
+invertido responde 400.
+
+---
+
 ## 5. La revisión de cierre, y por qué el preventivo no la tiene
 
 **Un proceso completado no se puede reabrir.** Queda `_FlowStatus_code: closed.completed`, con su
@@ -213,20 +259,69 @@ preventivo — la UI oculta el contador en vez de mostrar un cero engañoso.
 
 ---
 
+## 5 bis. Reanudar un preventivo suspendido
+
+`PM04-Suspension` es un callejón con dos salidas, y nada más:
+
+| Acción | ID | Efecto |
+|---|---|---|
+| `PM04-Advance` — «Resume execution» | 266626 | Suspensión → **Ejecución** |
+| `PM04-Return` — «Change assignee» | 384554 | Cambia cesionario sin salir del paso |
+
+Hasta ahora la app solo sabía **suspender** (`PM03-Back`, desde la vista del técnico), así que un
+preventivo suspendido solo se reanudaba entrando a openMAINT. `POST /preventive/:id/resume` cierra
+ese hueco.
+
+**Las dos salidas son acciones distintas y así se envían.** Reanudar es `PM04-Advance`; cambiar de
+cesionario es `PM04-Return`, y `updateAssignee` la usa cuando el preventivo está suspendido en vez
+de escribir el campo a pelo. Un `saveFields` también cambiaría el cesionario —comprobado— pero pasa
+de largo del flujo, y la bitácora del proceso no registra que hubo una reasignación.
+
+> **Corrección**: aquí se dio por hecho durante un tiempo que las acciones `*-Return` «obligaban a
+> avanzar», y por eso se usaba `saveFields` en todas partes. Es falso. Medido en el clon
+> (2026-08-24) sobre `PM.2026.0331` estando en PM04:
+>
+> | | Cesionario | Estado | Motivo |
+> |---|---|---|---|
+> | `saveFields` | cambia | sigue suspendido | conservado |
+> | `PM04-Return` | cambia | **sigue suspendido** | conservado |
+>
+> `PM04-Return` vuelve a entrar en el mismo paso, tal como sugiere su nombre.
+>
+> El correctivo tiene su gemela, `CM03-Return` («Change assignee», 384552), que sigue **sin usarse**
+> y sin medir. Si se quiere el mismo trato ahí, hay que comprobarla primero.
+
+Dos detalles verificados en el clon (2026-08-24) sobre `PM.2026.0331`:
+
+- **`SuspensionReason` lo limpia openMAINT solo** al reanudar. No hay que enviarlo a `null`; de
+  hecho el atributo ni siquiera es escribible en PM04.
+- La actividad pasa a `PM03-Execution`, así que el técnico retoma donde lo dejó.
+
+Las actividades marcadas «N.D.» durante la suspensión **no se tocan aquí**. Se limpian cuando el
+técnico abre el mantenimiento: `startExecution` llama a `clearNotDone` en cuanto la ficha está en
+ejecución, venga de donde venga. Meter esa limpieza en supervisión obligaría a inyectar el servicio
+de checklist en este módulo para nada.
+
+`toPreventive` expone además `suspensionReason` —la descripción traducida— para que la pantalla
+diga por qué está detenido antes de ofrecer el botón. Solo trae valor mientras lo está.
+
+---
+
 ## 6. Endpoints
 
 Base `/maintenance-supervision`. Cabeceras: `authorization` (sesión openMAINT) y `x-role`.
 
 | Verbo | Ruta | Notas |
 |---|---|---|
-| GET | `/corrective` · `/preventive` | `?status=&assigned=&limit=10&offset=0`. `meta.unassigned` en ambos; `meta.pendingReview` solo en correctivo |
+| GET | `/corrective` · `/preventive` | `?status=&assigned=&limit=10&offset=0`. `meta.unassigned` en ambos; `meta.pendingReview` solo en correctivo. En preventivo, además `?from=&to=` (§4 bis) |
 | GET | `/:kind/:id` | Detalle en solo lectura |
 | GET | `/:kind/:id/attachments` | Evidencia fotográfica, ya en base64 |
 | GET | `/assignees?teamId=` | `isSupplier` sale de la subclase de la ficha |
-| POST | `/corrective/:id/assign` | `CM02-Advance` con Assignee + Team + ExpExecStartDate |
+| POST | `/corrective/:id/assign` | `CM02-Advance` con Assignee + Team + ExpExecStartDate; **exige inicio previsto** |
 | POST | `/corrective/:id/reject` | `CM02-Reject`; motivo obligatorio |
 | POST | `/preventive/:id/assign` | `PM01-Advance`; **solo Assignee** |
-| PUT | `/:kind/:id/assignee` | `saveFields`, sin mover el flujo |
+| POST | `/preventive/:id/resume` | `PM04-Advance`; solo desde Suspensión (§5 bis) |
+| PUT | `/:kind/:id/assignee` | Sin mover el flujo. Acepta `teamId` donde `Team` es escribible. En preventivo suspendido va por `PM04-Return` (§5 bis) |
 | POST | `/corrective/:id/review` | `CM05-Advance` / `CM05-Back` |
 | PUT | `/:kind/:id/planned-start` | `ExpExecStartDate`; solo en CM02 / PM02 |
 
@@ -349,5 +444,6 @@ asignar a la misma persona funciona.
 2. **`assignCorrective` no valida que el cesionario pertenezca al equipo** que fija, a diferencia
    de `updateAssignee`. La API REST no aplica las reglas de validación del formulario de openMAINT,
    así que la comprobación tendría que hacerla el servicio.
-3. **Sin cobertura**: `CM04` (proveedor) y los pasos `Estimate` / `Control`; y en preventivos, un
-   suspendido no se puede reanudar desde la app pese a que `PM_ACTIONS.RESUME` existe.
+3. **Sin cobertura**: `CM04` (proveedor) y los pasos `Estimate` / `Control`.
+
+Reanudar un preventivo suspendido **ya está hecho** (§5 bis); era el punto 3 de esta lista.

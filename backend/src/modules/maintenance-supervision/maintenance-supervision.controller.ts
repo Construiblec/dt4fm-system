@@ -65,8 +65,12 @@ export class MaintenanceSupervisionController {
   @Get('preventive')
   @ApiOperation({
     summary: 'Listar todos los preventivos (sin filtrar por cesionario)',
+    description:
+      'Admite rango de fechas con `from`/`to`, que filtran por inicio ' +
+      'previsto (`ExpExecStartDate`) y son **inclusivos** en ambos extremos.',
   })
   @ApiResponse({ status: 200, description: 'Listado obtenido con éxito' })
+  @ApiResponse({ status: 400, description: 'Rango de fechas inválido' })
   @ApiResponse({ status: 403, description: 'Rol no autorizado' })
   async listPreventive(
     @Headers('authorization') sessionId: string,
@@ -201,12 +205,36 @@ export class MaintenanceSupervisionController {
     return this.service.assignPreventive(sessionId, id, dto);
   }
 
+  @Post('preventive/:id/resume')
+  @ApiOperation({
+    summary: 'Reanudar un preventivo suspendido',
+    description:
+      '`PM04-Advance`: Suspensión → Ejecución. OpenMAINT limpia el motivo de ' +
+      'suspensión por su cuenta. Es la única salida del paso PM04, junto con ' +
+      'cambiar el cesionario.',
+  })
+  @ApiParam({ name: 'id', type: 'integer' })
+  @ApiResponse({ status: 201, description: 'Preventivo reanudado' })
+  @ApiResponse({ status: 409, description: 'El preventivo no está suspendido' })
+  @ApiResponse({ status: 502, description: 'OpenMAINT no aplicó el avance' })
+  async resumePreventive(
+    @Headers('authorization') sessionId: string,
+    @Headers('x-role') role: string,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    this.authorize(sessionId, role);
+    return this.service.resumePreventive(sessionId, id);
+  }
+
   @Put(':kind/:id/assignee')
   @ApiOperation({
-    summary: 'Cambiar el cesionario dentro del mismo equipo',
+    summary: 'Cambiar el cesionario, y el equipo donde el paso lo permita',
     description:
-      'No mueve el flujo. Rechaza con 409 si el trabajo lo atiende un ' +
-      'proveedor o si el nuevo cesionario es de otro equipo.',
+      'No mueve el flujo. `teamId` es opcional y solo se aplica en los pasos ' +
+      'que declaran `Team` escribible — en correctivo, `CM02-Assignment` y ' +
+      '`CM07-Management`; fuera de ahí se ignora y se registra en el log. El ' +
+      'cesionario se valida contra el equipo de destino. Rechaza con 409 si el ' +
+      'trabajo lo atiende un proveedor o si la persona no es de ese equipo.',
   })
   @ApiParam({ name: 'kind', enum: ['corrective', 'preventive'] })
   @ApiParam({ name: 'id', type: 'integer' })
@@ -226,6 +254,7 @@ export class MaintenanceSupervisionController {
       this.parseKind(kind),
       id,
       dto.assigneeId,
+      dto.teamId,
     );
   }
 

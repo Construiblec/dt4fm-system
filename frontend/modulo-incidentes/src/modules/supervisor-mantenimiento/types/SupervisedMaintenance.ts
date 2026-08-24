@@ -31,6 +31,11 @@ export type SupervisedMaintenance = {
   isOverdue: boolean;
   execStartDate: string | null;
   execEndDate: string | null;
+  /**
+   * Motivo de la suspensión. Solo en preventivos, y solo mientras lo están:
+   * openMAINT lo limpia al reanudar.
+   */
+  suspensionReason?: string | null;
 };
 
 export type Assignee = {
@@ -46,6 +51,13 @@ export type ListParams = {
   assigned?: boolean;
   limit?: number;
   offset?: number;
+  /**
+   * Rango de inicio previsto, **inclusivo**, en ISO-8601. Solo lo admite el
+   * listado de preventivos. Se mandan instantes y no fechas sueltas porque el
+   * corte del día depende del huso del usuario, que el navegador sí conoce.
+   */
+  from?: string;
+  to?: string;
 };
 
 export type ListResponse = {

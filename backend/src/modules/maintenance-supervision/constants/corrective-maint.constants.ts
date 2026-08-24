@@ -170,5 +170,24 @@ export const CM_ASSIGNEE_WRITABLE_STATUS: CmStatusId[] = [
   CM_STATUS_IDS.MANAGEMENT,
 ];
 
+/**
+ * Estados en los que **también** se puede cambiar el equipo. Es un subconjunto
+ * de `CM_ASSIGNEE_WRITABLE_STATUS`: en `CM03-Execution` el cesionario se puede
+ * cambiar pero el equipo no.
+ *
+ * Verificado en el clon (2026-08-24) leyendo los metadatos de cada actividad:
+ *
+ * | Paso              | Team | Assignee |
+ * |-------------------|------|----------|
+ * | `CM02-Assignment` | sí   | sí       |
+ * | `CM03-Execution`  | no   | sí       |
+ * | `CM07-Management` | sí   | sí       |
+ * | `CM04` / `CM05`   | no   | no       |
+ */
+export const CM_TEAM_WRITABLE_STATUS: CmStatusId[] = [
+  CM_STATUS_IDS.ASSIGNMENT,
+  CM_STATUS_IDS.MANAGEMENT,
+];
+
 /** El trabajo espera revisión del supervisor en el paso de contabilidad. */
 export const CM_PENDING_REVIEW_STATUS: CmStatusId = CM_STATUS_IDS.ACCOUNTING;

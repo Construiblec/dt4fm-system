@@ -36,6 +36,21 @@ export const PlannedStartModal = ({
   // bloquea el campo y la medianoche se queda como el inicio planificado.
   const value = fecha && hora ? `${fecha}T${hora}` : "";
 
+  /**
+   * Qué falta para poder guardar, o `null` si no falta nada.
+   *
+   * Un botón gris sin explicación no dice nada: el usuario ve que no puede
+   * seguir pero no qué se espera de él. Nombrar el campo que falta es lo que
+   * convierte el bloqueo en una instrucción.
+   */
+  const falta = !fecha
+    ? !hora
+      ? "Indica la fecha y la hora previstas para poder guardar."
+      : "Falta la fecha."
+    : !hora
+      ? "Falta la hora."
+      : null;
+
   const handleSubmit = async () => {
     if (!value) return;
 
@@ -91,9 +106,8 @@ export const PlannedStartModal = ({
               />
             </div>
             <p className="mt-1.5 text-xs text-slate-400">
-              {fecha && !hora
-                ? "Indica también la hora."
-                : "Es una referencia para planear la carga de trabajo: no asigna a nadie ni cambia el estado."}
+              Es una referencia para planear la carga de trabajo: no asigna a
+              nadie ni cambia el estado.
             </p>
           </div>
 
@@ -115,7 +129,13 @@ export const PlannedStartModal = ({
           ) : null}
         </div>
 
-        <div className="mt-6 grid grid-cols-2 gap-3">
+        {falta ? (
+          <p className="mt-5 rounded-xl bg-amber-50 p-3 text-xs font-medium text-amber-800">
+            {falta}
+          </p>
+        ) : null}
+
+        <div className="mt-4 grid grid-cols-2 gap-3">
           <button
             type="button"
             onClick={onClose}

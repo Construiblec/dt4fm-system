@@ -82,3 +82,20 @@ export const mondayOffset = (year: number, month: number) =>
 /** Cuántos días tiene el mes (base 0, como en `Date`). */
 export const daysInMonth = (year: number, month: number) =>
   new Date(year, month + 1, 0).getDate();
+
+/**
+ * Los dos extremos de un día, como instantes ISO con zona.
+ *
+ * Se calculan en la **hora local del navegador** a propósito: el usuario elige
+ * «18/06» pensando en su día, no en el día UTC. Construirlos en UTC movería el
+ * corte cinco horas en Ecuador y dejaría fuera los mantenimientos de última
+ * hora de la tarde.
+ *
+ * Devuelven `undefined` con la fecha vacía, para poder pasarlos tal cual a un
+ * filtro opcional.
+ */
+export const startOfDayIso = (date: string): string | undefined =>
+  date ? new Date(`${date}T00:00:00`).toISOString() : undefined;
+
+export const endOfDayIso = (date: string): string | undefined =>
+  date ? new Date(`${date}T23:59:59.999`).toISOString() : undefined;
