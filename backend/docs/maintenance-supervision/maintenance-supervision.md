@@ -122,10 +122,33 @@ transición por defecto del paso.
 > **`Team` no es escribible en NINGÚN paso de `PreventiveMaint`.** En preventivos solo se asigna la
 > persona; el equipo lo define el plan. El DTO acepta `teamId` por simetría pero el servicio lo
 > ignora y lo registra en el log.
->
-> Consecuencia en la UI: el selector de equipo **solo existe al asignar un correctivo**, así que el
-> botón de guardar no puede exigir `teamId` en los demás casos — no habría ningún control con el que
-> rellenarlo, y el botón quedaría gris sin salida.
+
+### El equipo se edita según el paso, no según el modo
+
+Medido en el clon (2026-08-24) leyendo los metadatos de la actividad de una instancia por estado:
+
+| Paso | `Team` | `Assignee` |
+|---|---|---|
+| `CM02-Assignment` | **sí** | sí |
+| `CM03-Execution` | no | sí |
+| `CM07-Management` | **sí** | sí |
+| `CM04-Estimate` · `CM05-Accounting` | no | no |
+
+Está en `CM_TEAM_WRITABLE_STATUS`, y es un **subconjunto** de
+`CM_ASSIGNEE_WRITABLE_STATUS`: en ejecución se cambia la persona pero no el equipo.
+
+El modal lo decidía por **modo** —«si es reasignar, el equipo está bloqueado»— y eso era falso en
+dos de los tres pasos donde se ofrece reasignar. Ahora el selector aparece donde openMAINT lo
+permite y el candado solo donde de verdad lo hay.
+
+`updateAssignee` acompaña: acepta `teamId` en esos pasos, lo ignora con un aviso en el log fuera de
+ellos, y **valida al cesionario contra el equipo de destino**. Antes lo comparaba con el equipo
+anterior, así que cambiar de equipo devolvía 409 «el nuevo cesionario debe pertenecer al mismo
+equipo de trabajo» — el cambio era imposible por construcción.
+
+> El selector de equipo solo se pinta donde existe, así que el botón de guardar **no puede exigir
+> `teamId` en los demás casos**: no habría ningún control con el que rellenarlo y quedaría gris sin
+> salida. Es lo que pasaba al asignar un preventivo.
 
 ### Todo botón bloqueado dice por qué
 
@@ -417,8 +440,9 @@ enseñar la traza.
 
 ## 8. Estado de la implementación
 
-**Hecho**: listados con filtros y paginación de 10, detalle, asignación, rechazo, reasignación,
-revisión de cierre y fecha prevista.
+**Hecho**: listados con filtros y paginación de 10 —incluido el rango de fechas en preventivos—,
+detalle, asignación, rechazo, reasignación (con equipo donde el paso lo permite), revisión de
+cierre, fecha prevista y reanudación de preventivos suspendidos.
 
 **Probado contra el clon (2026-08-21)**, con la sesión de `usuario.proveedor`:
 
@@ -435,6 +459,20 @@ revisión de cierre y fecha prevista.
 registro a su estado inicial: asignar → iniciar → finalizar → rechazar → **asignar de nuevo al mismo
 cesionario**. Confirma las tres cosas de §2: la duración se registra, devolver la borra, y volver a
 asignar a la misma persona funciona.
+
+**Filtro de fechas (2026-08-24)**: el `meta.total` del endpoint contra el recuento a mano de las 433
+tarjetas con fecha, en siete rangos —día suelto, abiertos por un extremo, vacío— más la combinación
+con el filtro de estado y el rango invertido. Ver §4 bis.
+
+**Suspensión (2026-08-24)** sobre `PM.2026.0331` y `PM.2026.0151`: reanudar deja el preventivo en
+ejecución sin motivo; reanudar dos veces da 409; y reasignar estando suspendido **consume la
+actividad** —prueba de que se ejecutó `PM04-Return` y no un `saveFields`— conservando estado y
+motivo. Ver §5 bis.
+
+> **Sin cubrir**: un cambio real de persona al reasignar. En el clon todos los preventivos están en
+> «Eq. prueba», que tiene un solo miembro, y el otro equipo es de un proveedor —que además no es
+> reasignable por §7—. La prueba se hizo con el mismo cesionario, usando el id de actividad como
+> discriminador.
 
 **Pendiente**:
 
