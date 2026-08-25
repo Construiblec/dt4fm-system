@@ -42,10 +42,12 @@ export type RoleView = {
 };
 
 /**
- * Solo los grupos que abren una vista propia. El resto (`Guest`, `Requester`,
+ * Grupos que abren una vista propia. El resto (`Guest`, `Requester`,
  * `AdminOffice`, `TPM`, `SuperUser`) existen en openMAINT pero no cambian nada
- * en esta app, así que no se ofrecen: aparecerían como opciones que no llevan a
- * ningún sitio distinto.
+ * en esta app.
+ *
+ * Ojo: figurar aquí sirve para **saber a qué pantalla lleva** un rol, que no es
+ * lo mismo que poder elegirlo. Lo segundo lo decide `getSelectableRoles`.
  */
 export const ROLE_VIEWS: Record<string, RoleView> = {
   SupervisorMantenimiento: {
@@ -141,6 +143,16 @@ export const getRoleLabel = (
 };
 
 /**
+ * Roles que existen y tienen su vista, pero **nunca se ofrecen como opción**.
+ *
+ * `Propietarios` es una condición de la persona, no un modo de trabajo: un
+ * residente es residente y nadie del equipo entra a la app como si lo fuera,
+ * aunque openMAINT le tenga asignado ese grupo. Sigue en `ROLE_VIEWS` porque el
+ * residente tiene que aterrizar en su dashboard al iniciar sesión.
+ */
+const NON_SWITCHABLE_ROLES = ["Propietarios"];
+
+/**
  * Roles que se le ofrecen al usuario, deduplicados por destino: dos grupos que
  * abren la misma pantalla se presentan como una sola opción, con el primer
  * código que tenga la cuenta (cualquiera sirve, openMAINT los trata igual).
@@ -151,6 +163,10 @@ export const getSelectableRoles = (
   const seen = new Set<string>();
 
   return availableRoles.reduce<SelectableRole[]>((options, code) => {
+    if (NON_SWITCHABLE_ROLES.includes(code)) {
+      return options;
+    }
+
     // Un grupo sin vista propia no añade nada al selector; solo dejaría al
     // usuario donde ya está.
     const isKnown = code in ROLE_VIEWS || EXECUTION_ROLES.includes(code);

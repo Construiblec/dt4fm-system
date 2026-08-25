@@ -35,7 +35,8 @@ export const SupervisorDashboardPage = () => {
       <main className="min-h-screen flex flex-col bg-gray-100">
         <AppHeader />
 
-        <section className="flex-1 px-4 pb-10">
+        {/* Deja pasar el botón flotante; la barra inferior la reserva AppLayout. */}
+        <section className="flex-1 px-4 pb-20">
           <div className="mx-auto w-full max-w-sm space-y-5">
             <h1 className="text-center text-2xl font-bold text-slate-900">
               Supervisor de Tareas de Limpieza
@@ -100,9 +101,6 @@ export const SupervisorDashboardPage = () => {
             )}
           </div>
         </section>
-
-        {/* Deja aire al final para que el botón flotante no tape la última tarjeta */}
-        <div className="h-24" />
 
         <FloatingReportButton />
       </main>

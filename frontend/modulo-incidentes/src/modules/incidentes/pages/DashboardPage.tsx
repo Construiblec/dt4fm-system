@@ -230,7 +230,8 @@ export const DashboardPage = () => {
       <main className="min-h-screen flex flex-col bg-gray-100">
         <AppHeader />
 
-        <section className="flex-1 px-4 pb-32">
+        {/* Deja pasar el botón flotante; la barra inferior la reserva AppLayout. */}
+        <section className="flex-1 px-4 pb-20">
           <div className="mx-auto w-full max-w-sm space-y-5">
             <h1 className="text-center text-2xl font-bold text-slate-900">
               {supplierUser ? "Mantenimientos" : "Mantenimiento y Limpieza"}

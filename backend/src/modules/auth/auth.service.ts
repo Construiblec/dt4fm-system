@@ -21,6 +21,16 @@ import { SwitchRoleDto } from './dto/switch-role.dto';
 const OWNER_ROLE = 'Propietarios';
 
 /**
+ * Roles a los que no se puede saltar desde una sesión ya iniciada.
+ *
+ * Ser residente es una condición de la persona, no un modo de trabajo: nadie
+ * del equipo entra como si lo fuera, aunque openMAINT le tenga ese grupo
+ * asignado. Sí se puede iniciar sesión directamente en él — es lo que hace un
+ * residente —, lo que se prohíbe es cambiarse a él después.
+ */
+const NON_SWITCHABLE_ROLES = [OWNER_ROLE];
+
+/**
  * Lo que devuelven tanto el login como el cambio de rol. Es el mismo contrato
  * a propósito: al cambiar de rol el cliente reemplaza su sesión entera, porque
  * los identificadores dependen del grupo activo (un usuario puede tener
@@ -108,6 +118,12 @@ export class AuthService {
     // de la sesión. Sin esto cualquiera podría pedir un grupo que no le toca.
     if (!(current.availableRoles ?? []).includes(dto.role)) {
       throw new UnauthorizedException('El usuario no pertenece a ese rol');
+    }
+
+    // La interfaz tampoco lo ofrece, pero el endpoint es alcanzable por su
+    // cuenta: la regla se aplica aquí, no solo en el cliente.
+    if (NON_SWITCHABLE_ROLES.includes(dto.role)) {
+      throw new UnauthorizedException('No se puede cambiar a ese rol');
     }
 
     try {

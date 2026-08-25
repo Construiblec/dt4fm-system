@@ -255,6 +255,17 @@ describe('AuthService', () => {
       expect(auth.setSessionRole).not.toHaveBeenCalled();
     });
 
+    it('no deja al equipo cambiarse a residente, aunque tenga el grupo', async () => {
+      const { service, auth } = buildHarness();
+
+      // La cuenta sí pertenece a Propietarios: lo que se prohíbe es el salto.
+      await expect(
+        service.switchRole(SESSION_ID, { role: 'Propietarios' }),
+      ).rejects.toBeInstanceOf(UnauthorizedException);
+
+      expect(auth.setSessionRole).not.toHaveBeenCalled();
+    });
+
     it('rechaza una sesión vacía', async () => {
       const { service } = buildHarness();
 
