@@ -1,0 +1,17 @@
+# Docker compose para levantar base de datos para probar las notificaciones push de la app
+
+services:
+  postgres:
+    container_name: dt4fm-pg
+    image: postgres:17.4-alpine
+    environment:
+      POSTGRES_USER: dt4fm
+      POSTGRES_PASSWORD: dt4fm
+      POSTGRES_DB: dt4fm
+    ports:
+      - "5555:5432"
+    volumes:
+      - dt4fm-pgdata:/var/lib/postgresql/data
+
+volumes:
+  dt4fm-pgdata:

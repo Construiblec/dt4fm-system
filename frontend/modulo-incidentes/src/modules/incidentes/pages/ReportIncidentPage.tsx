@@ -29,6 +29,7 @@ import {
 } from "@/shared/auth/session";
 import { ArrowLeft } from "lucide-react";
 import { PRIORITY_IDS, PRIORITY_LABELS } from "@/shared/constants/priority";
+import { rememberReturnTo } from "@/shared/auth/returnTo";
 
 /**
  * Etiquetas en masculino, igual que el resto de la app y que lo que devuelve
@@ -158,6 +159,7 @@ export const ReportIncidentPage = () => {
           const status = error.response?.status;
 
           if (status === 401) {
+            rememberReturnTo();
             navigate("/login");
             return;
           }
@@ -211,6 +213,7 @@ export const ReportIncidentPage = () => {
         }
 
         if (axios.isAxiosError(error) && error.response?.status === 401) {
+          rememberReturnTo();
           navigate("/login");
           return;
         }
@@ -468,6 +471,7 @@ export const ReportIncidentPage = () => {
       console.log("incidente enviado");
     } catch (error) {
       if (axios.isAxiosError(error) && error.response?.status === 401) {
+        rememberReturnTo();
         navigate("/login");
         return;
       }

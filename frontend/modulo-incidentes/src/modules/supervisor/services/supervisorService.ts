@@ -10,6 +10,7 @@ import type {
   ReviewTaskPayload,
   ReviewTaskResponse,
 } from "@/modules/supervisor/types/SupervisorTask";
+import { redirectToLogin } from "@/shared/auth/returnTo";
 
 const supervisorApi = axios.create({
   baseURL: env.VITE_API_URL.replace(/\/api\/?$/, ""),
@@ -24,7 +25,7 @@ function getAuthHeaders() {
 
 function handleUnauthorized(error: unknown): never {
   if (axios.isAxiosError(error) && error.response?.status === 401) {
-    window.location.assign("/login");
+    redirectToLogin();
   }
   throw error;
 }

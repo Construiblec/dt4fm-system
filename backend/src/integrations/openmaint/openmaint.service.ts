@@ -9,6 +9,7 @@ import {
   CM_OUTCOME_POSITIVE,
 } from '../../modules/maintenance-supervision/constants/corrective-maint.constants';
 import { OpenmaintClient } from './openmaint.client';
+import type { OpenmaintSession } from './openmaint.auth.service';
 
 type EmployeeCard = {
   _id: number;
@@ -23,6 +24,13 @@ type EmployeeCard = {
 type EmployeeCardsResponse = {
   data?: EmployeeCard[];
 };
+
+/**
+ * Identidad y rol del llamante. La forma la define `OpenmaintAuthService`, que
+ * es quien habla con `/sessions`; se reexporta para no obligar a los
+ * consumidores a saber de qué archivo sale.
+ */
+export type { OpenmaintSession };
 
 type TenantCard = {
   _id: number;
@@ -315,6 +323,24 @@ export class OpenmaintService {
       body,
       sessionId,
     );
+  }
+
+  /**
+   * Sesión del llamante. Se usa para verificar identidad y rol contra
+   * openMAINT en vez de creerle al header `x-role`, que sale de localStorage.
+   *
+   * `/sessions/current` la resuelve desde la propia cabecera de autorización:
+   * a diferencia de `/users/{id}` no exige privilegios de administrador, y ata
+   * el rol a la sesión, así que nadie puede suscribirse en nombre de otro.
+   *
+   * No captura errores a propósito: quien llama decide qué hacer con ellos.
+   */
+  async getSession(sessionId: string): Promise<OpenmaintSession | null> {
+    const response = (await this.client.get('/sessions/current', sessionId)) as {
+      data?: OpenmaintSession;
+    };
+
+    return response?.data ?? null;
   }
 
   async resolveEmployeeId(

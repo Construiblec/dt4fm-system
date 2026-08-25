@@ -1,6 +1,7 @@
 import { getRoleView, getSelectableRoles } from "@/shared/constants/rolePalette";
 import { useCleaningTaskExecutionStore } from "@/store/cleaningTaskExecutionStore";
 import { getSession, useSessionStore } from "@/store/sessionStore";
+import { forgetReturnTo } from "@/shared/auth/returnTo";
 
 /**
  * openMAINT devuelve en `role` el **Code** del rol, no su Description. Ojo con
@@ -107,5 +108,6 @@ const SESSION_KEYS = [
 export const clearSession = () => {
   SESSION_KEYS.forEach((key) => localStorage.removeItem(key));
   useSessionStore.getState().clear();
+  forgetReturnTo();
   useCleaningTaskExecutionStore.getState().clearActiveTask();
 };

@@ -1,6 +1,6 @@
 import { AppLayout } from "@/app/layout/AppLayout";
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { AppHeader } from "@/shared/components/AppHeader";
 import { isSupplier } from "@/shared/auth/session";
 import { FloatingReportButton } from "@/modules/incidentes/components/FloatingReportButton";
@@ -48,9 +48,15 @@ export const DashboardPage = () => {
   );
 
   // ── Tab activo ──────────────────────────────────────────────────────────────
-  const [activeTab, setActiveTab] = useState<Tab>("maintenance");
-  const [maintenanceKind, setMaintenanceKind] =
-    useState<MaintenanceKind>("corrective");
+  // Los sub-tabs viven en memoria, así que el deep link de una notificación los
+  // preselecciona por query param: /dashboard?tab=cleaning&kind=preventive
+  const [searchParams] = useSearchParams();
+  const [activeTab, setActiveTab] = useState<Tab>(() =>
+    searchParams.get("tab") === "cleaning" ? "cleaning" : "maintenance",
+  );
+  const [maintenanceKind, setMaintenanceKind] = useState<MaintenanceKind>(() =>
+    searchParams.get("kind") === "preventive" ? "preventive" : "corrective",
+  );
 
   // ── Estado: incidentes de mantenimiento correctivo ─────────────────────────
   const [incidents, setIncidents] = useState<Incident[]>([]);

@@ -5,6 +5,7 @@ import { AppLayout } from "@/app/layout/AppLayout";
 import { useLogout } from "@/modules/auth/hooks/useLogout";
 import { useRoleSwitch } from "@/modules/auth/hooks/useRoleSwitch";
 import { getHomeRoute, hasActiveSession } from "@/shared/auth/session";
+import { consumeReturnTo } from "@/shared/auth/returnTo";
 import { getRoleLabel, getSelectableRoles } from "@/shared/constants/rolePalette";
 import { formatEmployeeName } from "@/shared/utils/nameUtils";
 import { useSessionStore } from "@/store/sessionStore";
@@ -58,15 +59,19 @@ export const RoleSelectPage = () => {
       return;
     }
 
+    // Destino pendiente tras un 401: el login lo dejó sin consumir para que se
+    // restaure una vez elegido el rol, que es lo que decide los permisos.
+    const pending = consumeReturnTo(session.username);
+
     // El login ya emitió la sesión en el grupo por defecto: si el elegido es
     // ese, no hay nada que pedirle a openMAINT. Si es otro, hay que cambiarlo
     // de verdad allí, porque los permisos van atados al grupo de la sesión.
     if (active.code === session.role) {
-      navigate(active.homeRoute, { replace: true });
+      navigate(pending ?? active.homeRoute, { replace: true });
       return;
     }
 
-    await changeRole(active.code);
+    await changeRole(active.code, pending);
   };
 
   return (

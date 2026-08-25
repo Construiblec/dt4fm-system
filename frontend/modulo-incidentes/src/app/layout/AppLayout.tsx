@@ -2,8 +2,10 @@ import type { ReactNode } from "react";
 import { useLocation } from "react-router-dom";
 import { BottomNav } from "@/shared/components/BottomNav";
 import { GlobalTaskIndicator } from "@/shared/components/GlobalTaskIndicator";
+import { EnableNotificationsBanner } from "@/shared/components/EnableNotificationsBanner";
 import { InstallAppBanner } from "@/shared/components/InstallAppBanner";
 import { useInstallPrompt } from "@/shared/hooks/useInstallPrompt";
+import { useNotificationPrompt } from "@/shared/hooks/useNotificationPrompt";
 import {
   canExecuteTasks,
   getCurrentRole,
@@ -92,9 +94,20 @@ export const AppLayout = ({ children, className = "bg-white" }: AppLayoutProps) 
   const showInstall =
     mode !== "hidden" && !isInstallBlockedRoute(location.pathname);
 
+  // Instalar va primero: en iOS el push no llega hasta que la app está en la
+  // pantalla de inicio, así que pedir el permiso antes no serviría de nada. Un
+  // error de activación sí se muestra siempre: es una avería que hay que ver.
+  const notifications = useNotificationPrompt();
+  const showNotifications =
+    notifications.mode !== "hidden" &&
+    (notifications.mode === "error" || !showInstall) &&
+    !isInstallBlockedRoute(location.pathname);
+
   // Cada barra fija mide 56px (pt-14) y se apilan.
-  const bars = (showIndicator ? 1 : 0) + (showInstall ? 1 : 0);
-  const topPadding = bars === 2 ? "pt-28" : bars === 1 ? "pt-14" : undefined;
+  const barsAbove = (showIndicator ? 1 : 0) + (showInstall ? 1 : 0);
+  const bars = barsAbove + (showNotifications ? 1 : 0);
+  const topPadding =
+    bars >= 3 ? "pt-[10.5rem]" : bars === 2 ? "pt-28" : bars === 1 ? "pt-14" : undefined;
 
   const showBottomNav =
     hasActiveSession() &&
@@ -110,6 +123,15 @@ export const AppLayout = ({ children, className = "bg-white" }: AppLayoutProps) 
             offsetTop={showIndicator}
             onInstall={() => void install()}
             onDismiss={dismiss}
+          />
+        ) : null}
+        {showNotifications ? (
+          <EnableNotificationsBanner
+            mode={notifications.mode}
+            error={notifications.error}
+            stackIndex={barsAbove}
+            onEnable={() => void notifications.enable()}
+            onDismiss={notifications.dismiss}
           />
         ) : null}
         {/* Igual que el padding superior por barras apiladas, pero abajo: sin

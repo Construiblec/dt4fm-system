@@ -9,6 +9,7 @@ import {
 } from '@nestjs/common';
 import type { Response } from 'express';
 import { extractRegisterNotes } from '../../common/utils/openmaint-register.util';
+import { PushDispatchService } from '../push-notifications/push-dispatch.service';
 import {
   PM_ACTIONS,
   PM_ACTIVE_STATUS_IDS,
@@ -112,6 +113,7 @@ export class PreventiveMaintenanceService {
   constructor(
     private readonly openmaint: PreventiveMaintenanceOpenmaintService,
     private readonly checklist: PreventiveChecklistService,
+    private readonly pushDispatch: PushDispatchService,
   ) {}
 
   async getMyPreventiveMaintenances(
@@ -347,6 +349,14 @@ export class PreventiveMaintenanceService {
     this.logger.log(
       `Mantenimiento ${card.Number ?? id} suspendido con ${notDone} actividades marcadas como N.D.`,
     );
+
+    // Push a los supervisores de mantenimiento.
+    void this.pushDispatch.notifyPreventiveSuspended({
+      id,
+      assigneeName: card._Assignee_description,
+      assetName: card._CISubset_description ?? card._CI_description,
+      buildingName: card._Site_description,
+    });
 
     return {
       success: true,

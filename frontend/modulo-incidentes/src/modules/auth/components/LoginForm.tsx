@@ -5,6 +5,7 @@ import { Eye, EyeOff, Home, Lock, User, UserRound } from "lucide-react";
 import { VisitorInfoModal } from "@/modules/auth/components/VisitorInfoModal";
 import { toSession } from "@/modules/auth/hooks/useRoleSwitch";
 import { getHomeRoute } from "@/shared/auth/session";
+import { consumeReturnTo } from "@/shared/auth/returnTo";
 import { getSelectableRoles } from "@/shared/constants/rolePalette";
 import { login } from "@/services/api";
 import { useSessionStore } from "@/store/sessionStore";
@@ -47,12 +48,20 @@ export const LoginForm = () => {
 
       // Con varias vistas disponibles se pregunta con cuál entrar; con una sola
       // el selector sobra y se va directo al dashboard que le toca.
+      //
+      // Aquí NO se consume el destino pendiente: el rol decide qué permisos
+      // tiene la sesión, así que primero se elige y es el selector el que
+      // restaura el destino. Consumirlo ahora lo perdería.
       if (getSelectableRoles(response.availableRoles ?? []).length > 1) {
         navigate("/seleccionar-rol");
         return;
       }
 
-      navigate(getHomeRoute(response.role));
+      // Tras un 401 vuelve a donde iba; si no, al dashboard de su rol. Los
+      // roles no contemplados caen en el de operario, como antes.
+      navigate(
+        consumeReturnTo(response.username) ?? getHomeRoute(response.role),
+      );
     } catch {
       // El backend ya distingue credenciales de caída del servicio, pero al
       // usuario no le sirve de nada esa diferencia en esta pantalla.

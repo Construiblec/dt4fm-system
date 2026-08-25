@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { OpenmaintModule } from '../../integrations/openmaint/openmaint.module';
 import { PreventiveMaintenanceOpenmaintService } from '../preventive-maintenance/preventive-maintenance.openmaint.service';
+import { PushNotificationsModule } from '../push-notifications/push-notifications.module';
 import { CorrectiveMaintOpenmaintService } from './corrective-maint.openmaint.service';
 import { MaintenanceSupervisionController } from './maintenance-supervision.controller';
 import { MaintenanceSupervisionService } from './maintenance-supervision.service';
@@ -13,7 +14,7 @@ import { MaintenanceSupervisionService } from './maintenance-supervision.service
  * cerrar desde el módulo de incidentes.
  */
 @Module({
-  imports: [OpenmaintModule],
+  imports: [OpenmaintModule, PushNotificationsModule],
   controllers: [MaintenanceSupervisionController],
   providers: [
     MaintenanceSupervisionService,

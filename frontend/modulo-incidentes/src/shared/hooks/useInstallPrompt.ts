@@ -5,28 +5,10 @@ import {
   getPromptSnapshot,
   subscribeInstallPrompt,
 } from "@/shared/pwa/installPromptStore";
+import { isIosSafari, isRunningStandalone } from "@/shared/pwa/platform";
 
 const DISMISSED_KEY = "pwa-install-dismissed-at";
 const DISMISS_WINDOW_MS = 14 * 24 * 60 * 60 * 1000;
-
-/** Ya instalada: iOS lo expone en navigator.standalone; el resto, display-mode. */
-const isRunningStandalone = () =>
-  window.matchMedia("(display-mode: standalone)").matches ||
-  window.matchMedia("(display-mode: window-controls-overlay)").matches ||
-  (window.navigator as Navigator & { standalone?: boolean }).standalone === true;
-
-/** iPadOS 13+ se anuncia como Macintosh; se distingue por los puntos tactiles. */
-const isIos = () => {
-  const ua = window.navigator.userAgent;
-  return (
-    /iphone|ipad|ipod/i.test(ua) ||
-    (/Macintosh/.test(ua) && window.navigator.maxTouchPoints > 1)
-  );
-};
-
-/** Solo Safari en iOS ofrece "Añadir a pantalla de inicio". */
-const isIosSafari = () =>
-  isIos() && !/CriOS|FxiOS|EdgiOS|OPiOS/.test(window.navigator.userAgent);
 
 const readDismissed = () => {
   const raw = localStorage.getItem(DISMISSED_KEY);

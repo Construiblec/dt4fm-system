@@ -39,14 +39,19 @@ export const useRoleSwitch = () => {
   const [pendingRole, setPendingRole] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const changeRole = async (role: string) => {
+  /**
+   * `redirectTo` sirve para el destino pendiente tras un 401: si el usuario
+   * venía de una notificación y por el camino tuvo que elegir rol, se le lleva
+   * a lo que iba a hacer, no al dashboard.
+   */
+  const changeRole = async (role: string, redirectTo?: string | null) => {
     setError(null);
     setPendingRole(role);
 
     try {
       const response = await requestRoleSwitch(sessionId, role);
       setSession(toSession(response));
-      navigate(getHomeRoute(response.role));
+      navigate(redirectTo ?? getHomeRoute(response.role));
       return true;
     } catch {
       setError("No se pudo cambiar de rol. Inténtalo de nuevo.");

@@ -7,6 +7,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { HostawayService } from '../../integrations/hostaway/hostaway.service';
+import { PushDispatchService } from '../push-notifications/push-dispatch.service';
 import { CleaningTasksOpenmaintService } from './cleaning-tasks.openmaint.service';
 import {
   PHASE_DESC_TO_ID,
@@ -15,6 +16,7 @@ import {
   PHASE_TRANSITIONS,
   PhaseId,
 } from './constants/phase.constants';
+import { SUPERVISOR_ROLES } from './constants/roles.constants';
 import { CancelTaskDto } from './dto/cancel-task.dto';
 import { CompleteTaskDto } from './dto/complete-task.dto';
 import { CreateCleaningTaskDto } from './dto/create-cleaning-task.dto';
@@ -35,14 +37,10 @@ type UploadedFile = {
 
 const PHASE_LOOKUP = { Assigned: 'Assigned' };
 const SOURCE_LOOKUP = { Hostaway: 'Hostaway', Manual: 'Manual' };
-/**
- * Códigos de rol de openMAINT (el login devuelve el Code, no la Description).
- * `SuperUser` es el administrador; no existe un rol con Code `Admin`.
- */
-export const SUPERVISOR_ROLES = ['SuperUser', 'SupervisorLimpieza'];
-
-export const isSupervisorRole = (role?: string) =>
-  Boolean(role && SUPERVISOR_ROLES.includes(role));
+export {
+  SUPERVISOR_ROLES,
+  isSupervisorRole,
+} from './constants/roles.constants';
 
 /**
  * Prefijos de las marcas que se escriben en TeamObservations. La marca completa
@@ -265,6 +263,7 @@ export class CleaningTasksService {
   constructor(
     private readonly hostawayService: HostawayService,
     private readonly openmaintService: CleaningTasksOpenmaintService,
+    private readonly pushDispatch: PushDispatchService,
   ) {}
 
   /**
@@ -671,6 +670,7 @@ export class CleaningTasksService {
         code: unit.Code ?? null,
         description: unit.Description ?? null,
         name: unit.Name ?? null,
+        building: unit._Building_description ?? null,
       };
     } catch {
       return null;
@@ -911,6 +911,10 @@ export class CleaningTasksService {
       : (log ?? '');
 
     const response = await this.openmaintService.updateTaskWithSession(taskId, body, sessionToken);
+
+    // Push a los supervisores de limpieza.
+    void this.notifyCleaningCompleted(task, taskId, sessionToken);
+
     return {
       success: true,
       data: {
@@ -1449,6 +1453,59 @@ export class CleaningTasksService {
       taskId,
       body,
     );
+
+    if (dto.employeeId) {
+      void this.notifyCleaningAssigned(taskId, Number(dto.employeeId));
+    }
+
     return { updated: true, taskId: response.data?._id ?? taskId };
+  }
+
+  /** Best-effort: nunca propaga. */
+  private async notifyCleaningCompleted(
+    task: { Unit?: number | null; _Unit_description?: string | null; _Employee_description?: string | null },
+    taskId: number,
+    sessionToken: string,
+  ) {
+    try {
+      const unit = task.Unit
+        ? await this.fetchUnitInfo(task.Unit, sessionToken)
+        : null;
+
+      await this.pushDispatch.notifyCleaningCompleted({
+        id: taskId,
+        employeeName: task._Employee_description,
+        unitName: task._Unit_description ?? unit?.description,
+        buildingName: unit?.building,
+      });
+    } catch (error) {
+      this.logger.warn(
+        `No se pudo notificar el fin de la limpieza ${taskId}: ` +
+          `${(error as Error)?.message}`,
+      );
+    }
+  }
+
+  /** Relee la tarea para armar la ubicación. Best-effort: nunca propaga. */
+  private async notifyCleaningAssigned(taskId: number, employeeId: number) {
+    try {
+      const task = (await this.openmaintService.getTaskByIdWithSession(taskId))
+        ?.data;
+      const unit = task?.Unit
+        ? await this.fetchUnitInfo(task.Unit, '')
+        : null;
+
+      await this.pushDispatch.notifyCleaningAssigned({
+        id: taskId,
+        cleaningEmployeeId: employeeId,
+        unitName: task?._Unit_description ?? unit?.description,
+        buildingName: unit?.building,
+      });
+    } catch (error) {
+      this.logger.warn(
+        `No se pudo notificar la asignación de la limpieza ${taskId}: ` +
+          `${(error as Error)?.message}`,
+      );
+    }
   }
 }

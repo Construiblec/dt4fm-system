@@ -10,9 +10,11 @@ export type OpenmaintSession = {
   _id: string;
   username: string;
   userId: number;
+  /** Nombre legible del usuario; `username` es el de acceso. */
   userDescription?: string | null;
   role?: string | null;
   availableRoles?: string[] | null;
+  multigroup?: boolean;
 };
 
 export type OpenmaintSessionResponse = { data?: OpenmaintSession };
