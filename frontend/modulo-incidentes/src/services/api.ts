@@ -9,10 +9,24 @@ export type LoginResponse = {
    */
   employeeId: string | number | null;
   username: string;
+  userId: number | null;
+  /** Grupo activo. Es el Code de openMAINT, no la Description. */
   role: string;
-  cleaningEmployeeId?: string | number;
-  /** Id del usuario en openMAINT; el alta de push lo necesita. */
-  userId?: string | number;
+  /**
+   * Todos los grupos de la cuenta. openMAINT los devuelve en el propio login,
+   * así que saber si alguien es multi-rol no cuesta ninguna llamada extra.
+   */
+  availableRoles: string[];
+  /**
+   * Code → Description de cada grupo en openMAINT (`MaintOffice` →
+   * "TPM Equipment"). Es lo que se enseña en pantalla: el Code es interno.
+   */
+  roleLabels: Record<string, string>;
+  /** Nombre legible del usuario, para el saludo de la cabecera. */
+  name: string | null;
+  /** Solo lo tienen los residentes. */
+  tenantId: number | null;
+  cleaningEmployeeId?: string | number | null;
 };
 
 export type Building = {
@@ -137,8 +151,51 @@ const authApi = axios.create({
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 
-export const login = async (username: string, password: string): Promise<LoginResponse> => {
-  const { data } = await authApi.post<LoginResponse>("/auth/login", { username, password });
+/**
+ * Login único para equipo y residentes. `role` es opcional: sirve para entrar
+ * directamente con un grupo concreto cuando ya se eligió en el selector.
+ */
+export const login = async (
+  username: string,
+  password: string,
+  role?: string,
+): Promise<LoginResponse> => {
+  const { data } = await authApi.post<LoginResponse>("/auth/login", {
+    username,
+    password,
+    ...(role ? { role } : {}),
+  });
+  return data;
+};
+
+/**
+ * Cambia el rol de la sesión viva. openMAINT recalcula los privilegios sobre el
+ * mismo `sessionId`, así que el cambio es real y no solo de etiqueta: por eso
+ * hay que reemplazar la sesión entera con lo que devuelve.
+ */
+export const switchRole = async (
+  sessionId: string,
+  role: string,
+): Promise<LoginResponse> => {
+  const { data } = await authApi.post<LoginResponse>(
+    "/auth/role",
+    { role },
+    { headers: { Authorization: sessionId } },
+  );
+  return data;
+};
+
+/** Cambio de contraseña con sesión iniciada, para cualquier rol. */
+export const changePassword = async (
+  sessionId: string,
+  currentPassword: string,
+  newPassword: string,
+): Promise<{ success: boolean; message: string }> => {
+  const { data } = await authApi.put<{ success: boolean; message: string }>(
+    "/auth/password",
+    { currentPassword, newPassword },
+    { headers: { Authorization: sessionId } },
+  );
   return data;
 };
 

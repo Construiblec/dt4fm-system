@@ -109,8 +109,12 @@ export class PushSubscriptionService {
   }
 
   private resolveRoles(session: OpenmaintSession): string[] {
+    // `filter(Boolean)` no estrecha el tipo, y `role` puede venir vacío en una
+    // sesión multigrupo todavía sin grupo activo.
     const roles = new Set(
-      [...(session.availableRoles ?? []), session.role].filter(Boolean),
+      [...(session.availableRoles ?? []), session.role].filter(
+        (role): role is string => Boolean(role),
+      ),
     );
 
     return [...roles];

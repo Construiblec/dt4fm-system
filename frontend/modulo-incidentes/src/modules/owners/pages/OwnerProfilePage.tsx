@@ -1,6 +1,5 @@
 import axios from "axios";
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import {
   ChevronLeft,
@@ -12,8 +11,10 @@ import {
   CheckCircle2,
   Eye,
   EyeOff,
+  LogOut,
 } from "lucide-react";
 import { AppLayout } from "@/app/layout/AppLayout";
+import { useLogout } from "@/modules/auth/hooks/useLogout";
 import {
   getOwnerProfile,
   changeOwnerPassword,
@@ -58,7 +59,7 @@ Para consultas, reclamos o solicitudes, puede contactar a la administración a t
 CONSTRUIBLEC se reserva el derecho de modificar estas políticas con previo aviso a los propietarios registrados.`;
 
 export const OwnerProfilePage = () => {
-  const navigate = useNavigate();
+  const logout = useLogout();
   const userId = Number(localStorage.getItem("userId"));
   const tenantId = Number(localStorage.getItem("tenantId"));
 
@@ -157,21 +158,21 @@ export const OwnerProfilePage = () => {
   return (
     <AppLayout>
       <main className="min-h-screen bg-slate-50 px-4 py-6">
-        {/* Header */}
-        <div className="mb-6 flex items-center gap-3">
-          <button
-            type="button"
-            onClick={() =>
-              section === "menu"
-                ? navigate("/owner/dashboard")
-                : setSection("menu")
-            }
-            className="flex items-center gap-1 text-sm font-medium text-slate-500 transition hover:text-slate-800"
-          >
-            <ChevronLeft className="h-4 w-4" />
-            {section === "menu" ? "Volver al inicio" : "Mi perfil"}
-          </button>
-        </div>
+        {/* Volver al inicio vive ahora en la barra inferior. Dentro de una
+            sección sí hace falta: la barra lleva al perfil, pero no de vuelta
+            a su menú. */}
+        {section !== "menu" ? (
+          <div className="mb-6 flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setSection("menu")}
+              className="flex items-center gap-1 text-sm font-medium text-slate-500 transition hover:text-slate-800"
+            >
+              <ChevronLeft className="h-4 w-4" />
+              Mi perfil
+            </button>
+          </div>
+        ) : null}
 
         {/* ── Menú principal del perfil ── */}
         {section === "menu" ? (
@@ -231,6 +232,24 @@ export const OwnerProfilePage = () => {
                   </button>
                 );
               })}
+
+              <button
+                type="button"
+                onClick={logout}
+                className="flex w-full items-center gap-4 rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm transition hover:shadow-md active:scale-[0.99]"
+              >
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-red-50">
+                  <LogOut className="h-5 w-5 text-red-600" />
+                </div>
+                <div className="flex-1 text-left">
+                  <p className="text-sm font-semibold text-red-600">
+                    Cerrar sesión
+                  </p>
+                  <p className="text-xs text-slate-400">
+                    Saldrás de tu cuenta en este dispositivo
+                  </p>
+                </div>
+              </button>
             </div>
           </>
         ) : null}

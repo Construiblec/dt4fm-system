@@ -99,40 +99,117 @@ Body enviado a OpenMAINT:
 
 OpenMAINT devuelve un objeto con información de sesión.
 
-Ejemplo:
+Ejemplo real (cuenta multigrupo, recortando `rolePrivileges`):
 
 ```json
 {
   "success": true,
   "data": {
     "_id": "iy7ho3q4p3ccwy9wu2fuo97q",
-    "username": "raul.ontaneda",
-    "role": "MaintOffice"
+    "username": "pamela.calo",
+    "userId": 453364,
+    "userDescription": "Asistente BIM-FM",
+    "role": "SuperUser",
+    "availableRoles": [
+      "AdminOffice", "Guest", "MaintOffice", "Propietarios", "Requester",
+      "SuperUser", "SupervisorLimpieza", "Supplier", "TPM", "Team"
+    ],
+    "rolePrivileges": { "admin_all": true, "...": "..." },
+    "sessionType": "batch"
   }
 }
 ```
 
-El campo más importante es:
+Campos clave:
 
-```text
-data._id
-```
-
-Este valor corresponde al **sessionId de OpenMAINT**.
+| Campo | Para qué sirve |
+| --- | --- |
+| `data._id` | El **sessionId de OpenMAINT** |
+| `data.role` | Grupo **activo**. Es el Code, no la Description |
+| `data.availableRoles` | **Todos** los grupos del usuario. Es lo que permite el selector de rol sin ninguna llamada extra |
+| `data.userDescription` | Nombre legible, para el saludo y para localizar la ficha `Tenant` |
+| `data.rolePrivileges` | Permisos efectivos del grupo activo; sirve para comprobar que un cambio de rol surtió efecto |
 
 ---
 
 # Respuesta del Backend
 
-El backend transforma la respuesta y devuelve únicamente la información necesaria al frontend.
+El backend transforma la respuesta y añade los identificadores que la app
+necesita. Los tres se resuelven de forma tolerante: si falta la ficha, vienen
+`null` y el login no se cae.
 
 ```json
 {
   "sessionId": "iy7ho3q4p3ccwy9wu2fuo97q",
-  "username": "raul.ontaneda",
-  "role": "MaintOffice"
+  "username": "pamela.calo",
+  "userId": 453364,
+  "role": "SuperUser",
+  "availableRoles": ["MaintOffice", "SupervisorLimpieza", "Propietarios"],
+  "name": "Asistente BIM-FM",
+  "employeeId": 1234,
+  "cleaningEmployeeId": null,
+  "tenantId": null
 }
 ```
+
+`tenantId` solo se busca cuando el usuario pertenece al grupo `Propietarios`,
+porque localizarlo cuesta una sesión de servicio adicional.
+
+---
+
+# Login unificado
+
+`POST /auth/login` sirve **igual a equipo y a residentes**: openMAINT autentica a
+ambos contra el mismo `POST /sessions`. `POST /owners/login` sigue existiendo
+como alias delegado para clientes antiguos, pero no debe usarse en código nuevo.
+
+El body acepta un `role` opcional para emitir la sesión directamente en un grupo
+concreto, en vez del grupo por defecto del usuario.
+
+---
+
+# Multi-rol: cambiar de grupo sin volver a entrar
+
+Un usuario puede pertenecer a varios grupos, y cada uno abre una vista distinta
+en la app. Para que el cambio de rol **no sea cosmético** hay que cambiarlo en
+openMAINT: los permisos van atados al grupo de la sesión, así que cambiar solo la
+etiqueta en el cliente dejaría al usuario viendo una pantalla cuyos datos
+openMAINT le sigue negando.
+
+Verificado contra la instancia — las dos vías funcionan:
+
+```http
+PUT /sessions/{sessionId}
+Cmdbuild-authorization: {sessionId}
+
+{ "role": "SupervisorLimpieza" }
+```
+
+Cambia el grupo activo **de la sesión viva**: conserva el `sessionId` y
+openMAINT le recalcula los privilegios (`rolePrivileges` pasa de 104 entradas
+como `SuperUser` a 33 como `SupervisorLimpieza`). Es la que usa
+`POST /auth/role`, porque no obliga a volver a pedir la contraseña.
+
+La alternativa es mandar `role` en el `POST /sessions` del login, que emite una
+sesión nueva ya atada a ese grupo.
+
+`GET /sessions/{sessionId}` devuelve `username`, `userId`, `userDescription`,
+`role` y `availableRoles`, y por eso el backend puede validar que el grupo
+pedido es realmente del usuario sin necesitar sesión de servicio.
+
+---
+
+# Endpoints del módulo
+
+| Endpoint | Para qué |
+| --- | --- |
+| `POST /auth/login` | Acceso único (equipo y residentes) |
+| `POST /auth/role` | Cambiar el grupo activo de la sesión |
+| `PUT /auth/password` | Cambiar contraseña con sesión iniciada, cualquier rol |
+
+`PUT /auth/password` reenvía los `userGroups` leídos de la cuenta: `PUT /users/{id}`
+reemplaza el recurso completo, así que fijar la lista de grupos a mano le
+borraría al usuario el resto de sus accesos.
 
 ---
 
@@ -300,9 +377,36 @@ sessionType: batch
 
 Este tipo de sesión es adecuado para integraciones backend.
 
+## Códigos de rol de la instancia
+
+`role` y `availableRoles` traen el **Code** del grupo, no su Description. Es la
+confusión más habitual: el Code de "TPM Equipment" es `MaintOffice`, y el de
+"Supervisor Mantenimientos" es `SupervisorMantenimiento`.
+
+| Code | Description |
+| --- | --- |
+| `Requester` | Requester |
+| `SuperUser` | Super user |
+| `Guest` | External portal |
+| `Supplier` | Supplier |
+| `SupervisorLimpieza` | Supervisor Limpieza |
+| `SupervisorMantenimiento` | Supervisor Mantenimientos |
+| `Propietarios` | Propietarios |
+| `Team` | Team |
+| `MaintOffice` | TPM Equipment |
+| `AdminOffice` | Administrative office |
+| `TPM` | TPM |
+
+Se obtienen con `GET /roles` (o `GET /classes/Role/cards`).
+
+## Sesión de servicio
+
+Algunas lecturas no son posibles con la sesión del propio usuario: `/users/{id}`
+(que es lo único que expone los grupos con sus ids) y la búsqueda de fichas
+`Tenant`. Para eso está `OpenmaintServiceSession`, que centraliza el login con la
+cuenta del `.env`. **No cachea**: cada llamada abre una sesión nueva.
+
 En futuras versiones del backend se implementará:
 
-* gestión de sesión automática
-* cacheo del sessionId
+* cacheo de la sesión de servicio
 * renovación automática de sesión
-* soporte para múltiples usuarios concurrentes

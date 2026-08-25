@@ -114,7 +114,7 @@ export const OwnerRegisterFlow = ({ onBack }: Props) => {
             <span className="font-semibold text-slate-700">
               {registeredUsername}
             </span>{" "}
-            fue creada exitosamente. Ya puedes iniciar sesi\u00f3n.
+            fue creada exitosamente. Ya puedes iniciar sesión.
           </p>
         </div>
 
@@ -123,7 +123,7 @@ export const OwnerRegisterFlow = ({ onBack }: Props) => {
           onClick={() => onBack()}
           className="w-full rounded-xl bg-brand py-4 text-center text-base font-semibold text-white shadow-md transition hover:bg-brand-hover focus:outline-none focus:ring-4 focus:ring-brand/20"
         >
-          Iniciar sesi\u00f3n
+          Iniciar sesión
         </button>
       </div>
     );

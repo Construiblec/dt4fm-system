@@ -1,8 +1,11 @@
-import { createBrowserRouter } from "react-router-dom";
+import { Navigate, createBrowserRouter } from "react-router-dom";
+import { AccountPage } from "@/modules/auth/pages/AccountPage";
 import { LoginPage } from "@/modules/auth/pages/LoginPage";
+import { RoleSelectPage } from "@/modules/auth/pages/RoleSelectPage";
 import { ForgotPasswordPage } from "@/modules/auth/pages/ForgotPasswordPage";
 import { ResetPasswordPage } from "@/modules/auth/pages/ResetPasswordPage";
 import { VisitorFormPage } from "@/modules/auth/pages/VisitorFormPage";
+import { NotificationsPage } from "@/modules/notificaciones/pages/NotificationsPage";
 import { CleaningTaskExecutionPage } from "@/modules/incidentes/pages/CleaningTaskExecutionPage";
 import { DashboardPage } from "@/modules/incidentes/pages/DashboardPage";
 import { IncidentDetailPage } from "@/modules/incidentes/pages/IncidentDetailPage";
@@ -13,7 +16,7 @@ import { SupervisorDashboardPage } from "@/modules/supervisor/pages/SupervisorDa
 import { SupervisorTaskDetailPage } from "@/modules/supervisor/pages/SupervisorTaskDetailPage";
 import { MaintenanceSupervisorDashboardPage } from "@/modules/supervisor-mantenimiento/pages/MaintenanceSupervisorDashboardPage";
 import { MaintenanceSupervisorDetailPage } from "@/modules/supervisor-mantenimiento/pages/MaintenanceSupervisorDetailPage";
-import { OwnerAuthPage } from "@/modules/owners/pages/OwnerAuthPage";
+import { OwnerRegisterPage } from "@/modules/owners/pages/OwnerRegisterPage";
 import { OwnerDashboardPage } from "@/modules/owners/pages/OwnerDashboardPage";
 import { OwnerPaymentsPage } from "@/modules/owners/pages/OwnerPaymentsPage";
 import { OwnerReservationsPage } from "@/modules/owners/pages/OwnerReservationsPage";
@@ -23,9 +26,13 @@ import { OwnerReservationDetailPage } from "@/modules/owners/pages/reservation/O
 export const router = createBrowserRouter([
   { path: "/", element: <LoginPage /> },
   { path: "/login", element: <LoginPage /> },
+  // Solo aparece si la cuenta tiene más de una vista disponible.
+  { path: "/seleccionar-rol", element: <RoleSelectPage /> },
   { path: "/forgot-password", element: <ForgotPasswordPage /> },
   { path: "/reset-password", element: <ResetPasswordPage /> },
   { path: "/dashboard", element: <DashboardPage /> },
+  { path: "/cuenta", element: <AccountPage /> },
+  { path: "/notificaciones", element: <NotificationsPage /> },
   { path: "/cleaning-tasks/:id/execute", element: <CleaningTaskExecutionPage /> },
   { path: "/visitor-form", element: <VisitorFormPage /> },
   { path: "/report-incident", element: <ReportIncidentPage /> },
@@ -51,7 +58,10 @@ export const router = createBrowserRouter([
     element: <MaintenanceSupervisorDetailPage />,
   },
   // ── Propietarios ──────────────────────────────────────────────────────────
-  { path: "/owner/auth", element: <OwnerAuthPage /> },
+  // El login de residentes se unificó en /login; queda la redirección para los
+  // enlaces antiguos y el acceso directo al alta.
+  { path: "/owner/auth", element: <Navigate to="/login" replace /> },
+  { path: "/owner/register", element: <OwnerRegisterPage /> },
   { path: "/owner/dashboard", element: <OwnerDashboardPage /> },
   { path: "/owner/payments", element: <OwnerPaymentsPage /> },
   { path: "/owner/reservations", element: <OwnerReservationsPage /> },

@@ -2,20 +2,17 @@ import { ClipboardList } from "lucide-react";
 import { useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { AppLayout } from "@/app/layout/AppLayout";
-import { useLogout } from "@/modules/auth/hooks/useLogout";
 import { FloatingReportButton } from "@/modules/incidentes/components/FloatingReportButton";
 import { ListStateMessage } from "@/modules/incidentes/components/ListStateMessage";
 import { SupervisionFilters } from "@/modules/supervisor-mantenimiento/components/SupervisionFilters";
 import { useSupervisedMaintenances } from "@/modules/supervisor-mantenimiento/hooks/useSupervisedMaintenances";
 import type { MaintenanceKind } from "@/modules/supervisor-mantenimiento/types/SupervisedMaintenance";
 import { toCardData } from "@/modules/supervisor-mantenimiento/utils/toMaintenanceCard";
-import logo from "@/shared/assets/images/construiblec-logo.png";
+import { AppHeader } from "@/shared/components/AppHeader";
 import { MaintenanceCard } from "@/shared/components/MaintenanceCard";
 import { Pagination } from "@/shared/components/Pagination";
-import { formatEmployeeName } from "@/shared/utils/nameUtils";
 
 export const MaintenanceSupervisorDashboardPage = () => {
-  const logout = useLogout();
   const navigate = useNavigate();
   // El deep link de una notificación preselecciona el tipo: ?kind=preventive
   const [searchParams] = useSearchParams();
@@ -51,34 +48,10 @@ export const MaintenanceSupervisorDashboardPage = () => {
   return (
     <AppLayout className="bg-gray-100">
       <main className="flex min-h-screen flex-col bg-gray-100">
-        <header className="flex items-center justify-between p-4">
-          <div className="flex items-center gap-3">
-            <img
-              src={logo}
-              alt="Construiblec"
-              className="h-12 w-12 rounded-xl bg-white p-1 shadow-sm"
-            />
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-500">
-                Construiblec
-              </p>
-              <p className="text-base font-medium text-slate-900">
-                Bienvenido,{" "}
-                {formatEmployeeName(localStorage.getItem("username"))}
-              </p>
-            </div>
-          </div>
+        <AppHeader />
 
-          <button
-            type="button"
-            onClick={logout}
-            className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white"
-          >
-            Salir
-          </button>
-        </header>
-
-        <section className="flex-1 px-4 pb-32">
+        {/* Deja pasar el botón flotante; la barra inferior la reserva AppLayout. */}
+        <section className="flex-1 px-4 pb-20">
           <div className="mx-auto w-full max-w-sm space-y-5">
             <h1 className="text-center text-2xl font-bold text-slate-900">
               Supervisor de Mantenimiento

@@ -9,6 +9,9 @@ import { ConfigService } from '@nestjs/config';
 import { OpenmaintAuthService } from '../../integrations/openmaint/openmaint.auth.service';
 import { OpenmaintService } from '../../integrations/openmaint/openmaint.service';
 import { OpenmaintClient } from '../../integrations/openmaint/openmaint.client';
+import { OpenmaintServiceSession } from '../../integrations/openmaint/openmaint.service-session';
+import { OpenmaintUsersService } from '../../integrations/openmaint/openmaint.users.service';
+import { AuthService } from '../auth/auth.service';
 import { VerifyOwnerDto } from './dto/verify-owner.dto';
 import { RegisterOwnerDto } from './dto/register-owner.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
@@ -107,6 +110,9 @@ export class OwnersService {
     private readonly openmaintAuthService: OpenmaintAuthService,
     private readonly openmaintService: OpenmaintService,
     private readonly openmaintClient: OpenmaintClient,
+    private readonly serviceSession: OpenmaintServiceSession,
+    private readonly openmaintUsers: OpenmaintUsersService,
+    private readonly authService: AuthService,
     private readonly paidNotifier: PaymentPaidNotifierService,
   ) {}
 
@@ -214,51 +220,28 @@ export class OwnersService {
     }
   }
 
+  /**
+   * @deprecated El acceso de residentes pasa por `POST /auth/login`, que es el
+   * mismo `POST /sessions` de openMAINT y además resuelve `tenantId`. Se
+   * mantiene como alias para no romper clientes antiguos mientras migran.
+   */
   async loginOwner(username: string, password: string) {
-    const loginResponse = await this.openmaintAuthService.login(
-      username,
-      password,
-    );
-    if (!loginResponse?.data?._id) {
-      throw new UnauthorizedException('Usuario o contraseña incorrectos');
-    }
-    const sessionId: string = loginResponse.data._id;
-    const role: string = loginResponse.data.role ?? '';
-    const userId: number = loginResponse.data.userId;
-    if (!role.toLowerCase().includes('propietario')) {
+    const session = await this.authService.login({ username, password });
+
+    if (!session.availableRoles.some((r) => r.toLowerCase().includes('propietario'))) {
       throw new UnauthorizedException(
         'El usuario no tiene permisos de propietario',
       );
     }
-    const adminSessionId = await this.getAdminSessionId();
-    let tenantId: number | null = null;
-    let ownerName: string = username;
-    try {
-      const userResponse = (await this.openmaintClient.get(
-        `/users/${userId}`,
-        adminSessionId,
-      )) as OpenmaintUserResponse;
-      ownerName = userResponse?.data?.description ?? username;
-      const filter = encodeURIComponent(
-        JSON.stringify({
-          attribute: {
-            simple: {
-              attribute: 'Description',
-              operator: 'equal',
-              value: ownerName,
-            },
-          },
-        }),
-      );
-      const tenantResponse = (await this.openmaintClient.get(
-        `/classes/Tenant/cards?filter=${filter}&limit=1`,
-        adminSessionId,
-      )) as { data?: { _id: number }[] };
-      tenantId = tenantResponse?.data?.[0]?._id ?? null;
-    } catch {
-      // No bloqueamos el login
-    }
-    return { sessionId, username, role, tenantId, userId, name: ownerName };
+
+    return {
+      sessionId: session.sessionId,
+      username: session.username,
+      role: session.role,
+      tenantId: session.tenantId,
+      userId: session.userId,
+      name: session.name ?? username,
+    };
   }
 
   // ─── Dashboard ─────────────────────────────────────────────────────────────
@@ -451,33 +434,30 @@ export class OwnersService {
   }
 
   async changeOwnerPassword(userId: number, dto: ChangePasswordDto) {
-    const adminSessionId = await this.getAdminSessionId();
-    const profileResponse = (await this.openmaintClient.get(
-      `/users/${userId}`,
-      adminSessionId,
-    )) as OpenmaintUserResponse;
-    const user = profileResponse?.data;
-    if (!user?.username)
+    const adminSessionId = await this.serviceSession.get();
+    const account = await this.openmaintUsers.getAccount(userId, adminSessionId);
+
+    if (!account?.username)
       throw new InternalServerErrorException(
         'No se pudo identificar el usuario',
       );
+
     try {
-      await this.openmaintAuthService.login(user.username, dto.currentPassword);
+      await this.openmaintAuthService.login(
+        account.username,
+        dto.currentPassword,
+      );
     } catch {
       throw new BadRequestException('La contraseña actual es incorrecta');
     }
+
     try {
-      await this.openmaintClient.put(
-        `/users/${userId}`,
-        {
-          username: user.username,
-          description: user.description,
-          email: user.email ?? '',
-          active: true,
-          password: dto.newPassword,
-          defaultUserGroup: PROPIETARIOS_GROUP._id,
-          userGroups: [PROPIETARIOS_GROUP],
-        },
+      // Reenvía los grupos leídos en vez de fijarlos a [Propietarios]: un
+      // residente que además sea del equipo perdía todos sus otros accesos al
+      // cambiar la contraseña.
+      await this.openmaintUsers.updatePassword(
+        account,
+        dto.newPassword,
         adminSessionId,
       );
       return { success: true, message: 'Contraseña actualizada correctamente' };
@@ -651,17 +631,6 @@ export class OwnersService {
   }
 
   private async getAdminSessionId(): Promise<string> {
-    const username = this.configService.get<string>('OPENMAINT_USERNAME');
-    const password = this.configService.get<string>('OPENMAINT_PASSWORD');
-    const response = await this.openmaintAuthService.login(
-      username!,
-      password!,
-    );
-    if (!response?.data?._id) {
-      throw new InternalServerErrorException(
-        'No se pudo obtener sesión de servicio con OpenMAINT',
-      );
-    }
-    return response.data._id;
+    return this.serviceSession.get();
   }
 }

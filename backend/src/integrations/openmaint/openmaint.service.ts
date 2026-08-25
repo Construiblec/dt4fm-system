@@ -9,6 +9,7 @@ import {
   CM_OUTCOME_POSITIVE,
 } from '../../modules/maintenance-supervision/constants/corrective-maint.constants';
 import { OpenmaintClient } from './openmaint.client';
+import type { OpenmaintSession } from './openmaint.auth.service';
 
 type EmployeeCard = {
   _id: number;
@@ -24,18 +25,12 @@ type EmployeeCardsResponse = {
   data?: EmployeeCard[];
 };
 
-/** Recurso `/sessions/current`: identidad y rol del llamante. */
-export type OpenmaintSession = {
-  _id: string;
-  username: string;
-  userId: number;
-  /** Nombre legible del usuario; `username` es el de acceso. */
-  userDescription?: string | null;
-  role: string;
-  /** Grupos entre los que el usuario puede alternar. */
-  availableRoles?: string[];
-  multigroup?: boolean;
-};
+/**
+ * Identidad y rol del llamante. La forma la define `OpenmaintAuthService`, que
+ * es quien habla con `/sessions`; se reexporta para no obligar a los
+ * consumidores a saber de qué archivo sale.
+ */
+export type { OpenmaintSession };
 
 type TenantCard = {
   _id: number;
@@ -449,6 +444,50 @@ export class OpenmaintService {
       )) as EmployeeCardsResponse;
 
       return response.data?.[0]?._id ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Ficha `Tenant` que corresponde a la descripción de un usuario.
+   *
+   * El vínculo es frágil de origen y se mantiene tal cual estaba en
+   * `owners.service.ts` para no cambiar de comportamiento al unificar el login:
+   * openMAINT no guarda ninguna FK entre la cuenta y el `Tenant`, así que la
+   * única vía es buscar el `Tenant` que se llame **exactamente** igual que la
+   * descripción del usuario. Si algún día se añade esa FK, este es el único
+   * sitio a tocar.
+   *
+   * Necesita sesión de servicio: la del propio residente no lee `Tenant`.
+   */
+  async findTenantByDescription(
+    description: string,
+    serviceSessionId: string,
+  ): Promise<number | null> {
+    if (!description) {
+      return null;
+    }
+
+    const filter = encodeURIComponent(
+      JSON.stringify({
+        attribute: {
+          simple: {
+            attribute: 'Description',
+            operator: 'equal',
+            value: description,
+          },
+        },
+      }),
+    );
+
+    try {
+      const response = (await this.client.get(
+        `/classes/Tenant/cards?filter=${filter}&limit=1`,
+        serviceSessionId,
+      )) as TenantCardsResponse;
+
+      return response?.data?.[0]?._id ?? null;
     } catch {
       return null;
     }
