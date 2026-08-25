@@ -33,14 +33,7 @@ const authHeaders = () => ({
   "x-role": localStorage.getItem("role") ?? "",
 });
 
-/**
- * La fuente de verdad es el backend, que es quien firma los envíos. El env var
- * solo sirve como override: si se compila el frontend sin él, o con uno viejo,
- * la suscripción quedaría atada a una clave que el servidor ya no usa.
- */
 const fetchVapidPublicKey = async (): Promise<string> => {
-  if (env.VITE_VAPID_PUBLIC_KEY) return env.VITE_VAPID_PUBLIC_KEY;
-
   const { data } = await api.get<{ publicKey?: string }>(
     "/push/vapid-public-key",
   );

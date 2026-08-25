@@ -163,9 +163,9 @@ Sin esto, Vercel intenta compilar desde la raíz del monorepo y el build falla a
 
 ## 7.2. Variables de entorno
 
-`Project Settings → Environment Variables`. El frontend consume solo dos variables, y Vercel permite asignarles un valor distinto según el entorno:
+`Project Settings → Environment Variables`. El frontend consume **una sola variable**, `VITE_API_URL`, y Vercel permite asignarle un valor distinto según el entorno:
 
-| Entorno | Cuándo se usa | `VITE_API_URL` |
+| Entorno | Cuándo se usa | Valor |
 | --- | --- | --- |
 | **Production** | Deploy generado desde `main` | URL del servicio de Render de **producción**, terminada en `/api` |
 | **Preview** | Deploy generado por cualquier PR o rama distinta a `main` | URL del servicio de Render de **desarrollo**, terminada en `/api` |
@@ -173,11 +173,7 @@ Sin esto, Vercel intenta compilar desde la raíz del monorepo y el build falla a
 
 Cada backend habla con su propia instancia de openMAINT y su propia rama de Neon, así que emparejar mal estas URLs hace que el frontend de pruebas escriba en datos reales.
 
-### `VITE_VAPID_PUBLIC_KEY`: dejarla sin definir
-
-**No se configura en Vercel, en ningún entorno.** Existe solo como anulación de emergencia. La aplicación pide la clave a `GET /push/vapid-public-key` de su propio backend, que es quien firma los envíos y por tanto la única fuente de verdad.
-
-Definirla aquí reintroduce el fallo que ya costó una ronda de depuración: la variable se incrusta en el *build*, así que un frontend compilado con una clave que no corresponde al backend al que apunta deja la activación de notificaciones rota sin ninguna señal visible.
+Que sea una sola variable es deliberado. Todo lo demás que el frontend necesita se lo pide al backend al que apunta, empezando por la clave VAPID (`GET /push/vapid-public-key`). Así no hay nada más que pueda quedar desalineado entre entornos: basta con acertar esta URL.
 
 ### El push necesita una URL estable
 
