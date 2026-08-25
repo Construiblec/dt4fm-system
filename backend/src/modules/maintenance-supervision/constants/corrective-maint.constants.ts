@@ -82,6 +82,30 @@ export const VALID_CM_STATUSES = Object.values(CM_STATUS_NAMES);
 export const CM_DERIVED_ASSIGNED = 'Assigned';
 
 /**
+ * Estado público de un correctivo, a partir de su código y su inicio real.
+ *
+ * Asignar avanza CM02 directo a `CM-Execution`, así que el trabajo figuraría en
+ * curso desde que se despacha. Mientras no haya un inicio real se expone
+ * `Assigned`, que no existe en OpenMAINT.
+ *
+ * Vive aquí, y no en cada servicio, para que la vista del supervisor y la del
+ * técnico deriven el estado con la **misma** regla: si difirieran, cada rol
+ * vería algo distinto del mismo trabajo.
+ */
+export const resolveCorrectiveStatus = (
+  processStatusCode: string | null | undefined,
+  execStartDate: string | null | undefined,
+): string | null => {
+  if (!processStatusCode) {
+    return null;
+  }
+
+  const name = CM_STATUS_CODE_TO_NAME[processStatusCode] ?? processStatusCode;
+
+  return name === 'Execution' && !execStartDate ? CM_DERIVED_ASSIGNED : name;
+};
+
+/**
  * IDs del lookup `Process - Action`. Ojo: hay que mandar el ID numérico, no el
  * código — con el código OpenMAINT guarda `Action: null` y aplica la
  * transición por defecto del paso.
@@ -143,6 +167,25 @@ export const CM_PLANNED_START_WRITABLE_STATUS: CmStatusId[] = [
 export const CM_ASSIGNEE_WRITABLE_STATUS: CmStatusId[] = [
   CM_STATUS_IDS.ASSIGNMENT,
   CM_STATUS_IDS.EXECUTION,
+  CM_STATUS_IDS.MANAGEMENT,
+];
+
+/**
+ * Estados en los que **también** se puede cambiar el equipo. Es un subconjunto
+ * de `CM_ASSIGNEE_WRITABLE_STATUS`: en `CM03-Execution` el cesionario se puede
+ * cambiar pero el equipo no.
+ *
+ * Verificado en el clon (2026-08-24) leyendo los metadatos de cada actividad:
+ *
+ * | Paso              | Team | Assignee |
+ * |-------------------|------|----------|
+ * | `CM02-Assignment` | sí   | sí       |
+ * | `CM03-Execution`  | no   | sí       |
+ * | `CM07-Management` | sí   | sí       |
+ * | `CM04` / `CM05`   | no   | no       |
+ */
+export const CM_TEAM_WRITABLE_STATUS: CmStatusId[] = [
+  CM_STATUS_IDS.ASSIGNMENT,
   CM_STATUS_IDS.MANAGEMENT,
 ];
 

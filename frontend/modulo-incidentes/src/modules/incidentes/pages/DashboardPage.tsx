@@ -7,10 +7,13 @@ import { isSupplier } from "@/shared/auth/session";
 import { FloatingReportButton } from "@/modules/incidentes/components/FloatingReportButton";
 import { CleaningTaskCard } from "@/modules/incidentes/components/CleaningTaskCard";
 import { ListStateMessage } from "@/modules/incidentes/components/ListStateMessage";
-import { MaintenanceFilters } from "@/modules/incidentes/components/MaintenanceFilters";
+import {
+  MaintenanceFilters,
+  type MaintenanceStatusFilter,
+} from "@/modules/incidentes/components/MaintenanceFilters";
 import { CleaningFilters } from "@/modules/incidentes/components/CleaningFilters";
 import { PreventiveFilters } from "@/modules/incidentes/components/PreventiveFilters";
-import { toCorrectiveStatusCode } from "@/modules/incidentes/constants/correctiveStatus";
+import { getCorrectiveBlockedReason } from "@/modules/incidentes/constants/correctiveStatus";
 import { MaintenanceCard } from "@/shared/components/MaintenanceCard";
 import { useListPagination } from "@/modules/incidentes/hooks/useListPagination";
 import { useMyPreventiveMaintenances } from "@/modules/incidentes/hooks/useMyPreventiveMaintenances";
@@ -64,9 +67,8 @@ export const DashboardPage = () => {
 
   // Filtros de mantenimiento correctivo
   const [priorityFilter, setPriorityFilter] = useState<string>("ALL");
-  const [statusFilter, setStatusFilter] = useState<
-    "ALL" | "Ejecución" | "Otros"
-  >("ALL");
+  const [statusFilter, setStatusFilter] =
+    useState<MaintenanceStatusFilter>("ALL");
 
   // ── Estado: mantenimientos preventivos ─────────────────────────────────────
   // Se cargan solo al abrir el sub-tab, no al montar el dashboard.
@@ -194,8 +196,8 @@ export const DashboardPage = () => {
       priorityFilter === "ALL" || incident.priority === priorityFilter;
     const matchStatus =
       statusFilter === "ALL" ||
-      (statusFilter === "Ejecución" && incident.status === "Ejecución") ||
-      (statusFilter === "Otros" && incident.status !== "Ejecución");
+      (statusFilter === "Execution" && incident.statusCode === "Execution") ||
+      (statusFilter === "Otros" && incident.statusCode !== "Execution");
     return matchPriority && matchStatus;
   });
 
@@ -351,41 +353,35 @@ export const DashboardPage = () => {
                     {!loading && !error && filteredIncidents.length > 0 ? (
                       <>
                         <div className="space-y-4">
-                          {maintenancePagination.pageItems.map((incident) => {
-                            const statusCode = toCorrectiveStatusCode(
-                              incident.status,
-                            );
-                            // El técnico solo entra a lo que está en ejecución
-                            const canOpen = statusCode === "Execution";
-
-                            return (
-                              <MaintenanceCard
-                                key={incident.id}
-                                maintenance={{
-                                  id: incident.id,
-                                  kind: "corrective",
-                                  number: incident.number,
-                                  subject: incident.building,
-                                  statusCode,
-                                  status: incident.status,
-                                  site: incident.building,
-                                  target: incident.location,
-                                  assignee: null,
-                                  priorityCode: incident.priority,
-                                  openingDate: incident.createdAt,
-                                  plannedStart: null,
-                                  dueDate: null,
-                                  isOverdue: false,
-                                }}
-                                onOpen={() =>
-                                  navigate(`/incidents/${incident.id}`)
-                                }
-                                disabledReason={
-                                  canOpen ? null : "Aún no está en ejecución"
-                                }
-                              />
-                            );
-                          })}
+                          {maintenancePagination.pageItems.map((incident) => (
+                            <MaintenanceCard
+                              key={incident.id}
+                              maintenance={{
+                                id: incident.id,
+                                kind: "corrective",
+                                number: incident.number,
+                                subject: incident.building,
+                                statusCode: incident.statusCode,
+                                status: incident.status,
+                                site: incident.building,
+                                target: incident.location,
+                                assignee: null,
+                                priorityCode: incident.priority,
+                                openingDate: incident.createdAt,
+                                plannedStart: incident.plannedStart,
+                                dueDate: null,
+                                isOverdue: false,
+                              }}
+                              onOpen={() =>
+                                navigate(`/incidents/${incident.id}`)
+                              }
+                              // El técnico solo entra a lo que está en ejecución;
+                              // el motivo se ajusta al estado real de la tarea.
+                              disabledReason={getCorrectiveBlockedReason(
+                                incident.statusCode,
+                              )}
+                            />
+                          ))}
                         </div>
                         <Pagination
                           currentPage={maintenancePagination.page}

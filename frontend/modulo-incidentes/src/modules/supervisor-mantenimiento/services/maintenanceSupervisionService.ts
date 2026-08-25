@@ -3,6 +3,7 @@ import { env } from "@/config/env";
 import type {
   AssigneesResponse,
   AssignPayload,
+  EvidenceResponse,
   ListParams,
   ListResponse,
   MaintenanceKind,
@@ -33,7 +34,10 @@ const handleUnauthorized = (error: unknown): never => {
 };
 
 /** Mensaje que el backend devolvió, para poder mostrarlo tal cual en la UI. */
-export const getApiErrorMessage = (error: unknown, fallback: string): string => {
+export const getApiErrorMessage = (
+  error: unknown,
+  fallback: string,
+): string => {
   if (axios.isAxiosError(error)) {
     const message = (error.response?.data as { message?: string | string[] })
       ?.message;
@@ -45,12 +49,21 @@ export const getApiErrorMessage = (error: unknown, fallback: string): string => 
   return fallback;
 };
 
-const buildQuery = ({ status, assigned, limit = 10, offset = 0 }: ListParams) => {
+const buildQuery = ({
+  status,
+  assigned,
+  limit = 10,
+  offset = 0,
+  from,
+  to,
+}: ListParams) => {
   const params = new URLSearchParams();
   params.set("limit", String(limit));
   params.set("offset", String(offset));
   if (status) params.set("status", status);
   if (assigned !== undefined) params.set("assigned", String(assigned));
+  if (from) params.set("from", from);
+  if (to) params.set("to", to);
   return params.toString();
 };
 
@@ -80,6 +93,25 @@ export const getMaintenanceDetail = async (
   try {
     const { data } = await api.get<MaintenanceResponse>(
       `/maintenance-supervision/${kind}/${id}`,
+      { headers: getAuthHeaders() },
+    );
+    return data;
+  } catch (error) {
+    return handleUnauthorized(error);
+  }
+};
+
+/**
+ * Fotos de evidencia. Llegan ya en base64 desde el backend, así que se pintan
+ * directamente sin pasar la sesión de OpenMAINT al navegador.
+ */
+export const getMaintenanceEvidence = async (
+  kind: MaintenanceKind,
+  id: number,
+): Promise<EvidenceResponse> => {
+  try {
+    const { data } = await api.get<EvidenceResponse>(
+      `/maintenance-supervision/${kind}/${id}/attachments`,
       { headers: getAuthHeaders() },
     );
     return data;
@@ -121,6 +153,25 @@ export const assignMaintenance = async (
   }
 };
 
+/**
+ * Solo preventivo: devuelve a ejecución uno suspendido (`PM04-Advance`).
+ * OpenMAINT limpia el motivo de suspensión por su cuenta.
+ */
+export const resumePreventive = async (
+  id: number,
+): Promise<MaintenanceResponse> => {
+  try {
+    const { data } = await api.post<MaintenanceResponse>(
+      `/maintenance-supervision/preventive/${id}/resume`,
+      {},
+      { headers: getAuthHeaders() },
+    );
+    return data;
+  } catch (error) {
+    return handleUnauthorized(error);
+  }
+};
+
 /** Solo correctivo: el preventivo no tiene rama de rechazo en asignación. */
 export const rejectCorrective = async (
   id: number,
@@ -138,15 +189,20 @@ export const rejectCorrective = async (
   }
 };
 
+/**
+ * `teamId` solo se manda cuando el paso admite cambiar de equipo; el backend lo
+ * ignora y lo registra en el log en los demás casos.
+ */
 export const updateAssignee = async (
   kind: MaintenanceKind,
   id: number,
   assigneeId: number,
+  teamId?: number,
 ): Promise<MaintenanceResponse> => {
   try {
     const { data } = await api.put<MaintenanceResponse>(
       `/maintenance-supervision/${kind}/${id}/assignee`,
-      { assigneeId },
+      { assigneeId, ...(teamId !== undefined ? { teamId } : {}) },
       { headers: getAuthHeaders() },
     );
     return data;

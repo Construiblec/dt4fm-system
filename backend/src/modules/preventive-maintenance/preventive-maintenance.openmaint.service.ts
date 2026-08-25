@@ -199,6 +199,17 @@ export type FindAllOptions = FindByAssigneeOptions & {
    * tienen; `undefined` → sin filtrar.
    */
   assigned?: boolean;
+  /** Instante desde el que se acepta `ExpExecStartDate`, incluido. */
+  from?: string;
+  /** Instante hasta el que se acepta `ExpExecStartDate`, incluido. */
+  to?: string;
+};
+
+/** Criterios de `count`. Sin ninguno cuenta todas las instancias. */
+export type PreventiveCountOptions = {
+  statusIds?: PmStatusId[];
+  /** `false` → solo los que no tienen cesionario; `true` → solo los que sí. */
+  assigned?: boolean;
 };
 
 /** Condición de filtro de OpenMAINT, ya sea simple o compuesta. */
@@ -279,7 +290,7 @@ export class PreventiveMaintenanceOpenmaintService {
    */
   async findAll(
     sessionId: string,
-    { limit, offset, statusIds, assigned }: FindAllOptions,
+    { limit, offset, statusIds, assigned, from, to }: FindAllOptions,
   ): Promise<PreventiveMaintCardsResponse> {
     const params = new URLSearchParams({
       include_tasklist: 'false',
@@ -291,6 +302,7 @@ export class PreventiveMaintenanceOpenmaintService {
         this.buildFilter([
           this.statusCondition(statusIds),
           this.assignedCondition(assigned),
+          this.plannedStartRange(from, to),
         ]),
       ),
     });
@@ -300,13 +312,44 @@ export class PreventiveMaintenanceOpenmaintService {
         (statusIds?.length
           ? ` con ProcessStatus in [${statusIds.join(',')}]`
           : '') +
-        (assigned === undefined ? '' : ` y assigned=${assigned}`),
+        (assigned === undefined ? '' : ` y assigned=${assigned}`) +
+        (from || to ? ` y ExpExecStartDate en [${from ?? '—'}, ${to ?? '—'}]` : ''),
     );
 
     return (await this.client.get(
       `${INSTANCES_PATH}?${params.toString()}`,
       sessionId,
     )) as PreventiveMaintCardsResponse;
+  }
+
+  /**
+   * Cuántos preventivos cumplen un criterio, sin traerse las tarjetas: pide
+   * `limit=1` y se queda con `meta.total`. Espejo de `count` en el gateway
+   * correctivo.
+   */
+  async count(
+    sessionId: string,
+    { statusIds, assigned }: PreventiveCountOptions = {},
+  ): Promise<number> {
+    const params = new URLSearchParams({
+      include_tasklist: 'false',
+      onlyGridAttrs: 'true',
+      start: '0',
+      limit: '1',
+      filter: JSON.stringify(
+        this.buildFilter([
+          this.statusCondition(statusIds),
+          this.assignedCondition(assigned),
+        ]),
+      ),
+    });
+
+    const response = (await this.client.get(
+      `${INSTANCES_PATH}?${params.toString()}`,
+      sessionId,
+    )) as PreventiveMaintCardsResponse;
+
+    return response.meta?.total ?? 0;
   }
 
   /** Mantenimientos preventivos ejecutados sobre un mismo equipo. */
@@ -638,6 +681,55 @@ export class PreventiveMaintenanceOpenmaintService {
     );
 
     return conditions.length === 1 ? conditions[0] : { or: conditions };
+  }
+
+  /**
+   * Rango de `ExpExecStartDate`, **inclusivo en los dos extremos**.
+   *
+   * Dos trampas comprobadas contra el clon (2026-08-24):
+   *
+   * - `between` es **exclusivo** en ambos lados: con la misma fecha en los dos
+   *   campos devuelve 0 resultados, que es justo lo que hace un usuario al
+   *   filtrar «solo este día». Por eso no se usa.
+   * - `greater` y `less` sí funcionan, pero son estrictos y comparan la **marca
+   *   de tiempo completa**, no el día. `greaterOrEqual` y `lessOrEqual` no
+   *   existen: devuelven 500.
+   *
+   * De ahí el desplazamiento de un milisegundo a cada lado: convierte los
+   * estrictos en inclusivos. Verificado contra el recuento a mano de las 433
+   * tarjetas con fecha, incluidos los rangos de un solo día y los abiertos.
+   */
+  private plannedStartRange(
+    from?: string,
+    to?: string,
+  ): FilterCondition | null {
+    const conditions: FilterCondition[] = [];
+
+    if (from) {
+      conditions.push({
+        simple: {
+          attribute: 'ExpExecStartDate',
+          operator: 'greater',
+          value: [new Date(new Date(from).getTime() - 1).toISOString()],
+        },
+      });
+    }
+
+    if (to) {
+      conditions.push({
+        simple: {
+          attribute: 'ExpExecStartDate',
+          operator: 'less',
+          value: [new Date(new Date(to).getTime() + 1).toISOString()],
+        },
+      });
+    }
+
+    if (conditions.length === 0) {
+      return null;
+    }
+
+    return conditions.length === 1 ? conditions[0] : { and: conditions };
   }
 
   /** Con o sin cesionario, para aislar los que esperan asignación. */

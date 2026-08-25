@@ -7,14 +7,7 @@ type Props = {
   attachments: TaskAttachment[];
 };
 
-function formatUploadDate(iso: string): string {
-  return new Date(iso).toLocaleString("es-EC", {
-    day: "numeric",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
+import { formatDayMonthTime as formatUploadDate } from "@/shared/utils/dateUtils";
 
 export const TaskDetailPhotos = ({ attachments }: Props) => {
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);

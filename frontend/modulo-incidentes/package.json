@@ -42,5 +42,8 @@
     "workbox-core": "^7.4.1",
     "workbox-precaching": "^7.4.1",
     "workbox-routing": "^7.4.1"
+  },
+  "allowScripts": {
+    "vite-plugin-pwa@1.3.0": true
   }
 }

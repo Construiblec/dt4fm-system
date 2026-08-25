@@ -10,7 +10,7 @@ import type {
   Assignee,
   SupervisedMaintenance,
 } from "@/modules/supervisor-mantenimiento/types/SupervisedMaintenance";
-import { toDateTimeLocal } from "@/shared/utils/dateTimeInput";
+import { getEmployeeId } from "@/shared/auth/session";
 
 type Props = {
   maintenance: SupervisedMaintenance;
@@ -38,18 +38,36 @@ export const AssignAssigneeModal = ({
   const isCorrective = maintenance.kind === "corrective";
   const isReassign = mode === "reassign";
 
+  /**
+   * Si el equipo se puede cambiar depende del paso, no del modo.
+   *
+   * Verificado en el clon leyendo los metadatos de cada actividad: en
+   * correctivo `Team` es escribible en `CM02-Assignment` y `CM07-Management`,
+   * **no** en `CM03-Execution`. En preventivo no lo es en ninguno: lo fija el
+   * plan de mantenimiento.
+   *
+   * Antes se daba por hecho que reasignar nunca podía cambiarlo, y eso era
+   * falso en dos de los tres pasos donde se ofrece.
+   *
+   * Ojo con «Assigned»: es `CM-Execution` por dentro, así que el equipo ahí ya
+   * está bloqueado aunque el trabajo no haya arrancado.
+   */
+  const teamEditable =
+    isCorrective &&
+    ["Assignment", "Management"].includes(maintenance.statusCode ?? "");
+
   const [employees, setEmployees] = useState<Assignee[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Se arranca con el equipo que ya tenga. Al reasignar es fijo; al asignar
+  // ahorra un paso en el caso que trajo este arreglo: un correctivo devuelto
+  // desde la revisión, que vuelve con equipo y cesionario puestos.
   const [teamId, setTeamId] = useState<number | null>(
-    isReassign ? (maintenance.team?.id ?? null) : null,
+    maintenance.team?.id ?? null,
   );
   const [assigneeId, setAssigneeId] = useState<number | null>(null);
-  const [plannedStart, setPlannedStart] = useState(
-    toDateTimeLocal(maintenance.plannedStart),
-  );
 
   useEffect(() => {
     const load = async () => {
@@ -59,7 +77,9 @@ export const AssignAssigneeModal = ({
         const response = await listAssignees();
         setEmployees(response.data);
       } catch (err) {
-        setError(getApiErrorMessage(err, "No se pudieron cargar los empleados"));
+        setError(
+          getApiErrorMessage(err, "No se pudieron cargar los empleados"),
+        );
       } finally {
         setLoading(false);
       }
@@ -88,21 +108,70 @@ export const AssignAssigneeModal = ({
   /** Un proveedor pertenece a un solo equipo: su trabajo no se reasigna. */
   const blockedBySupplier = isReassign && Boolean(currentAssignee?.isSupplier);
 
+  /**
+   * Nadie se asigna trabajo a sí mismo: quien supervisa reparte, no ejecuta.
+   * `null` cuando la sesión no tiene ficha de empleado, y entonces no se filtra
+   * a nadie.
+   */
+  const selfId = getEmployeeId();
+
+  /**
+   * El cesionario actual **sí** aparece. Un correctivo devuelto desde la
+   * revisión conserva a quien lo tenía, y lo normal es que lo repita la misma
+   * persona; excluirla dejaba sin salida el caso más frecuente.
+   *
+   * Los proveedores quedan fuera al reasignar porque pertenecen a un solo
+   * equipo y su trabajo no se traspasa.
+   */
   const candidates = useMemo(() => {
     const sameTeam = employees.filter(
       (employee) => teamId === null || employee.team?.id === teamId,
     );
 
-    return isReassign
-      ? sameTeam.filter(
-          (employee) =>
-            employee.id !== maintenance.assignee?.id && !employee.isSupplier,
-        )
-      : sameTeam;
-  }, [employees, teamId, isReassign, maintenance.assignee?.id]);
+    return sameTeam.filter(
+      (employee) =>
+        employee.id !== selfId && !(isReassign && employee.isSupplier),
+    );
+  }, [employees, teamId, isReassign, selfId]);
+
+  /**
+   * Red de seguridad: el detalle ya deshabilita «Asignar» sin inicio previsto,
+   * pero la fecha puede haberse quedado atrás (otra pestaña, un rechazo que la
+   * borró). El backend responde 400 igualmente; esto solo evita el viaje.
+   */
+  const faltaPlanificar =
+    isCorrective && !isReassign && !maintenance.plannedStart;
+
+  /**
+   * Solo se exige equipo cuando hay selector con el que elegirlo. Si no lo hay
+   * —preventivo, o un correctivo ya despachado— pedirlo dejaría el botón muerto
+   * para siempre.
+   */
+  const faltaEquipo = teamEditable && teamId === null;
 
   const canSubmit =
-    !saving && !blockedBySupplier && assigneeId !== null && (isReassign || teamId !== null);
+    !saving &&
+    !blockedBySupplier &&
+    !faltaPlanificar &&
+    !faltaEquipo &&
+    assigneeId !== null;
+
+  /**
+   * Qué falta para poder guardar, o `null` si no falta nada.
+   *
+   * El botón se puede bloquear por tres motivos distintos y ninguno es obvio
+   * mirándolo: sin decirlo, el usuario solo ve un botón gris. El caso del
+   * proveedor no entra aquí porque ya tiene su propio aviso, con nombre y todo.
+   */
+  const falta = blockedBySupplier
+    ? null
+    : faltaPlanificar
+      ? "Falta fijar el inicio previsto."
+      : faltaEquipo
+        ? "Elige el equipo de trabajo."
+        : assigneeId === null
+          ? "Elige a la persona que se hará cargo."
+          : null;
 
   const handleSubmit = async () => {
     if (assigneeId === null) return;
@@ -112,18 +181,22 @@ export const AssignAssigneeModal = ({
       setError(null);
 
       const response = isReassign
-        ? await updateAssignee(maintenance.kind, maintenance.id, assigneeId)
+        ? await updateAssignee(
+            maintenance.kind,
+            maintenance.id,
+            assigneeId,
+            // Solo viaja si el paso admite cambiarlo; si no, el backend lo
+            // descartaría igual.
+            teamEditable && teamId !== null ? teamId : undefined,
+          )
         : await assignMaintenance(maintenance.kind, maintenance.id, {
             assigneeId,
             // En preventivo el backend lo ignora: `Team` no es escribible en
             // ningún paso de su flujo.
-            ...(isCorrective && teamId !== null ? { teamId } : {}),
-            // Viaja en el mismo avance porque después ya no se puede: al
-            // asignar, el correctivo pasa a Ejecución y openMAINT bloquea
-            // `ExpExecStartDate`.
-            ...(plannedStart
-              ? { plannedStart: new Date(plannedStart).toISOString() }
-              : {}),
+            ...(teamEditable && teamId !== null ? { teamId } : {}),
+            // El inicio previsto no viaja aquí: se fija en «Planificar inicio
+            // de ejecución», que es el único sitio donde se pone. Tenerlo
+            // también en este modal daba dos formularios para el mismo dato.
           });
 
       onSuccess(response.data);
@@ -152,27 +225,16 @@ export const AssignAssigneeModal = ({
             <p className="text-sm text-slate-500">Cargando empleados...</p>
           ) : (
             <>
-              {/* Equipo: fijo al reasignar, y ausente en preventivo al asignar */}
-              {isReassign ? (
-                <div>
-                  {label("Equipo de trabajo")}
-                  <div className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-                    <span className="text-sm text-slate-500">
-                      {maintenance.team?.name ?? "Sin equipo"}
-                    </span>
-                    <Lock className="h-4 w-4 shrink-0 text-slate-400" />
-                  </div>
-                  <p className="mt-1.5 text-xs text-slate-400">
-                    El equipo no se puede cambiar; solo la persona dentro de él.
-                  </p>
-                </div>
-              ) : isCorrective ? (
+              {/* El equipo se edita donde el paso lo permita, no según el modo */}
+              {teamEditable ? (
                 <div>
                   {label("Equipo de trabajo")}
                   <select
                     value={teamId ?? ""}
                     onChange={(event) => {
-                      setTeamId(event.target.value ? Number(event.target.value) : null);
+                      setTeamId(
+                        event.target.value ? Number(event.target.value) : null,
+                      );
                       setAssigneeId(null);
                     }}
                     className={selectClass}
@@ -185,12 +247,26 @@ export const AssignAssigneeModal = ({
                     ))}
                   </select>
                 </div>
+              ) : isCorrective ? (
+                <div>
+                  {label("Equipo de trabajo")}
+                  <div className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                    <span className="text-sm text-slate-500">
+                      {maintenance.team?.name ?? "Sin equipo"}
+                    </span>
+                    <Lock className="h-4 w-4 shrink-0 text-slate-400" />
+                  </div>
+                  <p className="mt-1.5 text-xs text-slate-400">
+                    Con el trabajo ya despachado openMAINT no deja cambiar de
+                    equipo; solo la persona dentro de él.
+                  </p>
+                </div>
               ) : (
                 <div className="flex items-start gap-2 rounded-xl bg-slate-50 p-3 text-xs text-slate-500">
                   <Info className="h-4 w-4 shrink-0" />
                   <p>
-                    En preventivos el equipo lo define el plan de mantenimiento y
-                    no se puede cambiar: aquí solo se elige la persona.
+                    En preventivos el equipo lo define el plan de mantenimiento
+                    y no se puede cambiar: aquí solo se elige la persona.
                   </p>
                 </div>
               )}
@@ -199,8 +275,8 @@ export const AssignAssigneeModal = ({
                 <div className="flex items-start gap-2 rounded-xl bg-slate-100 p-3 text-xs text-slate-600">
                   <Lock className="h-4 w-4 shrink-0" />
                   <p>
-                    <strong>{maintenance.assignee?.name}</strong> es un proveedor
-                    externo y pertenece a un solo equipo, así que este
+                    <strong>{maintenance.assignee?.name}</strong> es un
+                    proveedor externo y pertenece a un solo equipo, así que este
                     mantenimiento no es reasignable.
                   </p>
                 </div>
@@ -210,13 +286,15 @@ export const AssignAssigneeModal = ({
                   <select
                     value={assigneeId ?? ""}
                     onChange={(event) =>
-                      setAssigneeId(event.target.value ? Number(event.target.value) : null)
+                      setAssigneeId(
+                        event.target.value ? Number(event.target.value) : null,
+                      )
                     }
-                    disabled={isCorrective && !isReassign && teamId === null}
+                    disabled={faltaEquipo}
                     className={selectClass}
                   >
                     <option value="">
-                      {isCorrective && !isReassign && teamId === null
+                      {faltaEquipo
                         ? "Elige primero el equipo"
                         : "Selecciona una persona…"}
                     </option>
@@ -235,21 +313,14 @@ export const AssignAssigneeModal = ({
                 </div>
               )}
 
-              {!isReassign && !blockedBySupplier ? (
-                <div>
-                  {label("Inicio previsto (opcional)")}
-                  <input
-                    type="datetime-local"
-                    value={plannedStart}
-                    onChange={(event) => setPlannedStart(event.target.value)}
-                    className={selectClass}
-                  />
-                  {isCorrective ? (
-                    <p className="mt-1.5 text-xs text-amber-700">
-                      Última oportunidad para fijarla: al asignar, el correctivo
-                      pasa a Ejecución y openMAINT bloquea el campo.
-                    </p>
-                  ) : null}
+              {faltaPlanificar ? (
+                <div className="flex items-start gap-2 rounded-xl bg-amber-50 p-3 text-xs text-amber-800">
+                  <Info className="h-4 w-4 shrink-0" />
+                  <p>
+                    Falta el <strong>inicio previsto</strong>. Cierra esto y
+                    fíjalo en «Planificar inicio de ejecución»: después de
+                    asignar, openMAINT ya no deja ponerlo.
+                  </p>
                 </div>
               ) : null}
 
@@ -264,15 +335,36 @@ export const AssignAssigneeModal = ({
                   </p>
                 </div>
               ) : null}
+
+              {/* Devuelto desde la revisión: vuelve con cesionario puesto */}
+              {isCorrective && !isReassign && maintenance.assignee ? (
+                <div className="flex items-start gap-2 rounded-xl bg-slate-50 p-3 text-xs text-slate-600">
+                  <Info className="h-4 w-4 shrink-0" />
+                  <p>
+                    Venía asignado a{" "}
+                    <strong>{maintenance.assignee.name}</strong>; puedes
+                    dejárselo o elegir a otra persona. Al devolverlo, openMAINT
+                    borró las horas de inicio y fin del intento anterior.
+                  </p>
+                </div>
+              ) : null}
             </>
           )}
 
           {error ? (
-            <p className="rounded-xl bg-red-50 p-3 text-xs text-red-600">{error}</p>
+            <p className="rounded-xl bg-red-50 p-3 text-xs text-red-600">
+              {error}
+            </p>
           ) : null}
         </div>
 
-        <div className="mt-6 grid grid-cols-2 gap-3">
+        {!loading && falta ? (
+          <p className="mt-5 rounded-xl bg-amber-50 p-3 text-xs font-medium text-amber-800">
+            {falta}
+          </p>
+        ) : null}
+
+        <div className="mt-4 grid grid-cols-2 gap-3">
           <button
             type="button"
             onClick={onClose}

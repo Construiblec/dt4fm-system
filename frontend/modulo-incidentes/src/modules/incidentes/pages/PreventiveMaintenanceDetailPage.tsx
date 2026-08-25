@@ -45,16 +45,10 @@ import { ErrorModal } from "@/shared/components/ErrorModal";
 import { LoadingModal } from "@/shared/components/LoadingModal";
 import { SuccessModal } from "@/shared/components/SuccessModal";
 
-const formatDateTime = (value: string | null) => {
-  if (!value) {
-    return "—";
-  }
+import { formatMediumDateTime as formatDateTimeUtil } from "@/shared/utils/dateUtils";
 
-  return new Date(value).toLocaleString("es-EC", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  });
-};
+const formatDateTime = (value: string | null) =>
+  formatDateTimeUtil(value, "—");
 
 type InfoRowProps = {
   label: string;

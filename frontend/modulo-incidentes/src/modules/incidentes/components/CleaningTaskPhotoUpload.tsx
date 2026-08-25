@@ -17,17 +17,11 @@ const MAX_PHOTOS = 10;
 const isPhoto = (attachment: CleaningTaskAttachment) =>
   attachment.category === "Photo" || attachment.category === "Image";
 
+import { formatDayMonthTime } from "@/shared/utils/dateUtils";
+
 function formatUploadDate(iso?: string | null): string | null {
   if (!iso) return null;
-  const date = new Date(iso);
-  return isNaN(date.getTime())
-    ? null
-    : date.toLocaleString([], {
-        day: "numeric",
-        month: "short",
-        hour: "2-digit",
-        minute: "2-digit",
-      });
+  return formatDayMonthTime(iso) === "—" ? null : formatDayMonthTime(iso);
 }
 
 export const CleaningTaskPhotoUpload = ({

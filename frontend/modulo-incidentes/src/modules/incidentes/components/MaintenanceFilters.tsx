@@ -1,11 +1,17 @@
 import { Eraser } from "lucide-react";
 import { PRIORITY_LABELS, PRIORITY_ORDER } from "@/shared/constants/priority";
 
+/**
+ * El filtro trabaja con el código estable del estado, no con la etiqueta
+ * traducida: `Execution` es el único paso en el que el técnico interviene.
+ */
+export type MaintenanceStatusFilter = "ALL" | "Execution" | "Otros";
+
 type Props = {
   priorityFilter: string;
-  statusFilter: "ALL" | "Ejecución" | "Otros";
+  statusFilter: MaintenanceStatusFilter;
   onPriorityChange: (value: string) => void;
-  onStatusChange: (value: "ALL" | "Ejecución" | "Otros") => void;
+  onStatusChange: (value: MaintenanceStatusFilter) => void;
   onClear: () => void;
 };
 
@@ -21,12 +27,12 @@ export const MaintenanceFilters = ({
       <select
         value={statusFilter}
         onChange={(e) =>
-          onStatusChange(e.target.value as "ALL" | "Ejecución" | "Otros")
+          onStatusChange(e.target.value as MaintenanceStatusFilter)
         }
         className="flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-slate-400"
       >
         <option value="ALL">Estado</option>
-        <option value="Ejecución">En ejecución</option>
+        <option value="Execution">En ejecución</option>
         <option value="Otros">Otros</option>
       </select>
 

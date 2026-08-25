@@ -17,16 +17,10 @@ import type {
   PreventiveMaintenanceDetail,
 } from "@/modules/incidentes/types/PreventiveMaintenance";
 
-const formatDateTime = (value: string | null) => {
-  if (!value) {
-    return "—";
-  }
+import { formatMediumDateTime as formatDateTimeUtil } from "@/shared/utils/dateUtils";
 
-  return new Date(value).toLocaleString("es-EC", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  });
-};
+const formatDateTime = (value: string | null) =>
+  formatDateTimeUtil(value, "—");
 
 /** Duración real de la intervención, si se registraron ambas marcas. */
 const formatDuration = (start: string | null, end: string | null) => {
