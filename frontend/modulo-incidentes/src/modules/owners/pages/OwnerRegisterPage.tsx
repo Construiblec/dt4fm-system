@@ -2,7 +2,7 @@ import { useNavigate } from "react-router-dom";
 import { ChevronLeft } from "lucide-react";
 import { AppLayout } from "@/app/layout/AppLayout";
 import { OwnerRegisterFlow } from "@/modules/owners/components/OwnerRegisterFlow";
-import logo from "@/shared/assets/images/construiblec-logo.png";
+import logo from "@/shared/assets/images/logo.svg";
 
 /**
  * Alta de residente.
@@ -34,7 +34,7 @@ export const OwnerRegisterPage = () => {
                 <img
                   src={logo}
                   alt="Construiblec"
-                  className="h-10 w-10 object-contain"
+                  className="h-14 w-14 object-contain"
                 />
               </div>
 
