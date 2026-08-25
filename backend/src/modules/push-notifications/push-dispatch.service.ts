@@ -13,6 +13,7 @@ import {
   joinLocation,
   preventiveAssigned,
   preventivePlanning,
+  preventiveResumed,
   preventiveSuspended,
 } from './notification-catalog';
 import { PushSenderService } from './push-sender.service';
@@ -124,6 +125,25 @@ export class PushDispatchService {
       });
 
       await this.toRoles(MAINTENANCE_SUPERVISOR_ROLES, message);
+    });
+  }
+
+  /** Al cesionario: vuelve a tener el trabajo en sus manos. */
+  async notifyPreventiveResumed(input: {
+    id: string | number;
+    assigneeId: number;
+    supervisorName?: string | null;
+    assetName?: string | null;
+    buildingName?: string | null;
+  }): Promise<void> {
+    await this.safe(async () => {
+      const message = preventiveResumed({
+        id: input.id,
+        supervisorName: input.supervisorName?.trim() || 'El supervisor',
+        location: joinLocation(input.assetName, input.buildingName),
+      });
+
+      await this.toEmployee(input.assigneeId, message);
     });
   }
 

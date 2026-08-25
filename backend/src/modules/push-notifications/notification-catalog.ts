@@ -10,6 +10,7 @@ export const NOTIFICATION_TYPES = {
   PREVENTIVE_PLANNING_2D: 'preventive.planning-2d',
   PREVENTIVE_ASSIGNED: 'preventive.assigned',
   PREVENTIVE_SUSPENDED: 'preventive.suspended',
+  PREVENTIVE_RESUMED: 'preventive.resumed',
   CLEANING_ASSIGNED: 'cleaning.assigned',
   CLEANING_DELAYED: 'cleaning.delayed',
   CLEANING_COMPLETED: 'cleaning.completed',
@@ -26,6 +27,9 @@ export const DEEP_LINKS = {
     `/supervisor-mantenimiento/corrective/${id}`,
   preventiveDetail: (id: string | number) =>
     `/supervisor-mantenimiento/preventive/${id}`,
+  /** Vista del técnico, distinta de la del supervisor. */
+  preventiveDetailAssignee: (id: string | number) =>
+    `/preventive-maintenance/${id}`,
   correctiveList: '/dashboard?tab=maintenance&kind=corrective',
   preventiveList: '/dashboard?tab=maintenance&kind=preventive',
   cleaningList: '/dashboard?tab=cleaning',
@@ -129,6 +133,22 @@ export const preventiveSuspended = (input: {
   title: 'Suspendido: Mantenimiento Preventivo',
   body: `${input.assigneeName} ha suspendido mantenimiento a ${input.location}`,
   deepLink: DEEP_LINKS.preventiveDetail(input.id),
+  entityKind: 'preventive',
+  entityId: String(input.id),
+});
+
+/** Va al cesionario, así que enlaza a su vista y no a la del supervisor. */
+export const preventiveResumed = (input: {
+  id: string | number;
+  supervisorName: string;
+  location: string;
+}): PushMessage => ({
+  type: NOTIFICATION_TYPES.PREVENTIVE_RESUMED,
+  title: 'Reabierto: Mantenimiento Preventivo',
+  body:
+    `${input.supervisorName} ha reanudado la ejecución de mantenimiento a ` +
+    `${input.location}`,
+  deepLink: DEEP_LINKS.preventiveDetailAssignee(input.id),
   entityKind: 'preventive',
   entityId: String(input.id),
 });

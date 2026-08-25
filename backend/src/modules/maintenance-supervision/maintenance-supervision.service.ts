@@ -604,7 +604,35 @@ export class MaintenanceSupervisionService {
       'OpenMAINT aceptó la petición pero no reanudó el preventivo',
     );
 
+    // Push al cesionario. Fire-and-forget: no debe afectar a la reanudación.
+    void this.notifyPreventiveResumed(sessionId, id, updated);
+
     return { success: true, data: this.toPreventive(updated) };
+  }
+
+  /**
+   * El nombre del supervisor sale de la sesión: los endpoints de supervisión
+   * solo reciben sessionId y rol, nunca la identidad del usuario.
+   * Best-effort: nunca propaga.
+   */
+  private async notifyPreventiveResumed(
+    sessionId: string,
+    id: number,
+    card: PreventiveMaintCard,
+  ): Promise<void> {
+    if (!card.Assignee) return;
+
+    const session = await this.openmaint
+      .getSession(sessionId)
+      .catch(() => null);
+
+    await this.pushDispatch.notifyPreventiveResumed({
+      id,
+      assigneeId: card.Assignee,
+      supervisorName: session?.userDescription ?? session?.username,
+      assetName: card._CISubset_description ?? card._CI_description,
+      buildingName: card._Site_description,
+    });
   }
 
   /**

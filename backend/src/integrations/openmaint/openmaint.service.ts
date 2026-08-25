@@ -29,6 +29,8 @@ export type OpenmaintSession = {
   _id: string;
   username: string;
   userId: number;
+  /** Nombre legible del usuario; `username` es el de acceso. */
+  userDescription?: string | null;
   role: string;
   /** Grupos entre los que el usuario puede alternar. */
   availableRoles?: string[];
