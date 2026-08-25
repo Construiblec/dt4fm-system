@@ -145,9 +145,11 @@ No envía `userId` ni rol: el servidor los deriva de la sesión de openMAINT.
 
 ### La clave VAPID viene del servidor
 
-`GET /push/vapid-public-key` es la fuente de verdad, porque el servidor es quien firma los envíos. `VITE_VAPID_PUBLIC_KEY` existe solo como override opcional.
+`GET /push/vapid-public-key` es la **única** fuente, porque el servidor es quien firma los envíos.
 
-Depender de la variable de entorno inlineada en el build resultó frágil: un frontend compilado sin ella —o con una desalineada respecto al servidor— dejaba la activación rota sin ninguna señal.
+Hubo una variable de build, `VITE_VAPID_PUBLIC_KEY`, y se eliminó. Depender de ella resultó frágil: un frontend compilado sin ella —o con una desalineada respecto al servidor— dejaba la activación rota sin ninguna señal. Como anulación tampoco aportaba nada, porque el alta necesita igualmente llegar al backend en `POST /push/subscribe`: si el servidor no responde, tener la clave a mano no salva el flujo.
+
+Con esto el frontend queda con una sola variable de entorno, `VITE_API_URL`. Todo lo demás se deriva del backend al que apunta.
 
 ### Baja
 
@@ -189,12 +191,10 @@ npm run dev:pwa
 
 La Push API exige un contexto seguro. `localhost` cuenta como tal, pero **acceder por IP de red local sobre HTTP no**: ahí no hay service workers ni `PushManager`. Para probar desde un teléfono en la red local hace falta HTTPS o un túnel.
 
-Variables:
+Variables: solo `VITE_API_URL`. La clave VAPID se pide al backend.
 
 ```bash
 VITE_API_URL=http://localhost:3000/api
-# Opcional: si se omite, la clave se pide al backend.
-VITE_VAPID_PUBLIC_KEY=
 ```
 
 ---
@@ -204,7 +204,6 @@ VITE_VAPID_PUBLIC_KEY=
 ```text
 src
 ├ sw.ts                                  Service worker propio
-├ config/env.ts                          + VITE_VAPID_PUBLIC_KEY (opcional)
 ├ shared
 │ ├ auth
 │ │ ├ returnTo.ts                        Destino pendiente tras un 401
