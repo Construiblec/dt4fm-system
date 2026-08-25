@@ -11,6 +11,8 @@ export type LoginResponse = {
   username: string;
   role: string;
   cleaningEmployeeId?: string | number;
+  /** Id del usuario en openMAINT; el alta de push lo necesita. */
+  userId?: string | number;
 };
 
 export type Building = {

@@ -163,13 +163,27 @@ Sin esto, Vercel intenta compilar desde la raíz del monorepo y el build falla a
 
 ## 7.2. Variables de entorno
 
-`Project Settings → Environment Variables`. La variable que consume el frontend es `VITE_API_URL`. Vercel permite asignar un valor distinto según el entorno:
+`Project Settings → Environment Variables`. El frontend consume solo dos variables, y Vercel permite asignarles un valor distinto según el entorno:
 
-| Entorno | Cuándo se usa | Valor recomendado |
+| Entorno | Cuándo se usa | `VITE_API_URL` |
 | --- | --- | --- |
-| **Production** | Deploy generado desde `main` | URL del backend de producción |
-| **Preview** | Deploy generado por cualquier PR o rama distinta a `main` | URL del backend real, o de un backend de staging si existe |
+| **Production** | Deploy generado desde `main` | URL del servicio de Render de **producción**, terminada en `/api` |
+| **Preview** | Deploy generado por cualquier PR o rama distinta a `main` | URL del servicio de Render de **desarrollo**, terminada en `/api` |
 | **Development** | Solo si se usa `vercel dev` localmente | Normalmente no se usa; el `.env` local ya cubre este caso |
+
+Cada backend habla con su propia instancia de openMAINT y su propia rama de Neon, así que emparejar mal estas URLs hace que el frontend de pruebas escriba en datos reales.
+
+### `VITE_VAPID_PUBLIC_KEY`: dejarla sin definir
+
+**No se configura en Vercel, en ningún entorno.** Existe solo como anulación de emergencia. La aplicación pide la clave a `GET /push/vapid-public-key` de su propio backend, que es quien firma los envíos y por tanto la única fuente de verdad.
+
+Definirla aquí reintroduce el fallo que ya costó una ronda de depuración: la variable se incrusta en el *build*, así que un frontend compilado con una clave que no corresponde al backend al que apunta deja la activación de notificaciones rota sin ninguna señal visible.
+
+### El push necesita una URL estable
+
+Una suscripción push pertenece al **origen** que la creó. Los *preview deploys* de Vercel reciben una URL nueva en cada commit, de modo que cada uno registra su propio service worker y su propia suscripción, y las anteriores quedan huérfanas en la rama de Neon de desarrollo.
+
+Para probar notificaciones de verdad hace falta una URL fija —el dominio asignado a la rama `develop`, no la URL efímera del preview— y en iOS, además, la PWA instalada en la pantalla de inicio desde esa misma URL.
 
 Las variables de entorno **no se aplican de forma retroactiva**: si se cambia un valor, un deploy o preview ya existente no se actualiza solo. Hay que volver a desplegar (nuevo commit, o `Redeploy` manual desde el dashboard).
 

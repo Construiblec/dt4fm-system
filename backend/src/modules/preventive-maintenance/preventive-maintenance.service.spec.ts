@@ -6,6 +6,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
+import { PushDispatchService } from '../push-notifications/push-dispatch.service';
 import {
   PM_ACTIONS,
   PM_OUTCOME_POSITIVE,
@@ -68,6 +69,7 @@ describe('PreventiveMaintenanceService', () => {
     const openmaintMock: OpenmaintGatewayMock = {
       findByAssignee: jest.fn(),
       findAll: jest.fn().mockResolvedValue({ data: [] }),
+      count: jest.fn().mockResolvedValue(0),
       findByEquipment: jest.fn().mockResolvedValue({ data: [] }),
       findById: jest.fn(),
       findWithTasklist: jest.fn(),
@@ -103,6 +105,10 @@ describe('PreventiveMaintenanceService', () => {
           useValue: openmaintMock,
         },
         { provide: PreventiveChecklistService, useValue: checklistMock },
+        {
+          provide: PushDispatchService,
+          useValue: { notifyPreventiveSuspended: jest.fn() },
+        },
       ],
     }).compile();
 

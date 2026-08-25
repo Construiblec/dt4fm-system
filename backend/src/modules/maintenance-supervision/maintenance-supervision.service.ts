@@ -31,6 +31,7 @@ import {
   CmStatusId,
   resolveCorrectiveStatus,
 } from './constants/corrective-maint.constants';
+import { PushDispatchService } from '../push-notifications/push-dispatch.service';
 import { SUPPLIER_EMPLOYEE_TYPE } from './constants/supervision-roles.constants';
 import {
   CorrectiveMaintCard,
@@ -121,6 +122,7 @@ export class MaintenanceSupervisionService {
     private readonly corrective: CorrectiveMaintOpenmaintService,
     private readonly preventive: PreventiveMaintenanceOpenmaintService,
     private readonly openmaint: OpenmaintService,
+    private readonly pushDispatch: PushDispatchService,
   ) {}
 
   // ── Listados ───────────────────────────────────────────────────────────────
@@ -413,6 +415,15 @@ export class MaintenanceSupervisionService {
       'OpenMAINT aceptó la petición pero no aplicó la asignación del correctivo',
     );
 
+    // Push al cesionario. Fire-and-forget: no debe afectar a la asignación.
+    void this.pushDispatch.notifyCorrectiveAssigned({
+      id,
+      assigneeId: dto.assigneeId,
+      unitName: updated._Unit_description,
+      floorName: updated._Floor_description,
+      buildingName: updated._Site_description,
+    });
+
     const assigned = await this.clearAutoFilledExecStart(sessionId, id, updated);
 
     return { success: true, data: this.toCorrective(assigned) };
@@ -542,6 +553,14 @@ export class MaintenanceSupervisionService {
       'OpenMAINT aceptó la petición pero no aplicó la asignación del preventivo',
     );
 
+    // El preventivo no tiene Unit en OpenMAINT: solo activo y edificio.
+    void this.pushDispatch.notifyPreventiveAssigned({
+      id,
+      assigneeId: dto.assigneeId,
+      assetName: updated._CISubset_description ?? updated._CI_description,
+      buildingName: updated._Site_description,
+    });
+
     return { success: true, data: this.toPreventive(updated) };
   }
 
@@ -585,7 +604,35 @@ export class MaintenanceSupervisionService {
       'OpenMAINT aceptó la petición pero no reanudó el preventivo',
     );
 
+    // Push al cesionario. Fire-and-forget: no debe afectar a la reanudación.
+    void this.notifyPreventiveResumed(sessionId, id, updated);
+
     return { success: true, data: this.toPreventive(updated) };
+  }
+
+  /**
+   * El nombre del supervisor sale de la sesión: los endpoints de supervisión
+   * solo reciben sessionId y rol, nunca la identidad del usuario.
+   * Best-effort: nunca propaga.
+   */
+  private async notifyPreventiveResumed(
+    sessionId: string,
+    id: number,
+    card: PreventiveMaintCard,
+  ): Promise<void> {
+    if (!card.Assignee) return;
+
+    const session = await this.openmaint
+      .getSession(sessionId)
+      .catch(() => null);
+
+    await this.pushDispatch.notifyPreventiveResumed({
+      id,
+      assigneeId: card.Assignee,
+      supervisorName: session?.userDescription ?? session?.username,
+      assetName: card._CISubset_description ?? card._CI_description,
+      buildingName: card._Site_description,
+    });
   }
 
   /**

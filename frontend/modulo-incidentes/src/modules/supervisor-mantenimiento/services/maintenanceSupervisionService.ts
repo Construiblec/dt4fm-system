@@ -9,6 +9,7 @@ import type {
   MaintenanceKind,
   MaintenanceResponse,
 } from "@/modules/supervisor-mantenimiento/types/SupervisedMaintenance";
+import { redirectToLogin } from "@/shared/auth/returnTo";
 
 const api = axios.create({
   baseURL: env.VITE_API_URL.replace(/\/api\/?$/, ""),
@@ -27,7 +28,7 @@ const getAuthHeaders = () => ({
 /** Redirige al login cuando la sesión de openMAINT ya no es válida. */
 const handleUnauthorized = (error: unknown): never => {
   if (axios.isAxiosError(error) && error.response?.status === 401) {
-    window.location.assign("/login");
+    redirectToLogin();
   }
 
   throw error;

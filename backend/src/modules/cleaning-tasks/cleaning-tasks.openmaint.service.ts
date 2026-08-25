@@ -58,6 +58,9 @@ export type UnitCard = {
   Code?: string;
   Description?: string;
   Name?: string;
+  /** El edificio al que pertenece; hace falta para el texto de las notificaciones. */
+  Building?: number | null;
+  _Building_description?: string | null;
 };
 
 type UnitResponse = {
@@ -247,6 +250,20 @@ export class CleaningTasksOpenmaintService {
         `Error al obtener tarea ${taskId} de OpenMAINT`,
       );
     }
+  }
+
+  /**
+   * Igual que `getTaskById` pero con la sesión interna. La asignación
+   * (`PUT /cleaning-tasks/:id`) no recibe sesión de usuario y aun así necesita
+   * releer la tarea para armar el texto de la notificación.
+   */
+  async getTaskByIdWithSession(taskId: number): Promise<OpenmaintCardResponse> {
+    return this.executeWithRetry(async (sessionId) => {
+      return (await this.client.get(
+        `/classes/CleaningTask/cards/${taskId}`,
+        sessionId,
+      )) as OpenmaintCardResponse;
+    }, 'getTaskByIdWithSession');
   }
 
   /**

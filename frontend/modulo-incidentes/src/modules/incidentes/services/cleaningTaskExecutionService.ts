@@ -10,6 +10,7 @@ import type {
   CleaningTaskStartResponse,
   CleaningTaskUploadResponse,
 } from "@/modules/incidentes/types/CleaningTaskExecution";
+import { redirectToLogin } from "@/shared/auth/returnTo";
 
 const cleaningExecutionApi = axios.create({
   baseURL: env.VITE_API_URL.replace(/\/api\/?$/, ""),
@@ -22,7 +23,7 @@ const getCleaningHeaders = () => ({
 
 const redirectIfUnauthorized = (error: unknown) => {
   if (axios.isAxiosError(error) && error.response?.status === 401) {
-    window.location.assign("/login");
+    redirectToLogin();
   }
 };
 

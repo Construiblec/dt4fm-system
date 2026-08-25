@@ -1,4 +1,5 @@
 import { env } from "@/config/env";
+import { redirectToLogin } from "@/shared/auth/returnTo";
 
 // `VITE_API_URL` termina en `/api`, pero el backend no declara prefijo global:
 // sus rutas cuelgan de la raíz. Sin recortarlo se pide `/api/incidents/...` y
@@ -39,7 +40,7 @@ export const startIncident = async (
   });
 
   if (response.status === 401) {
-    window.location.assign("/login");
+    redirectToLogin();
     throw new Error("Unauthorized");
   }
 
@@ -75,7 +76,7 @@ export const completeIncident = async (
   });
 
   if (response.status === 401) {
-    window.location.assign("/login");
+    redirectToLogin();
     throw new Error("Unauthorized");
   }
 

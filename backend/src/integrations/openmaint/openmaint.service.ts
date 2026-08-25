@@ -24,6 +24,19 @@ type EmployeeCardsResponse = {
   data?: EmployeeCard[];
 };
 
+/** Recurso `/sessions/current`: identidad y rol del llamante. */
+export type OpenmaintSession = {
+  _id: string;
+  username: string;
+  userId: number;
+  /** Nombre legible del usuario; `username` es el de acceso. */
+  userDescription?: string | null;
+  role: string;
+  /** Grupos entre los que el usuario puede alternar. */
+  availableRoles?: string[];
+  multigroup?: boolean;
+};
+
 type TenantCard = {
   _id: number;
   Description: string;
@@ -315,6 +328,24 @@ export class OpenmaintService {
       body,
       sessionId,
     );
+  }
+
+  /**
+   * Sesión del llamante. Se usa para verificar identidad y rol contra
+   * openMAINT en vez de creerle al header `x-role`, que sale de localStorage.
+   *
+   * `/sessions/current` la resuelve desde la propia cabecera de autorización:
+   * a diferencia de `/users/{id}` no exige privilegios de administrador, y ata
+   * el rol a la sesión, así que nadie puede suscribirse en nombre de otro.
+   *
+   * No captura errores a propósito: quien llama decide qué hacer con ellos.
+   */
+  async getSession(sessionId: string): Promise<OpenmaintSession | null> {
+    const response = (await this.client.get('/sessions/current', sessionId)) as {
+      data?: OpenmaintSession;
+    };
+
+    return response?.data ?? null;
   }
 
   async resolveEmployeeId(

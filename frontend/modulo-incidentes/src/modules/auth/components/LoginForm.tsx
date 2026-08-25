@@ -1,5 +1,6 @@
 import axios from "axios";
 import { getHomeRoute, storeEmployeeId } from "@/shared/auth/session";
+import { consumeReturnTo } from "@/shared/auth/returnTo";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { useNavigate } from "react-router-dom";
@@ -55,6 +56,10 @@ export const LoginForm = () => {
       storeEmployeeId(response.employeeId);
       localStorage.setItem("username", response.username);
       localStorage.setItem("role", response.role);
+      // El alta de la suscripción push lo usa para resolver el rol real.
+      if (response.userId !== undefined && response.userId !== null) {
+        localStorage.setItem("userId", String(response.userId));
+      }
       if (response.cleaningEmployeeId !== undefined) {
         localStorage.setItem(
           "cleaningEmployeeId",
@@ -63,8 +68,11 @@ export const LoginForm = () => {
       }
 
       setIsSuccess(true);
-      // Los roles no contemplados caen en el dashboard de operario, como antes
-      navigate(getHomeRoute(response.role));
+      // Tras un 401 vuelve a donde iba; si no, al dashboard de su rol. Los
+      // roles no contemplados caen en el de operario, como antes.
+      navigate(
+        consumeReturnTo(response.username) ?? getHomeRoute(response.role),
+      );
     } catch (error) {
       setIsSuccess(false);
 
