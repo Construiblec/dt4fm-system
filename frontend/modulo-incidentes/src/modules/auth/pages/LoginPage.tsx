@@ -1,6 +1,6 @@
 import { AppLayout } from "@/app/layout/AppLayout";
 import { LoginForm } from "@/modules/auth/components/LoginForm";
-import logo from "@/shared/assets/images/construiblec-logo.png";
+import logo from "@/shared/assets/images/logo.svg";
 
 export const LoginPage = () => {
   return (
@@ -9,11 +9,11 @@ export const LoginPage = () => {
         <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center">
           <section className="w-full max-w-sm rounded-[22px] border border-white/80 bg-white px-6 pb-5 pt-6 shadow-[0_20px_60px_rgba(15,23,42,0.10)]">
             <div className="mb-4 flex flex-col items-center text-center">
-              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-50 shadow-inner">
+              <div className="flex h-28 w-28 items-center justify-center rounded-3xl bg-slate-50 shadow-inner">
                 <img
                   src={logo}
                   alt="Construiblec"
-                  className="h-7 w-7 object-contain"
+                  className="h-20 w-20 object-contain"
                 />
               </div>
 

@@ -11,7 +11,7 @@ import {
   getRoleView,
   getSelectableRoles,
 } from "@/shared/constants/rolePalette";
-import logo from "@/shared/assets/images/construiblec-logo.png";
+import logo from "@/shared/assets/images/logo.svg";
 import { formatEmployeeName } from "@/shared/utils/nameUtils";
 import { useSessionStore } from "@/store/sessionStore";
 
@@ -48,7 +48,7 @@ export const AppHeader = () => {
           <img
             src={logo}
             alt="Construiblec"
-            className="h-11 w-11 rounded-xl bg-white p-1 shadow-sm"
+            className="h-12 w-12 rounded-xl bg-white object-contain p-1 shadow-sm"
           />
 
           <div className="min-w-0 flex-1">
