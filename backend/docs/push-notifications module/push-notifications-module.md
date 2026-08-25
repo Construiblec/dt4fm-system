@@ -25,7 +25,7 @@ Toda notificación enviada se persiste, aunque la pestaña de historial que la c
 
 ## 3. Alcance implementado
 
-Diez notificaciones. La columna *Punto de disparo* indica dónde se ejecuta el código que las lanza.
+Once notificaciones. La columna *Punto de disparo* indica dónde se ejecuta el código que las lanza.
 
 ### 3.1. Correctivos
 
@@ -43,6 +43,7 @@ Diez notificaciones. La columna *Punto de disparo* indica dónde se ejecuta el c
 | Planificación, dos días antes | Supervisores de mantenimiento | `PreventivePlanningSchedulerService` |
 | Asignación | Empleado o proveedor asignado | `maintenance-supervision.service.ts` → `assignPreventive` |
 | Suspensión | Supervisores de mantenimiento | `preventive-maintenance.service.ts` → `suspendPreventiveMaintenance` |
+| Des-suspensión (reanudación) | Empleado o proveedor asignado | `maintenance-supervision.service.ts` → `resumePreventive` |
 
 ### 3.3. Limpieza
 
@@ -55,14 +56,14 @@ Diez notificaciones. La columna *Punto de disparo* indica dónde se ejecuta el c
 ### 3.4. Fuera de alcance y por qué
 
 * **Correctivo → Ejecución.** No existe el momento «el técnico arranca»: la acción `CM02-Advance` lleva la instancia de Asignación directamente a Ejecución en el mismo instante en que el supervisor asigna, y openMAINT rellena `ExecStartDate` con la fecha *prevista*. Por eso existe el estado derivado `Assigned`. Habilitarlo exige implementar antes el `POST /incidents/:id/start` que la documentación de [supervisión de mantenimiento](../maintenance-supervision/maintenance-supervision.md) ya marca como pendiente.
-* **Preventivo → Des-suspensión.** La acción `PM_ACTIONS.RESUME` está declarada pero no se usa: esa transición hoy se hace dentro de openMAINT, fuera de la aplicación.
+* **Avisos de retraso de correctivos** (sin iniciar tras la hora prevista, sin terminar en ejecución) y **avisos de ejecución de limpieza**. Excluidos por la especificación, no por una limitación técnica. Los dos primeros dependen además del `POST /incidents/:id/start` mencionado arriba. Añadirlos hoy es replicar `CleaningDelaySchedulerService` cambiando la consulta: el barrido periódico y la idempotencia ya existen.
 * **Notificaciones a residentes.** Previstas para una fase posterior.
 
 ---
 
 ## 4. Limitación estructural: el disparador vive en la aplicación
 
-Los siete disparadores inmediatos se ejecutan cuando la acción pasa por los endpoints de este backend. **Un cambio de estado hecho directamente en la interfaz web de openMAINT no genera ninguna notificación.**
+Los ocho disparadores inmediatos se ejecutan cuando la acción pasa por los endpoints de este backend. **Un cambio de estado hecho directamente en la interfaz web de openMAINT no genera ninguna notificación.**
 
 El backend es un cliente REST de openMAINT: le hace peticiones, pero no escucha nada. No hay ningún código propio ejecutándose cuando alguien avanza un flujo desde la consola de openMAINT.
 
@@ -100,7 +101,7 @@ Módulos de dominio                    Schedulers
               Service worker del dispositivo
 ```
 
-Se descartó un bus de eventos: son siete puntos de llamada, no hay riesgo de dependencia circular (el módulo de push depende de `OpenmaintModule` y TypeORM, nunca de los módulos que lo consumen) y las llamadas directas son la convención ya establecida por `incidents.service.ts`.
+Se descartó un bus de eventos: son ocho puntos de llamada, no hay riesgo de dependencia circular (el módulo de push depende de `OpenmaintModule` y TypeORM, nunca de los módulos que lo consumen) y las llamadas directas son la convención ya establecida por `incidents.service.ts`.
 
 ---
 

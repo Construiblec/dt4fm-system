@@ -69,6 +69,9 @@ Los detalles tienen ruta propia y no presentan problema:
 |---|---|
 | Detalle de correctivo (supervisor) | `/supervisor-mantenimiento/corrective/:id` |
 | Detalle de preventivo (supervisor) | `/supervisor-mantenimiento/preventive/:id` |
+| Detalle de preventivo (técnico) | `/preventive-maintenance/:id` |
+
+El destinatario decide la ruta: el aviso de reanudación va al cesionario, así que enlaza a la vista del técnico y no a la del supervisor.
 
 Los **listados no tenían URL**: son sub-pestañas en memoria (`useState`) dentro del dashboard, que siempre arrancaba en correctivos. Una notificación de limpieza habría aterrizado en la pestaña equivocada.
 
