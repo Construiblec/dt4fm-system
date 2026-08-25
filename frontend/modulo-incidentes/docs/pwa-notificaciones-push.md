@@ -85,6 +85,25 @@ Se resolvió leyendo *query params* para inicializar ese estado, en `DashboardPa
 
 Solo inicializan el estado; la navegación posterior del usuario no queda atada a la URL.
 
+### El destino sobrevive al login
+
+La sesión de openMAINT se guarda cruda en `localStorage` y **no se renueva nunca**: cuando caduca, la primera llamada devuelve 401 y cada servicio manda al login. En el escenario típico de móvil —tocar la notificación por la mañana con la sesión de ayer ya vencida— eso hacía aterrizar en el login **perdiendo el destino**, y el usuario tenía que buscar la tarea a mano.
+
+`src/shared/auth/returnTo.ts` guarda la ruta pretendida antes de redirigir y el login la restaura:
+
+```ts
+navigate(consumeReturnTo(response.username) ?? getHomeRoute(response.role));
+```
+
+Los nueve manejadores de 401 llaman ahora a `redirectToLogin()` en vez de a `window.location.assign("/login")`. Cuatro salvaguardas:
+
+* **Solo se restaura si vuelve el mismo usuario.** En un celular compartido el siguiente que entre no debe aterrizar en la tarea del anterior. Si no había sesión previa —deep link en frío— se restaura para cualquiera.
+* **Caduca a los 30 minutos.** Pasado ese plazo el destino ya no es lo que el usuario venía a hacer.
+* **Se descartan rutas externas** (`//host`, absolutas) y las de autenticación, más todo `/owner`, que tiene su propio acceso.
+* **`clearSession()` lo borra**: un cierre de sesión deliberado no deja destino pendiente.
+
+Esto **no alarga la sesión**, solo abarata su caducidad: sigue costando un login, pero ya no un login más navegación manual. La sesión persistente de verdad —que el backend emita su propio token largo y acuñe la sesión de openMAINT bajo demanda— es trabajo aparte, y es una decisión de seguridad porque implica que el backend guarde algo capaz de re-autenticar al usuario.
+
 ---
 
 ## 5. Flujo de permiso: el pre-prompt
@@ -187,6 +206,9 @@ src
 ├ sw.ts                                  Service worker propio
 ├ config/env.ts                          + VITE_VAPID_PUBLIC_KEY (opcional)
 ├ shared
+│ ├ auth
+│ │ ├ returnTo.ts                        Destino pendiente tras un 401
+│ │ └ session.ts                         (existente, + forgetReturnTo)
 │ ├ pwa
 │ │ ├ pushSubscription.ts                Alta, baja y errores
 │ │ ├ platform.ts                        isRunningStandalone / isIos / isIosSafari
@@ -199,6 +221,7 @@ src
 │   ├ EnableNotificationsBanner.tsx      Banner de activación y de error
 │   └ InstallAppBanner.tsx               (existente)
 ├ app/layout/AppLayout.tsx               Monta y apila los banners
+├ modules/auth/components/LoginForm.tsx  + restaura el destino pendiente
 └ modules/auth/hooks/useLogout.ts        + baja de la suscripción
 
 tsconfig.worker.json                     Compilación del service worker

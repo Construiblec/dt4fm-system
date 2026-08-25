@@ -1,4 +1,5 @@
 import { useCleaningTaskExecutionStore } from "@/store/cleaningTaskExecutionStore";
+import { forgetReturnTo } from "@/shared/auth/returnTo";
 
 /**
  * openMAINT devuelve en `role` el **Code** del rol, no su Description. Ojo con
@@ -99,5 +100,6 @@ const SESSION_KEYS = [
  */
 export const clearSession = () => {
   SESSION_KEYS.forEach((key) => localStorage.removeItem(key));
+  forgetReturnTo();
   useCleaningTaskExecutionStore.getState().clearActiveTask();
 };
