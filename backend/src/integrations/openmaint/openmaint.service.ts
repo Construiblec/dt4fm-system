@@ -423,6 +423,50 @@ export class OpenmaintService {
     }
   }
 
+  /**
+   * Ficha `Tenant` que corresponde a la descripción de un usuario.
+   *
+   * El vínculo es frágil de origen y se mantiene tal cual estaba en
+   * `owners.service.ts` para no cambiar de comportamiento al unificar el login:
+   * openMAINT no guarda ninguna FK entre la cuenta y el `Tenant`, así que la
+   * única vía es buscar el `Tenant` que se llame **exactamente** igual que la
+   * descripción del usuario. Si algún día se añade esa FK, este es el único
+   * sitio a tocar.
+   *
+   * Necesita sesión de servicio: la del propio residente no lee `Tenant`.
+   */
+  async findTenantByDescription(
+    description: string,
+    serviceSessionId: string,
+  ): Promise<number | null> {
+    if (!description) {
+      return null;
+    }
+
+    const filter = encodeURIComponent(
+      JSON.stringify({
+        attribute: {
+          simple: {
+            attribute: 'Description',
+            operator: 'equal',
+            value: description,
+          },
+        },
+      }),
+    );
+
+    try {
+      const response = (await this.client.get(
+        `/classes/Tenant/cards?filter=${filter}&limit=1`,
+        serviceSessionId,
+      )) as TenantCardsResponse;
+
+      return response?.data?.[0]?._id ?? null;
+    } catch {
+      return null;
+    }
+  }
+
   async findTenantByIdNumber(
     idNumber: string,
     sessionId: string,

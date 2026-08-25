@@ -7,5 +7,8 @@ import { OpenmaintModule } from '../../integrations/openmaint/openmaint.module';
   imports: [OpenmaintModule],
   controllers: [AuthController],
   providers: [AuthService],
+  // OwnersService lo reutiliza para que `/owners/login` sea un alias del login
+  // unificado en vez de una segunda implementación que se desincronice.
+  exports: [AuthService],
 })
 export class AuthModule {}

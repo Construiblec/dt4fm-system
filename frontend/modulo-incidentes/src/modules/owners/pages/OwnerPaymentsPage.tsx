@@ -1,6 +1,5 @@
 import axios from "axios";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import {
   ChevronLeft,
   CreditCard,
@@ -50,7 +49,6 @@ const estadoBadge = (codigo: string) => {
 };
 
 export const OwnerPaymentsPage = () => {
-  const navigate = useNavigate();
   const tenantId = Number(localStorage.getItem("tenantId"));
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -149,15 +147,7 @@ export const OwnerPaymentsPage = () => {
     return (
       <AppLayout>
         <main className="min-h-screen bg-slate-50 px-4 py-6">
-          <button
-            type="button"
-            onClick={() => navigate("/owner/dashboard")}
-            className="mb-6 flex items-center gap-1 text-sm font-medium text-slate-500 transition hover:text-slate-800"
-          >
-            <ChevronLeft className="h-4 w-4" />
-            Volver al inicio
-          </button>
-
+          {/* Volver al inicio vive ahora en la barra inferior. */}
           <h1 className="mb-1 text-xl font-bold text-slate-900">Mis pagos</h1>
           <p className="mb-5 text-sm text-slate-500">
             Gestiona tus expensas y revisa el historial de pagos.

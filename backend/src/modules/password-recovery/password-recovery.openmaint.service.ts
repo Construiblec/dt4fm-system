@@ -1,7 +1,10 @@
-import { Injectable, InternalServerErrorException } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { OpenmaintAuthService } from '../../integrations/openmaint/openmaint.auth.service';
+import { Injectable } from '@nestjs/common';
 import { OpenmaintClient } from '../../integrations/openmaint/openmaint.client';
+import { OpenmaintServiceSession } from '../../integrations/openmaint/openmaint.service-session';
+import {
+  OpenmaintUsersService,
+  type OpenmaintUserAccount,
+} from '../../integrations/openmaint/openmaint.users.service';
 
 /** Tarjeta de la clase `User`. Es la única lectura que expone `Password`. */
 export type OpenmaintUserCard = {
@@ -13,26 +16,16 @@ export type OpenmaintUserCard = {
   Service: boolean;
 };
 
-/** Recurso `/users/{id}`, que sí trae los grupos y es el que acepta escritura. */
-export type OpenmaintUserAccount = {
-  _id: number;
-  username: string;
-  description: string | null;
-  email: string | null;
-  active: boolean;
-  defaultUserGroup?: number | null;
-  userGroups?: { _id: number; name: string }[];
-};
+export type { OpenmaintUserAccount };
 
 type CardsResponse = { data?: OpenmaintUserCard[] };
-type AccountResponse = { data?: OpenmaintUserAccount };
 
 @Injectable()
 export class PasswordRecoveryOpenmaintService {
   constructor(
     private readonly client: OpenmaintClient,
-    private readonly authService: OpenmaintAuthService,
-    private readonly configService: ConfigService,
+    private readonly serviceSession: OpenmaintServiceSession,
+    private readonly users: OpenmaintUsersService,
   ) {}
 
   /**
@@ -41,18 +34,7 @@ export class PasswordRecoveryOpenmaintService {
    * la cuenta administrativa del `.env`.
    */
   async getServiceSessionId(): Promise<string> {
-    const username = this.configService.get<string>('OPENMAINT_USERNAME');
-    const password = this.configService.get<string>('OPENMAINT_PASSWORD');
-
-    const response = await this.authService.login(username!, password!);
-
-    if (!response?.data?._id) {
-      throw new InternalServerErrorException(
-        'No se pudo obtener sesión de servicio con OpenMAINT',
-      );
-    }
-
-    return response.data._id;
+    return this.serviceSession.get();
   }
 
   /** Busca por `Username` o `Email`; puede devolver más de una coincidencia. */
@@ -105,39 +87,15 @@ export class PasswordRecoveryOpenmaintService {
     userId: number,
     sessionId: string,
   ): Promise<OpenmaintUserAccount | null> {
-    const response = (await this.client.get(
-      `/users/${userId}`,
-      sessionId,
-    )) as AccountResponse;
-
-    return response?.data ?? null;
+    return this.users.getAccount(userId, sessionId);
   }
 
-  /**
-   * Cambia la contraseña conservando el resto de la cuenta.
-   *
-   * `PUT /users/{id}` reemplaza el recurso completo, así que hay que reenviar
-   * los grupos leídos del GET. Ojo: `changeOwnerPassword` en OwnersService
-   * los hardcodea al grupo Propietarios; replicar eso aquí borraría los grupos
-   * del personal, que suele pertenecer a varios.
-   */
+  /** Conserva los grupos de la cuenta; ver `OpenmaintUsersService`. */
   async updatePassword(
     account: OpenmaintUserAccount,
     newPassword: string,
     sessionId: string,
   ): Promise<void> {
-    await this.client.put(
-      `/users/${account._id}`,
-      {
-        username: account.username,
-        description: account.description ?? '',
-        email: account.email ?? '',
-        active: account.active,
-        password: newPassword,
-        defaultUserGroup: account.defaultUserGroup ?? null,
-        userGroups: account.userGroups ?? [],
-      },
-      sessionId,
-    );
+    return this.users.updatePassword(account, newPassword, sessionId);
   }
 }

@@ -4,7 +4,9 @@ export const FloatingReportButton = () => {
   const navigate = useNavigate();
 
   return (
-    <div className="fixed bottom-6 left-0 z-30 flex w-full justify-center px-4">
+    // Se apoya justo encima de la barra inferior (h-16) y respeta el indicador
+    // de inicio del iPhone; con `bottom-6` quedaba tapado por la barra.
+    <div className="fixed bottom-[calc(5rem+env(safe-area-inset-bottom))] left-0 z-30 flex w-full justify-center px-4">
       <button
         type="button"
         onClick={() => navigate("/reportar-incidente")}

@@ -1,18 +1,15 @@
 import { useEffect, useState } from "react";
 import { AppLayout } from "@/app/layout/AppLayout";
-import { useLogout } from "@/modules/auth/hooks/useLogout";
+import { AppHeader } from "@/shared/components/AppHeader";
 import { useSupervisorTasks } from "@/modules/supervisor/hooks/useSupervisorTasks";
 import { SupervisorTaskCard } from "@/modules/supervisor/components/SupervisorTaskCard";
 import { SupervisorFilters } from "@/modules/supervisor/components/SupervisorFilters";
 import { FloatingReportButton } from "@/modules/incidentes/components/FloatingReportButton";
 import { ReviewModal } from "@/modules/supervisor/components/ReviewModal";
 import type { CleaningTask } from "@/modules/incidentes/types/CleaningTask";
-import logo from "@/shared/assets/images/construiblec-logo.png";
 import { ClipboardList } from "lucide-react";
-import { formatEmployeeName } from "@/shared/utils/nameUtils";
 
 export const SupervisorDashboardPage = () => {
-  const logout = useLogout();
   const { tasks, loading, error, total, filters, load, applyFilters, clearFilters } =
     useSupervisorTasks();
   const [taskToReview, setTaskToReview] = useState<CleaningTask | null>(null);
@@ -36,32 +33,7 @@ export const SupervisorDashboardPage = () => {
   return (
     <AppLayout className="bg-gray-100">
       <main className="min-h-screen flex flex-col bg-gray-100">
-        {/* Header */}
-        <header className="flex items-center justify-between p-4">
-          <div className="flex items-center gap-3">
-            <img
-              src={logo}
-              alt="Construiblec"
-              className="h-12 w-12 rounded-xl bg-white p-1 shadow-sm"
-            />
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-500">
-                Construiblec
-              </p>
-              <p className="text-base font-medium text-slate-900">
-                Bienvenido, {formatEmployeeName(localStorage.getItem("username"))}
-              </p>
-            </div>
-          </div>
-
-          <button
-            type="button"
-            onClick={logout}
-            className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white"
-          >
-            Salir
-          </button>
-        </header>
+        <AppHeader />
 
         <section className="flex-1 px-4 pb-10">
           <div className="mx-auto w-full max-w-sm space-y-5">

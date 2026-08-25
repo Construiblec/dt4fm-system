@@ -4,9 +4,10 @@ import { useForm } from "react-hook-form";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
 import { AppLayout } from "@/app/layout/AppLayout";
-import { storeEmployeeId } from "@/shared/auth/session";
+import { toSession } from "@/modules/auth/hooks/useRoleSwitch";
 import logo from "@/shared/assets/images/construiblec-logo.png";
 import { login } from "@/services/api";
+import { useSessionStore } from "@/store/sessionStore";
 
 type VisitorFormValues = {
   fullName: string;
@@ -16,6 +17,7 @@ type VisitorFormValues = {
 
 export const VisitorFormPage = () => {
   const navigate = useNavigate();
+  const setSession = useSessionStore((state) => state.setSession);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const { register, handleSubmit, formState } = useForm<VisitorFormValues>({
     defaultValues: {
@@ -34,10 +36,9 @@ export const VisitorFormPage = () => {
 
       const response = await login("usuario.invitado", "Invitado2026.");
 
-      localStorage.setItem("sessionId", response.sessionId);
-      storeEmployeeId(response.employeeId);
-      localStorage.setItem("username", response.username);
-      localStorage.setItem("role", response.role);
+      // El invitado usa una cuenta compartida, pero la sesión se guarda igual
+      // que cualquier otra para que el resto de la app la lea de un solo sitio.
+      setSession(toSession(response));
 
       navigate("/report-incident");
     } catch (error) {

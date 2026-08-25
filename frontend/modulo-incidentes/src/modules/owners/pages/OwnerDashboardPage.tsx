@@ -6,9 +6,7 @@ import {
   AlertCircle,
   CheckCircle2,
   LogOut,
-  CalendarDays,
   ChevronRight,
-  User,
 } from "lucide-react";
 import { AppLayout } from "@/app/layout/AppLayout";
 import { clearSession } from "@/shared/auth/session";
@@ -18,30 +16,6 @@ import {
   type OwnerUnit,
   type OwnerPago,
 } from "@/services/api";
-
-const quickActions = [
-  {
-    label: "Mis pagos",
-    description: "Ver y gestionar expensas",
-    icon: CreditCard,
-    route: "/owner/payments",
-    color: "bg-blue-50 text-blue-600",
-  },
-  {
-    label: "Reservas",
-    description: "Áreas comunales",
-    icon: CalendarDays,
-    route: "/owner/reservations",
-    color: "bg-violet-50 text-violet-600",
-  },
-  {
-    label: "Mi perfil",
-    description: "Cuenta y ajustes",
-    icon: User,
-    route: "/owner/profile",
-    color: "bg-slate-100 text-slate-600",
-  },
-];
 
 export const OwnerDashboardPage = () => {
   const navigate = useNavigate();
@@ -153,39 +127,8 @@ export const OwnerDashboardPage = () => {
           <div className="mb-6 h-16 animate-pulse rounded-2xl bg-slate-200" />
         )}
 
-        {/* Accesos rápidos */}
-        <section className="mb-6">
-          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-slate-500">
-            Accesos rapdidos
-          </h2>
-          <div className="grid grid-cols-3 gap-3">
-            {quickActions.map((action) => {
-              const Icon = action.icon;
-              return (
-                <button
-                  key={action.route}
-                  type="button"
-                  onClick={() => navigate(action.route)}
-                  className="flex flex-col items-center gap-2 rounded-2xl border border-slate-200 bg-white px-2 py-4 shadow-sm transition hover:shadow-md active:scale-95"
-                >
-                  <div
-                    className={`flex h-10 w-10 items-center justify-center rounded-full ${action.color}`}
-                  >
-                    <Icon className="h-5 w-5" />
-                  </div>
-                  <div className="text-center">
-                    <p className="text-xs font-semibold text-slate-800">
-                      {action.label}
-                    </p>
-                    <p className="text-[10px] leading-tight text-slate-400">
-                      {action.description}
-                    </p>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        </section>
+        {/* Los accesos rápidos se movieron a la barra inferior: ahí están
+            disponibles desde cualquier pantalla, no solo al volver al inicio. */}
 
         {/* Sección: Mis unidades */}
         <section className="mb-6">
