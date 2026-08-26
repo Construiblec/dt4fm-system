@@ -5,6 +5,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { buildTypeOrmOptions } from './config/database.config';
 import { OpenmaintModule } from './integrations/openmaint/openmaint.module';
 import { IncidentsModule } from './modules/incidents/incidents.module';
+import { IotAlarmsModule } from './modules/iot-alarms/iot-alarms.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { BuildingsModule } from './modules/buildings/buildings.module';
 import { CleaningTasksModule } from './modules/cleaning-tasks/cleaning-tasks.module';
@@ -33,6 +34,7 @@ import { PushNotificationsModule } from './modules/push-notifications/push-notif
     AuthModule,
     PasswordRecoveryModule,
     IncidentsModule,
+    IotAlarmsModule,
     PreventiveMaintenanceModule,
     MaintenanceSupervisionModule,
     BuildingsModule,
