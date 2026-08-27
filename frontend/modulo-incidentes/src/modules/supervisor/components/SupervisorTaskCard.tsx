@@ -1,49 +1,14 @@
 import { MapPin, User, CalendarDays, Clock } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import {
+  getCleaningPhaseBadge,
+  getCleaningPhaseBorder,
+  getCleaningPhaseLabel,
+} from "@/modules/incidentes/constants/cleaningPhase";
 import type { CleaningTask } from "@/modules/incidentes/types/CleaningTask";
 
 import { formatEmployeeName } from "@/shared/utils/nameUtils";
-
-const phaseStyles: Record<string, { badge: string; border: string }> = {
-  Assigned: { badge: "bg-blue-100 text-blue-700", border: "border-blue-400" },
-  InExecution: {
-    badge: "bg-amber-100 text-amber-700",
-    border: "border-amber-400",
-  },
-  Completed: {
-    badge: "bg-violet-100 text-violet-700",
-    border: "border-violet-500",
-  },
-  Reviewed: {
-    badge: "bg-emerald-100 text-emerald-700",
-    border: "border-emerald-500",
-  },
-  Cancelled: { badge: "bg-red-100 text-red-700", border: "border-red-400" },
-};
-
-const phaseLabels: Record<string, string> = {
-  Assigned: "Asignada",
-  InExecution: "En ejecución",
-  Completed: "Completada",
-  Reviewed: "Revisada",
-  Cancelled: "Cancelada",
-};
-
-function formatDate(iso: string | null): string {
-  if (!iso) return "—";
-  return new Date(iso).toLocaleDateString("es-EC", {
-    day: "numeric",
-    month: "short",
-  });
-}
-
-function formatTime(iso: string | null): string {
-  if (!iso) return "—";
-  return new Date(iso).toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
+import { formatDayMonth as formatDate, formatTime } from "@/shared/utils/dateUtils";
 
 type Props = {
   task: CleaningTask;
@@ -52,10 +17,8 @@ type Props = {
 
 export const SupervisorTaskCard = ({ task }: Props) => {
   const navigate = useNavigate();
-  const style = phaseStyles[task.phase] ?? {
-    badge: "bg-slate-100 text-slate-700",
-    border: "border-slate-300",
-  };
+  const badge = getCleaningPhaseBadge(task.phase);
+  const border = getCleaningPhaseBorder(task.phase);
 
   // Se deduce de los datos, no del texto de observaciones: una tarea recién asignada
   // nunca trae actualStartTime (al reabrir se conserva el del primer inicio), y
@@ -66,7 +29,7 @@ export const SupervisorTaskCard = ({ task }: Props) => {
 
   return (
     <article
-      className={`rounded-xl border-l-4 bg-white p-4 shadow-sm ${style.border}`}
+      className={`rounded-xl border-l-4 bg-white p-4 shadow-sm ${border}`}
     >
       {/* Header */}
       <div className="flex items-start justify-between gap-2">
@@ -80,9 +43,9 @@ export const SupervisorTaskCard = ({ task }: Props) => {
         </div>
         <div className="flex flex-col items-end gap-1">
           <span
-            className={`flex-shrink-0 rounded-md px-2 py-1 text-xs font-semibold ${style.badge}`}
+            className={`flex-shrink-0 ${badge}`}
           >
-            {phaseLabels[task.phase] ?? task.phase}
+            {getCleaningPhaseLabel(task.phase)}
           </span>
           {isReopened && (
             <span className="flex-shrink-0 rounded-md bg-rose-100 px-2 py-1 text-xs font-semibold text-rose-700">

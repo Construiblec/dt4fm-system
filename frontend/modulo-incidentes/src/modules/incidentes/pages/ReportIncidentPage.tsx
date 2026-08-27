@@ -28,27 +28,38 @@ import {
   isVisitorSession,
 } from "@/shared/auth/session";
 import { ArrowLeft } from "lucide-react";
+import { PRIORITY_IDS, PRIORITY_LABELS } from "@/shared/constants/priority";
+import { rememberReturnTo } from "@/shared/auth/returnTo";
 
+/**
+ * Etiquetas en masculino, igual que el resto de la app y que lo que devuelve
+ * openMAINT. Antes aquí se decía «Alta/Media/Baja» y el usuario reportaba una
+ * incidencia «Alta» para leer después «Prioridad Alto» en la tarjeta.
+ *
+ * Los IDs son los del lookup `COMMON - Priority`; `Crítico` (117) existe pero
+ * no se ofrece al reportar, es de uso interno.
+ */
 const priorities = [
   {
-    id: 120,
-    label: "Baja",
+    id: PRIORITY_IDS.Low,
+    label: PRIORITY_LABELS.Low,
     baseClassName:
       "border-emerald-200 bg-emerald-50 text-emerald-700 hover:border-emerald-300",
     activeClassName: "border-emerald-500 bg-emerald-500 text-white",
   },
   {
-    id: 119,
-    label: "Media",
+    id: PRIORITY_IDS.Medium,
+    label: PRIORITY_LABELS.Medium,
     baseClassName:
       "border-amber-200 bg-amber-50 text-amber-700 hover:border-amber-300",
-    activeClassName: "border-amber-500 bg-amber-500 text-slate-900",
+    activeClassName: "border-amber-500 bg-amber-500 text-white",
   },
   {
-    id: 118,
-    label: "Alta",
-    baseClassName: "border-red-200 bg-red-50 text-red-700 hover:border-red-300",
-    activeClassName: "border-red-500 bg-red-500 text-white",
+    id: PRIORITY_IDS.High,
+    label: PRIORITY_LABELS.High,
+    baseClassName:
+      "border-orange-200 bg-orange-50 text-orange-700 hover:border-orange-300",
+    activeClassName: "border-orange-500 bg-orange-500 text-white",
   },
 ] as const;
 
@@ -148,6 +159,7 @@ export const ReportIncidentPage = () => {
           const status = error.response?.status;
 
           if (status === 401) {
+            rememberReturnTo();
             navigate("/login");
             return;
           }
@@ -201,6 +213,7 @@ export const ReportIncidentPage = () => {
         }
 
         if (axios.isAxiosError(error) && error.response?.status === 401) {
+          rememberReturnTo();
           navigate("/login");
           return;
         }
@@ -458,6 +471,7 @@ export const ReportIncidentPage = () => {
       console.log("incidente enviado");
     } catch (error) {
       if (axios.isAxiosError(error) && error.response?.status === 401) {
+        rememberReturnTo();
         navigate("/login");
         return;
       }

@@ -20,7 +20,7 @@ import { UploadDocumentSheet } from "@/modules/incidentes/components/UploadDocum
 import { PREVENTIVE_UPLOAD_ENABLED } from "@/modules/incidentes/constants/preventiveDocuments";
 import {
   getPreventiveStatusLabel,
-  PREVENTIVE_STATUS_BADGE_CLASSES,
+  getPreventiveStatusPill,
 } from "@/modules/incidentes/constants/preventiveStatus";
 import { usePreventiveChecklist } from "@/modules/incidentes/hooks/usePreventiveChecklist";
 import { usePreventiveMaintenanceAttachments } from "@/modules/incidentes/hooks/usePreventiveMaintenanceAttachments";
@@ -45,16 +45,10 @@ import { ErrorModal } from "@/shared/components/ErrorModal";
 import { LoadingModal } from "@/shared/components/LoadingModal";
 import { SuccessModal } from "@/shared/components/SuccessModal";
 
-const formatDateTime = (value: string | null) => {
-  if (!value) {
-    return "—";
-  }
+import { formatMediumDateTime as formatDateTimeUtil } from "@/shared/utils/dateUtils";
 
-  return new Date(value).toLocaleString("es-EC", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  });
-};
+const formatDateTime = (value: string | null) =>
+  formatDateTimeUtil(value, "—");
 
 type InfoRowProps = {
   label: string;
@@ -297,13 +291,7 @@ export const PreventiveMaintenanceDetailPage = () => {
             </div>
 
             {maintenance ? (
-              <span
-                className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                  PREVENTIVE_STATUS_BADGE_CLASSES[
-                    maintenance.statusCode ?? ""
-                  ] ?? "bg-slate-100 text-slate-700"
-                }`}
-              >
+              <span className={getPreventiveStatusPill(maintenance.statusCode)}>
                 {getPreventiveStatusLabel(
                   maintenance.statusCode,
                   maintenance.status,

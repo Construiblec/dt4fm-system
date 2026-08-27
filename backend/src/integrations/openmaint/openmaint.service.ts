@@ -4,15 +4,33 @@ import {
   Injectable,
 } from '@nestjs/common';
 import FormData from 'form-data';
+import {
+  CM_ACTIONS,
+  CM_OUTCOME_POSITIVE,
+} from '../../modules/maintenance-supervision/constants/corrective-maint.constants';
 import { OpenmaintClient } from './openmaint.client';
+import type { OpenmaintSession } from './openmaint.auth.service';
 
 type EmployeeCard = {
   _id: number;
+  /** Subclase de la ficha; `SupplierEmployee` identifica a un proveedor */
+  _type?: string;
+  Description?: string | null;
+  Team?: number | null;
+  _Team_code?: string | null;
+  _Team_description?: string | null;
 };
 
 type EmployeeCardsResponse = {
   data?: EmployeeCard[];
 };
+
+/**
+ * Identidad y rol del llamante. La forma la define `OpenmaintAuthService`, que
+ * es quien habla con `/sessions`; se reexporta para no obligar a los
+ * consumidores a saber de qué archivo sale.
+ */
+export type { OpenmaintSession };
 
 type TenantCard = {
   _id: number;
@@ -68,9 +86,21 @@ type CompleteIncidentBody = {
   _type: 'CorrectiveMaint';
   _activity: string;
   _advance: true;
-  Action: 'CM03-Advance';
+  /** ID numérico del lookup `Process - Action`, no el código. Ver `CM_ACTIONS`. */
+  Action: number;
   Outcome: number;
+  /** Fin real del trabajo; es lo que le da duración al parte. */
+  ExecEndDate: string;
   ProcessNotes: string | null;
+};
+
+type StartIncidentBody = {
+  _id: number;
+  _type: 'CorrectiveMaint';
+  _activity: string;
+  /** Sella el atributo sin avanzar el flujo: el trabajo sigue en CM03. */
+  _advance: false;
+  ExecStartDate: string;
 };
 
 type OpenmaintCreateUserBody = {
@@ -223,10 +253,58 @@ export class OpenmaintService {
     );
   }
 
+  /**
+   * Sella el inicio real del trabajo sin avanzar el flujo (`_advance: false`),
+   * que es lo que hace el botón «Guardar» de OpenMAINT.
+   *
+   * El correctivo ya está en CM03 desde que el supervisor lo asignó, así que no
+   * hay ninguna transición que ejecutar: lo único que falta es la marca de
+   * tiempo. Mientras `ExecStartDate` esté vacío el trabajo se muestra como
+   * «Asignado»; en cuanto se sella pasa a «Ejecución».
+   *
+   * Verificado contra el clon: CM03 declara `ExecStartDate` escribible y el PUT
+   * lo persiste (también admite volver a `null`).
+   */
+  async startIncident(
+    incidentId: number,
+    activityId: string,
+    execStartDate: string,
+    sessionId: string,
+  ): Promise<void> {
+    const body: StartIncidentBody = {
+      _id: incidentId,
+      _type: 'CorrectiveMaint',
+      _activity: activityId,
+      _advance: false,
+      ExecStartDate: execStartDate,
+    };
+
+    await this.client.put(
+      `/processes/CorrectiveMaint/instances/${incidentId}`,
+      body,
+      sessionId,
+    );
+  }
+
+  /**
+   * Cierra el trabajo con `CM03-Advance` y lo deja en contabilidad, a la espera
+   * de la revisión del supervisor.
+   *
+   * Dos detalles que costaron una sonda contra el clon:
+   *
+   * - `Action` va como **ID numérico**. Con el código (`'CM03-Advance'`)
+   *   OpenMAINT guarda `Action: null` y aplica la transición por defecto del
+   *   paso; aquí coincide, pero deja el parte sin la acción registrada.
+   * - `ExecEndDate` hay que mandarlo explícitamente. CM03 lo declara
+   *   obligatorio, pero **la API no lo valida** — solo la interfaz de
+   *   OpenMAINT. Sin él el flujo avanza igual y el trabajo queda cerrado sin
+   *   fin, así que el supervisor no ve ninguna duración.
+   */
   async completeIncident(
     incidentId: number,
     activityId: string,
     notes: string | null,
+    execEndDate: string,
     sessionId: string,
   ) {
     const body: CompleteIncidentBody = {
@@ -234,8 +312,9 @@ export class OpenmaintService {
       _type: 'CorrectiveMaint',
       _activity: activityId,
       _advance: true,
-      Action: 'CM03-Advance',
-      Outcome: 261326,
+      Action: CM_ACTIONS.CONCLUDE,
+      Outcome: CM_OUTCOME_POSITIVE,
+      ExecEndDate: execEndDate,
       ProcessNotes: notes,
     };
 
@@ -244,6 +323,24 @@ export class OpenmaintService {
       body,
       sessionId,
     );
+  }
+
+  /**
+   * Sesión del llamante. Se usa para verificar identidad y rol contra
+   * openMAINT en vez de creerle al header `x-role`, que sale de localStorage.
+   *
+   * `/sessions/current` la resuelve desde la propia cabecera de autorización:
+   * a diferencia de `/users/{id}` no exige privilegios de administrador, y ata
+   * el rol a la sesión, así que nadie puede suscribirse en nombre de otro.
+   *
+   * No captura errores a propósito: quien llama decide qué hacer con ellos.
+   */
+  async getSession(sessionId: string): Promise<OpenmaintSession | null> {
+    const response = (await this.client.get('/sessions/current', sessionId)) as {
+      data?: OpenmaintSession;
+    };
+
+    return response?.data ?? null;
   }
 
   async resolveEmployeeId(
@@ -272,6 +369,41 @@ export class OpenmaintService {
     } catch {
       return null;
     }
+  }
+
+  /**
+   * Empleados candidatos a cesionario, opcionalmente acotados a un equipo.
+   *
+   * `_type` viene con la subclase de la ficha (`InternalEmployee`,
+   * `ExternalEmployee`, `SupplierEmployee`, `CustomerEmployee`): es lo único
+   * que distingue a un proveedor, porque la clase `Team` no tiene ningún flag
+   * para ello.
+   */
+  async getEmployees(
+    sessionId: string,
+    teamId?: number,
+  ): Promise<EmployeeCardsResponse> {
+    const params = new URLSearchParams({ limit: '500' });
+
+    if (teamId !== undefined) {
+      params.set(
+        'filter',
+        JSON.stringify({
+          attribute: {
+            simple: {
+              attribute: 'Team',
+              operator: 'equal',
+              value: [String(teamId)],
+            },
+          },
+        }),
+      );
+    }
+
+    return (await this.client.get(
+      `/classes/Employee/cards?${params.toString()}`,
+      sessionId,
+    )) as EmployeeCardsResponse;
   }
 
   async getEmployeeCard(employeeId: number, sessionId: string): Promise<any> {
@@ -312,6 +444,50 @@ export class OpenmaintService {
       )) as EmployeeCardsResponse;
 
       return response.data?.[0]?._id ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Ficha `Tenant` que corresponde a la descripción de un usuario.
+   *
+   * El vínculo es frágil de origen y se mantiene tal cual estaba en
+   * `owners.service.ts` para no cambiar de comportamiento al unificar el login:
+   * openMAINT no guarda ninguna FK entre la cuenta y el `Tenant`, así que la
+   * única vía es buscar el `Tenant` que se llame **exactamente** igual que la
+   * descripción del usuario. Si algún día se añade esa FK, este es el único
+   * sitio a tocar.
+   *
+   * Necesita sesión de servicio: la del propio residente no lee `Tenant`.
+   */
+  async findTenantByDescription(
+    description: string,
+    serviceSessionId: string,
+  ): Promise<number | null> {
+    if (!description) {
+      return null;
+    }
+
+    const filter = encodeURIComponent(
+      JSON.stringify({
+        attribute: {
+          simple: {
+            attribute: 'Description',
+            operator: 'equal',
+            value: description,
+          },
+        },
+      }),
+    );
+
+    try {
+      const response = (await this.client.get(
+        `/classes/Tenant/cards?filter=${filter}&limit=1`,
+        serviceSessionId,
+      )) as TenantCardsResponse;
+
+      return response?.data?.[0]?._id ?? null;
     } catch {
       return null;
     }

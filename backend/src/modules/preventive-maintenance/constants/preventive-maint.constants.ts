@@ -65,14 +65,27 @@ export const PM_ACTIVE_STATUS_IDS: PmStatusId[] = [
  * guarda `Action: null` y aplica la transición por defecto del paso.
  */
 export const PM_ACTIONS = {
+  /** `PM01-Advance` («Start maintenance»): Planificación → Aceptación */
+  ASSIGN: 278763,
+  /** `PM01-Reject` («Cancel maintenance»): Planificación → Cancelado */
+  CANCEL: 278765,
   /** `PM02-Advance`: Aceptación → Ejecución */
   START_EXECUTION: 266618,
   /** `PM03-Advance`: Ejecución → Completado */
   CONCLUDE: 266622,
   /** `PM03-Back`: Ejecución → Suspensión */
   SUSPEND: 266624,
-  /** `PM04-Advance`: Suspensión → Ejecución. Hoy solo se hace desde OpenMAINT. */
+  /** `PM04-Advance` («Resume execution»): Suspensión → Ejecución */
   RESUME: 266626,
+  /**
+   * `PM04-Return` («Change assignee»): cambia el cesionario **sin salir de
+   * Suspensión**.
+   *
+   * Pese al nombre no devuelve el proceso a ningún sitio: vuelve a entrar en
+   * `PM04`, conservando estado y motivo de suspensión. Comprobado en el clon
+   * (2026-08-24) sobre `PM.2026.0331`.
+   */
+  CHANGE_ASSIGNEE: 384554,
 } as const;
 
 /** Lookup `MaintProcess - Outcome`: cierre satisfactorio. */

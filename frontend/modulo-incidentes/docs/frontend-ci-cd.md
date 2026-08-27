@@ -163,13 +163,23 @@ Sin esto, Vercel intenta compilar desde la raíz del monorepo y el build falla a
 
 ## 7.2. Variables de entorno
 
-`Project Settings → Environment Variables`. La variable que consume el frontend es `VITE_API_URL`. Vercel permite asignar un valor distinto según el entorno:
+`Project Settings → Environment Variables`. El frontend consume **una sola variable**, `VITE_API_URL`, y Vercel permite asignarle un valor distinto según el entorno:
 
-| Entorno | Cuándo se usa | Valor recomendado |
+| Entorno | Cuándo se usa | Valor |
 | --- | --- | --- |
-| **Production** | Deploy generado desde `main` | URL del backend de producción |
-| **Preview** | Deploy generado por cualquier PR o rama distinta a `main` | URL del backend real, o de un backend de staging si existe |
+| **Production** | Deploy generado desde `main` | URL del servicio de Render de **producción**, terminada en `/api` |
+| **Preview** | Deploy generado por cualquier PR o rama distinta a `main` | URL del servicio de Render de **desarrollo**, terminada en `/api` |
 | **Development** | Solo si se usa `vercel dev` localmente | Normalmente no se usa; el `.env` local ya cubre este caso |
+
+Cada backend habla con su propia instancia de openMAINT y su propia rama de Neon, así que emparejar mal estas URLs hace que el frontend de pruebas escriba en datos reales.
+
+Que sea una sola variable es deliberado. Todo lo demás que el frontend necesita se lo pide al backend al que apunta, empezando por la clave VAPID (`GET /push/vapid-public-key`). Así no hay nada más que pueda quedar desalineado entre entornos: basta con acertar esta URL.
+
+### El push necesita una URL estable
+
+Una suscripción push pertenece al **origen** que la creó. Los *preview deploys* de Vercel reciben una URL nueva en cada commit, de modo que cada uno registra su propio service worker y su propia suscripción, y las anteriores quedan huérfanas en la rama de Neon de desarrollo.
+
+Para probar notificaciones de verdad hace falta una URL fija —el dominio asignado a la rama `develop`, no la URL efímera del preview— y en iOS, además, la PWA instalada en la pantalla de inicio desde esa misma URL.
 
 Las variables de entorno **no se aplican de forma retroactiva**: si se cambia un valor, un deploy o preview ya existente no se actualiza solo. Hay que volver a desplegar (nuevo commit, o `Redeploy` manual desde el dashboard).
 

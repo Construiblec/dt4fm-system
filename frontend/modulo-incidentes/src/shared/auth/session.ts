@@ -1,10 +1,12 @@
+import { getRoleView, getSelectableRoles } from "@/shared/constants/rolePalette";
 import { useCleaningTaskExecutionStore } from "@/store/cleaningTaskExecutionStore";
+import { getSession, useSessionStore } from "@/store/sessionStore";
+import { forgetReturnTo } from "@/shared/auth/returnTo";
 
 /**
  * openMAINT devuelve en `role` el **Code** del rol, no su Description. Ojo con
- * esto: el Code de "TPM Equipment" es `MaintOffice`. Códigos existentes en la
- * instancia: Requester, SuperUser, Guest, Supplier, Propietarios, Team,
- * MaintOffice, SupervisorLimpieza, AdminOffice, TPM.
+ * esto: el Code de "TPM Equipment" es `MaintOffice`. Los nombres, colores y
+ * rutas de cada rol viven en `@/shared/constants/rolePalette`.
  *
  * Roles que ejecutan y completan tareas en campo. Hoy tienen los mismos
  * permisos; se mantienen separados porque a futuro se habilitarán funciones
@@ -22,22 +24,36 @@ export const canExecuteTasks = (role?: string | null) => {
   );
 };
 
-export const getCurrentRole = () => localStorage.getItem("role");
+/**
+ * El rol activo. Sigue leyendo de `localStorage` como respaldo porque hay
+ * flujos (invitado) que escriben ahí sin pasar por el store.
+ */
+export const getCurrentRole = () =>
+  getSession().role || localStorage.getItem("role");
 
-/** Roles cuyo inicio es el panel de supervisión, no el de tareas propias. */
-const SUPERVISOR_HOME_ROLES = ["SupervisorLimpieza"];
+/** Los proveedores solo manejan mantenimiento; nunca tareas de limpieza. */
+export const isSupplier = (role?: string | null) => {
+  const resolved = role ?? getCurrentRole();
+  return normalizeRole(resolved) === "supplier";
+};
 
 /**
  * Dashboard que le corresponde al rol. Única fuente de verdad para el destino
- * "inicio": la usan el login y los botones de regresar, para que un supervisor
- * no termine en el dashboard de operario.
+ * "inicio": la usan el login, el selector de rol y los botones de regresar,
+ * para que un supervisor no termine en el dashboard de operario.
  */
-export const getHomeRoute = (role?: string | null) => {
-  const resolved = role ?? getCurrentRole();
-  return resolved && SUPERVISOR_HOME_ROLES.includes(resolved)
-    ? "/supervisor"
-    : "/dashboard";
-};
+export const getHomeRoute = (role?: string | null) =>
+  getRoleView(role ?? getCurrentRole()).homeRoute;
+
+/**
+ * Roles entre los que este usuario puede alternar sin cerrar sesión.
+ *
+ * Para pintar en React **no uses esto**: lee `availableRoles` del store con
+ * `useSessionStore` y pásalo a `getSelectableRoles`. Esta lectura es puntual
+ * (`getState()`) y no re-renderiza cuando la lista cambia.
+ */
+export const getSwitchableRoles = () =>
+  getSelectableRoles(getSession().availableRoles);
 
 /**
  * Guarda el employeeId sin dejar rastro cuando no existe: un
@@ -76,6 +92,8 @@ const SESSION_KEYS = [
   "username",
   "userId",
   "role",
+  "availableRoles",
+  "roleLabels",
   "tenantId",
   "ownerName",
   "visitorName",
@@ -89,5 +107,7 @@ const SESSION_KEYS = [
  */
 export const clearSession = () => {
   SESSION_KEYS.forEach((key) => localStorage.removeItem(key));
+  useSessionStore.getState().clear();
+  forgetReturnTo();
   useCleaningTaskExecutionStore.getState().clearActiveTask();
 };

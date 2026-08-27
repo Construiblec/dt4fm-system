@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  ChevronLeft,
   Search,
   MapPin,
   CheckCircle2,
@@ -69,30 +68,7 @@ export const OwnerReservationsPage = () => {
   return (
     <AppLayout>
       <main className="min-h-screen bg-slate-50 px-4 py-6">
-        {/* Header */}
-        <div className="mb-6 flex items-center justify-between">
-          <button
-            type="button"
-            onClick={() => navigate("/owner/dashboard")}
-            className="flex items-center gap-1 text-sm font-medium text-slate-500 transition hover:text-slate-800"
-          >
-            <ChevronLeft className="h-4 w-4" />
-            Volver al inicio
-          </button>
-          <button
-            type="button"
-            onClick={() => setShowFilters(!showFilters)}
-            className={`flex items-center gap-1.5 rounded-xl border px-3 py-2 text-sm font-medium transition ${
-              showFilters
-                ? "border-brand bg-brand/10 text-brand"
-                : "border-slate-200 bg-white text-slate-600"
-            }`}
-          >
-            <SlidersHorizontal className="h-4 w-4" />
-            Filtros
-          </button>
-        </div>
-
+        {/* Volver al inicio vive ahora en la barra inferior. */}
         <h1 className="mb-1 text-xl font-bold text-slate-900">
           Areas comunales
         </h1>
@@ -100,16 +76,32 @@ export const OwnerReservationsPage = () => {
           Consulta el estado y disponibilidad de las areas de tu edificio.
         </p>
 
-        {/* Búsqueda */}
-        <div className="relative mb-4">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-          <input
-            type="text"
-            placeholder="Buscar area..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full rounded-xl border border-slate-200 bg-white py-3 pl-10 pr-4 text-sm text-slate-900 outline-none transition focus:border-brand focus:ring-4 focus:ring-brand/20"
-          />
+        {/* Búsqueda, con los filtros acoplados a la derecha */}
+        <div className="mb-4 flex items-center gap-2">
+          <div className="relative flex-1">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Buscar area..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full rounded-xl border border-slate-200 bg-white py-3 pl-10 pr-4 text-sm text-slate-900 outline-none transition focus:border-brand focus:ring-4 focus:ring-brand/20"
+            />
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setShowFilters(!showFilters)}
+            aria-label="Filtros"
+            aria-pressed={showFilters}
+            className={`flex h-[46px] w-[46px] shrink-0 items-center justify-center rounded-xl border transition ${
+              showFilters
+                ? "border-brand bg-brand/10 text-brand"
+                : "border-slate-200 bg-white text-slate-600"
+            }`}
+          >
+            <SlidersHorizontal className="h-4 w-4" />
+          </button>
         </div>
 
         {/* Filtros de estado */}

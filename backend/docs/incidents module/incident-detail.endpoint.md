@@ -30,6 +30,7 @@ id number ID del incidente en OpenMAINT
 "number": "CM.2026.0076",
 "location": "01/09",
 "building": "REP3 - Proy2",
+"statusCode": "Completed",
 "status": "Completed",
 "priority": "High",
 "createdAt": "2026-03-17T15:56:43Z",
@@ -44,6 +45,7 @@ id \_id
 number Number
 location ShortDescr
 building \_Site_description
+statusCode \_ProcessStatus_code + ExecStartDate (vía resolveCorrectiveStatus)
 status \_ProcessStatus_description
 priority \_Priority_description
 createdAt OpeningDate
@@ -97,3 +99,12 @@ Caso Respuesta
 Incidente no existe 404
 Error en OpenMAINT 502
 Error interno 500
+
+🔁 statusCode: «Asignado» vs «Ejecución»
+
+statusCode no es una traducción directa de \_ProcessStatus_code: cuando el estado es
+CM-Execution pero ExecStartDate está vacío, se devuelve "Assigned" — el trabajo está
+despachado pero el técnico todavía no lo ha arrancado. Ese estado no existe en OpenMAINT.
+
+La regla está en resolveCorrectiveStatus y la comparten esta vista y la del supervisor.
+El ciclo completo, en incident-execution.endpoints.md.

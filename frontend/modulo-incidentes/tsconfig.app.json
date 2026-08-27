@@ -5,7 +5,7 @@
     "useDefineForClassFields": true,
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "module": "ESNext",
-    "types": ["vite/client", "node"],
+    "types": ["vite/client", "node", "vite-plugin-pwa/client"],
     "skipLibCheck": true,
     
     /* Path Aliases */
@@ -30,5 +30,8 @@
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true
   },
-  "include": ["src"]
+  "include": ["src"],
+  // El service worker se compila con tsconfig.worker.json: necesita la lib
+  // WebWorker, que es incompatible con DOM.
+  "exclude": ["src/sw.ts"]
 }

@@ -6,7 +6,7 @@ import { AttachmentListSection } from "@/modules/incidentes/components/Attachmen
 import { ReadOnlyPreventiveChecklist } from "@/modules/incidentes/components/ReadOnlyPreventiveChecklist";
 import {
   getPreventiveStatusLabel,
-  PREVENTIVE_STATUS_BADGE_CLASSES,
+  getPreventiveStatusPill,
 } from "@/modules/incidentes/constants/preventiveStatus";
 import {
   getPreventiveMaintenanceAttachments,
@@ -17,16 +17,10 @@ import type {
   PreventiveMaintenanceDetail,
 } from "@/modules/incidentes/types/PreventiveMaintenance";
 
-const formatDateTime = (value: string | null) => {
-  if (!value) {
-    return "—";
-  }
+import { formatMediumDateTime as formatDateTimeUtil } from "@/shared/utils/dateUtils";
 
-  return new Date(value).toLocaleString("es-EC", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  });
-};
+const formatDateTime = (value: string | null) =>
+  formatDateTimeUtil(value, "—");
 
 /** Duración real de la intervención, si se registraron ambas marcas. */
 const formatDuration = (start: string | null, end: string | null) => {
@@ -144,13 +138,7 @@ export const PastPreventiveMaintenancePage = () => {
             </div>
 
             {maintenance ? (
-              <span
-                className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                  PREVENTIVE_STATUS_BADGE_CLASSES[
-                    maintenance.statusCode ?? ""
-                  ] ?? "bg-slate-100 text-slate-700"
-                }`}
-              >
+              <span className={getPreventiveStatusPill(maintenance.statusCode)}>
                 {getPreventiveStatusLabel(
                   maintenance.statusCode,
                   maintenance.status,

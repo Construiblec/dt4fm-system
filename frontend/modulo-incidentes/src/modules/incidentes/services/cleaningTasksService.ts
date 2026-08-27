@@ -4,6 +4,7 @@ import type {
   CleaningTask,
   GetMyCleaningTasksResponse,
 } from "@/modules/incidentes/types/CleaningTask";
+import { redirectToLogin } from "@/shared/auth/returnTo";
 
 const cleaningApi = axios.create({
   baseURL: env.VITE_API_URL.replace(/\/api\/?$/, ""),
@@ -27,7 +28,7 @@ export const fetchMyCleaningTasks = async (): Promise<CleaningTask[]> => {
     return data.data;
   } catch (error) {
     if (axios.isAxiosError(error) && error.response?.status === 401) {
-      window.location.assign("/login");
+      redirectToLogin();
     }
 
     throw error;

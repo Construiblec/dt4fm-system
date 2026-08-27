@@ -84,6 +84,15 @@ async function bootstrap() {
       },
       'x-cleaning-employee-id',
     )
+    .addApiKey(
+      {
+        type: 'apiKey',
+        name: 'x-iot-secret',
+        in: 'header',
+        description: 'Secreto compartido del webhook de alarmas IoT',
+      },
+      'x-iot-secret',
+    )
     .build();
 
   if (process.env.ENABLE_DOCS === 'true') {

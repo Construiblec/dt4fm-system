@@ -2,6 +2,7 @@ import axios from "axios";
 import { env } from "@/config/env";
 import { getEmployeeId } from "@/shared/auth/session";
 import type { Incident } from "@/modules/incidentes/types/Incident";
+import { redirectToLogin } from "@/shared/auth/returnTo";
 
 /**
  * El usuario de openMAINT no tiene tarjeta de Employee asociada (atributo
@@ -113,7 +114,7 @@ export const getMyIncidents = async (): Promise<Incident[]> => {
     return data.incidents;
   } catch (error) {
     if (axios.isAxiosError(error) && error.response?.status === 401) {
-      window.location.assign("/login");
+      redirectToLogin();
     }
 
     throw error;

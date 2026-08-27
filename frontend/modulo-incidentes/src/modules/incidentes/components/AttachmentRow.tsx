@@ -25,13 +25,10 @@ const getBadge = (attachment: PreventiveMaintenanceAttachment) => {
     : BADGES.doc;
 };
 
-const formatDate = (value: string | null) => {
-  if (!value) {
-    return null;
-  }
+import { formatMediumDate } from "@/shared/utils/dateUtils";
 
-  return new Date(value).toLocaleDateString("es-EC", { dateStyle: "medium" });
-};
+const formatDate = (value: string | null) =>
+  value ? formatMediumDate(value) : null;
 
 export const AttachmentRow = ({
   attachment,
