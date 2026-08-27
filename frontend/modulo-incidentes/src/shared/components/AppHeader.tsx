@@ -1,10 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Bell, ChevronsUpDown } from "lucide-react";
-import {
-  MOCK_NOTIFICATIONS,
-  unreadCount,
-} from "@/modules/notificaciones/constants/mockNotifications";
 import { RoleSwitchSheet } from "@/shared/components/RoleSwitchSheet";
 import {
   getRoleLabel,
@@ -13,6 +9,7 @@ import {
 } from "@/shared/constants/rolePalette";
 import logo from "@/shared/assets/images/logo.svg";
 import { formatEmployeeName } from "@/shared/utils/nameUtils";
+import { useNotificationsStore } from "@/store/notificationsStore";
 import { useSessionStore } from "@/store/sessionStore";
 
 /**
@@ -32,10 +29,17 @@ export const AppHeader = () => {
   const availableRoles = useSessionStore((state) => state.availableRoles);
   const roleLabels = useSessionStore((state) => state.roleLabels);
   const [isRoleSheetOpen, setIsRoleSheetOpen] = useState(false);
+  const pending = useNotificationsStore((state) => state.unread);
+  const refreshUnread = useNotificationsStore((state) => state.refreshUnread);
+
+  // La cabecera se monta en cada dashboard, asi que el contador se refresca al
+  // volver a cualquiera de ellos sin necesidad de sondear.
+  useEffect(() => {
+    void refreshUnread();
+  }, [refreshUnread]);
 
   const view = getRoleView(role);
   const canSwitch = getSelectableRoles(availableRoles).length > 1;
-  const pending = unreadCount(MOCK_NOTIFICATIONS);
   // El nombre sale del `username`, que sigue la convención `nombre.apellido`.
   // No usar `name` (el `userDescription` de openMAINT): en las cuentas del
   // equipo ahí va el cargo — "Asistente BIM-FM" —, no el nombre de la persona.

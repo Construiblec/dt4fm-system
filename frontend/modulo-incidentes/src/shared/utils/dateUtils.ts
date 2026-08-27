@@ -162,3 +162,32 @@ export const formatMediumDateTime = (
     timeStyle: "short",
   });
 };
+
+/**
+ * Antigüedad en lenguaje corriente: "hace 5 min", "ayer", "12 ago".
+ *
+ * A partir de una semana deja de contar y muestra la fecha: "hace 23 días" no
+ * dice nada que "12 ago" no diga mejor.
+ */
+export const formatRelativeTime = (
+  value: string | null | undefined,
+  fallback = "—",
+): string => {
+  if (!value) return fallback;
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return fallback;
+
+  const minutes = Math.floor((Date.now() - d.getTime()) / 60000);
+
+  if (minutes < 1) return "ahora";
+  if (minutes < 60) return `hace ${minutes} min`;
+
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `hace ${hours} h`;
+
+  const days = Math.floor(hours / 24);
+  if (days === 1) return "ayer";
+  if (days < 7) return `hace ${days} días`;
+
+  return formatDayMonth(value, fallback);
+};
