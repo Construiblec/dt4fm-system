@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { IsNull, Repository } from 'typeorm';
 import { Notification } from './entities/notification.entity';
 import { NotificationDispatchLog } from './entities/notification-dispatch-log.entity';
 import { PushSubscription } from './entities/push-subscription.entity';
@@ -85,6 +85,51 @@ export class PushSubscriptionRepository {
         entityId: message.entityId,
       }),
     );
+  }
+
+  /**
+   * Historial del usuario, del más reciente al más antiguo. `before` pagina por
+   * fecha en vez de por offset: así una notificación nueva no desplaza la página
+   * siguiente y se repite un elemento.
+   */
+  findNotifications(
+    userId: string,
+    { limit, before }: { limit: number; before?: Date },
+  ): Promise<Notification[]> {
+    const query = this.notifications
+      .createQueryBuilder('n')
+      .where('n.userId = :userId', { userId })
+      .orderBy('n.createdAt', 'DESC')
+      .take(limit);
+
+    if (before) {
+      query.andWhere('n.createdAt < :before', { before });
+    }
+
+    return query.getMany();
+  }
+
+  countUnread(userId: string): Promise<number> {
+    return this.notifications.count({ where: { userId, readAt: IsNull() } });
+  }
+
+  /** Acotado por `userId` para que nadie marque las de otro. */
+  async markRead(userId: string, id: string): Promise<boolean> {
+    const result = await this.notifications.update(
+      { id, userId, readAt: IsNull() },
+      { readAt: new Date() },
+    );
+
+    return (result.affected ?? 0) > 0;
+  }
+
+  async markAllRead(userId: string): Promise<number> {
+    const result = await this.notifications.update(
+      { userId, readAt: IsNull() },
+      { readAt: new Date() },
+    );
+
+    return result.affected ?? 0;
   }
 
   /**

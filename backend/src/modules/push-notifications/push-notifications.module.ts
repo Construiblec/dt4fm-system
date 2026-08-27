@@ -4,7 +4,9 @@ import { OpenmaintModule } from '../../integrations/openmaint/openmaint.module';
 import { Notification } from './entities/notification.entity';
 import { NotificationDispatchLog } from './entities/notification-dispatch-log.entity';
 import { PushSubscription } from './entities/push-subscription.entity';
+import { NotificationHistoryService } from './notification-history.service';
 import { PushDispatchService } from './push-dispatch.service';
+import { PushIdentityService } from './push-identity.service';
 import { PushNotificationsController } from './push-notifications.controller';
 import { PushSenderService } from './push-sender.service';
 import { PushSubscriptionRepository } from './push-subscription.repository';
@@ -26,6 +28,8 @@ import { PushSchedulerGateway } from './scheduler/push-scheduler.gateway';
   providers: [
     PushSubscriptionRepository,
     PushSenderService,
+    PushIdentityService,
+    NotificationHistoryService,
     PushSubscriptionService,
     PushDispatchService,
     PushSchedulerGateway,

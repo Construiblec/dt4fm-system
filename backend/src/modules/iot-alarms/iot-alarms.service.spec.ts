@@ -129,6 +129,8 @@ describe('IotAlarmsService', () => {
       expect(pushDispatch.notifyCorrectiveOpened).toHaveBeenCalledWith({
         id: 8192662,
         requesterName: 'Sistema IoT',
+        // El activo es lo primero que debe leer el supervisor; desplaza al piso.
+        assetName: 'CAL 01 - Calefón 1',
         floorName: 'I-P1 - Planta Alta 1',
         buildingName: 'I - Inglaterra',
       });

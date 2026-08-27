@@ -27,6 +27,7 @@ export const DEEP_LINKS = {
     `/supervisor-mantenimiento/corrective/${id}`,
   preventiveDetail: (id: string | number) =>
     `/supervisor-mantenimiento/preventive/${id}`,
+  cleaningDetail: (id: string | number) => `/supervisor/task/${id}`,
   /** Vista del técnico, distinta de la del supervisor. */
   preventiveDetailAssignee: (id: string | number) =>
     `/preventive-maintenance/${id}`,
@@ -44,12 +45,31 @@ export type PushMessage = {
   entityId: string;
 };
 
-/** Une los segmentos disponibles con " - ", descartando los vacíos. */
+// Une los segmentos disponibles con " · ", descartando los vacíos.
+export const LOCATION_SEPARATOR = ' · ';
+
+const stripCodePrefix = (segment: string): string => {
+  const index = segment.indexOf(' - ');
+
+  if (index === -1) {
+    return segment;
+  }
+
+  // Si detrás del código no queda nada, se conserva el segmento tal cual.
+  return segment.slice(index + 3).trim() || segment;
+};
+
 export const joinLocation = (
   ...parts: (string | null | undefined)[]
 ): string => {
-  const clean = parts.map((part) => part?.trim()).filter(Boolean);
-  return clean.length > 0 ? clean.join(' - ') : 'ubicación no especificada';
+  const clean = parts
+    .map((part) => part?.trim())
+    .filter((part): part is string => Boolean(part))
+    .map(stripCodePrefix);
+
+  return clean.length > 0
+    ? clean.join(LOCATION_SEPARATOR)
+    : 'ubicación no especificada';
 };
 
 // ─── Correctivos ──────────────────────────────────────────────────────────────
@@ -187,8 +207,7 @@ export const cleaningCompleted = (input: {
   type: NOTIFICATION_TYPES.CLEANING_COMPLETED,
   title: 'Completada: Limpieza',
   body: `${input.employeeName} ha terminado una limpieza en ${input.location}`,
-  // El spec no define acción para esta notificación.
-  deepLink: null,
+  deepLink: DEEP_LINKS.cleaningDetail(input.id),
   entityKind: 'cleaning',
   entityId: String(input.id),
 });

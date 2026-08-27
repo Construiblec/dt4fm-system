@@ -131,6 +131,8 @@ export class IotAlarmsService {
       // El literal evita que el aviso diga "Iot Sistema", que es como openMAINT
       // compone la descripción del empleado.
       requesterName: IOT_REQUESTER_LABEL,
+      // El equipo que alarmó es lo que el supervisor necesita ver primero.
+      assetName: asset?.Description,
       floorName: asset?._Floor_description,
       buildingName: asset?._Building_description,
     });
