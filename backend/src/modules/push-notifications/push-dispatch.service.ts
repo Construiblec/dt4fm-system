@@ -42,7 +42,12 @@ export class PushDispatchService {
   // ─── Correctivos ────────────────────────────────────────────────────────────
 
   async notifyCorrectiveOpened(
-    input: Location & { id: string | number; requesterName?: string | null },
+    input: Location & {
+      id: string | number;
+      requesterName?: string | null;
+      /** Desplaza a la unidad cuando el correctivo se abrió sobre un activo. */
+      assetName?: string | null;
+    },
   ): Promise<void> {
     await this.safe(async () => {
       const message = correctiveOpened({
@@ -196,10 +201,16 @@ export class PushDispatchService {
 
   // ─── Interno ────────────────────────────────────────────────────────────────
 
-  /** El spec pide la planta cuando el incidente no tiene unidad inmobiliaria. */
-  private formatLocation(location: Location): string {
+  /**
+   * El spec pide la planta cuando el incidente no tiene unidad inmobiliaria.
+   * El activo, cuando lo hay, es más preciso que ambas y las sustituye; solo
+   * la apertura de correctivo lo envía.
+   */
+  private formatLocation(
+    location: Location & { assetName?: string | null },
+  ): string {
     return joinLocation(
-      location.unitName ?? location.floorName,
+      location.assetName ?? location.unitName ?? location.floorName,
       location.buildingName,
     );
   }

@@ -63,6 +63,8 @@ type OpenmaintIncidentDetail = {
   _Assignee_description?: string | null;
   _Unit_description?: string | null;
   _Floor_description?: string | null;
+  /** Equipo sobre el que se abrió; hoy solo lo rellenan las alarmas IoT. */
+  _Asset_description?: string | null;
 };
 
 type OpenmaintIncidentDetailResponse = {
@@ -313,6 +315,7 @@ export class IncidentsService {
       assigneeName: incident._Assignee_description ?? null,
       unit: incident._Unit_description ?? null,
       floor: incident._Floor_description ?? null,
+      asset: incident._Asset_description ?? null,
       images,
     };
   }
@@ -472,6 +475,7 @@ export class IncidentsService {
       await this.pushDispatch.notifyCorrectiveOpened({
         id: incidentId,
         requesterName: incidentDetail?.requesterName,
+        assetName: incidentDetail?.asset,
         unitName: incidentDetail?.unit,
         floorName: incidentDetail?.floor,
         buildingName: incidentDetail?.building,
