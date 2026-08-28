@@ -117,6 +117,9 @@ export type CommonArea = {
   estado: string;
   estadoCodigo: string | null;
   condicion: string | null;
+  enMantenimiento: boolean;
+  reservable: boolean;
+  reservadoPorMi: boolean;
   edificio: string | null;
   edificioId: number | null;
   piso: string | null;
@@ -124,6 +127,13 @@ export type CommonArea = {
   precio: number | null;
   fechaReservaInicio: string | null;
   fechaReservaFin: string | null;
+};
+
+export type OwnerCommonAreasResponse = {
+  edificioId: number;
+  edificio: string | null;
+  areas: CommonArea[];
+  misReservas: CommonArea[];
 };
 
 export type CreateReservationPayload = {
@@ -292,6 +302,25 @@ export const contactAdmin = async (
 export const getCommonAreas = async (buildingId?: number): Promise<CommonArea[]> => {
   const params = buildingId ? `?buildingId=${buildingId}` : "";
   const { data } = await authApi.get<CommonArea[]>(`/owners/common-areas${params}`);
+  return data;
+};
+
+/** Áreas del edificio del residente, separadas en reservables y reservas propias. */
+export const getOwnerCommonAreas = async (
+  tenantId: number,
+): Promise<OwnerCommonAreasResponse> => {
+  const { data } = await authApi.get<OwnerCommonAreasResponse>(
+    `/owners/${tenantId}/common-areas`,
+  );
+  return data;
+};
+
+export const getOwnerCommonAreaById = async (
+  tenantId: number, areaId: number,
+): Promise<CommonArea> => {
+  const { data } = await authApi.get<CommonArea>(
+    `/owners/${tenantId}/common-areas/${areaId}`,
+  );
   return data;
 };
 

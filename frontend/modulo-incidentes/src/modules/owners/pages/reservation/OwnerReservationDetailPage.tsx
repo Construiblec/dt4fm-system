@@ -14,10 +14,11 @@ import {
 } from "lucide-react";
 import { AppLayout } from "@/app/layout/AppLayout";
 import {
-  getCommonAreaById,
+  getOwnerCommonAreaById,
   createReservation,
   type CommonArea,
 } from "@/services/api";
+import { badgeFor } from "../../components/areaBadge";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -78,12 +79,12 @@ export const OwnerReservationDetailPage = () => {
   } | null>(null);
 
   useEffect(() => {
-    if (!areaId) return;
-    getCommonAreaById(Number(areaId))
+    if (!areaId || !tenantId) return;
+    getOwnerCommonAreaById(tenantId, Number(areaId))
       .then(setArea)
       .catch(() => setArea(null))
       .finally(() => setLoading(false));
-  }, [areaId]);
+  }, [areaId, tenantId]);
 
   // ── Mínimo: hoy ──
   const today = new Date().toISOString().split("T")[0];
@@ -135,7 +136,14 @@ export const OwnerReservationDetailPage = () => {
       if (axios.isAxiosError(error)) {
         const status = error.response?.status;
         if (status === 409) {
-          setSubmitError("El área ya está reservada. Elige otra fecha.");
+          setSubmitError(
+            error.response?.data?.message ??
+              "El área ya no está disponible. Elige otra fecha.",
+          );
+          return;
+        }
+        if (status === 403) {
+          setSubmitError("Esta área no pertenece a tu edificio.");
           return;
         }
       }
@@ -207,15 +215,10 @@ export const OwnerReservationDetailPage = () => {
               <div className="mb-4 flex items-start justify-between gap-2">
                 <h1 className="text-xl font-bold text-slate-900">{area.name}</h1>
                 <span
-                  className={`shrink-0 rounded-full px-3 py-1 text-xs font-semibold ${
-                    area.estado === "Libre"
-                      ? "bg-emerald-100 text-emerald-700"
-                      : area.estado === "Reservado"
-                      ? "bg-red-100 text-red-700"
-                      : "bg-slate-100 text-slate-600"
-                  }`}
+                  className={`flex shrink-0 items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold ${badgeFor(area).className}`}
                 >
-                  {area.estado}
+                  {badgeFor(area).icon}
+                  {badgeFor(area).label}
                 </span>
               </div>
 
@@ -284,11 +287,27 @@ export const OwnerReservationDetailPage = () => {
               </ul>
             </div>
 
-            {area.estado === "Reservado" ? (
-              <div className="flex items-center gap-2 rounded-2xl border border-red-200 bg-red-50 px-4 py-4">
-                <AlertCircle className="h-5 w-5 shrink-0 text-red-500" />
-                <p className="text-sm font-medium text-red-700">
-                  Esta área no está disponible actualmente.
+            {!area.reservable ? (
+              <div
+                className={`flex items-center gap-2 rounded-2xl border px-4 py-4 ${
+                  area.enMantenimiento
+                    ? "border-amber-200 bg-amber-50"
+                    : "border-red-200 bg-red-50"
+                }`}
+              >
+                <AlertCircle
+                  className={`h-5 w-5 shrink-0 ${
+                    area.enMantenimiento ? "text-amber-500" : "text-red-500"
+                  }`}
+                />
+                <p
+                  className={`text-sm font-medium ${
+                    area.enMantenimiento ? "text-amber-700" : "text-red-700"
+                  }`}
+                >
+                  {area.enMantenimiento
+                    ? "Esta área está en mantenimiento y no se puede reservar."
+                    : "Esta área no está disponible actualmente."}
                 </p>
               </div>
             ) : (

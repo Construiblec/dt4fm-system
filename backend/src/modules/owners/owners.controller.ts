@@ -125,6 +125,57 @@ export class OwnersController {
     return this.ownersService.getCommonAreaById(areaId);
   }
 
+  @Get(':tenantId/common-areas')
+  @ApiOperation({
+    summary: 'Áreas comunales del edificio del residente y sus reservas',
+  })
+  @ApiParam({
+    name: 'tenantId',
+    description: 'ID del propietario (Tenant)',
+    type: 'integer',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Áreas reservables del edificio y reservas del residente.',
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'El residente no tiene un edificio asignado.',
+  })
+  async getOwnerCommonAreas(@Param('tenantId', ParseIntPipe) tenantId: number) {
+    return this.ownersService.getOwnerCommonAreas(tenantId);
+  }
+
+  @Get(':tenantId/common-areas/:areaId')
+  @ApiOperation({
+    summary: 'Detalle de un área comunal del edificio del residente',
+  })
+  @ApiParam({
+    name: 'tenantId',
+    description: 'ID del propietario (Tenant)',
+    type: 'integer',
+  })
+  @ApiParam({
+    name: 'areaId',
+    description: 'ID de la área común',
+    type: 'integer',
+  })
+  @ApiResponse({ status: 200, description: 'Detalle del área comunal.' })
+  @ApiResponse({
+    status: 403,
+    description: 'El área no pertenece al edificio del residente.',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Área no encontrada o no habilitada para reservas.',
+  })
+  async getOwnerCommonAreaById(
+    @Param('tenantId', ParseIntPipe) tenantId: number,
+    @Param('areaId', ParseIntPipe) areaId: number,
+  ) {
+    return this.ownersService.getOwnerCommonAreaById(tenantId, areaId);
+  }
+
   // ─── Dashboard ────────────────────────────────────────────────────────────
 
   @Get(':tenantId/units')
@@ -248,6 +299,14 @@ export class OwnersController {
   @ApiResponse({
     status: 400,
     description: 'Conflicto de horario o parámetros inválidos.',
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'El área no pertenece al edificio del residente.',
+  })
+  @ApiResponse({
+    status: 409,
+    description: 'El área ya está reservada o está en mantenimiento.',
   })
   async createReservation(
     @Param('tenantId', ParseIntPipe) tenantId: number,

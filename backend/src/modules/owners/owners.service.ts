@@ -1,8 +1,10 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   InternalServerErrorException,
+  NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -85,6 +87,7 @@ type CommonAreaRaw = {
   _State_description_translation: string | null;
   _Condition_code: string | null;
   _Condition_description: string | null;
+  _Condition_description_translation: string | null;
   _Building_code: string | null;
   _Building_description: string | null;
   _Floor_description: string | null;
@@ -95,6 +98,9 @@ type CommonAreaRaw = {
   Precio: number | null;
   FechaReservaInicio: string | null;
   FechaReservaFin: string | null;
+  // Residente que reservó el área. Opcional: puede no existir aún en openMAINT.
+  Reservante?: number | null;
+  _Reservante_description?: string | null;
 };
 
 type UploadedFile = {
@@ -500,33 +506,54 @@ export class OwnersService {
   async getCommonAreas(buildingId?: number) {
     const sessionId = await this.getAdminSessionId();
     try {
-      let path = `/classes/${OPENMAINT_COMMON_AREAS_CLASS}/cards?limit=100&sort=${encodeURIComponent(JSON.stringify([{ property: 'Name', direction: 'ASC' }]))}`;
-      if (buildingId) {
-        const filter = encodeURIComponent(
-          JSON.stringify({
-            attribute: {
-              simple: {
-                attribute: 'Building',
-                operator: 'equal',
-                value: buildingId,
-              },
-            },
-          }),
-        );
-        path += `&filter=${filter}`;
-      }
-      const response = (await this.openmaintClient.get(path, sessionId)) as {
-        data?: CommonAreaRaw[];
-      };
-      const areas = (response.data ?? []).filter(
-        (a) => a.Name && !a.Name.toLowerCase().includes('técnica'),
-      );
-      return areas.map((a) => this.mapCommonArea(a));
+      const cards = await this.fetchCommonAreaCards(buildingId, sessionId);
+      return cards.map((a) => this.mapCommonArea(a));
     } catch {
       throw new InternalServerErrorException(
         'No se pudieron obtener las áreas comunales',
       );
     }
+  }
+
+  /**
+   * Áreas del edificio del residente, separadas en las que puede reservar y las
+   * que ya reservó él mismo.
+   */
+  async getOwnerCommonAreas(tenantId: number) {
+    const sessionId = await this.getAdminSessionId();
+    const { tenant, buildingId } = await this.getTenantBuilding(
+      tenantId,
+      sessionId,
+    );
+    const cards = await this.fetchCommonAreaCards(buildingId, sessionId);
+
+    // Solo se muestran Libre y Reservado: NoReservable queda fuera de la lista.
+    const visibles = cards.filter((c) => this.resolveAreaState(c) !== null);
+    // Las propias no se filtran por estado para que una reserva no desaparezca
+    // si un administrador cambia la disponibilidad del área.
+    const propias = cards.filter((c) => c.Reservante === tenantId);
+
+    return {
+      edificioId: buildingId,
+      edificio:
+        tenant._Edficio_description ?? cards[0]?._Building_description ?? null,
+      areas: visibles.map((c) => this.mapCommonArea(c, tenantId)),
+      misReservas: propias.map((c) => this.mapCommonArea(c, tenantId)),
+    };
+  }
+
+  async getOwnerCommonAreaById(tenantId: number, areaId: number) {
+    const sessionId = await this.getAdminSessionId();
+    const { buildingId } = await this.getTenantBuilding(tenantId, sessionId);
+    const area = await this.fetchCommonAreaCard(areaId, sessionId);
+    if (!area) throw new NotFoundException('Área no encontrada');
+    if (area.Building !== buildingId)
+      throw new ForbiddenException('El área no pertenece a tu edificio');
+
+    const mapped = this.mapCommonArea(area, tenantId);
+    if (this.resolveAreaState(area) === null && !mapped.reservadoPorMi)
+      throw new NotFoundException('El área no está habilitada para reservas');
+    return mapped;
   }
 
   async getCommonAreaById(areaId: number) {
@@ -550,22 +577,31 @@ export class OwnersService {
   async createReservation(dto: CreateReservationDto, tenantId: number) {
     const sessionId = await this.getAdminSessionId();
     const areaId = Number(dto.commonAreaId);
-    const areaRaw = (await this.openmaintClient.get(
-      `/classes/${OPENMAINT_COMMON_AREAS_CLASS}/cards/${areaId}`,
-      sessionId,
-    )) as { data?: CommonAreaRaw };
-    const area = areaRaw.data;
+    const { buildingId } = await this.getTenantBuilding(tenantId, sessionId);
+    const area = await this.fetchCommonAreaCard(areaId, sessionId);
     if (!area) throw new BadRequestException('El área comunal no existe');
-    if (area._State_code === 'Rent')
+    if (area.Building !== buildingId)
+      throw new ForbiddenException('El área no pertenece a tu edificio');
+
+    const estado = this.resolveAreaState(area);
+    if (estado === null)
+      throw new ConflictException('El área no está habilitada para reservas');
+    if (estado === 'Reservado')
       throw new ConflictException('El área ya está reservada');
+    if (this.isUnderMaintenance(area))
+      throw new ConflictException(
+        'El área está en mantenimiento y no se puede reservar',
+      );
+
     try {
       await this.openmaintClient.put(
         `/classes/${OPENMAINT_COMMON_AREAS_CLASS}/cards/${areaId}`,
         {
           State: STATE_RENT_CODE,
+          Reservante: tenantId,
           FechaReservaInicio: dto.fechaInicio,
           FechaReservaFin: dto.fechaFin,
-          Notes: dto.notes ?? `Reservado por tenantId: ${tenantId}`,
+          Notes: dto.notes ?? null,
         },
         sessionId,
       );
@@ -600,15 +636,23 @@ export class OwnersService {
     };
   }
 
-  private mapCommonArea(a: CommonAreaRaw) {
+  private mapCommonArea(a: CommonAreaRaw, tenantId?: number) {
+    const estado = this.resolveAreaState(a);
+    const enMantenimiento = this.isUnderMaintenance(a);
     return {
       id: a._id,
       code: a.Code,
       name: a.Name?.trim(),
       notes: a.Notes ?? null,
-      estado: this.mapAreaState(a._State_code),
+      estado: estado ?? 'Disponible',
       estadoCodigo: a._State_code ?? null,
-      condicion: a._Condition_description ?? null,
+      condicion:
+        a._Condition_description_translation ??
+        a._Condition_description ??
+        null,
+      enMantenimiento,
+      reservable: estado === 'Libre' && !enMantenimiento,
+      reservadoPorMi: tenantId !== undefined && a.Reservante === tenantId,
       edificio: a._Building_description ?? null,
       edificioId: a.Building ?? null,
       piso: a._Floor_description ?? null,
@@ -619,15 +663,87 @@ export class OwnersService {
     };
   }
 
-  private mapAreaState(stateCode: string | null): string {
-    switch (stateCode) {
-      case 'Vacant':
-        return 'Libre';
-      case 'Rent':
-        return 'Reservado';
-      default:
-        return 'Disponible';
+  private async fetchCommonAreaCards(
+    buildingId: number | undefined,
+    sessionId: string,
+  ): Promise<CommonAreaRaw[]> {
+    const sort = encodeURIComponent(
+      JSON.stringify([{ property: 'Name', direction: 'ASC' }]),
+    );
+    let path = `/classes/${OPENMAINT_COMMON_AREAS_CLASS}/cards?limit=100&sort=${sort}`;
+    if (buildingId) {
+      const filter = encodeURIComponent(
+        JSON.stringify({
+          attribute: {
+            simple: {
+              attribute: 'Building',
+              operator: 'equal',
+              value: buildingId,
+            },
+          },
+        }),
+      );
+      path += `&filter=${filter}`;
     }
+    const response = (await this.openmaintClient.get(path, sessionId)) as {
+      data?: CommonAreaRaw[];
+    };
+    return (response.data ?? []).filter(
+      (a) => a.Name && !a.Name.toLowerCase().includes('técnica'),
+    );
+  }
+
+  private async fetchCommonAreaCard(
+    areaId: number,
+    sessionId: string,
+  ): Promise<CommonAreaRaw | null> {
+    const response = (await this.openmaintClient.get(
+      `/classes/${OPENMAINT_COMMON_AREAS_CLASS}/cards/${areaId}`,
+      sessionId,
+    )) as { data?: CommonAreaRaw };
+    return response.data ?? null;
+  }
+
+  private async getTenantBuilding(tenantId: number, sessionId: string) {
+    const tenant = await this.openmaintService.getTenantById(
+      tenantId,
+      sessionId,
+    );
+    if (!tenant?.Edficio)
+      throw new BadRequestException(
+        'No tienes un edificio asignado. Contacta con administración.',
+      );
+    return { tenant, buildingId: tenant.Edficio };
+  }
+
+  private normalizeText(value: string | null | undefined): string {
+    return (value ?? '')
+      .normalize('NFD')
+      .replace(/[̀-ͯ]/g, '')
+      .toLowerCase()
+      .trim();
+  }
+
+  /** Disponibilidad del área. `null` = NoReservable: no se le muestra al residente. */
+  private resolveAreaState(a: CommonAreaRaw): 'Libre' | 'Reservado' | null {
+    if (a._State_code === 'Vacant') return 'Libre';
+    if (a._State_code === 'Rent') return 'Reservado';
+    const label = this.normalizeText(
+      a._State_description_translation ?? a._State_description,
+    );
+    if (label === 'libre' || label === 'vacant') return 'Libre';
+    if (label === 'reservado' || label === 'rent') return 'Reservado';
+    return null;
+  }
+
+  /** Cubre "En mantenimiento" y "En espera de mantenimiento" del campo Condición. */
+  private isUnderMaintenance(a: CommonAreaRaw): boolean {
+    const label = this.normalizeText(
+      a._Condition_description_translation ??
+        a._Condition_description ??
+        a._Condition_code,
+    );
+    return label.includes('mantenimiento') || label.includes('maintenance');
   }
 
   private async getAdminSessionId(): Promise<string> {

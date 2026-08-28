@@ -39,7 +39,11 @@ type TenantCard = {
   Phone: number;
   Email: string | null;
   _OccupancyType_code: string;
+  Edficio?: number | null;
+  _Edficio_description?: string | null;
 };
+
+export type { TenantCard };
 
 type TenantCardsResponse = {
   data?: TenantCard[];
@@ -518,6 +522,23 @@ export class OpenmaintService {
       return tenantResponse.data?.[0] ?? null;
     } catch (err) {
       console.error('[findTenant] error:', err);
+      return null;
+    }
+  }
+
+  async getTenantById(
+    tenantId: number,
+    sessionId: string,
+  ): Promise<TenantCard | null> {
+    try {
+      const response = (await this.client.get(
+        `/classes/Tenant/cards/${tenantId}`,
+        sessionId,
+      )) as { data?: TenantCard };
+
+      return response.data ?? null;
+    } catch (err) {
+      console.error('[getTenantById] error:', err);
       return null;
     }
   }
