@@ -32,4 +32,19 @@ export default tseslint.config(
       "prettier/prettier": ["error", { endOfLine: "auto" }],
     },
   },
+  {
+    // `supertest`'s `res.body` es `any` por diseño: cada aserción de una
+    // suite E2E lo indexa (`res.body.foo`), así que las reglas de "unsafe"
+    // dispararían en casi cada test sin señalar un error real. Ya pasaba en
+    // la suite E2E original (`incidents.e2e-spec.ts`) antes de que el CI
+    // corriera lint; esto solo lo hace explícito en vez de dejarlo como un
+    // gap sin decidir.
+    files: ['test/**/*.ts'],
+    rules: {
+      '@typescript-eslint/no-unsafe-member-access': 'off',
+      '@typescript-eslint/no-unsafe-assignment': 'off',
+      '@typescript-eslint/no-unsafe-call': 'off',
+      '@typescript-eslint/no-unsafe-return': 'off',
+    },
+  },
 );
