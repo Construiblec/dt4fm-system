@@ -23,14 +23,17 @@ concurrency:
 env:
   NODE_VERSION: '20'
 
-defaults:
-  run:
-    working-directory: ./backend
-
 jobs:
   test:
     name: Test (unitarias + E2E) & Build
     runs-on: ubuntu-latest
+
+    # `working-directory` va aquí y NO a nivel de workflow: el job `deploy`
+    # solo lanza curl y no hace checkout, así que no existe ningún ./backend
+    # en su runner y bash fallaría al arrancar con ese directorio.
+    defaults:
+      run:
+        working-directory: ./backend
 
     # Postgres efímero: vive solo durante este job, dentro del runner. No es
     # infraestructura que operar — nada que ver con Neon/producción. Solo lo
