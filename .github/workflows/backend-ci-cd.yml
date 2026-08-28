@@ -1,5 +1,8 @@
 name: Backend CI/CD - Render
 
+# Gate de pruebas (unitarias + E2E) + build, y solo si todo eso pasa se
+# dispara el deploy en Render. Antes este pipeline compilaba y desplegaba sin
+# ejecutar una sola prueba.
 on:
   push:
     branches: [main, develop]
@@ -17,34 +20,80 @@ concurrency:
   group: backend-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  NODE_VERSION: '20'
+
 jobs:
-  build-and-deploy:
-    name: Build & Deploy NestJS
+  test:
+    name: Test (unitarias + E2E) & Build
     runs-on: ubuntu-latest
 
+    # `working-directory` va aquí y NO a nivel de workflow: el job `deploy`
+    # solo lanza curl y no hace checkout, así que no existe ningún ./backend
+    # en su runner y bash fallaría al arrancar con ese directorio.
     defaults:
       run:
         working-directory: ./backend
 
+    # Postgres efímero: vive solo durante este job, dentro del runner. No es
+    # infraestructura que operar — nada que ver con Neon/producción. Solo lo
+    # necesita el módulo de push-notifications (el único con persistencia
+    # propia); el resto de las suites E2E van con los servicios de openMAINT,
+    # correo, Contifico y Hostaway mockeados — ver test/helpers/test-app.ts.
+    services:
+      postgres:
+        image: postgres:17.4-alpine
+        env:
+          POSTGRES_USER: dt4fm
+          POSTGRES_PASSWORD: dt4fm
+          POSTGRES_DB: dt4fm
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://dt4fm:dt4fm@localhost:5432/dt4fm
+      DATABASE_URL_DIRECT: postgresql://dt4fm:dt4fm@localhost:5432/dt4fm
+
     steps:
       - name: Checkout del código
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Configurar Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
-          node-version: '20' 
+          node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
           cache-dependency-path: 'backend/package-lock.json'
 
       - name: Instalar dependencias limpias
         run: npm ci
 
+      - name: Aplicar migraciones sobre el Postgres del job
+        run: npm run migration:run
+
+      - name: Pruebas unitarias
+        run: npm test
+
+      - name: Pruebas E2E
+        run: npm run test:e2e
+
       - name: Construir la aplicación
         run: npm run build
 
+  deploy:
+    name: Deploy en Render
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
+
+    steps:
       - name: Disparar Webhook de Despliegue en Render (Producción)
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        if: github.ref == 'refs/heads/main'
         env:
           RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
         run: |
@@ -56,7 +105,7 @@ jobs:
           echo "Despliegue de producción disparado exitosamente en Render."
 
       - name: Disparar Webhook de Despliegue en Render (Staging)
-        if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
+        if: github.ref == 'refs/heads/develop'
         env:
           RENDER_DEPLOY_HOOK_STAGING: ${{ secrets.RENDER_DEPLOY_HOOK_STAGING }}
         run: |
@@ -66,3 +115,54 @@ jobs:
           fi
           curl -X POST "$RENDER_DEPLOY_HOOK_STAGING"
           echo "Despliegue de staging disparado exitosamente en Render."
+
+      # El webhook responde de inmediato pero el despliegue es asíncrono: un
+      # curl a /health justo después contestaría con la versión ANTERIOR y
+      # daría un falso verde. Por eso se espera a que "commit" (que Render
+      # rellena solo, vía RENDER_GIT_COMMIT) coincida con este SHA.
+      #
+      # Requiere el secret RENDER_SERVICE_URL[_STAGING] con la URL pública del
+      # servicio (p. ej. https://dt4fm-backend.onrender.com). Sin él, se avisa
+      # y se omite: el despliegue ya se disparó, esto es una verificación
+      # adicional, no la señal de que el deploy en sí ocurrió.
+      - name: Smoke test — esperar el commit nuevo en /health (Producción)
+        if: github.ref == 'refs/heads/main'
+        env:
+          SERVICE_URL: ${{ secrets.RENDER_SERVICE_URL }}
+        run: |
+          if [ -z "$SERVICE_URL" ]; then
+            echo "::warning::RENDER_SERVICE_URL no está configurado; se omite el smoke test."
+            exit 0
+          fi
+          for i in $(seq 1 30); do
+            commit=$(curl -fsS "$SERVICE_URL/health" | node -e "process.stdin.on('data',d=>{try{console.log(JSON.parse(d).commit||'')}catch{console.log('')}})" || true)
+            if [ "$commit" = "$GITHUB_SHA" ]; then
+              echo "El servicio de producción ya sirve $GITHUB_SHA."
+              exit 0
+            fi
+            echo "Intento $i/30: /health responde commit=\"$commit\", esperando $GITHUB_SHA..."
+            sleep 10
+          done
+          echo "::error::Pasaron 5 minutos y producción no llegó a servir $GITHUB_SHA."
+          exit 1
+
+      - name: Smoke test — esperar el commit nuevo en /health (Staging)
+        if: github.ref == 'refs/heads/develop'
+        env:
+          SERVICE_URL: ${{ secrets.RENDER_SERVICE_URL_STAGING }}
+        run: |
+          if [ -z "$SERVICE_URL" ]; then
+            echo "::warning::RENDER_SERVICE_URL_STAGING no está configurado; se omite el smoke test."
+            exit 0
+          fi
+          for i in $(seq 1 30); do
+            commit=$(curl -fsS "$SERVICE_URL/health" | node -e "process.stdin.on('data',d=>{try{console.log(JSON.parse(d).commit||'')}catch{console.log('')}})" || true)
+            if [ "$commit" = "$GITHUB_SHA" ]; then
+              echo "El servicio de staging ya sirve $GITHUB_SHA."
+              exit 0
+            fi
+            echo "Intento $i/30: /health responde commit=\"$commit\", esperando $GITHUB_SHA..."
+            sleep 10
+          done
+          echo "::error::Pasaron 5 minutos y staging no llegó a servir $GITHUB_SHA."
+          exit 1
