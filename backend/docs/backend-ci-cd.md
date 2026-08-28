@@ -42,14 +42,24 @@ El flujo se activa bajo las siguientes condiciones:
 * **Eventos:** Push o Pull Request hacia las ramas `main` o `develop`.
 * **Filtros de Ruta:** Solo se ejecuta si hay modificaciones dentro del directorio `backend/**` o en el propio archivo YAML. Los cambios exclusivos en el frontend son ignorados por este pipeline.
 
-### Job: Build & Deploy
+### Jobs: `test` y `deploy`
 
-El pipeline ejecuta un único trabajo con los siguientes pasos secuenciales:
+El pipeline tiene dos trabajos secuenciales; `deploy` no arranca si `test` falla.
 
-1. **Checkout:** Descarga el código fuente del repositorio.
-2. **Setup Node.js:** Configura el entorno de ejecución (Node 20) y habilita la caché de NPM para acelerar futuras ejecuciones.
-3. **Install & Build:** Cambia el directorio de trabajo a `./backend`, ejecuta `npm ci` para instalar dependencias y `npm run build` para validar la compilación.
-4. **Deploy Hook (Condicional):** Si el código compila correctamente **y** el evento es un *push* directo, el pipeline dispara el Webhook del entorno que corresponde a la rama: `main` despliega producción y `develop` despliega staging. Los *pull requests* solo compilan, nunca despliegan.
+**`test`** — corre en todo push y PR a `main`/`develop`, incluidas las pull requests (que antes solo compilaban):
+
+1. **Checkout** y **Setup Node.js** (Node 20, caché de NPM).
+2. **`services: postgres`**: un contenedor `postgres:17.4-alpine` efímero, vive solo durante el job. No es infraestructura que operar — nada que ver con Neon — y solo lo necesita el módulo de push-notifications, la única persistencia propia del backend; el resto de las suites van con openMAINT, correo, Contifico y Hostaway mockeados (`backend/test/helpers/test-app.ts`).
+3. **`npm ci`**.
+4. **`npm run migration:run`**: aplica el esquema sobre el Postgres del job (no toca Neon).
+5. **`npm test`**: los ~178 tests unitarios.
+6. **`npm run test:e2e`**: las 15 suites E2E, una por módulo.
+7. **`npm run build`**: valida la compilación de TypeScript.
+
+**`deploy`** — `needs: test`; solo en *push* directo a `main` o `develop` (nunca en PR):
+
+1. **Deploy Hook:** dispara el webhook de Render del entorno que corresponde a la rama.
+2. **Smoke test:** el webhook responde de inmediato pero el despliegue es asíncrono, así que un `curl` justo después podría ver la versión *anterior* y dar un falso verde. Este paso sondea `GET /health` cada 10 s (hasta 5 min) esperando que el campo `commit` — que Render rellena solo vía `RENDER_GIT_COMMIT` — coincida con el SHA que se acaba de desplegar. Necesita el secret `RENDER_SERVICE_URL[_STAGING]` (ver abajo); sin él se omite con un aviso, porque el despliegue ya se disparó igual — es una verificación adicional, no la señal de que el deploy ocurrió.
 
 ### Control de Concurrencia
 
@@ -65,6 +75,7 @@ Para que el pipeline funcione y la aplicación arranque correctamente, se requie
 
 * `RENDER_DEPLOY_HOOK`: URL privada del servicio de **producción**. GitHub la usa para autorizar y disparar el despliegue desde `main`.
 * `RENDER_DEPLOY_HOOK_STAGING`: la equivalente del servicio de **staging**, disparada desde `develop`.
+* `RENDER_SERVICE_URL` / `RENDER_SERVICE_URL_STAGING` *(opcionales)*: URL pública de cada servicio (p. ej. `https://dt4fm-backend.onrender.com`), sin barra final. Habilitan el smoke test post-despliegue; sin ellas el paso se omite con un aviso y el resto del pipeline sigue igual.
 
 ### En Render (Environment Variables)
 
