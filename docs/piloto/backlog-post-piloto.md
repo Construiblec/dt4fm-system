@@ -2,7 +2,7 @@
 
 Lista abierta el **2026-08-31** junto con el congelamiento de `v0.1.0-rc1`.
 
-Su función, según el **§5.2** del procedimiento, es evitar que el GDGI se quede indefinidamente en estado de prototipo: a partir del congelamiento **no se incorporan funcionalidades nuevas**, y todo lo que aparezca durante la certificación o el piloto entra aquí en vez de al código.
+Su función, según el **5.2** del procedimiento, es evitar que el GDGI se quede indefinidamente en estado de prototipo: a partir del congelamiento **no se incorporan funcionalidades nuevas**, y todo lo que aparezca durante la certificación o el piloto entra aquí en vez de al código.
 
 ---
 
@@ -10,7 +10,7 @@ Su función, según el **§5.2** del procedimiento, es evitar que el GDGI se que
 
 Todo hallazgo o petición se etiqueta con **dos** cosas: su severidad y su naturaleza.
 
-### Severidad — §16
+### Severidad — 16
 
 | | | Tratamiento |
 |---|---|---|
@@ -20,7 +20,7 @@ Todo hallazgo o petición se etiqueta con **dos** cosas: su severidad y su natur
 | **P4** | Detalle visual o mejora menor | Backlog |
 | **RF** | Funcionalidad nueva pedida por el cliente | Backlog de producto |
 
-### Naturaleza — §23
+### Naturaleza — 23
 
 | | |
 |---|---|
@@ -71,7 +71,7 @@ Cuatro defectos conocidos, heredados del estado del prototipo. Los cuatro son la
 
 ## Funcionalidad congelada
 
-Trabajo terminado o en curso que **no entra** en la RC1 por aplicación del §5.2.
+Trabajo terminado o en curso que **no entra** en la RC1 por aplicación del 5.2.
 
 | ID | Nat. | Asunto | Origen |
 |---|---|---|---|
@@ -116,7 +116,7 @@ _Vacío. Se completa entre el D1 y el D10._
 
 ## Añadidos durante el piloto
 
-_Vacío. Se completa durante las dos semanas de operación controlada del §15._
+_Vacío. Se completa durante las dos semanas de operación controlada del 15._
 
 | ID | Sev. | Nat. | Asunto | Origen | Fecha |
 |---|---|---|---|---|---|
