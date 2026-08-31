@@ -1,0 +1,175 @@
+# GDGI Release Candidate 1 — Inventario de versión
+
+**Tag:** `v0.1.0-rc1`
+**Fecha de congelamiento:** 2026-08-31
+**Responsable:** _(por completar)_
+
+Registro exigido por la **Fase 0 · §5.1** del *Procedimiento de Pruebas, Validación y Paso a Producción del GDGI*. Su único objetivo es que, terminada la certificación, se pueda afirmar **exactamente qué versión fue probada**.
+
+---
+
+## 1. Punto fijo en el repositorio
+
+| | |
+|---|---|
+| Tag | `v0.1.0-rc1` |
+| Rama | `main` |
+| Commit | `4f01218` — *Merge pull request #58 from Construiblec/develop* |
+| Repositorio | `Construiblec/dt4fm-system` |
+
+`main` contiene todo lo que hay en `develop`. Ambas ramas quedan alineadas en el momento del congelamiento.
+
+---
+
+## 2. Frontend
+
+| | |
+|---|---|
+| Ubicación | `frontend/modulo-incidentes` |
+| Versión de paquete | `0.0.0` |
+| Framework | React `19.2` |
+| Empaquetador | Vite `7.3` |
+| Lenguaje | TypeScript `5.9` |
+| PWA | `vite-plugin-pwa` `1.3` |
+| Despliegue | Vercel |
+
+> La versión de paquete está en `0.0.0` y nunca se ha subido. Conviene alinearla con el tag al declarar la v1.0.
+
+---
+
+## 3. Backend
+
+| | |
+|---|---|
+| Ubicación | `backend/` |
+| Versión de paquete | `0.0.1` |
+| Framework | NestJS `11.0` |
+| ORM | TypeORM `1.1` |
+| Cliente PostgreSQL | `pg` `8.23` |
+| Lenguaje | TypeScript `5.7` |
+| Node en CI | `20` |
+| Despliegue | Render (servicio de producción desde `main`, staging desde `develop`) |
+
+### Módulos activos — 15
+
+`auth` · `billing` · `buildings` · `cleaning-tasks` · `health` · `incidents` · `iot-alarms` · `maintenance-supervision` · `meeting-reminders` · `notifications` · `owners` · `password-recovery` · `payments` · `preventive-maintenance` · `push-notifications`
+
+Suman **92 endpoints** repartidos en 17 controladores.
+
+---
+
+## 4. openMAINT
+
+| | |
+|---|---|
+| Versión | **_por registrar_** |
+| Alojamiento | VPS Hostinger |
+| API | REST v3 (`/cmdbuild/services/rest/v3`) |
+| Instancia de producción | _por registrar_ |
+| Instancia de desarrollo | _por registrar_ |
+
+> **Pendiente.** La versión no es deducible desde el repositorio. Se obtiene entrando a openMAINT como administrador, en *Información del sistema*, o consultando la versión de CMDBuild sobre la que corre. Es el único campo del §5.1 que queda sin cerrar y debe completarse antes del D3.
+
+---
+
+## 5. Bases de datos
+
+El sistema usa **dos almacenes distintos**, y conviene no confundirlos al planificar respaldos:
+
+| Almacén | Contenido | Responsable del respaldo |
+|---|---|---|
+| **openMAINT** (VPS) | Activos, órdenes correctivas y preventivas, tareas de limpieza, usuarios, propietarios. **Es la fuente de verdad de todo el negocio.** | Equipo — respaldo manual del VPS |
+| **Neon** (PostgreSQL gestionado) | Únicamente suscripciones push, historial de notificaciones e idempotencia de avisos programados. | Neon, con recuperación a un punto en el tiempo |
+
+**Neon:** una rama por entorno — `production` para producción, `development` para staging. En local se usa el contenedor `dt4fm-pg` (`backend/docker-compose.yml`), PostgreSQL `17.4-alpine`.
+
+### Esquema — 2 migraciones
+
+| Migración | Crea |
+|---|---|
+| `1787588739437-CreatePushNotificationTables` | `notification_dispatch_log`, `notifications`, `push_subscriptions` |
+| `1787600000000-PushSubscriptionMultipleRoles` | Migra `role` (texto) a `roles` (array) con índice GIN |
+
+Verificado que el esquema se levanta desde cero sobre una base vacía con `npm run migration:run`.
+
+---
+
+## 6. Contenedores
+
+| | |
+|---|---|
+| Docker | `29.6.1` |
+| Docker Compose | `v5.3.0` |
+| Contenedor local | `dt4fm-pg` — `postgres:17.4-alpine`, puerto `5555` |
+
+Solo se usa Docker en desarrollo local y en el CI. Ni el backend ni el frontend se despliegan en contenedor: Render y Vercel construyen desde el repositorio.
+
+---
+
+## 7. Integraciones — 3
+
+| Integración | Uso | Corte en pruebas |
+|---|---|---|
+| **openMAINT** | Núcleo de gestión; siete servicios distintos del backend hablan con él | Mockeado en las suites automatizadas |
+| **Hostaway** | Checkouts que generan tareas de limpieza | `HOSTAWAY_USE_MOCK` |
+| **Contifico** | Facturación de reservas | Mockeado; **es facturación real**, revisar el entorno antes de activarlo |
+
+Correo saliente vía SMTP o Resend, según `MAIL_PROVIDER`. En Render debe ser Resend: la plataforma bloquea las conexiones SMTP salientes.
+
+---
+
+## 8. IoT
+
+| | |
+|---|---|
+| Emisor | Servidor Raspberry Pi con motor de reglas propio |
+| Contrato | `POST /iot/alarms`, autenticado con la cabecera `X-IoT-Secret` |
+| Enlace con openMAINT | El campo `assetCode` — es lo único que ata la alarma a un activo |
+| Dispositivos activos | **_por registrar_** |
+
+**Comportamiento a tener presente en las pruebas:** la Raspberry emite cada alarma **una sola vez y no reintenta**. El backend reintenta por ella (`IOT_CREATE_MAX_ATTEMPTS`, 3 por defecto); agotados los intentos, el payload íntegro queda en el registro de error como única copia.
+
+> **Pendiente.** Falta el listado de dispositivos que entran al piloto, con su `assetCode` grabado y el activo de openMAINT al que corresponde.
+
+---
+
+## 9. Cobertura de pruebas en el momento del congelamiento
+
+| | |
+|---|---|
+| Pruebas unitarias | 178, en 10 archivos |
+| Pruebas E2E | 139, una suite por módulo |
+| Tiempo de ejecución | ~10 s las E2E, ~7 s las unitarias |
+| Ejecución | Automática en cada envío a `main` y `develop`, y en cada pull request |
+
+El despliegue en Render está bloqueado detrás de estas pruebas: el job `deploy` no arranca si el job `test` falla.
+
+---
+
+## 10. Configuración utilizada
+
+Las variables van en el panel de Render y no en el repositorio. El detalle completo, con qué cambia entre entornos y qué es común, está en [`backend/docs/backend-ci-cd.md`](../../backend/docs/backend-ci-cd.md) y [`backend/docs/neon-postgres.md`](../../backend/docs/neon-postgres.md).
+
+Para el congelamiento importa dejar constancia de estos ajustes:
+
+| Variable | Producción | Staging |
+|---|---|---|
+| `ENABLE_DOCS` | `false` | `true` |
+| `HOSTAWAY_USE_MOCK` | `false` | `true` |
+| `PUSH_SCHEDULER_ENABLED` | _por registrar_ | _por registrar_ |
+| Schedulers que envían correo | _por registrar_ | _por registrar_ |
+
+---
+
+## 11. Estado conocido al congelar
+
+Se congela con estos defectos abiertos, todos registrados en el [Backlog Post-Piloto](backlog-post-piloto.md):
+
+| Severidad | Asunto |
+|---|---|
+| **P1** | Los endpoints de propietarios no exigen sesión: la identidad sale de un número en la URL |
+| **P1** | CORS refleja cualquier origen y permite credenciales |
+| **P2** | El rol de usuario se valida contra la cabecera `x-role`, que controla el cliente |
+| **P2** | No existe procedimiento de rollback escrito, en particular para revertir una versión que ya aplicó una migración |
+
+Los cuatro son la **puerta de entrada del D3**: la certificación no empieza a medir hasta que estén cerrados.
