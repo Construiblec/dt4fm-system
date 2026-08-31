@@ -5,6 +5,12 @@ import {
   resetMockCalls,
   TestAppMocks,
 } from './helpers/test-app';
+import { mockSession } from './mocks/openmaint-core.mock';
+
+/** El residente de referencia de esta suite: tenantId 300, userId 900. */
+const OWNER_SESSION = 'mock-session-id';
+const OWNER_TENANT_ID = 300;
+const OWNER_USER_ID = 900;
 
 describe('OwnersController (e2e)', () => {
   let app: INestApplication;
@@ -18,7 +24,83 @@ describe('OwnersController (e2e)', () => {
     await app?.close();
   });
 
+  beforeEach(() => {
+    // `OwnerSessionGuard` resuelve la identidad contra openMAINT antes de
+    // dejar pasar cualquier ruta con :tenantId o :userId. Sin esto, la
+    // sesión por defecto (equipo, sin ficha Tenant) daría 403 en todas.
+    mocks.openmaint.getSession.mockResolvedValue(
+      mockSession({
+        userId: OWNER_USER_ID,
+        userDescription: 'Juan Perez',
+        role: 'Propietarios',
+        availableRoles: ['Propietarios'],
+      }),
+    );
+    mocks.openmaint.findTenantByDescription.mockResolvedValue(OWNER_TENANT_ID);
+  });
+
   afterEach(() => resetMockCalls());
+
+  // ─── La corrección de BP-001 ──────────────────────────────────────────────
+  //
+  // Antes, estos endpoints no pedían ninguna cabecera: la identidad salía del
+  // número de la URL. Como los identificadores son secuenciales, recorrerlos
+  // devolvía el estado de cuenta de cualquier residente sin iniciar sesión.
+  describe('Acceso a datos de residentes', () => {
+    const protegidos: [string, string][] = [
+      ['get', `/owners/${OWNER_TENANT_ID}/units`],
+      ['get', `/owners/${OWNER_TENANT_ID}/payments`],
+      ['get', `/owners/${OWNER_USER_ID}/profile`],
+    ];
+
+    it.each(protegidos)(
+      '401 sin sesión: %s %s',
+      async (method, path) => {
+        await request(app.getHttpServer())[method as 'get'](path).expect(401);
+      },
+    );
+
+    it('403 al pedir los pagos de otro propietario', async () => {
+      await request(app.getHttpServer())
+        .get('/owners/301/payments')
+        .set('authorization', OWNER_SESSION)
+        .expect(403);
+    });
+
+    it('403 al pedir el perfil de otro usuario', async () => {
+      await request(app.getHttpServer())
+        .get('/owners/901/profile')
+        .set('authorization', OWNER_SESSION)
+        .expect(403);
+    });
+
+    it('403 cuando la cuenta no tiene ficha de propietario', async () => {
+      // Sesión del equipo: existe y es válida, pero no es residente.
+      mocks.openmaint.getSession.mockResolvedValue(
+        mockSession({ userId: 555, availableRoles: ['MaintOffice'] }),
+      );
+
+      await request(app.getHttpServer())
+        .get(`/owners/${OWNER_TENANT_ID}/payments`)
+        .set('authorization', 'sesion-del-equipo')
+        .expect(403);
+    });
+
+    it('401 con una sesión que openMAINT no reconoce', async () => {
+      mocks.openmaint.getSession.mockRejectedValue({ response: { status: 400 } });
+
+      await request(app.getHttpServer())
+        .get(`/owners/${OWNER_TENANT_ID}/payments`)
+        .set('authorization', 'sesion-inventada')
+        .expect(401);
+    });
+
+    it('los endpoints públicos siguen sin pedir sesión', async () => {
+      mocks.openmaint.getBuildings.mockResolvedValueOnce({ data: [] });
+
+      await request(app.getHttpServer()).get('/owners/buildings').expect(200);
+    });
+  });
 
   describe('POST /owners/verify', () => {
     it('201: cédula encontrada devuelve el tenant y un username sugerido', async () => {
@@ -164,6 +246,7 @@ describe('OwnersController (e2e)', () => {
 
       await request(app.getHttpServer())
         .post('/owners/300/reservations')
+        .set('authorization', 'mock-session-id')
         .send({
           commonAreaId: '12',
           fechaInicio: '2026-06-03T18:00:00',
@@ -187,6 +270,7 @@ describe('OwnersController (e2e)', () => {
 
       const res = await request(app.getHttpServer())
         .post('/owners/300/reservations')
+        .set('authorization', 'mock-session-id')
         .send({
           commonAreaId: '12',
           fechaInicio: '2026-06-03T18:00:00',
@@ -208,6 +292,7 @@ describe('OwnersController (e2e)', () => {
 
       const res = await request(app.getHttpServer())
         .put('/owners/900/password')
+        .set('authorization', 'mock-session-id')
         .send({ currentPassword: 'actual123', newPassword: 'nuevaClave123' })
         .expect(200);
 
@@ -226,6 +311,7 @@ describe('OwnersController (e2e)', () => {
 
       await request(app.getHttpServer())
         .put('/owners/900/password')
+        .set('authorization', 'mock-session-id')
         .send({ currentPassword: 'mala-clave', newPassword: 'nuevaClave123' })
         .expect(400);
     });
@@ -237,6 +323,7 @@ describe('OwnersController (e2e)', () => {
 
       const res = await request(app.getHttpServer())
         .post('/owners/300/contact')
+        .set('authorization', 'mock-session-id')
         .send({
           subject: 'Cobro duplicado',
           message: 'Revisen mi último recibo.',
@@ -249,6 +336,7 @@ describe('OwnersController (e2e)', () => {
     it('400 si falta el mensaje', async () => {
       await request(app.getHttpServer())
         .post('/owners/300/contact')
+        .set('authorization', 'mock-session-id')
         .send({ subject: 'Sin mensaje' })
         .expect(400);
     });
