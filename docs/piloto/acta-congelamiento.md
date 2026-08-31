@@ -61,12 +61,13 @@ Si el equipo decide lo contrario, debe fusionarse **antes** de empujar el tag; e
 
 ## Qué queda sin cerrar del §5.1
 
-Dos campos del inventario no son deducibles desde el repositorio y deben completarse antes del D3:
+**Cerrado:** versión de openMAINT (`2.3`, sobre CMDBuild `3.4.2-2`) y la ficha del sensor de presión del piloto — ver el inventario.
 
-- **Versión de openMAINT** — se obtiene desde la propia instancia, como administrador.
-- **Dispositivos IoT activos en el piloto** — listado con su `assetCode` y el activo de openMAINT correspondiente.
+Queda un solo campo abierto, y depende de trabajo físico, no de este documento:
 
-Sin ellos, terminada la certificación no se podrá afirmar con precisión contra qué se probó.
+- **`assetCode` del sensor de presión** — se graba en el propio dispositivo y se confirma contra el activo de openMAINT al que corresponde. Es el único dato que falta para poder ejecutar TI-002 y TI-003 con hardware real.
+
+Sin él, esas dos pruebas de integración se ejecutan igual, pero simulando la petición al webhook en vez de con el sensor conectado.
 
 ---
 

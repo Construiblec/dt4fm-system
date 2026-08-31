@@ -62,11 +62,14 @@ Suman **92 endpoints** repartidos en 17 controladores.
 
 | | |
 |---|---|
-| Versión | **_por registrar_** |
+| Versión de openMAINT | `2.3` |
+| Versión de CMDBuild (base) | `3.4.2-2` |
 | Alojamiento | VPS Hostinger |
 | API | REST v3 (`/cmdbuild/services/rest/v3`) |
 | Instancia de producción | _por registrar_ |
 | Instancia de desarrollo | _por registrar_ |
+
+> openMAINT es una distribución de CMDBuild especializada en gestión de mantenimiento y activos; por eso van las dos versiones juntas — la de CMDBuild fija el motor y el modelo de procesos sobre el que corre openMAINT, y es la que determina qué endpoints de la API REST v3 existen y cómo se comportan.
 
 > **Pendiente.** La versión no es deducible desde el repositorio. Se obtiene entrando a openMAINT como administrador, en *Información del sistema*, o consultando la versión de CMDBuild sobre la que corre. Es el único campo del §5.1 que queda sin cerrar y debe completarse antes del D3.
 
@@ -125,11 +128,24 @@ Correo saliente vía SMTP o Resend, según `MAIL_PROVIDER`. En Render debe ser R
 | Emisor | Servidor Raspberry Pi con motor de reglas propio |
 | Contrato | `POST /iot/alarms`, autenticado con la cabecera `X-IoT-Secret` |
 | Enlace con openMAINT | El campo `assetCode` — es lo único que ata la alarma a un activo |
-| Dispositivos activos | **_por registrar_** |
 
 **Comportamiento a tener presente en las pruebas:** la Raspberry emite cada alarma **una sola vez y no reintenta**. El backend reintenta por ella (`IOT_CREATE_MAX_ATTEMPTS`, 3 por defecto); agotados los intentos, el payload íntegro queda en el registro de error como única copia.
 
-> **Pendiente.** Falta el listado de dispositivos que entran al piloto, con su `assetCode` grabado y el activo de openMAINT al que corresponde.
+### Dispositivos activos en el piloto
+
+| Dispositivo | Sensor de presión (genérico, sin marca) |
+|---|---|
+| Rango | 0 a 1.2 MPa (0 a 12 bar) |
+| Medio | Agua, aceite o aire |
+| Salida | Analógica, 0 a 5 V |
+| Alimentación | 5 V |
+| Conexión mecánica | Rosca 1/4" |
+| `assetCode` en openMAINT | **_por registrar_** |
+| Activo asociado | **_por registrar_** |
+
+La conversión de la señal analógica al valor que viaja en el payload (`psi` en el contrato documentado en [`openmaint-iot-alarms.md`](../integrations/openmaint-iot-alarms.md)) la hace el motor de reglas de la Raspberry antes de emitir la alarma; el backend solo recibe el número ya convertido.
+
+> **Pendiente.** Falta grabar el `assetCode` en el dispositivo y confirmar a qué activo de openMAINT corresponde — es lo único que falta para que TI-002 y TI-003 puedan ejecutarse contra hardware real en vez de una petición simulada al webhook.
 
 ---
 
