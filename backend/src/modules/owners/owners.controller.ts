@@ -8,6 +8,7 @@ import {
   Put,
   Query,
   UploadedFile,
+  UseGuards,
   UseInterceptors,
   BadRequestException,
 } from '@nestjs/common';
@@ -15,12 +16,14 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import {
   ApiBody,
   ApiConsumes,
+  ApiHeader,
   ApiOperation,
   ApiParam,
   ApiQuery,
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
+import { OwnerSessionGuard } from './guards/owner-session.guard';
 import { OwnersService } from './owners.service';
 import { VerifyOwnerDto } from './dto/verify-owner.dto';
 import { RegisterOwnerDto } from './dto/register-owner.dto';
@@ -179,6 +182,12 @@ export class OwnersController {
   // ─── Dashboard ────────────────────────────────────────────────────────────
 
   @Get(':tenantId/units')
+  @UseGuards(OwnerSessionGuard)
+  @ApiHeader({
+    name: 'authorization',
+    description: 'Sesión de openMAINT del residente',
+    required: true,
+  })
   @ApiOperation({
     summary: 'Obtener las unidades inmobiliarias asociadas al propietario',
   })
@@ -193,6 +202,12 @@ export class OwnersController {
   }
 
   @Get(':tenantId/payments')
+  @UseGuards(OwnerSessionGuard)
+  @ApiHeader({
+    name: 'authorization',
+    description: 'Sesión de openMAINT del residente',
+    required: true,
+  })
   @ApiOperation({ summary: 'Obtener pagos pendientes del propietario' })
   @ApiParam({
     name: 'tenantId',
@@ -207,6 +222,12 @@ export class OwnersController {
   // ─── Pagos ────────────────────────────────────────────────────────────────
 
   @Post(':tenantId/payments/pay')
+  @UseGuards(OwnerSessionGuard)
+  @ApiHeader({
+    name: 'authorization',
+    description: 'Sesión de openMAINT del residente',
+    required: true,
+  })
   @ApiOperation({
     summary: 'Registrar la declaración de pago de una o más expensas',
   })
@@ -228,6 +249,12 @@ export class OwnersController {
   }
 
   @Post('payments/:paymentId/voucher')
+  @UseGuards(OwnerSessionGuard)
+  @ApiHeader({
+    name: 'authorization',
+    description: 'Sesión de openMAINT del residente',
+    required: true,
+  })
   @UseInterceptors(
     FileInterceptor('file', {
       limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB
@@ -287,6 +314,12 @@ export class OwnersController {
   // ─── Reservas ─────────────────────────────────────────────────────────────
 
   @Post(':tenantId/reservations')
+  @UseGuards(OwnerSessionGuard)
+  @ApiHeader({
+    name: 'authorization',
+    description: 'Sesión de openMAINT del residente',
+    required: true,
+  })
   @ApiOperation({
     summary: 'Crear una reservación de área comunal para el propietario',
   })
@@ -318,6 +351,12 @@ export class OwnersController {
   // ─── Perfil ───────────────────────────────────────────────────────────────
 
   @Get(':userId/profile')
+  @UseGuards(OwnerSessionGuard)
+  @ApiHeader({
+    name: 'authorization',
+    description: 'Sesión de openMAINT del residente',
+    required: true,
+  })
   @ApiOperation({ summary: 'Obtener perfil del propietario' })
   @ApiParam({
     name: 'userId',
@@ -330,6 +369,12 @@ export class OwnersController {
   }
 
   @Put(':userId/password')
+  @UseGuards(OwnerSessionGuard)
+  @ApiHeader({
+    name: 'authorization',
+    description: 'Sesión de openMAINT del residente',
+    required: true,
+  })
   @ApiOperation({ summary: 'Cambiar la contraseña del propietario' })
   @ApiParam({
     name: 'userId',
@@ -352,6 +397,12 @@ export class OwnersController {
   }
 
   @Post(':tenantId/contact')
+  @UseGuards(OwnerSessionGuard)
+  @ApiHeader({
+    name: 'authorization',
+    description: 'Sesión de openMAINT del residente',
+    required: true,
+  })
   @ApiOperation({
     summary: 'Enviar mensaje de contacto/soporte al administrador',
   })
