@@ -4,7 +4,7 @@
 **Fecha de congelamiento:** 2026-08-31
 **Responsable:** _(por completar)_
 
-Registro exigido por la **Fase 0 · §5.1** del *Procedimiento de Pruebas, Validación y Paso a Producción del GDGI*. Su único objetivo es que, terminada la certificación, se pueda afirmar **exactamente qué versión fue probada**.
+Registro exigido por la **Fase 0 · 5.1** del *Procedimiento de Pruebas, Validación y Paso a Producción del GDGI*. Su único objetivo es que, terminada la certificación, se pueda afirmar **exactamente qué versión fue probada**.
 
 ---
 
@@ -71,7 +71,7 @@ Suman **92 endpoints** repartidos en 17 controladores.
 
 > openMAINT es una distribución de CMDBuild especializada en gestión de mantenimiento y activos; por eso van las dos versiones juntas — la de CMDBuild fija el motor y el modelo de procesos sobre el que corre openMAINT, y es la que determina qué endpoints de la API REST v3 existen y cómo se comportan.
 
-> **Pendiente.** La versión no es deducible desde el repositorio. Se obtiene entrando a openMAINT como administrador, en *Información del sistema*, o consultando la versión de CMDBuild sobre la que corre. Es el único campo del §5.1 que queda sin cerrar y debe completarse antes del D3.
+> **Pendiente.** La versión no es deducible desde el repositorio. Se obtiene entrando a openMAINT como administrador, en *Información del sistema*, o consultando la versión de CMDBuild sobre la que corre. Es el único campo del 5.1 que queda sin cerrar y debe completarse antes del D3.
 
 ---
 
