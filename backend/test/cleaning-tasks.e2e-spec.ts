@@ -9,6 +9,7 @@ import {
   cleaningTaskResponse,
   PHASE_IDS,
 } from './fixtures/cleaning-task.fixture';
+import { mockSession } from './mocks/openmaint-core.mock';
 
 describe('CleaningTasksController (e2e)', () => {
   let app: INestApplication;
@@ -16,6 +17,14 @@ describe('CleaningTasksController (e2e)', () => {
 
   beforeAll(async () => {
     ({ app, mocks } = await createTestApp());
+
+    // Rol por defecto de esta suite: la mayoría de los escenarios ejercitan
+    // un supervisor. Los tests que necesitan otro rol lo sobreescriben
+    // puntualmente con mockResolvedValueOnce (BP-003: el rol se resuelve
+    // contra la sesión real, no contra la cabecera x-role).
+    mocks.openmaint.getSession.mockResolvedValue(
+      mockSession({ role: 'SupervisorLimpieza' }),
+    );
   });
 
   afterAll(async () => {
@@ -25,7 +34,7 @@ describe('CleaningTasksController (e2e)', () => {
   afterEach(() => resetMockCalls());
 
   describe('GET /cleaning-tasks/all', () => {
-    it('200 con sesión y rol presentes', async () => {
+    it('200 con sesión de supervisor', async () => {
       mocks.cleaningTasksOpenmaint.getAllTasks.mockResolvedValueOnce({
         data: [],
         meta: { total: 0 },
@@ -34,24 +43,37 @@ describe('CleaningTasksController (e2e)', () => {
       await request(app.getHttpServer())
         .get('/cleaning-tasks/all')
         .set('x-session-token', 'mock-session-token')
-        .set('x-role', 'SupervisorLimpieza')
         .expect(200);
     });
 
-    it('403 sin cabecera x-role', async () => {
+    it('403 con una sesión que no es de supervisor', async () => {
+      mocks.openmaint.getSession.mockResolvedValueOnce(
+        mockSession({ role: 'PersonalLimpieza' }),
+      );
+
       await request(app.getHttpServer())
         .get('/cleaning-tasks/all')
         .set('x-session-token', 'mock-session-token')
         .expect(403);
     });
 
-    // El controller solo exige que x-role venga presente; el VALOR no se
-    // valida contra la sesión de openMAINT en este endpoint. Mismo hueco que
-    // TS-001 del plan de pruebas: el rol viaja en una cabecera que controla
-    // el cliente. Se deja documentado en vez de fijado en la suite.
-    it.todo(
-      'el rol de /all debería resolverse desde la sesión de openMAINT, no de x-role (ver TS-001)',
-    );
+    // BP-003: antes el controller solo exigía que x-role viniera presente, y
+    // el VALOR no se validaba contra la sesión de openMAINT — bastaba con
+    // forjar la cabecera. Ahora el rol se resuelve contra la sesión real, así
+    // que forjarla ya no sirve de nada.
+    it('403 aunque x-role forjado diga SuperUser, si la sesión real no es de supervisor', async () => {
+      mocks.openmaint.getSession.mockResolvedValueOnce(
+        mockSession({ role: 'PersonalLimpieza' }),
+      );
+
+      await request(app.getHttpServer())
+        .get('/cleaning-tasks/all')
+        .set('x-session-token', 'mock-session-token')
+        .set('x-role', 'SuperUser')
+        .expect(403);
+
+      expect(mocks.cleaningTasksOpenmaint.getAllTasks).not.toHaveBeenCalled();
+    });
   });
 
   describe('GET /cleaning-tasks/mine', () => {
@@ -239,7 +261,6 @@ describe('CleaningTasksController (e2e)', () => {
       const res = await request(app.getHttpServer())
         .patch('/cleaning-tasks/777/review')
         .set('x-session-token', 'mock-session-token')
-        .set('x-role', 'SupervisorLimpieza')
         .send({ approved: true })
         .expect(200);
 
@@ -247,10 +268,13 @@ describe('CleaningTasksController (e2e)', () => {
     });
 
     it('403 si el rol no es supervisor', async () => {
+      mocks.openmaint.getSession.mockResolvedValueOnce(
+        mockSession({ role: 'PersonalLimpieza' }),
+      );
+
       await request(app.getHttpServer())
         .patch('/cleaning-tasks/777/review')
         .set('x-session-token', 'mock-session-token')
-        .set('x-role', 'PersonalLimpieza')
         .send({ approved: true })
         .expect(403);
 
@@ -265,7 +289,6 @@ describe('CleaningTasksController (e2e)', () => {
       await request(app.getHttpServer())
         .patch('/cleaning-tasks/777/review')
         .set('x-session-token', 'mock-session-token')
-        .set('x-role', 'SupervisorLimpieza')
         .send({ approved: true })
         .expect(400);
     });
@@ -283,7 +306,6 @@ describe('CleaningTasksController (e2e)', () => {
       const res = await request(app.getHttpServer())
         .patch('/cleaning-tasks/777/reopen')
         .set('x-session-token', 'mock-session-token')
-        .set('x-role', 'SuperUser')
         .send({ observations: 'Faltó limpiar la nevera' })
         .expect(200);
 
@@ -298,7 +320,6 @@ describe('CleaningTasksController (e2e)', () => {
       await request(app.getHttpServer())
         .patch('/cleaning-tasks/777/reopen')
         .set('x-session-token', 'mock-session-token')
-        .set('x-role', 'SuperUser')
         .send({})
         .expect(400);
     });
@@ -316,7 +337,6 @@ describe('CleaningTasksController (e2e)', () => {
       await request(app.getHttpServer())
         .patch('/cleaning-tasks/777/cancel')
         .set('x-session-token', 'mock-session-token')
-        .set('x-role', 'SupervisorLimpieza')
         .send({ reason: 'Cancelación de reserva por el huésped' })
         .expect(200);
     });
@@ -329,7 +349,6 @@ describe('CleaningTasksController (e2e)', () => {
       await request(app.getHttpServer())
         .patch('/cleaning-tasks/777/cancel')
         .set('x-session-token', 'mock-session-token')
-        .set('x-role', 'SupervisorLimpieza')
         .send({ reason: 'Ya no aplica' })
         .expect(400);
     });

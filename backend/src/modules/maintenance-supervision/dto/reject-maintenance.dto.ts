@@ -6,7 +6,8 @@ export class RejectMaintenanceDto {
     description:
       'Motivo del rechazo. Obligatorio: queda en la bitácora del proceso y ' +
       'es lo único que explica por qué se cerró sin ejecutar.',
-    example: 'El reporte corresponde a un bien del propietario, no del condominio.',
+    example:
+      'El reporte corresponde a un bien del propietario, no del condominio.',
   })
   @IsString()
   @IsNotEmpty({ message: 'El motivo del rechazo es obligatorio' })

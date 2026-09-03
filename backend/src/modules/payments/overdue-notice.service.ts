@@ -236,7 +236,9 @@ export class OverdueNoticeService {
 
     // Los más antiguos primero, que es el orden en que conviene leerlos.
     for (const grupo of map.values()) {
-      grupo.pagos.sort((a, b) => a.vencimiento.getTime() - b.vencimiento.getTime());
+      grupo.pagos.sort(
+        (a, b) => a.vencimiento.getTime() - b.vencimiento.getTime(),
+      );
     }
 
     return [...map.values()];

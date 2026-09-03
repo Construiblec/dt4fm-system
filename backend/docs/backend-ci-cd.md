@@ -97,6 +97,7 @@ Cada servicio tiene su propia instancia de openMAINT y su propia rama de Neon, a
 | `ENABLE_DOCS` | `false` | `true` |
 | `HOSTAWAY_USE_MOCK` | `false` | `true`, salvo que se esté probando la integración real |
 | `INCIDENT_NOTIFICATION_EMAIL` | Buzón real | Buzón de pruebas |
+| `CORS_ALLOWED_ORIGINS` | Solo el dominio de Vercel de producción | El de staging (+ `localhost:5173` para desarrollar contra el backend remoto) |
 
 **`PORT` no se define.** Render la inyecta y [`main.ts`](../src/main.ts) la lee con 3000 como respaldo; fijarla a mano rompe el enrutado de Render.
 
@@ -131,6 +132,7 @@ A continuación, el detalle de cada variable:
 | `OPENMAINT_OCCUPANCY_OWNER_CODE`| Código del lookup para filtrar destinatarios *owners*. | *(Opcional)* |
 | `OPENMAINT_OCCUPANCY_TENANT_CODE`| Código del lookup para filtrar destinatarios *tenants*. | *(Opcional)* |
 | `INCIDENT_NOTIFICATION_EMAIL`| Correo administrativo de notificación ante nuevos incidentes. | `admin@dt4fm.com` |
+| `CORS_ALLOWED_ORIGINS` | Orígenes con permiso de llamar a la API desde el navegador, separados por coma. Vacío usa los tres del piloto por defecto ([`cors.config.ts`](../src/config/cors.config.ts)). | `https://dt4fm-system-f7cc.vercel.app` |
 
 ### Base de datos y notificaciones push
 

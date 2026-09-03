@@ -31,7 +31,9 @@ const buildHarness = (pendientes: PagoCard[]) => {
     getPendingPayments: jest.fn().mockResolvedValue(pendientes),
     getTenantsEmailMap: jest
       .fn()
-      .mockResolvedValue(new Map([[3118136, 'propietario@construiblec.cloud']])),
+      .mockResolvedValue(
+        new Map([[3118136, 'propietario@construiblec.cloud']]),
+      ),
   } as unknown as jest.Mocked<PaymentsOpenmaintRepository>;
 
   const mailer = {

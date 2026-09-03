@@ -46,9 +46,9 @@ Cuatro defectos conocidos, heredados del estado del prototipo. Los cuatro son la
 | ID | Sev. | Nat. | Asunto | Estado |
 |---|---|---|---|---|
 | BP-001 | **P1** | A | Los endpoints de propietarios no exigen sesión. La identidad sale de un número en la URL, y los números son secuenciales: se puede leer el estado de cuenta de cualquier residente sin iniciar sesión. El endpoint de registro de pago además ignora el identificador de la ruta | **Cerrado parcialmente — ver abajo** |
-| BP-002 | **P1** | A | CORS refleja cualquier `Origin` recibido y responde `Allow-Credentials: true`. Cualquier sitio puede llamar a la API desde el navegador de un usuario con sesión abierta | Pendiente |
-| BP-003 | **P2** | A | El rol se valida contra la cabecera `x-role`, que el frontend toma de `localStorage`. Un usuario autenticado puede enviar el rol que quiera. Afecta a limpieza y a supervisión de mantenimiento | Pendiente |
-| BP-004 | **P2** | A | No existe procedimiento de rollback escrito. El caso sin resolver es revertir una versión que ya aplicó una migración: deshacer el código no deshace el esquema | Pendiente |
+| BP-002 | **P1** | A | CORS refleja cualquier `Origin` recibido y responde `Allow-Credentials: true`. Cualquier sitio puede llamar a la API desde el navegador de un usuario con sesión abierta | **Cerrado — ver abajo** |
+| BP-003 | **P2** | A | El rol se valida contra la cabecera `x-role`, que el frontend toma de `localStorage`. Un usuario autenticado puede enviar el rol que quiera. Afecta a limpieza y a supervisión de mantenimiento | **Cerrado — ver abajo** |
+| BP-004 | **P2** | A | No existe procedimiento de rollback escrito. El caso sin resolver es revertir una versión que ya aplicó una migración: deshacer el código no deshace el esquema | **Cerrado — ver abajo** |
 
 ### BP-001 · avance del 2026-08-31
 
@@ -66,6 +66,28 @@ Cuatro defectos conocidos, heredados del estado del prototipo. Los cuatro son la
 1. **Comprobar contra el servidor desplegado** que el acceso anónimo ya no funciona. La detección original fue por lectura de código y la corrección se verificó en local; falta la confirmación en Render.
 2. **Propiedad del pago en el comprobante.** `POST /owners/payments/:paymentId/voucher` ya exige sesión, pero no verifica que el pago sea de quien lo sube: la ruta no lleva `tenantId`. Hay que resolver el propietario del pago desde openMAINT y compararlo. Es el resto de BP-001.
 3. **Rutas `/owners/me/...`.** Hoy se conserva el identificador en la URL para no romper el frontend, pero ya no es una credencial. Migrar a rutas sin identificador elimina la comparación por completo.
+
+### BP-002 · avance del 2026-09-03
+
+**Hecho:** `main.ts` deja de reflejar cualquier `Origin` recibido. `app.enableCors()` valida contra una lista blanca (`CORS_ALLOWED_ORIGINS`, ver [`cors.config.ts`](../../backend/src/config/cors.config.ts)); sin la variable, usa por defecto los tres dominios reales del piloto (local, staging, producción — los mismos ya documentados en `APP_BASE_URL` de `.env.example`). Cada servicio de Render debería declarar solo los suyos (ver la tabla de variables en [backend-ci-cd.md](../../backend/docs/backend-ci-cd.md)), pero el valor por defecto ya cierra el hueco aunque no se configure.
+
+**Verificado:** `cors.config.spec.ts`, 3 pruebas — sin variable, variable vacía, y parseo de una lista con espacios.
+
+**Pendiente:** confirmar en el navegador, contra el servidor desplegado, que un origen fuera de la lista recibe la petición sin la cabecera `Access-Control-Allow-Origin` (la prueba real la hace el navegador, no un curl).
+
+### BP-003 · avance del 2026-09-03
+
+**Hecho:** nuevo `SessionRoleService` ([`session-role.service.ts`](../../backend/src/integrations/openmaint/session-role.service.ts)) resuelve el rol activo contra `GET /sessions/current` de openMAINT — no se cachea a propósito, porque el rol puede cambiar en cualquier momento vía `PUT /auth/role`. `cleaning-tasks` y `maintenance-supervision` dejan de leer `x-role`: el parámetro y las cabeceras Swagger que lo documentaban se retiraron de los 12 endpoints de supervisión de mantenimiento y de los 6 de limpieza que lo usaban. Mismo criterio que BP-001: la identidad (aquí, el rol) se resuelve del lado del servidor, nunca de un dato que declara el cliente.
+
+**Verificado:** `session-role.service.spec.ts` (6 pruebas unitarias) más las suites E2E de ambos módulos — los dos `it.todo` de BP-012 se convirtieron en pruebas reales que fuerzan `x-role` con un valor de supervisor mientras la sesión real resuelve un rol sin privilegios, y confirman 403. 147/147 tests E2E en verde, 199/199 unitarios.
+
+**Pendiente:** ninguno. La cabecera `x-role` puede seguir llegando desde el frontend durante la transición — el backend ya no la lee, así que no molesta ni hace falta coordinarlo con un despliegue del frontend.
+
+### BP-004 · avance del 2026-09-03
+
+**Hecho:** [`procedimiento-rollback.md`](procedimiento-rollback.md) — cubre el caso simple (sin migración) y el difícil (con migración aplicada, con el orden obligatorio: revertir la migración primero, redesplegar el código después), más el rollback del frontend en Vercel y una advertencia explícita sobre lo que este procedimiento no puede deshacer (openMAINT, que no tiene control de versiones sobre su base de datos). Incluye un ejemplo real de este repositorio: el `down()` de `PushSubscriptionMultipleRoles` pierde los roles adicionales de una suscripción multi-rol al revertir, así que documenta cómo respaldarlos antes.
+
+**Pendiente:** ninguno como documento. Falta ejecutarlo una vez en un entorno no productivo (staging) para confirmar que los comandos funcionan tal como están escritos — no se ha forzado un rollback real todavía porque no ha hecho falta.
 
 ---
 
@@ -98,10 +120,10 @@ Salidas de la revisión técnica previa. Ninguna impide certificar.
 
 ## Cobertura de pruebas pendiente
 
-| ID | Nat. | Asunto |
-|---|---|---|
-| BP-012 | A | Dos `it.todo()` marcados en las suites de limpieza y supervisión, a la espera de que el rol se resuelva desde la sesión (BP-003). Al corregirse, se convierten en pruebas reales |
-| BP-013 | B | El frontend no tiene pruebas automatizadas de ningún tipo. Fuera del alcance de la certificación, pero es el hueco más grande que queda |
+| ID | Nat. | Asunto | Estado |
+|---|---|---|---|
+| BP-012 | A | Dos `it.todo()` marcados en las suites de limpieza y supervisión, a la espera de que el rol se resuelva desde la sesión (BP-003). Al corregirse, se convierten en pruebas reales | **Cerrado el 2026-09-03** — resuelto junto con BP-003, ver su avance arriba |
+| BP-013 | B | El frontend no tiene pruebas automatizadas de ningún tipo. Fuera del alcance de la certificación, pero es el hueco más grande que queda | Pendiente |
 
 ---
 

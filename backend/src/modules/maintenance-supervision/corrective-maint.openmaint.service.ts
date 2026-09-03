@@ -155,7 +155,9 @@ export class CorrectiveMaintOpenmaintService {
 
     this.logger.log(
       'Consultando correctivos' +
-        (statusIds?.length ? ` con ProcessStatus in [${statusIds.join(',')}]` : '') +
+        (statusIds?.length
+          ? ` con ProcessStatus in [${statusIds.join(',')}]`
+          : '') +
         (assigned === undefined ? '' : ` y assigned=${assigned}`),
     );
 

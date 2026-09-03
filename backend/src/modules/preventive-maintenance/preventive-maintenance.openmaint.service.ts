@@ -313,7 +313,9 @@ export class PreventiveMaintenanceOpenmaintService {
           ? ` con ProcessStatus in [${statusIds.join(',')}]`
           : '') +
         (assigned === undefined ? '' : ` y assigned=${assigned}`) +
-        (from || to ? ` y ExpExecStartDate en [${from ?? '—'}, ${to ?? '—'}]` : ''),
+        (from || to
+          ? ` y ExpExecStartDate en [${from ?? '—'}, ${to ?? '—'}]`
+          : ''),
     );
 
     return (await this.client.get(
