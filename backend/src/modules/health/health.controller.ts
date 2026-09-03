@@ -1,6 +1,3 @@
-// Ensayo de vuelta atrás del 2026-09-03 (BP-004): este comentario es el cambio
-// inofensivo que se despliega y se revierte para medir cuánto tarda un rollback
-// real en staging. Si sigue aquí después del ensayo, el revert no se aplicó.
 import { Controller, Get } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 
