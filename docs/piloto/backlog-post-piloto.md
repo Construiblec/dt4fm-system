@@ -85,9 +85,9 @@ Cuatro defectos conocidos, heredados del estado del prototipo. Los cuatro son la
 
 ### BP-004 · avance del 2026-09-03
 
-**Hecho:** [`procedimiento-rollback.md`](procedimiento-rollback.md) — cubre el caso simple (sin migración) y el difícil (con migración aplicada, con el orden obligatorio: revertir la migración primero, redesplegar el código después), más el rollback del frontend en Vercel y una advertencia explícita sobre lo que este procedimiento no puede deshacer (openMAINT, que no tiene control de versiones sobre su base de datos). Incluye un ejemplo real de este repositorio: el `down()` de `PushSubscriptionMultipleRoles` pierde los roles adicionales de una suscripción multi-rol al revertir, así que documenta cómo respaldarlos antes.
+**Hecho:** [`procedimiento-rollback.md`](procedimiento-rollback.md) — cubre el caso simple (sin migración) y el difícil (con migración aplicada, con el orden obligatorio: revertir la migración primero, redesplegar el código después), el rollback del frontend en Vercel, y el de **openMAINT** (§5): resulta que sí existe — un `pg_dump`/`pg_restore` automatizado en el VPS, con cron diario a las 3am y 14 días de retención, que se documentó al detalle una vez el equipo compartió los scripts reales (`/opt/OpenMaintCore/scripts/`). Incluye dos ejemplos reales de este proyecto: el `down()` de `PushSubscriptionMultipleRoles`, que pierde los roles adicionales de una suscripción multi-rol al revertir, y los tres detalles no obvios que hacen funcionar el `pg_restore` de openMAINT (`-j 1`, sin `--no-owner`, y el `search_path` de la base).
 
-**Pendiente:** ninguno como documento. Falta ejecutarlo una vez en un entorno no productivo (staging) para confirmar que los comandos funcionan tal como están escritos — no se ha forzado un rollback real todavía porque no ha hecho falta.
+**Pendiente:** ninguno como documento. Falta ejecutarlo una vez en un entorno no productivo (staging/clon) para confirmar que los comandos funcionan tal como están escritos — no se ha forzado un rollback real todavía porque no ha hecho falta. Al revisar los scripts de openMAINT salieron 6 riesgos operativos reales (ninguno bloquea usar el rollback hoy) — quedaron registrados como BP-014 a BP-019.
 
 ---
 
@@ -115,6 +115,14 @@ Salidas de la revisión técnica previa. Ninguna impide certificar.
 | BP-009 | P4 | A | `console.log('complete incident')` olvidado en el controlador de incidencias |
 | BP-010 | P3 | A | El paso de lint del frontend lleva `continue-on-error`, así que el gate de calidad no bloquea nada |
 | BP-011 | P3 | B | El `/health` no expone versión de aplicación, solo el SHA del commit. Convendría añadir la versión semántica al declarar la v1.0 |
+| BP-014 | **P1** | A | En `db-restore.sh` (rollback de openMAINT), un `pg_restore` fallido se degrada a advertencia y el script igual reporta éxito: un rollback parcialmente restaurado puede quedar online sin que nadie se entere |
+| BP-015 | P2 | A | Los scripts de respaldo/rollback de openMAINT (VPS) no tienen bloqueo entre sí: un rollback que coincide con el backup de las 3am puede truncar el dump del día, y `backup-check.sh` no lo detecta (solo mira fecha y cabecera) |
+| BP-016 | P2 | A | `refresh-clon.sh` recorta sin avisar el historial de respaldos de producción de 14 a 8 días, porque no pasa `--retention` al llamar a `db-backup.sh` |
+| BP-017 | P2 | A | Si el rollback de openMAINT se corta a la mitad (entre parar la app y terminar la restauración), no hay limpieza automática ni mensaje de qué hacer — producción puede quedar caída y sin base utilizable |
+| BP-018 | P2 | B | El respaldo de openMAINT es diario (RPO de hasta 24h) y vive en el mismo disco que producción, sin copia automática fuera del VPS |
+| BP-019 | P4 | A | Detalles menores de los scripts de respaldo de openMAINT: el horario del cron depende de que el VPS esté en UTC sin ninguna alerta si cambia, y `ensure_role` no actualiza la contraseña de `cmdbuild` si el rol ya existe |
+
+Detalle completo de los seis en [`procedimiento-rollback.md`, §5.4](procedimiento-rollback.md#54-riesgos-conocidos--todavía-sin-arreglar).
 
 ---
 

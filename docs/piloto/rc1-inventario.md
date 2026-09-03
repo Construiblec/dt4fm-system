@@ -81,7 +81,7 @@ El sistema usa **dos almacenes distintos**, y conviene no confundirlos al planif
 
 | Almacén | Contenido | Responsable del respaldo |
 |---|---|---|
-| **openMAINT** (VPS) | Activos, órdenes correctivas y preventivas, tareas de limpieza, usuarios, propietarios. **Es la fuente de verdad de todo el negocio.** | Equipo — respaldo manual del VPS |
+| **openMAINT** (VPS) | Activos, órdenes correctivas y preventivas, tareas de limpieza, usuarios, propietarios. **Es la fuente de verdad de todo el negocio.** | Automático — `pg_dump` diario a las 3am (Guayaquil) vía cron en el VPS, 14 días de retención. Detalle y cómo restaurar en el [procedimiento de rollback, §5](procedimiento-rollback.md#5-openmaint-vps) |
 | **Neon** (PostgreSQL gestionado) | Únicamente suscripciones push, historial de notificaciones e idempotencia de avisos programados. | Neon, con recuperación a un punto en el tiempo |
 
 **Neon:** una rama por entorno — `production` para producción, `development` para staging. En local se usa el contenedor `dt4fm-pg` (`backend/docker-compose.yml`), PostgreSQL `17.4-alpine`.
