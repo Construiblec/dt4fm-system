@@ -336,7 +336,10 @@ export class OpenmaintService {
    * No captura errores a propósito: quien llama decide qué hacer con ellos.
    */
   async getSession(sessionId: string): Promise<OpenmaintSession | null> {
-    const response = (await this.client.get('/sessions/current', sessionId)) as {
+    const response = (await this.client.get(
+      '/sessions/current',
+      sessionId,
+    )) as {
       data?: OpenmaintSession;
     };
 

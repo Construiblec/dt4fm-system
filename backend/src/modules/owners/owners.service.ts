@@ -228,7 +228,11 @@ export class OwnersService {
   async loginOwner(username: string, password: string) {
     const session = await this.authService.login({ username, password });
 
-    if (!session.availableRoles.some((r) => r.toLowerCase().includes('propietario'))) {
+    if (
+      !session.availableRoles.some((r) =>
+        r.toLowerCase().includes('propietario'),
+      )
+    ) {
       throw new UnauthorizedException(
         'El usuario no tiene permisos de propietario',
       );
@@ -435,7 +439,10 @@ export class OwnersService {
 
   async changeOwnerPassword(userId: number, dto: ChangePasswordDto) {
     const adminSessionId = await this.serviceSession.get();
-    const account = await this.openmaintUsers.getAccount(userId, adminSessionId);
+    const account = await this.openmaintUsers.getAccount(
+      userId,
+      adminSessionId,
+    );
 
     if (!account?.username)
       throw new InternalServerErrorException(

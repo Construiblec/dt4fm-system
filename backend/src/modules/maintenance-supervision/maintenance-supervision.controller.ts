@@ -21,6 +21,7 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
+import { SessionRoleService } from '../../integrations/openmaint/session-role.service';
 import { isMaintenanceSupervisorRole } from './constants/supervision-roles.constants';
 import { AssignAssigneeDto } from './dto/assign-assignee.dto';
 import { ListMaintenancesQueryDto } from './dto/list-maintenances-query.dto';
@@ -35,14 +36,12 @@ import { MaintenanceSupervisionService } from './maintenance-supervision.service
   description: 'Token de sesión de OpenMAINT',
   required: true,
 })
-@ApiHeader({
-  name: 'x-role',
-  description: 'Rol del usuario (SuperUser / SupervisorMantenimiento)',
-  required: true,
-})
 @Controller('maintenance-supervision')
 export class MaintenanceSupervisionController {
-  constructor(private readonly service: MaintenanceSupervisionService) {}
+  constructor(
+    private readonly service: MaintenanceSupervisionService,
+    private readonly sessionRoleService: SessionRoleService,
+  ) {}
 
   // ── Listados ───────────────────────────────────────────────────────────────
 
@@ -54,11 +53,10 @@ export class MaintenanceSupervisionController {
   @ApiResponse({ status: 403, description: 'Rol no autorizado' })
   async listCorrective(
     @Headers('authorization') sessionId: string,
-    @Headers('x-role') role: string,
     @Query(new ValidationPipe({ transform: true, whitelist: true }))
     query: ListMaintenancesQueryDto,
   ) {
-    this.authorize(sessionId, role);
+    await this.authorize(sessionId);
     return this.service.listCorrective(sessionId, query);
   }
 
@@ -74,11 +72,10 @@ export class MaintenanceSupervisionController {
   @ApiResponse({ status: 403, description: 'Rol no autorizado' })
   async listPreventive(
     @Headers('authorization') sessionId: string,
-    @Headers('x-role') role: string,
     @Query(new ValidationPipe({ transform: true, whitelist: true }))
     query: ListMaintenancesQueryDto,
   ) {
-    this.authorize(sessionId, role);
+    await this.authorize(sessionId);
     return this.service.listPreventive(sessionId, query);
   }
 
@@ -94,10 +91,9 @@ export class MaintenanceSupervisionController {
   @ApiResponse({ status: 200, description: 'Candidatos obtenidos con éxito' })
   async listAssignees(
     @Headers('authorization') sessionId: string,
-    @Headers('x-role') role: string,
     @Query('teamId') teamId?: string,
   ) {
-    this.authorize(sessionId, role);
+    await this.authorize(sessionId);
     return this.service.listAssignees(sessionId, this.parseOptionalId(teamId));
   }
 
@@ -114,11 +110,10 @@ export class MaintenanceSupervisionController {
   @ApiResponse({ status: 404, description: 'No encontrado' })
   async getDetail(
     @Headers('authorization') sessionId: string,
-    @Headers('x-role') role: string,
     @Param('kind') kind: string,
     @Param('id', ParseIntPipe) id: number,
   ) {
-    this.authorize(sessionId, role);
+    await this.authorize(sessionId);
     return this.service.getDetail(sessionId, this.parseKind(kind), id);
   }
 
@@ -136,11 +131,10 @@ export class MaintenanceSupervisionController {
   @ApiResponse({ status: 404, description: 'No encontrado' })
   async getEvidence(
     @Headers('authorization') sessionId: string,
-    @Headers('x-role') role: string,
     @Param('kind') kind: string,
     @Param('id', ParseIntPipe) id: number,
   ) {
-    this.authorize(sessionId, role);
+    await this.authorize(sessionId);
     return this.service.getEvidence(sessionId, this.parseKind(kind), id);
   }
 
@@ -157,16 +151,18 @@ export class MaintenanceSupervisionController {
   @ApiParam({ name: 'id', type: 'integer' })
   @ApiResponse({ status: 201, description: 'Correctivo asignado' })
   @ApiResponse({ status: 400, description: 'Falta el inicio previsto' })
-  @ApiResponse({ status: 409, description: 'El correctivo no está en asignación' })
+  @ApiResponse({
+    status: 409,
+    description: 'El correctivo no está en asignación',
+  })
   @ApiResponse({ status: 502, description: 'OpenMAINT no aplicó el avance' })
   async assignCorrective(
     @Headers('authorization') sessionId: string,
-    @Headers('x-role') role: string,
     @Param('id', ParseIntPipe) id: number,
     @Body(new ValidationPipe({ transform: true, whitelist: true }))
     dto: AssignAssigneeDto,
   ) {
-    this.authorize(sessionId, role);
+    await this.authorize(sessionId);
     return this.service.assignCorrective(sessionId, id, dto);
   }
 
@@ -176,12 +172,11 @@ export class MaintenanceSupervisionController {
   @ApiResponse({ status: 201, description: 'Correctivo rechazado y cerrado' })
   async rejectCorrective(
     @Headers('authorization') sessionId: string,
-    @Headers('x-role') role: string,
     @Param('id', ParseIntPipe) id: number,
     @Body(new ValidationPipe({ transform: true, whitelist: true }))
     dto: RejectMaintenanceDto,
   ) {
-    this.authorize(sessionId, role);
+    await this.authorize(sessionId);
     return this.service.rejectCorrective(sessionId, id, dto);
   }
 
@@ -196,12 +191,11 @@ export class MaintenanceSupervisionController {
   @ApiResponse({ status: 201, description: 'Preventivo asignado' })
   async assignPreventive(
     @Headers('authorization') sessionId: string,
-    @Headers('x-role') role: string,
     @Param('id', ParseIntPipe) id: number,
     @Body(new ValidationPipe({ transform: true, whitelist: true }))
     dto: AssignAssigneeDto,
   ) {
-    this.authorize(sessionId, role);
+    await this.authorize(sessionId);
     return this.service.assignPreventive(sessionId, id, dto);
   }
 
@@ -219,10 +213,9 @@ export class MaintenanceSupervisionController {
   @ApiResponse({ status: 502, description: 'OpenMAINT no aplicó el avance' })
   async resumePreventive(
     @Headers('authorization') sessionId: string,
-    @Headers('x-role') role: string,
     @Param('id', ParseIntPipe) id: number,
   ) {
-    this.authorize(sessionId, role);
+    await this.authorize(sessionId);
     return this.service.resumePreventive(sessionId, id);
   }
 
@@ -242,13 +235,12 @@ export class MaintenanceSupervisionController {
   @ApiResponse({ status: 409, description: 'Proveedor o equipo distinto' })
   async updateAssignee(
     @Headers('authorization') sessionId: string,
-    @Headers('x-role') role: string,
     @Param('kind') kind: string,
     @Param('id', ParseIntPipe) id: number,
     @Body(new ValidationPipe({ transform: true, whitelist: true }))
     dto: AssignAssigneeDto,
   ) {
-    this.authorize(sessionId, role);
+    await this.authorize(sessionId);
     return this.service.updateAssignee(
       sessionId,
       this.parseKind(kind),
@@ -274,12 +266,11 @@ export class MaintenanceSupervisionController {
   @ApiResponse({ status: 409, description: 'No está pendiente de revisión' })
   async reviewCorrective(
     @Headers('authorization') sessionId: string,
-    @Headers('x-role') role: string,
     @Param('id', ParseIntPipe) id: number,
     @Body(new ValidationPipe({ transform: true, whitelist: true }))
     dto: ReviewMaintenanceDto,
   ) {
-    this.authorize(sessionId, role);
+    await this.authorize(sessionId);
     return this.service.reviewCorrective(sessionId, id, dto);
   }
 
@@ -296,13 +287,12 @@ export class MaintenanceSupervisionController {
   @ApiResponse({ status: 409, description: 'El paso no admite el atributo' })
   async updatePlannedStart(
     @Headers('authorization') sessionId: string,
-    @Headers('x-role') role: string,
     @Param('kind') kind: string,
     @Param('id', ParseIntPipe) id: number,
     @Body(new ValidationPipe({ transform: true, whitelist: true }))
     dto: UpdatePlannedStartDto,
   ) {
-    this.authorize(sessionId, role);
+    await this.authorize(sessionId);
     return this.service.updatePlannedStart(
       sessionId,
       this.parseKind(kind),
@@ -314,16 +304,19 @@ export class MaintenanceSupervisionController {
   // ── Guardas ────────────────────────────────────────────────────────────────
 
   /**
-   * `x-role` sale de `localStorage` y es manipulable: esto solo evita llamadas
-   * por accidente desde un rol equivocado. La barrera real son los permisos de
+   * El rol ya no llega en `x-role` (BP-003): se resuelve contra la sesión
+   * real de openMAINT, así que nadie puede declararse supervisor desde el
+   * cliente. La barrera de fondo sigue siendo la misma: los permisos de
    * grupo de la sesión en OpenMAINT.
    */
-  private authorize(sessionId: string, role: string): void {
+  private async authorize(sessionId: string): Promise<void> {
     if (!sessionId?.trim()) {
       throw new UnauthorizedException('Falta el token de sesión de OpenMAINT');
     }
 
-    if (!isMaintenanceSupervisorRole(role)) {
+    const role = await this.sessionRoleService.resolveRole(sessionId);
+
+    if (!isMaintenanceSupervisorRole(role ?? undefined)) {
       throw new ForbiddenException(
         'El rol no tiene acceso a la supervisión de mantenimiento',
       );

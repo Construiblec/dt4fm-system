@@ -91,7 +91,8 @@ describe('PasswordRecoveryService', () => {
       const { service, openmaint, mailer } = buildHarness();
       openmaint.findUsers.mockResolvedValue([]);
 
-      const existente = await buildHarness().service.requestReset('raul.ontaneda');
+      const existente =
+        await buildHarness().service.requestReset('raul.ontaneda');
       const inexistente = await service.requestReset('no.existe');
 
       expect(inexistente).toEqual(existente);
@@ -124,7 +125,11 @@ describe('PasswordRecoveryService', () => {
       const compartido = 'erazoestiven1@gmail.com';
       openmaint.findUsers.mockResolvedValue([
         userCard({ Username: 'usuario.prueba', Email: compartido }),
-        userCard({ _id: 2430770, Username: 'usuario.invitado', Email: compartido }),
+        userCard({
+          _id: 2430770,
+          Username: 'usuario.invitado',
+          Email: compartido,
+        }),
       ]);
 
       // Buscando por el correo compartido no se puede decidir: no se envía.
@@ -138,7 +143,9 @@ describe('PasswordRecoveryService', () => {
 
     it('responde genéricamente aunque openMAINT falle', async () => {
       const { service, openmaint } = buildHarness();
-      openmaint.getServiceSessionId.mockRejectedValue(new Error('openMAINT caído'));
+      openmaint.getServiceSessionId.mockRejectedValue(
+        new Error('openMAINT caído'),
+      );
 
       await expect(service.requestReset('raul.ontaneda')).resolves.toEqual(
         service.genericResponse(),

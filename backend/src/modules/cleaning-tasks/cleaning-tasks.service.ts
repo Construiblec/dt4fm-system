@@ -768,7 +768,8 @@ export class CleaningTasksService {
       data: {
         id: response?.data?._id ?? taskId,
         phase: PHASE_NAMES[PHASE_IDS.IN_EXECUTION],
-        actualStartTime: response?.data?.ActualStartTime ?? task.ActualStartTime ?? now,
+        actualStartTime:
+          response?.data?.ActualStartTime ?? task.ActualStartTime ?? now,
         isPaused: false,
         resumed: wasPaused,
         // Ancla del cronómetro: el instante en que arrancó esta ejecución. Queda
@@ -910,7 +911,11 @@ export class CleaningTasksService {
       ? this.appendNote(log, this.escapeBraces(dto.observations))
       : (log ?? '');
 
-    const response = await this.openmaintService.updateTaskWithSession(taskId, body, sessionToken);
+    const response = await this.openmaintService.updateTaskWithSession(
+      taskId,
+      body,
+      sessionToken,
+    );
 
     // Push a los supervisores de limpieza.
     void this.notifyCleaningCompleted(task, taskId, sessionToken);
@@ -923,7 +928,8 @@ export class CleaningTasksService {
         actualEndTime: response?.data?.ActualEndTime ?? now,
         observations: dto.observations ?? null,
         duration: Math.round(executionTime),
-        executionTime: this.toNumber(response?.data?.ExecutionTime) || executionTime,
+        executionTime:
+          this.toNumber(response?.data?.ExecutionTime) || executionTime,
       },
     };
   }
@@ -972,7 +978,10 @@ export class CleaningTasksService {
 
     const hasPreviousTime = prevExecution > 0;
     if (!hasPreviousTime && task.ActualStartTime) {
-      return Math.max(0, this.calculateDurationMinutes(task.ActualStartTime, now));
+      return Math.max(
+        0,
+        this.calculateDurationMinutes(task.ActualStartTime, now),
+      );
     }
 
     this.logger.warn(
@@ -1005,7 +1014,7 @@ export class CleaningTasksService {
       ? PHASE_IDS.REVIEWED
       : PHASE_IDS.ASSIGNED;
     const body: Record<string, unknown> = { phase: targetPhaseId };
-    
+
     if (!dto.approved) {
       body.ActualEndTime = null;
     }
@@ -1021,7 +1030,11 @@ export class CleaningTasksService {
       task.SupervisionObserv,
       comments ? `${prefix}: ${comments}` : prefix,
     );
-    const updated = await this.openmaintService.updateTaskWithSession(taskId, body, sessionToken);
+    const updated = await this.openmaintService.updateTaskWithSession(
+      taskId,
+      body,
+      sessionToken,
+    );
     return {
       success: true,
       data: {
@@ -1063,7 +1076,7 @@ export class CleaningTasksService {
         `Solo se pueden reabrir tareas en estado Completed o Reviewed. Estado actual: ${phaseDesc}`,
       );
     }
-    const body: Record<string, unknown> = { 
+    const body: Record<string, unknown> = {
       phase: PHASE_IDS.ASSIGNED,
       ActualEndTime: null,
     };
@@ -1074,7 +1087,11 @@ export class CleaningTasksService {
       task.SupervisionObserv,
       reason ? `[Reabierto]: ${reason}` : '[Reabierto]',
     );
-    const updated = await this.openmaintService.updateTaskWithSession(taskId, body, sessionToken);
+    const updated = await this.openmaintService.updateTaskWithSession(
+      taskId,
+      body,
+      sessionToken,
+    );
     return {
       success: true,
       data: {
@@ -1317,9 +1334,7 @@ export class CleaningTasksService {
    * al escribir en OpenMAINT, para no perder precisión al acumular ejecuciones.
    */
   private calculateDurationMinutes(startIso: string, endIso: string): number {
-    return (
-      (new Date(endIso).getTime() - new Date(startIso).getTime()) / 60_000
-    );
+    return (new Date(endIso).getTime() - new Date(startIso).getTime()) / 60_000;
   }
 
   /**
@@ -1406,7 +1421,10 @@ export class CleaningTasksService {
     return `${trimmedLog}\n\n${block}`;
   }
 
-  private appendNote(existingText: string | null | undefined, newText: string): string {
+  private appendNote(
+    existingText: string | null | undefined,
+    newText: string,
+  ): string {
     const text = (existingText ?? '').trim();
     const matches = [...text.matchAll(/^Nota (\d+)/gm)];
     let nextNumber = 1;
@@ -1414,14 +1432,16 @@ export class CleaningTasksService {
       const lastMatch = matches[matches.length - 1];
       nextNumber = parseInt(lastMatch[1], 10) + 1;
     }
-    
+
     const noteBlock = `Nota ${nextNumber}\n${newText}`;
     if (!text) {
       return noteBlock.substring(0, 500);
     }
-    
+
     const combined = `${text}\n\n${noteBlock}`;
-    return combined.length > 500 ? combined.substring(combined.length - 500) : combined;
+    return combined.length > 500
+      ? combined.substring(combined.length - 500)
+      : combined;
   }
 
   // ─── Actualización directa ────────────────────────────────────────────────
@@ -1463,7 +1483,11 @@ export class CleaningTasksService {
 
   /** Best-effort: nunca propaga. */
   private async notifyCleaningCompleted(
-    task: { Unit?: number | null; _Unit_description?: string | null; _Employee_description?: string | null },
+    task: {
+      Unit?: number | null;
+      _Unit_description?: string | null;
+      _Employee_description?: string | null;
+    },
     taskId: number,
     sessionToken: string,
   ) {
@@ -1491,9 +1515,7 @@ export class CleaningTasksService {
     try {
       const task = (await this.openmaintService.getTaskByIdWithSession(taskId))
         ?.data;
-      const unit = task?.Unit
-        ? await this.fetchUnitInfo(task.Unit, '')
-        : null;
+      const unit = task?.Unit ? await this.fetchUnitInfo(task.Unit, '') : null;
 
       await this.pushDispatch.notifyCleaningAssigned({
         id: taskId,

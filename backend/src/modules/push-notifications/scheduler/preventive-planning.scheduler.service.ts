@@ -27,9 +27,7 @@ export class PreventivePlanningSchedulerService {
 
   @Cron('0 8 * * *', { timeZone: BUSINESS_TIMEZONE })
   async sweep(): Promise<void> {
-    if (
-      this.configService.get<string>('PUSH_SCHEDULER_ENABLED') !== 'true'
-    ) {
+    if (this.configService.get<string>('PUSH_SCHEDULER_ENABLED') !== 'true') {
       return;
     }
 

@@ -53,12 +53,9 @@ describe('OwnersController (e2e)', () => {
       ['get', `/owners/${OWNER_USER_ID}/profile`],
     ];
 
-    it.each(protegidos)(
-      '401 sin sesión: %s %s',
-      async (method, path) => {
-        await request(app.getHttpServer())[method as 'get'](path).expect(401);
-      },
-    );
+    it.each(protegidos)('401 sin sesión: %s %s', async (method, path) => {
+      await request(app.getHttpServer())[method as 'get'](path).expect(401);
+    });
 
     it('403 al pedir los pagos de otro propietario', async () => {
       await request(app.getHttpServer())
@@ -87,7 +84,9 @@ describe('OwnersController (e2e)', () => {
     });
 
     it('401 con una sesión que openMAINT no reconoce', async () => {
-      mocks.openmaint.getSession.mockRejectedValue({ response: { status: 400 } });
+      mocks.openmaint.getSession.mockRejectedValue({
+        response: { status: 400 },
+      });
 
       await request(app.getHttpServer())
         .get(`/owners/${OWNER_TENANT_ID}/payments`)

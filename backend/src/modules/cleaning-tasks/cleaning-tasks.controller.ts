@@ -30,6 +30,7 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
+import { SessionRoleService } from '../../integrations/openmaint/session-role.service';
 import {
   CleaningTasksService,
   isSupervisorRole,
@@ -49,7 +50,10 @@ import { UploadAttachmentDto } from './dto/upload-attachment.dto';
 @ApiTags('Tareas de Limpieza')
 @Controller('cleaning-tasks')
 export class CleaningTasksController {
-  constructor(private readonly cleaningTasksService: CleaningTasksService) {}
+  constructor(
+    private readonly cleaningTasksService: CleaningTasksService,
+    private readonly sessionRoleService: SessionRoleService,
+  ) {}
 
   // ─── Todas las tareas (supervisor) ─────────────────────────────────────────
 
@@ -67,21 +71,15 @@ export class CleaningTasksController {
     description: 'Token de sesión',
     required: true,
   })
-  @ApiHeader({
-    name: 'x-role',
-    description: 'Rol del usuario (SuperUser / SupervisorLimpieza)',
-    required: true,
-  })
   @ApiResponse({ status: 200, description: 'Listado completo de tareas.' })
   @ApiResponse({ status: 403, description: 'Acceso no autorizado por rol.' })
   async getAllTasks(
     @Query(new ValidationPipe({ transform: true }))
     query: GetAllCleaningTasksQueryDto,
     @Headers('x-session-token') sessionToken: string,
-    @Headers('x-role') role: string,
   ) {
     this.requireSessionToken(sessionToken);
-    this.requireRole(role);
+    await this.requireSupervisorRole(sessionToken);
 
     return this.cleaningTasksService.getAllTasks(sessionToken, {
       limit: query.limit,
@@ -330,11 +328,6 @@ export class CleaningTasksController {
     description: 'ID del empleado (requerido para empleados)',
     required: false,
   })
-  @ApiHeader({
-    name: 'x-role',
-    description: 'Rol del usuario (SuperUser / SupervisorLimpieza)',
-    required: false,
-  })
   @ApiResponse({
     status: 200,
     description: 'Detalle de la tarea de limpieza con sus adjuntos y permisos.',
@@ -347,11 +340,11 @@ export class CleaningTasksController {
     @Param('taskId', ParseIntPipe) taskId: number,
     @Headers('x-session-token') sessionToken: string,
     @Headers('x-cleaning-employee-id') cleaningEmployeeId: string | undefined,
-    @Headers('x-role') role: string | undefined,
   ) {
     this.requireSessionToken(sessionToken);
 
-    const isSupervisor = isSupervisorRole(role);
+    const role = await this.sessionRoleService.resolveRole(sessionToken);
+    const isSupervisor = isSupervisorRole(role ?? undefined);
 
     if (isSupervisor) {
       return this.cleaningTasksService.getTaskDetailAsSupervisor(
@@ -506,11 +499,6 @@ export class CleaningTasksController {
     description: 'Token de sesión del supervisor',
     required: true,
   })
-  @ApiHeader({
-    name: 'x-role',
-    description: 'Rol del usuario (SuperUser / SupervisorLimpieza)',
-    required: true,
-  })
   @ApiResponse({
     status: 200,
     description:
@@ -520,10 +508,9 @@ export class CleaningTasksController {
     @Param('taskId', ParseIntPipe) taskId: number,
     @Body(new ValidationPipe({ transform: true })) dto: ReviewTaskDto,
     @Headers('x-session-token') sessionToken: string,
-    @Headers('x-role') role: string,
   ) {
     this.requireSessionToken(sessionToken);
-    this.requireRole(role);
+    const role = await this.requireSupervisorRole(sessionToken);
 
     return this.cleaningTasksService.reviewTask(
       taskId,
@@ -550,11 +537,6 @@ export class CleaningTasksController {
     description: 'Token de sesión del supervisor',
     required: true,
   })
-  @ApiHeader({
-    name: 'x-role',
-    description: 'Rol del usuario (SuperUser / SupervisorLimpieza)',
-    required: true,
-  })
   @ApiResponse({
     status: 200,
     description: 'Tarea reabierta y asignada nuevamente al empleado.',
@@ -563,10 +545,9 @@ export class CleaningTasksController {
     @Param('taskId', ParseIntPipe) taskId: number,
     @Body(new ValidationPipe({ transform: true })) dto: ReopenTaskDto,
     @Headers('x-session-token') sessionToken: string,
-    @Headers('x-role') role: string,
   ) {
     this.requireSessionToken(sessionToken);
-    this.requireRole(role);
+    const role = await this.requireSupervisorRole(sessionToken);
     return this.cleaningTasksService.reopenTask(
       taskId,
       role,
@@ -590,20 +571,14 @@ export class CleaningTasksController {
     description: 'Token de sesión del supervisor',
     required: true,
   })
-  @ApiHeader({
-    name: 'x-role',
-    description: 'Rol del usuario (SuperUser / SupervisorLimpieza)',
-    required: true,
-  })
   @ApiResponse({ status: 200, description: 'Tarea cancelada exitosamente.' })
   async cancelTask(
     @Param('taskId', ParseIntPipe) taskId: number,
     @Body(new ValidationPipe({ transform: true })) dto: CancelTaskDto,
     @Headers('x-session-token') sessionToken: string,
-    @Headers('x-role') role: string,
   ) {
     this.requireSessionToken(sessionToken);
-    this.requireRole(role);
+    const role = await this.requireSupervisorRole(sessionToken);
 
     return this.cleaningTasksService.cancelTask(
       taskId,
@@ -640,22 +615,17 @@ export class CleaningTasksController {
     description: 'ID de empleado de limpieza (si aplica)',
     required: false,
   })
-  @ApiHeader({
-    name: 'x-role',
-    description: 'Rol de supervisor/administrador (si aplica)',
-    required: false,
-  })
   @ApiResponse({ status: 200, description: 'Lista de adjuntos obtenida.' })
   async getAttachments(
     @Param('taskId', ParseIntPipe) taskId: number,
     @Query('category') category?: string,
     @Headers('x-session-token') sessionToken?: string,
     @Headers('x-cleaning-employee-id') cleaningEmployeeId?: string,
-    @Headers('x-role') role?: string,
   ) {
     this.requireSessionToken(sessionToken);
 
-    const isSupervisor = isSupervisorRole(role);
+    const role = await this.sessionRoleService.resolveRole(sessionToken!);
+    const isSupervisor = isSupervisorRole(role ?? undefined);
 
     if (isSupervisor) {
       return this.cleaningTasksService.getAttachmentsAsSupervisor(
@@ -869,10 +839,22 @@ export class CleaningTasksController {
     }
   }
 
-  private requireRole(role: string | undefined): void {
-    if (!role) {
-      throw new ForbiddenException('Role header is required');
+  /**
+   * El rol ya no llega en `x-role` (BP-003): se resuelve contra la sesión
+   * real de openMAINT, así que forjar la cabecera no sirve de nada. Devuelve
+   * el rol para que quien llama pueda seguir pasándolo al service tal como
+   * antes.
+   */
+  private async requireSupervisorRole(sessionToken: string): Promise<string> {
+    const role = await this.sessionRoleService.resolveRole(sessionToken);
+
+    if (!isSupervisorRole(role ?? undefined)) {
+      throw new ForbiddenException(
+        'El rol no tiene acceso a esta acción de supervisión',
+      );
     }
+
+    return role as string;
   }
 
   private parseEmployeeId(value: string | undefined): number {
