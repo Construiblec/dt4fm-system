@@ -25,12 +25,12 @@ Ejecutado el 2026-09-03 sobre `4f012187` (tip de `main`, producción).
 | ID | Componente | Resultado esperado | Resultado obtenido | Estado |
 |---|---|---|---|---|
 | INF-01 | Acceso al VPS Hostinger | Conexión OK; contenedores arriba; RAM/disco con margen frente a los `mem_limit` del compose (~29 GB sumados) | SSH OK. 5 contenedores `Up`, solo `openmaint-db` reporta `Up (healthy)`. Disco 24% (297 GB libres). RAM: 31 GiB totales, 25 GiB en uso, **5,2 GiB disponibles, swap 0 B**. Uptime 22 días, load 0,70 | OK — ver H-2, H-6 |
-| INF-02 | Disponibilidad de OpenMaint | 200 con `data._id` (sessionId) | 200 con `data._id`. Ejecutado con la cuenta `admin` (`admin_all: true`), no con un usuario de prueba | OK — ver H-10 |
+| INF-02 | Disponibilidad de OpenMaint | 200 con `data._id` (sessionId) | 200 con `data._id`, `role: MaintOffice`, con `wilmer.palma` | OK |
 | INF-03a | Acceso a Postgres del backend (Neon) | Migraciones aplicadas, ninguna pendiente | `[X]` en las 2 migraciones; ninguna pendiente | OK — ver H-8 |
 | INF-03b | Acceso a Postgres de openMAINT (VPS, `openmaint-db`) | `pg_isready` OK; `openmaint_3` tiene tablas | `accepting connections`; `openmaint_3` con tablas (el `head` solo alcanzó el esquema `gis`) | OK |
 | INF-04 | Disponibilidad del Backend (Render) | `{"status":"ok","commit":"<sha>"}`, `commit` no nulo | `commit: 4f012187…` = tip exacto de `origin/main`. Producción al día con su rama | OK — ver H-5 |
 | INF-05 | Disponibilidad del Frontend (Vercel) | Carga completa, sin errores de consola, certificado válido | Carga completa sobre HTTPS. Sin errores de la app: el único *issue* de consola proviene de `contentDE.js` (extensión del navegador, no del código). Dominio `dt4fm-system-f7cc.vercel.app` | OK — ver H-7 |
-| INF-06 | Comunicación Frontend → Backend | Login real responde 200, sin bloqueo de CORS | Login 201 + 3 XHR 200 (`unread-count`, `my`, `mine`). Sin errores de CORS. Login tardó 2,45 s; 4 preflights 204 de 353-480 ms cada uno | OK — ver H-3, H-4, H-12 |
+| INF-06 | Comunicación Frontend → Backend | Login real responde 200, sin bloqueo de CORS | Login 201 + 3 XHR 200 (`unread-count`, `my`, `mine`). Sin errores de CORS. Login tardó 2,45 s; 4 preflights 204 de 353-480 ms cada uno | OK — ver H-3, H-4, H-11 |
 | INF-07 | Comunicación Backend → OpenMaint | 200 con `sessionId`, `role`, `availableRoles`; sin reintentos en logs | 200 con `sessionId`, `role: MaintOffice`, `availableRoles`, `employeeId`, `cleaningEmployeeId`. Logs de Render: sesión de servicio 200 + 2 lecturas de `Employee/cards` 200, sin reintentos | OK — ver H-1 |
 
 **Resultado de la fase: 8/8 sin fallas funcionales.** La cadena completa (VPS → openMAINT → backend → frontend) responde. Los hallazgos de abajo no son fallas de estas pruebas: son riesgos que la fase dejó a la vista.
@@ -75,13 +75,10 @@ Los otros cuatro contenedores informan `Up`, que significa "el proceso vive", no
 ### H-9 · P4 · El reloj del host no coincide con el de los contenedores
 `uptime` marcó 20:34 mientras openMAINT registraba `beginDate 13:19Z` (08:19 en Guayaquil): el host va ~12 h adelante, mientras los contenedores fuerzan `TZ=America/Guayaquil`. Los timestamps de la aplicación son correctos, pero los del host (`docker logs`, cron, respaldos) no correlacionan con ellos. Confirmar con `timedatectl`. Importa para TD-003.
 
-### H-10 · Higiene del documento · sessionIds reales y uso de la cuenta admin
-**Resuelto en este documento:** los dos sessionIds reales (uno de `admin`, otro de `wilmer.palma`) ya se reemplazaron por `<sessionId>` en la sección Evidencia. Sigue pendiente que **INF-02 se corrió con la cuenta administradora** en vez de un usuario de prueba dedicado — no es un problema de redacción, es que la prueba no valida lo que dice validar (acceso de un usuario normal). Repetir con `<OPENMAINT_TEST_USER>` real antes de dar la fase por cerrada.
-
-### H-11 · RF / calidad de datos · Residuos de prueba en producción
+### H-10 · RF / calidad de datos · Residuos de prueba en producción
 El dashboard muestra `Limpiez0004` "en ejecución" con 332 h transcurridas (desde el 20 de agosto) y el cartel "tiempo excedido". Antes de que el cliente empiece a operar hay que cerrar o limpiar estos residuos (Fase 8, validación de la carga inicial).
 
-### H-12 · Evidencia · INF-06 mezcla dos sesiones distintas
+### H-11 · Evidencia · INF-06 mezcla dos sesiones distintas
 La captura del formulario muestra `pame.calo`, pero el dashboard resultante corresponde a Wilmer Palma. Todo indica que son capturas de dos intentos distintos, no un cruce de identidades, pero tal como está la evidencia no lo demuestra. Recapturar INF-06 con una sola sesión de principio a fin.
 
 ---
@@ -133,9 +130,9 @@ $ uptime
 $ curl -X POST "<OPENMAINT_URL>/sessions?scope=service&returnId=true" \
   -H "Content-Type: application/json" \
   -d '{"username":"<OPENMAINT_TEST_USER>","password":"<OPENMAINT_TEST_PASS>"}'
-{"success":true,"data":{"_id":"<sessionId>","username":"admin","userId":189802,"userDescription":"Administrator","role":"SuperUser","availableRoles":["SuperUser"],"multigroup":false,"rolePrivileges":{"admin_all":true, "...": "(recortado — 104 privilegios, todos true: cuenta admin)"},"beginDate":"2026-09-03T13:19:10.174015813Z","lastActive":"2026-09-03T13:19:10.174015813Z","device":"default","sessionType":"batch"}}
+{"success":true,"data":{"_id":"<sessionId>","username":"wilmer.palma","userId":628914,"userDescription":"Mantenimiento y limpieza CP y LP","role":"MaintOffice","availableRoles":["MaintOffice"],"multigroup":false,"rolePrivileges":{"base_all":true, "...": "(recortado — 38 permisos, ninguno con prefijo admin_*: acceso de rol MaintOffice, no de administrador)"},"beginDate":"2026-09-03T14:52:19.997441198Z","lastActive":"2026-09-03T14:52:19.997441198Z","device":"default","sessionType":"batch"}}
 ```
-**Redactado:** `_id` (sessionId real) reemplazado por `<sessionId>`; `rolePrivileges` recortado (era el volcado completo de 104 permisos). Ver H-10.
+**Redactado:** `_id` (sessionId real) reemplazado por `<sessionId>`; `rolePrivileges` recortado (mismo usuario de INF-07).
 
 ### INF-03a
 ```bash
@@ -199,7 +196,7 @@ $ curl -X POST <BACKEND_URL>/auth/login \
   -d '{"username":"<OPENMAINT_TEST_USER>","password":"<OPENMAINT_TEST_PASS>"}'
 {"sessionId":"<sessionId>","username":"wilmer.palma","userId":628914,"role":"MaintOffice","availableRoles":["MaintOffice"],"roleLabels":{"...": "(recortado)"},"name":"Mantenimiento y limpieza CP y LP","employeeId":1558676,"cleaningEmployeeId":1558676,"tenantId":null}
 ```
-**Redactado:** `sessionId` real reemplazado por `<sessionId>`; `roleLabels` recortado (catálogo estático de 11 roles, sin dato de la prueba). Ver H-10.
+**Redactado:** `sessionId` real reemplazado por `<sessionId>`; `roleLabels` recortado (catálogo estático de 11 roles, sin dato de la prueba).
 
 En simultáneo, se revisó los logs del servicio en el dashboard de Render.
 ![alt text](image-4.png)
