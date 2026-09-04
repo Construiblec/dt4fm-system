@@ -105,7 +105,10 @@ export class PushSchedulerGateway {
         all.push(...batch);
 
         const total = response.meta?.total;
-        if (batch.length < PAGE_SIZE || (total !== undefined && all.length >= total)) {
+        if (
+          batch.length < PAGE_SIZE ||
+          (total !== undefined && all.length >= total)
+        ) {
           return all;
         }
       }
@@ -122,7 +125,9 @@ export class PushSchedulerGateway {
   }
 
   /** Preventivos en Planificación, con todos los atributos (sin onlyGridAttrs). */
-  findPlanningPreventives(sessionId: string): Promise<PlanningPreventiveCard[]> {
+  findPlanningPreventives(
+    sessionId: string,
+  ): Promise<PlanningPreventiveCard[]> {
     return this.fetchAllPages<PlanningPreventiveCard>(
       '/processes/PreventiveMaint/instances',
       {

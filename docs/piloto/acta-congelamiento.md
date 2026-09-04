@@ -4,7 +4,7 @@
 **Versión congelada:** `v0.1.0-rc1` sobre `main`, commit `4f01218`
 **Responsable:** _(por completar)_
 
-Cumple la **Fase 0 · §5.2** del procedimiento.
+Cumple la **Fase 0 · 5.2** del procedimiento.
 
 ---
 
@@ -48,7 +48,7 @@ Siete de las ocho ramas de trabajo ya estaban integradas. Las fusionadas pueden 
 
 Contiene un commit: *«feat: mejorar filtro de reservas de áreas comunales»*.
 
-Es una **funcionalidad**, no una corrección, así que por aplicación estricta del §5.2 **no debería entrar** en la RC1. Queda registrada como BP-005 en el backlog.
+Es una **funcionalidad**, no una corrección, así que por aplicación estricta del 5.2 **no debería entrar** en la RC1. Queda registrada como BP-005 en el backlog.
 
 Si el equipo decide lo contrario, debe fusionarse **antes** de empujar el tag; el tag es local y todavía no se ha publicado, así que moverlo no cuesta nada. Después del empuje, cambiarlo obliga a reescribir un tag ya distribuido.
 
@@ -59,7 +59,7 @@ Si el equipo decide lo contrario, debe fusionarse **antes** de empujar el tag; e
 
 ---
 
-## Qué queda sin cerrar del §5.1
+## Qué queda sin cerrar del 5.1
 
 **Cerrado:** versión de openMAINT (`2.3`, sobre CMDBuild `3.4.2-2`) y la ficha del sensor de presión del piloto — ver el inventario.
 

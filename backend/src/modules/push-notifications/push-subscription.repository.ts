@@ -137,11 +137,11 @@ export class PushSubscriptionRepository {
    * reinicio a mitad de barrido no reenvía lo ya enviado.
    */
   async claimDispatch(eventKey: string): Promise<boolean> {
-    const inserted = (await this.dispatchLog.query(
+    const inserted = await this.dispatchLog.query(
       `INSERT INTO notification_dispatch_log (event_key) VALUES ($1)
        ON CONFLICT (event_key) DO NOTHING RETURNING event_key`,
       [eventKey],
-    )) as unknown[];
+    );
 
     return inserted.length > 0;
   }
