@@ -22,8 +22,8 @@ Se ejecutaron tres bloques sobre staging, sin tocar producción ni datos reales 
 **Lo que este ensayo NO prueba**, y conviene no leer de más:
 
 - **No se probó el escenario de incompatibilidad real.** La migración de ensayo creaba una tabla vacía que ningún código consulta, así que se midió la *mecánica y los tiempos* del procedimiento, no el caso en que el código viejo se rompe contra el esquema nuevo. Provocar eso exigía romper staging a propósito y no se consideró justificado.
-- **En staging no se pudo forzar una caída del backend** (el plan Free no da acceso a consola), así que allí se midió el ciclo dormir/despertar — que es, además, la interrupción más frecuente que sufre ese servicio. La caída forzada **sí se probó en producción**, ver §3.
-- **Salvo la caída forzada del backend (§3), no se probó nada más en producción.** Los tiempos de staging no son extrapolables sin más: producción está en otro plan y con distinta configuración de migraciones. Ningún rollback ni ninguna migración se ejecutó contra producción.
+- **En staging no se pudo forzar una caída del backend** (el plan Free no da acceso a consola), así que allí se midió el ciclo dormir/despertar — que es, además, la interrupción más frecuente que sufre ese servicio. La caída forzada **sí se probó en producción**, ver punto 3.
+- **Salvo la caída forzada del backend (punto 3), no se probó nada más en producción.** Los tiempos de staging no son extrapolables sin más: producción está en otro plan y con distinta configuración de migraciones. Ningún rollback ni ninguna migración se ejecutó contra producción.
 - **No se ensayó la restauración de openMAINT.** Documentada en la §5 del procedimiento a partir de los scripts reales del VPS, pero nunca ejecutada.
 
 ---
@@ -59,7 +59,7 @@ Build **con caché restaurada**; uno en frío sería más lento.
 
 Merge del PR #61 a las 15:45:49 → sirviendo a las 15:48:26 = **2m 37s**.
 
-> **Conclusión:** un rollback cuesta lo mismo que un despliegue normal (2m 43,8s frente a 2m 37s). No hay penalización técnica por revertir. El frontend es ~7x más rápido, y la diferencia está casi toda en que el backend corre la suit de pruebas antes de publicar.
+> **Conclusión:** Un rollback cuesta lo mismo que un despliegue normal (2m 43,8s frente a 2m 37s). No hay penalización técnica por revertir. El frontend es ~7x más rápido, y la diferencia está casi toda en que el backend corre la suit de pruebas antes de publicar.
 
 ---
 
@@ -79,7 +79,7 @@ Sin acceso a consola en el plan Free, se midió el ciclo real de suspensión y d
 
 #### Caída forzada en producción (2026-09-04, 13:23)
 
-Producción sí dispone de consola, así que se ejecutó la prueba en su forma fuerte: **matar el proceso principal** (`kill 1`) y medir cuánto tarda en volver **sin que nadie intervenga**.
+Producción sí dispone de consola, así que se ejecutó la prueba en su forma fuerte: **matar el proceso principal** (`kill 1`) y medir cuánto tarda en volver sin que nadie intervenga.
 
 Comprobación previa, derivada de BP-021: se verificó que openMAINT respondía (`302` en 0,47 s) antes de provocar la caída. Si hubiera estado caído, el backend no habría podido arrancar y la interrupción se habría prolongado hasta el tope de Render.
 
@@ -91,7 +91,7 @@ Comprobación previa, derivada de BP-021: se verificó que openMAINT respondía 
 | Entorno | Escenario | Recuperación |
 |---|---|---|
 | Staging (plan Free) | Despertar tras suspensión por inactividad | 41,6 s |
-| **Producción (plan de pago)** | **Caída forzada del proceso principal** | **8 s** |
+| Producción (plan de pago) | Caída forzada del proceso principal | 8 s |
 
 La diferencia es esperable: producción no se suspende, así que no paga el arranque en frío del contenedor — solo el arranque de la aplicación.
 
@@ -117,7 +117,7 @@ enabled
 
 Los **9 contenedores** —producción y clon— se levantan solos, y Docker arranca con el sistema, que es el eslabón que suele faltar. Cubre caída del contenedor y reinicio del VPS.
 
-> **Lo que NO cubre:** un contenedor detenido a propósito. `db-restore.sh` hace `docker compose stop openmaint-app`, y `unless-stopped` respeta esa parada deliberada — **la política no rescata un rollback de openMAINT cortado a la mitad** (ver BP-017).
+> **Lo que NO cubre:** un contenedor detenido a propósito. `db-restore.sh` hace `docker compose stop openmaint-app`, y `unless-stopped` respeta esa parada deliberada — la política no rescata un rollback de openMAINT cortado a la mitad (ver BP-017).
 
 ---
 
@@ -130,7 +130,7 @@ Los **9 contenedores** —producción y clon— se levantan solos, y Docker arra
 09:11:57  desplegada en staging (~2m 45s, consistente con el bloque 1)
 ```
 
-La migración **se aplicó sola al arrancar el servicio**, sin que nadie ejecutara ningún comando. Confirmado por consulta directa a la base: fila `id 3` en `migrations`, tabla `rollback_drill` creada.
+La migración se aplicó sola al arrancar el servicio, sin que nadie ejecutara ningún comando. Confirmado por consulta directa a la base: fila `id 3` en `migrations`, tabla `rollback_drill` creada.
 
 ### 4.2 Primer intento — FALLO
 
@@ -159,7 +159,7 @@ La cadena de conexión directa de Neon conecta como `neondb_owner`, que **no es 
 
 ### 4.3 Segundo intento — correcto
 
-Con la `DATABASE_URL_DIRECT` **del panel de Render** (rol `dt4fm`):
+Con la `DATABASE_URL_DIRECT` **del panel de variables de entorno de Render** (rol `dt4fm`):
 
 ```
 RollbackDrill1788530000000 is the last executed migration.
@@ -217,7 +217,7 @@ Al intentar cerrar el ensayo desplegando el código sin la migración, se produj
 2. Pero esa instancia contenía la migración recién revertida y, al reiniciarse, **la volvió a aplicar**. Segunda vez en el mismo ensayo.
 3. GitHub Actions mostró Success desde el minuto 1:24. El webhook se disparó correctamente. El smoke test que lo habría detectado se omitió por falta del secret `RENDER_SERVICE_URL_STAGING`.
 
-> **Conclusión que corrige el procedimiento:** la ventana de riesgo del caso difícil **no dura lo que tarda un despliegue** (~2m 45s). Dura **hasta que el despliegue tenga éxito**, y puede no tenerlo nunca. Observado dos veces en el mismo ensayo.
+> **Conclusión que corrige el procedimiento:** la ventana de riesgo del caso difícil **no dura lo que tarda un despliegue** (~2m 45s). Dura hasta que el despliegue tenga éxito, y puede no tenerlo nunca. Observado dos veces en el mismo ensayo.
 
 ---
 
@@ -246,8 +246,8 @@ Los tres primeros son defectos del propio procedimiento, ya corregidos en el doc
 
 | ID | Sev. | Hallazgo |
 |---|---|---|
-| — | — | **El procedimiento exigía una credencial que no especificaba.** Corregido en la §3 |
-| — | — | **`main` y `develop` están protegidas:** el `git push` que indicaba el documento no funciona. Corregido en la §2 |
+| — | — | El procedimiento exigía una credencial que no especificaba. Corregido en el punto 3 |
+| — | — | **`main` y `develop` están protegidas:** el `git push` que indicaba el documento no funciona. Corregido en el punto 2 |
 | — | — | **La ventana de riesgo dura hasta que el despliegue tenga éxito.** Corregido en la §3 |
 | BP-020 | **P2** | El smoke test posterior al despliegue está desactivado por falta del secret `RENDER_SERVICE_URL_STAGING`. Demostrado en vivo: pipeline en verde, despliegue fallido |
 | BP-021 | **P2** | El backend no puede desplegarse si openMAINT no responde. Muere por `Timed Out` a los ~15 min, sin indicar la causa |
@@ -267,4 +267,4 @@ Staging quedó limpio: 2 migraciones, sin la tabla de ensayo, ramas `drill/` eli
 
 Trazabilidad de los cambios del ensayo: PR **#61** (cambio inofensivo), **#62** (su reversión), **#63** (migración de ensayo), **#64** (retirada de la migración), **#65** (correcciones al procedimiento).
 
-**Pendiente:** ensayar la restauración de openMAINT sobre el clon — documentada en la §5 del procedimiento, nunca ejecutada.
+**Pendiente:** ensayar la restauración de openMAINT sobre el clon — documentada en el punto 5 del procedimiento, nunca ejecutada.
