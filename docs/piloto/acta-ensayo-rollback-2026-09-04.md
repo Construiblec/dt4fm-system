@@ -1,12 +1,11 @@
-# Acta del ensayo de vuelta atrás
+# Acta del ensayo de rollback
 
 **Fecha de ejecución:** 2026-09-03 (tarde) y 2026-09-04 (mañana)
 **Entorno:** staging — `dt4fm-system-develop.onrender.com`, `dt4fm-staging.vercel.app`, rama `development` de Neon
-**Responsable:** _(por completar)_
+**Responsable:** Angel Pastaz
 
 Registro de evidencia del ensayo que valida el [procedimiento de rollback](procedimiento-rollback.md) y cierra BP-004. Su función es que cada afirmación de ese documento y de los informes de certificación tenga detrás una marca de tiempo y una salida real, verificable meses después.
 
-**El procedimiento falló al ejecutarse.** Lo que sigue documenta cómo, y qué se corrigió a partir de ahí.
 
 ---
 
@@ -16,20 +15,20 @@ Se ejecutaron tres bloques sobre staging, sin tocar producción ni datos reales 
 
 | Bloque | Qué se probó |
 |---|---|
-| 1 | Vuelta atrás del backend y del frontend, cronometrada |
+| 1 | Rollback del backend y del frontend, cronometrada |
 | 2 | Recuperación automática de cada servicio, sin intervención humana |
 | 3 | El caso difícil: revertir una versión que ya aplicó una migración |
 
 **Lo que este ensayo NO prueba**, y conviene no leer de más:
 
 - **No se probó el escenario de incompatibilidad real.** La migración de ensayo creaba una tabla vacía que ningún código consulta, así que se midió la *mecánica y los tiempos* del procedimiento, no el caso en que el código viejo se rompe contra el esquema nuevo. Provocar eso exigía romper staging a propósito y no se consideró justificado.
-- **No se probó la recuperación ante una caída forzada del backend.** El plan Free de Render no da acceso a consola, así que se midió el ciclo dormir/despertar — que es, además, la interrupción más frecuente que sufre ese servicio.
-- **No se probó nada en producción.** Los tiempos de staging no son extrapolables sin más: producción está en otro plan y con distinta configuración de migraciones.
+- **En staging no se pudo forzar una caída del backend** (el plan Free no da acceso a consola), así que allí se midió el ciclo dormir/despertar — que es, además, la interrupción más frecuente que sufre ese servicio. La caída forzada **sí se probó en producción**, ver §3.
+- **Salvo la caída forzada del backend (§3), no se probó nada más en producción.** Los tiempos de staging no son extrapolables sin más: producción está en otro plan y con distinta configuración de migraciones. Ningún rollback ni ninguna migración se ejecutó contra producción.
 - **No se ensayó la restauración de openMAINT.** Documentada en la §5 del procedimiento a partir de los scripts reales del VPS, pero nunca ejecutada.
 
 ---
 
-## 2. Bloque 1 — Vuelta atrás con tiempos medidos
+## 2. Bloque 1 — rollback con tiempos medidos
 
 Evento común de referencia: el merge del PR #62 (`997840f`), a las **15:51:19** del 2026-09-03. Las dos mediciones parten del mismo instante, así que son directamente comparables.
 
@@ -43,7 +42,7 @@ Evento común de referencia: el merge del PR #62 (`997840f`), a las **15:51:19**
 | `==> Your service is live` | **15:54:02.798** | **2m 43,8s** |
 | Detectado por sondeo externo (granularidad 5 s) | 15:54:05 | 2m 46s |
 
-**Ciclo completo, de punta a punta:** creación del revert 15:49:12 → versión anterior sirviendo 15:54:05 = **4m 53s**. De esos, **2m 07s fueron intervención humana** (crear la rama, abrir el PR, esperar al CI, pulsar *merge*).
+**Ciclo completo, de punta a punta (E2E):** creación del revert 15:49:12 → versión anterior sirviendo 15:54:05 = **4m 53s**. De esos, **2m 07s fueron intervención humana** (crear la rama, abrir el PR, esperar al CI, pulsar *merge*).
 
 ### Frontend (Vercel)
 
@@ -60,7 +59,7 @@ Build **con caché restaurada**; uno en frío sería más lento.
 
 Merge del PR #61 a las 15:45:49 → sirviendo a las 15:48:26 = **2m 37s**.
 
-> **Conclusión:** una vuelta atrás cuesta lo mismo que un despliegue normal (2m 43,8s frente a 2m 37s). No hay penalización técnica por revertir. El frontend es ~7x más rápido, y la diferencia está casi toda en que el backend corre la batería de pruebas antes de publicar.
+> **Conclusión:** un rollback cuesta lo mismo que un despliegue normal (2m 43,8s frente a 2m 37s). No hay penalización técnica por revertir. El frontend es ~7x más rápido, y la diferencia está casi toda en que el backend corre la suit de pruebas antes de publicar.
 
 ---
 
@@ -77,6 +76,26 @@ Sin acceso a consola en el plan Free, se midió el ciclo real de suspensión y d
 ```
 
 **Arranque en frío: 41,6 s**, sin ninguna intervención humana. Coincide con el aviso del propio panel de Render (*"can delay requests by 50 seconds or more"*).
+
+#### Caída forzada en producción (2026-09-04, 13:23)
+
+Producción sí dispone de consola, así que se ejecutó la prueba en su forma fuerte: **matar el proceso principal** (`kill 1`) y medir cuánto tarda en volver **sin que nadie intervenga**.
+
+Comprobación previa, derivada de BP-021: se verificó que openMAINT respondía (`302` en 0,47 s) antes de provocar la caída. Si hubiera estado caído, el backend no habría podido arrancar y la interrupción se habría prolongado hasta el tope de Render.
+
+```
+[13:23:08]  CAYÓ
+[13:23:16]  VOLVIÓ SOLO tras 8s
+```
+
+| Entorno | Escenario | Recuperación |
+|---|---|---|
+| Staging (plan Free) | Despertar tras suspensión por inactividad | 41,6 s |
+| **Producción (plan de pago)** | **Caída forzada del proceso principal** | **8 s** |
+
+La diferencia es esperable: producción no se suspende, así que no paga el arranque en frío del contenedor — solo el arranque de la aplicación.
+
+> **Interrupción total observada en producción: 8 segundos**, sin ninguna acción humana. Es la evidencia más sólida del bloque, porque es el escenario real (un proceso que muere) y en el entorno que importa.
 
 ### openMAINT (VPS)
 
