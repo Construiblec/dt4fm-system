@@ -83,11 +83,13 @@ Cuatro defectos conocidos, heredados del estado del prototipo. Los cuatro son la
 
 **Pendiente:** ninguno. La cabecera `x-role` puede seguir llegando desde el frontend durante la transición — el backend ya no la lee, así que no molesta ni hace falta coordinarlo con un despliegue del frontend.
 
-### BP-004 · avance del 2026-09-03
+### BP-004 · avance del 2026-09-03, ensayado el 2026-09-04
 
-**Hecho:** [`procedimiento-rollback.md`](procedimiento-rollback.md) — cubre el caso simple (sin migración) y el difícil (con migración aplicada, con el orden obligatorio: revertir la migración primero, redesplegar el código después), más el rollback del frontend en Vercel y una advertencia explícita sobre lo que este procedimiento no puede deshacer (openMAINT, que no tiene control de versiones sobre su base de datos). Incluye un ejemplo real de este repositorio: el `down()` de `PushSubscriptionMultipleRoles` pierde los roles adicionales de una suscripción multi-rol al revertir, así que documenta cómo respaldarlos antes.
+**Hecho:** [`procedimiento-rollback.md`](procedimiento-rollback.md) — cubre el caso simple (sin migración) y el difícil (con migración aplicada, con el orden obligatorio: revertir la migración primero, redesplegar el código después), el rollback del frontend en Vercel, y el de **openMAINT** (§5): resulta que sí existe — un `pg_dump`/`pg_restore` automatizado en el VPS, con cron diario a las 3am y 14 días de retención, que se documentó al detalle una vez el equipo compartió los scripts reales (`/opt/OpenMaintCore/scripts/`). Incluye dos ejemplos reales de este proyecto: el `down()` de `PushSubscriptionMultipleRoles`, que pierde los roles adicionales de una suscripción multi-rol al revertir, y los tres detalles no obvios que hacen funcionar el `pg_restore` de openMAINT (`-j 1`, sin `--no-owner`, y el `search_path` de la base).
 
-**Pendiente:** ninguno como documento. Falta ejecutarlo una vez en un entorno no productivo (staging) para confirmar que los comandos funcionan tal como están escritos — no se ha forzado un rollback real todavía porque no ha hecho falta.
+**Ensayado el 2026-09-04 contra staging y la rama `development` de Neon.** El ensayo **falló en el primer comando** y destapó tres defectos del procedimiento escrito, ya corregidos en el documento: (1) la reversión exige la `DATABASE_URL_DIRECT` del panel de Render — la cadena directa de Neon conecta como `neondb_owner`, que no es dueño de las tablas, y falla con `must be owner of table`; (2) `main`/`develop` están protegidas, así que el `git push` que indicaba el documento no funciona: hace falta PR y merge; (3) la ventana entre revertir y redesplegar no dura ~3 min sino **hasta que el despliegue tenga éxito** — durante el ensayo la migración revertida reapareció sola **dos veces**. Tiempos medidos en la §6 del documento. Hallazgos nuevos registrados como BP-020 a BP-026.
+
+**Pendiente:** el rollback de **openMAINT** (§5 del documento) sigue sin ensayarse — se documentó a partir de los scripts reales, pero no se ha ejecutado una restauración de prueba sobre el clon. Al revisar esos scripts salieron además 6 riesgos operativos (BP-014 a BP-019), ninguno bloqueante para usarlo hoy.
 
 ---
 
@@ -115,6 +117,22 @@ Salidas de la revisión técnica previa. Ninguna impide certificar.
 | BP-009 | P4 | A | `console.log('complete incident')` olvidado en el controlador de incidencias |
 | BP-010 | P3 | A | El paso de lint del frontend lleva `continue-on-error`, así que el gate de calidad no bloquea nada |
 | BP-011 | P3 | B | El `/health` no expone versión de aplicación, solo el SHA del commit. Convendría añadir la versión semántica al declarar la v1.0 |
+| BP-014 | **P1** | A | En `db-restore.sh` (rollback de openMAINT), un `pg_restore` fallido se degrada a advertencia y el script igual reporta éxito: un rollback parcialmente restaurado puede quedar online sin que nadie se entere |
+| BP-015 | P2 | A | Los scripts de respaldo/rollback de openMAINT (VPS) no tienen bloqueo entre sí: un rollback que coincide con el backup de las 3am puede truncar el dump del día, y `backup-check.sh` no lo detecta (solo mira fecha y cabecera) |
+| BP-016 | P2 | A | `refresh-clon.sh` recorta sin avisar el historial de respaldos de producción de 14 a 8 días, porque no pasa `--retention` al llamar a `db-backup.sh` |
+| BP-017 | P2 | A | Si el rollback de openMAINT se corta a la mitad (entre parar la app y terminar la restauración), no hay limpieza automática ni mensaje de qué hacer — producción puede quedar caída y sin base utilizable |
+| BP-018 | P2 | B | El respaldo de openMAINT es diario (RPO de hasta 24h) y vive en el mismo disco que producción, sin copia automática fuera del VPS |
+| BP-019 | P4 | A | Detalles menores de los scripts de respaldo de openMAINT: el horario del cron depende de que el VPS esté en UTC sin ninguna alerta si cambia, y `ensure_role` no actualiza la contraseña de `cmdbuild` si el rol ya existe |
+
+| BP-020 | **P2** | A | El smoke test posterior al despliegue está desactivado por falta del secret `RENDER_SERVICE_URL_STAGING`: el pipeline reporta ✅ *Success* sin comprobar nada. Demostrado el 2026-09-04 — GitHub en verde mientras el despliegue se colgaba 15 min y acababa en `Timed Out` |
+| BP-021 | **P2** | A | El arranque del backend se bloquea si openMAINT no responde (`CleaningTasksSessionService.onModuleInit` hace un login real). El despliegue muere por `Timed Out` de Render a los ~15 min, sin mensaje que indique la causa. **Impide desplegar —y por tanto hacer rollback— mientras openMAINT esté caído** |
+| BP-022 | P3 | C | En staging las migraciones van encadenadas al *Start Command*, así que **cada reinicio re-aplica** lo que se acabe de revertir; en producción van en *Pre-Deploy* y no ocurre. La asimetría no estaba documentada y hace que ensayar el procedimiento en staging dé resultados engañosos |
+| BP-023 | P3 | B | No hay definido quién puede aprobar un PR de reversión fuera de horario. `main` y `develop` están protegidas, así que todo rollback exige un merge humano — en el ensayo fue el tramo más lento (2m 07s de 4m 53s) |
+| BP-024 | P3 | B | Arranque en frío de **41,6 s** en el plan Free de Render tras 15 min sin tráfico. Si las sesiones de usabilidad de la certificación se hacen contra staging, los participantes reportarán lentitud que no dice nada del producto |
+| BP-025 | P3 | B | El *Instant Rollback* de Vercel solo aplica a producción; en staging está deshabilitado por ser entorno *Preview*. El mecanismo más rápido de recuperación del frontend **nunca se ha probado** |
+| BP-026 | P4 | B | Staging está tras el SSO de Vercel y responde `302` a peticiones anónimas: ninguna verificación automática puede comprobar el frontend de staging. Vercel ofrece *Protection Bypass for Automation* si se quisiera |
+
+Detalle completo de los seis en [`procedimiento-rollback.md`, §5.4](procedimiento-rollback.md#54-riesgos-conocidos--todavía-sin-arreglar).
 
 ---
 

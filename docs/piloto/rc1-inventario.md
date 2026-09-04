@@ -81,7 +81,7 @@ El sistema usa **dos almacenes distintos**, y conviene no confundirlos al planif
 
 | Almacén | Contenido | Responsable del respaldo |
 |---|---|---|
-| **openMAINT** (VPS) | Activos, órdenes correctivas y preventivas, tareas de limpieza, usuarios, propietarios. **Es la fuente de verdad de todo el negocio.** | Equipo — respaldo manual del VPS |
+| **openMAINT** (VPS) | Activos, órdenes correctivas y preventivas, tareas de limpieza, usuarios, propietarios. **Es la fuente de verdad de todo el negocio.** | Automático — `pg_dump` diario a las 3am (Guayaquil) vía cron en el VPS, 14 días de retención. Detalle y cómo restaurar en el [procedimiento de rollback, §5](procedimiento-rollback.md#5-openmaint-vps) |
 | **Neon** (PostgreSQL gestionado) | Únicamente suscripciones push, historial de notificaciones e idempotencia de avisos programados. | Neon, con recuperación a un punto en el tiempo |
 
 **Neon:** una rama por entorno — `production` para producción, `development` para staging. En local se usa el contenedor `dt4fm-pg` (`backend/docker-compose.yml`), PostgreSQL `17.4-alpine`.
@@ -172,8 +172,12 @@ Para el congelamiento importa dejar constancia de estos ajustes:
 |---|---|---|
 | `ENABLE_DOCS` | `false` | `true` |
 | `HOSTAWAY_USE_MOCK` | `false` | `true` |
-| `PUSH_SCHEDULER_ENABLED` | _por registrar_ | _por registrar_ |
-| Schedulers que envían correo | _por registrar_ | _por registrar_ |
+| `HOSTAWAY_SCHEDULER_ENABLED` | _por registrar_ | `false` |
+| `BILLING_SCHEDULER_ENABLED` | _por registrar_ | `false` |
+| `PAYMENTS_SCHEDULER_ENABLED` | _por registrar_ | `false` — **apagado el 2026-09-04** |
+| `MEETING_REMINDER_SCHEDULER_ENABLED` | _por registrar_ | `false` — **apagado el 2026-09-04** |
+
+> **Ojo con los dos últimos.** Estaban **activos** en staging hasta el 2026-09-04, programados a las 03:00. Ambos **envían correo a los residentes**, y el backend de staging apunta a la instancia de openMAINT de desarrollo, que es el clon refrescado con datos de producción — es decir, con direcciones reales. Se apagaron al detectarlo durante el ensayo de rollback. Antes de volver a encenderlos en staging, confirmar que `MAIL_PROVIDER` apunta a un buzón de captura (Mailtrap sandbox) y no a un proveedor que entregue de verdad.
 
 ---
 
