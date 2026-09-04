@@ -4,7 +4,7 @@ Cierra BP-004 del [Backlog Post-Piloto](backlog-post-piloto.md). Hasta ahora, si
 
 No es un documento teórico: los comandos y el ejemplo del final son los reales de este proyecto.
 
-> **Validado con un ensayo real el 2026-09-04**, contra staging y la rama `development` de Neon. El ensayo destapó tres defectos en la versión anterior de este documento —el procedimiento fallaba en el primer comando— y midió cuánto tarda cada camino. Todo lo corregido lleva la marca **⚠️ del ensayo**; los tiempos están en la [sección 6](#6-tiempos-medidos-ensayo-del-2026-09-04).
+> **Validado con un ensayo real el 2026-09-04**, contra staging y la rama `development` de Neon. El ensayo destapó tres defectos en la versión anterior de este documento —el procedimiento fallaba en el primer comando— y midió cuánto tarda cada camino. Todo lo corregido lleva la marca **⚠️ del ensayo**; los tiempos están en la [sección 6](#6-tiempos-medidos-ensayo-del-2026-09-04), y la evidencia completa —marcas de tiempo, comandos y salidas literales— en el [acta del ensayo](acta-ensayo-rollback-2026-09-04.md).
 
 ---
 
