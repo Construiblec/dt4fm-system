@@ -1,3 +1,5 @@
+> ⚠️ **Documento obsoleto (2026-08-31).** Describe un diseño temprano —julio— donde una página de openMAINT llamaría a la API de Hostaway directamente. No es la arquitectura implementada: hoy todo el trabajo con Hostaway vive en el backend NestJS. Ver [`backend/docs/limpieza modulo/hostaway-checkouts.md`](../../../backend/docs/limpieza%20modulo/hostaway-checkouts.md) para el flujo real. Se conserva por su valor histórico, no como referencia.
+
 # Integración Hostaway → openMAINT
 
 ## 📋 Resumen del Proyecto

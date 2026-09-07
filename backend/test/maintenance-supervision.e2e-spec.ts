@@ -9,6 +9,7 @@ import { correctiveResponse } from './fixtures/corrective.fixture';
 import { preventiveResponse } from './fixtures/preventive.fixture';
 import { CM_STATUS_IDS } from '../src/modules/maintenance-supervision/constants/corrective-maint.constants';
 import { PM_STATUS_IDS } from '../src/modules/preventive-maintenance/constants/preventive-maint.constants';
+import { mockSession } from './mocks/openmaint-core.mock';
 
 describe('MaintenanceSupervisionController (e2e)', () => {
   let app: INestApplication;
@@ -16,6 +17,13 @@ describe('MaintenanceSupervisionController (e2e)', () => {
 
   beforeAll(async () => {
     ({ app, mocks } = await createTestApp());
+
+    // Rol por defecto de esta suite: todos los escenarios salvo los de
+    // "Autorización transversal" ejercitan un supervisor. BP-003: el rol se
+    // resuelve contra la sesión real de openMAINT, no contra x-role.
+    mocks.openmaint.getSession.mockResolvedValue(
+      mockSession({ role: 'SupervisorMantenimiento' }),
+    );
   });
 
   afterAll(async () => {
@@ -28,23 +36,34 @@ describe('MaintenanceSupervisionController (e2e)', () => {
     it('401 sin cabecera de sesión', async () => {
       await request(app.getHttpServer())
         .get('/maintenance-supervision/corrective')
-        .set('x-role', 'SupervisorMantenimiento')
         .expect(401);
     });
 
-    it('403 con un rol que no es de supervisión', async () => {
+    it('403 con una sesión que no es de supervisión', async () => {
+      mocks.openmaint.getSession.mockResolvedValueOnce(
+        mockSession({ role: 'PersonalLimpieza' }),
+      );
+
       await request(app.getHttpServer())
         .get('/maintenance-supervision/corrective')
         .set('authorization', 'mock-session-id')
-        .set('x-role', 'PersonalLimpieza')
         .expect(403);
     });
 
-    // El rol se valida contra la cabecera x-role, controlada por el cliente,
-    // no contra la sesión de openMAINT. Mismo hueco que TS-001.
-    it.todo(
-      'el rol de supervisión debería resolverse desde la sesión de openMAINT, no de x-role (ver TS-001)',
-    );
+    // BP-003: antes el rol se validaba contra la cabecera x-role, que
+    // controla el cliente — bastaba con forjarla. Ahora se resuelve contra la
+    // sesión real de openMAINT, así que forjarla ya no sirve de nada.
+    it('403 aunque x-role forjado diga SupervisorMantenimiento, si la sesión real no es de supervisión', async () => {
+      mocks.openmaint.getSession.mockResolvedValueOnce(
+        mockSession({ role: 'PersonalLimpieza' }),
+      );
+
+      await request(app.getHttpServer())
+        .get('/maintenance-supervision/corrective')
+        .set('authorization', 'mock-session-id')
+        .set('x-role', 'SupervisorMantenimiento')
+        .expect(403);
+    });
   });
 
   describe('GET /maintenance-supervision/:kind/:id', () => {
@@ -52,7 +71,6 @@ describe('MaintenanceSupervisionController (e2e)', () => {
       await request(app.getHttpServer())
         .get('/maintenance-supervision/otro/1')
         .set('authorization', 'mock-session-id')
-        .set('x-role', 'SupervisorMantenimiento')
         .expect(400);
     });
   });
@@ -74,7 +92,6 @@ describe('MaintenanceSupervisionController (e2e)', () => {
       const res = await request(app.getHttpServer())
         .post('/maintenance-supervision/corrective/12345/assign')
         .set('authorization', 'mock-session-id')
-        .set('x-role', 'SupervisorMantenimiento')
         .send({ assigneeId: 1456396, plannedStart: '2026-08-25T09:00:00.000Z' })
         .expect(201);
 
@@ -92,7 +109,6 @@ describe('MaintenanceSupervisionController (e2e)', () => {
       await request(app.getHttpServer())
         .post('/maintenance-supervision/corrective/12345/assign')
         .set('authorization', 'mock-session-id')
-        .set('x-role', 'SupervisorMantenimiento')
         .send({ assigneeId: 1456396 })
         .expect(400);
     });
@@ -105,7 +121,6 @@ describe('MaintenanceSupervisionController (e2e)', () => {
       await request(app.getHttpServer())
         .post('/maintenance-supervision/corrective/12345/assign')
         .set('authorization', 'mock-session-id')
-        .set('x-role', 'SupervisorMantenimiento')
         .send({ assigneeId: 1456396, plannedStart: '2026-08-25T09:00:00.000Z' })
         .expect(409);
     });
@@ -124,7 +139,6 @@ describe('MaintenanceSupervisionController (e2e)', () => {
       const res = await request(app.getHttpServer())
         .post('/maintenance-supervision/corrective/12345/reject')
         .set('authorization', 'mock-session-id')
-        .set('x-role', 'SupervisorMantenimiento')
         .send({ notes: 'El reporte corresponde a un bien del propietario' })
         .expect(201);
 
@@ -135,7 +149,6 @@ describe('MaintenanceSupervisionController (e2e)', () => {
       await request(app.getHttpServer())
         .post('/maintenance-supervision/corrective/12345/reject')
         .set('authorization', 'mock-session-id')
-        .set('x-role', 'SupervisorMantenimiento')
         .send({})
         .expect(400);
     });
@@ -154,7 +167,6 @@ describe('MaintenanceSupervisionController (e2e)', () => {
       const res = await request(app.getHttpServer())
         .post('/maintenance-supervision/corrective/12345/review')
         .set('authorization', 'mock-session-id')
-        .set('x-role', 'SupervisorMantenimiento')
         .send({ approved: true })
         .expect(201);
 
@@ -165,7 +177,6 @@ describe('MaintenanceSupervisionController (e2e)', () => {
       await request(app.getHttpServer())
         .post('/maintenance-supervision/corrective/12345/review')
         .set('authorization', 'mock-session-id')
-        .set('x-role', 'SupervisorMantenimiento')
         .send({ approved: false })
         .expect(400);
 
@@ -180,7 +191,6 @@ describe('MaintenanceSupervisionController (e2e)', () => {
       await request(app.getHttpServer())
         .post('/maintenance-supervision/corrective/12345/review')
         .set('authorization', 'mock-session-id')
-        .set('x-role', 'SupervisorMantenimiento')
         .send({ approved: true })
         .expect(409);
     });
@@ -199,7 +209,6 @@ describe('MaintenanceSupervisionController (e2e)', () => {
       const res = await request(app.getHttpServer())
         .post('/maintenance-supervision/preventive/54321/assign')
         .set('authorization', 'mock-session-id')
-        .set('x-role', 'SupervisorMantenimiento')
         .send({ assigneeId: 1456396 })
         .expect(201);
 
@@ -220,7 +229,6 @@ describe('MaintenanceSupervisionController (e2e)', () => {
       const res = await request(app.getHttpServer())
         .post('/maintenance-supervision/preventive/54321/resume')
         .set('authorization', 'mock-session-id')
-        .set('x-role', 'SuperUser')
         .expect(201);
 
       expect(res.body.success).toBe(true);
@@ -234,7 +242,6 @@ describe('MaintenanceSupervisionController (e2e)', () => {
       await request(app.getHttpServer())
         .post('/maintenance-supervision/preventive/54321/resume')
         .set('authorization', 'mock-session-id')
-        .set('x-role', 'SuperUser')
         .expect(409);
     });
   });
@@ -255,7 +262,6 @@ describe('MaintenanceSupervisionController (e2e)', () => {
       await request(app.getHttpServer())
         .put('/maintenance-supervision/corrective/12345/planned-start')
         .set('authorization', 'mock-session-id')
-        .set('x-role', 'SupervisorMantenimiento')
         .send({ plannedStart: '2026-08-25T09:00:00.000Z' })
         .expect(200);
     });
@@ -264,7 +270,6 @@ describe('MaintenanceSupervisionController (e2e)', () => {
       await request(app.getHttpServer())
         .put('/maintenance-supervision/corrective/12345/planned-start')
         .set('authorization', 'mock-session-id')
-        .set('x-role', 'SupervisorMantenimiento')
         .send({})
         .expect(400);
     });

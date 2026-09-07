@@ -261,7 +261,11 @@ export class MaintenanceSupervisionService {
       attachments.map((attachment) =>
         kind === 'corrective'
           ? this.openmaint.getAttachmentPreview(id, attachment._id, sessionId)
-          : this.preventive.findAttachmentPreview(sessionId, id, attachment._id),
+          : this.preventive.findAttachmentPreview(
+              sessionId,
+              id,
+              attachment._id,
+            ),
       ),
     );
 
@@ -275,7 +279,10 @@ export class MaintenanceSupervisionService {
 
         const preview = (result.value as RawPreview).data;
 
-        if (preview?.hasPreview !== true || typeof preview.dataUrl !== 'string') {
+        if (
+          preview?.hasPreview !== true ||
+          typeof preview.dataUrl !== 'string'
+        ) {
           return accumulator;
         }
 
@@ -325,7 +332,10 @@ export class MaintenanceSupervisionService {
    * necesita el selector de equipo del modal de asignación (los equipos se
    * derivan de aquí porque el rol no tiene permiso de lectura sobre `Team`).
    */
-  async listAssignees(sessionId: string, teamId?: number): Promise<{
+  async listAssignees(
+    sessionId: string,
+    teamId?: number,
+  ): Promise<{
     success: boolean;
     data: Assignee[];
     meta: { total: number };
@@ -424,7 +434,11 @@ export class MaintenanceSupervisionService {
       buildingName: updated._Site_description,
     });
 
-    const assigned = await this.clearAutoFilledExecStart(sessionId, id, updated);
+    const assigned = await this.clearAutoFilledExecStart(
+      sessionId,
+      id,
+      updated,
+    );
 
     return { success: true, data: this.toCorrective(assigned) };
   }
@@ -730,7 +744,12 @@ export class MaintenanceSupervisionService {
       );
     }
 
-    await this.assertReassignable(sessionId, card.Assignee, card.Team, nextAssignee);
+    await this.assertReassignable(
+      sessionId,
+      card.Assignee,
+      card.Team,
+      nextAssignee,
+    );
 
     const activityId = this.requireActivityId(card._tasklist, id);
 
@@ -869,7 +888,10 @@ export class MaintenanceSupervisionService {
         'Error al guardar la fecha prevista en OpenMAINT',
       );
 
-      return { success: true, data: this.toCorrective(await this.fetchCorrective(sessionId, id)) };
+      return {
+        success: true,
+        data: this.toCorrective(await this.fetchCorrective(sessionId, id)),
+      };
     }
 
     const card = await this.fetchPreventiveWithTask(sessionId, id);
@@ -889,7 +911,10 @@ export class MaintenanceSupervisionService {
       'Error al guardar la fecha prevista en OpenMAINT',
     );
 
-    return { success: true, data: this.toPreventive(await this.fetchPreventive(sessionId, id)) };
+    return {
+      success: true,
+      data: this.toPreventive(await this.fetchPreventive(sessionId, id)),
+    };
   }
 
   // ── Mapeo al contrato público ──────────────────────────────────────────────
@@ -1011,7 +1036,9 @@ export class MaintenanceSupervisionService {
     const id = CM_STATUS_NAME_TO_ID[status];
 
     if (!id) {
-      throw new BadRequestException(`Estado de correctivo no válido: ${status}`);
+      throw new BadRequestException(
+        `Estado de correctivo no válido: ${status}`,
+      );
     }
 
     return id;
@@ -1021,7 +1048,9 @@ export class MaintenanceSupervisionService {
     const id = PM_STATUS_NAME_TO_ID[status];
 
     if (!id) {
-      throw new BadRequestException(`Estado de preventivo no válido: ${status}`);
+      throw new BadRequestException(
+        `Estado de preventivo no válido: ${status}`,
+      );
     }
 
     return id;
@@ -1219,7 +1248,10 @@ export class MaintenanceSupervisionService {
   }
 
   /** Traduce los fallos de OpenMAINT sin tragarse los 401 de sesión caducada. */
-  private async call<T>(operation: () => Promise<T>, reason: string): Promise<T> {
+  private async call<T>(
+    operation: () => Promise<T>,
+    reason: string,
+  ): Promise<T> {
     try {
       return await operation();
     } catch (error) {
@@ -1240,7 +1272,9 @@ export class MaintenanceSupervisionService {
       // sesión no tiene permiso para verla. Sin esto saldría un 502, que haría
       // pensar que OpenMAINT está caído.
       if (this.isCardNotFound(error)) {
-        throw new NotFoundException('El mantenimiento no existe o no es accesible');
+        throw new NotFoundException(
+          'El mantenimiento no existe o no es accesible',
+        );
       }
 
       if (this.isStaleActivity(error)) {
@@ -1262,8 +1296,8 @@ export class MaintenanceSupervisionService {
     }
 
     const data = (error as { response?: { data?: unknown } })?.response?.data;
-    const message = (data as { messages?: { message?: string }[] })?.messages?.[0]
-      ?.message;
+    const message = (data as { messages?: { message?: string }[] })
+      ?.messages?.[0]?.message;
 
     return typeof message === 'string' && message.includes('card not existing');
   }

@@ -1,6 +1,13 @@
-import { ExecutionContext, ForbiddenException, UnauthorizedException } from '@nestjs/common';
+import {
+  ExecutionContext,
+  ForbiddenException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { OwnerSessionGuard } from './owner-session.guard';
-import { OwnersIdentityService, OwnerIdentity } from '../owners-identity.service';
+import {
+  OwnersIdentityService,
+  OwnerIdentity,
+} from '../owners-identity.service';
 
 type Headers = Record<string, string | undefined>;
 type Params = Record<string, string>;
@@ -32,9 +39,7 @@ describe('OwnerSessionGuard', () => {
       resolve: jest.fn().mockResolvedValue(identityOf()),
       forget: jest.fn(),
     };
-    guard = new OwnerSessionGuard(
-      identity as unknown as OwnersIdentityService,
-    );
+    guard = new OwnerSessionGuard(identity as unknown as OwnersIdentityService);
   });
 
   describe('lectura de la sesión', () => {
