@@ -4,6 +4,7 @@ import {
   ClipboardList,
   CreditCard,
   Home,
+  KeyRound,
   User,
   type LucideIcon,
 } from "lucide-react";
@@ -52,6 +53,27 @@ const OWNER_TABS: Tab[] = [
   { label: "Perfil", icon: User, route: "/owner/profile" },
 ];
 
+/**
+ * Supervisor CAV: rol adicional, no un reemplazo del rol principal de la
+ * persona (ver comentario en `rolePalette`). Por eso tiene su propia pestaña
+ * en vez de vivir detrás del selector de rol — quien lo tenga entra sin pasar
+ * primero por su rol de siempre.
+ *
+ * Solo Autorizaciones está construido; cuando se sumen Disuasión, Acceso
+ * remoto y Eventos, "Accesos" pasa a ser la puerta a las cuatro.
+ */
+const CAV_TABS: Tab[] = [
+  {
+    label: "Accesos",
+    icon: KeyRound,
+    route: "",
+    // El detalle de una autorización (`/supervisor-cav/autorizaciones/:id`)
+    // sigue siendo Accesos.
+    section: "/supervisor-cav",
+  },
+  { label: "Cuenta", icon: User, route: "/cuenta" },
+];
+
 export const BottomNav = () => {
   const navigate = useNavigate();
   const { pathname } = useLocation();
@@ -60,7 +82,8 @@ export const BottomNav = () => {
   const home = getHomeRoute(role);
   const view = getRoleView(role);
   const isOwnerArea = home === "/owner/dashboard";
-  const tabs = isOwnerArea ? OWNER_TABS : TEAM_TABS;
+  const isCavArea = home.startsWith("/supervisor-cav");
+  const tabs = isOwnerArea ? OWNER_TABS : isCavArea ? CAV_TABS : TEAM_TABS;
 
   return (
     <nav className="fixed bottom-0 left-0 z-40 flex w-full justify-center">

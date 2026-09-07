@@ -16,6 +16,8 @@ import { SupervisorDashboardPage } from "@/modules/supervisor/pages/SupervisorDa
 import { SupervisorTaskDetailPage } from "@/modules/supervisor/pages/SupervisorTaskDetailPage";
 import { MaintenanceSupervisorDashboardPage } from "@/modules/supervisor-mantenimiento/pages/MaintenanceSupervisorDashboardPage";
 import { MaintenanceSupervisorDetailPage } from "@/modules/supervisor-mantenimiento/pages/MaintenanceSupervisorDetailPage";
+import { AuthorizationsListPage } from "@/modules/supervisor-cav/pages/AuthorizationsListPage";
+import { AuthorizationDetailPage } from "@/modules/supervisor-cav/pages/AuthorizationDetailPage";
 import { OwnerRegisterPage } from "@/modules/owners/pages/OwnerRegisterPage";
 import { OwnerDashboardPage } from "@/modules/owners/pages/OwnerDashboardPage";
 import { OwnerPaymentsPage } from "@/modules/owners/pages/OwnerPaymentsPage";
@@ -56,6 +58,17 @@ export const router = createBrowserRouter([
   {
     path: "/supervisor-mantenimiento/:kind/:id",
     element: <MaintenanceSupervisorDetailPage />,
+  },
+  // ── Supervisor CAV (Accesos) ────────────────────────────────────────────────
+  // Solo Autorizaciones por ahora; Disuasión, Acceso remoto y Eventos quedan
+  // fuera de este alcance.
+  {
+    path: "/supervisor-cav/autorizaciones",
+    element: <AuthorizationsListPage />,
+  },
+  {
+    path: "/supervisor-cav/autorizaciones/:id",
+    element: <AuthorizationDetailPage />,
   },
   // ── Propietarios ──────────────────────────────────────────────────────────
   // El login de residentes se unificó en /login; queda la redirección para los

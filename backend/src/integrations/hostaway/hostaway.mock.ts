@@ -119,3 +119,52 @@ export function getMockCheckouts(
     count: reservations.length,
   };
 }
+
+/**
+ * Reserva vista desde el acceso del huésped. A diferencia de
+ * `HostawayBillingReservation`, la clave es el `id` **interno** de Hostaway,
+ * que es el que acepta `GET /v1/reservations/{id}`: `hostawayReservationId` es
+ * el identificador del canal (Airbnb, Booking) y no sirve para consultar.
+ */
+export interface HostawayGuestReservation {
+  id: number;
+  status: string;
+  guestName: string;
+  guestEmail: string | null;
+  listingName: string;
+  listingMapId: string;
+  arrivalDate: string;
+  departureDate: string;
+  confirmationCode: string;
+  nights: number;
+}
+
+/**
+ * Reserva simulada para desarrollo local con `HOSTAWAY_USE_MOCK=true`. Las
+ * fechas son relativas a hoy —llegó ayer, se va en tres días— para que el
+ * enlace generado esté siempre dentro de su ventana de validez y se pueda
+ * probar el flujo completo sin depender de la API real.
+ */
+export function getMockGuestReservation(
+  id: number,
+): HostawayGuestReservation | null {
+  if (!Number.isInteger(id) || id <= 0) {
+    return null;
+  }
+
+  const isoDate = (offsetDays: number): string =>
+    new Date(Date.now() + offsetDays * 86_400_000).toISOString().split('T')[0];
+
+  return {
+    id,
+    status: 'confirmed',
+    guestName: 'Carlos Perezzz',
+    guestEmail: 'huesped.prueba@example.com',
+    listingName: 'Apto 101 - Torre A',
+    listingMapId: 'UNIT-101',
+    arrivalDate: isoDate(-1),
+    departureDate: isoDate(3),
+    confirmationCode: `HW-MOCK-${id}`,
+    nights: 4,
+  };
+}

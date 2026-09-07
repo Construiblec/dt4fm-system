@@ -19,6 +19,7 @@ import { PreventiveMaintenanceModule } from './modules/preventive-maintenance/pr
 import { MaintenanceSupervisionModule } from './modules/maintenance-supervision/maintenance-supervision.module';
 import { PasswordRecoveryModule } from './modules/password-recovery/password-recovery.module';
 import { PushNotificationsModule } from './modules/push-notifications/push-notifications.module';
+import { GuestAccessModule } from './modules/guest-access/guest-access.module';
 
 @Module({
   imports: [
@@ -46,6 +47,7 @@ import { PushNotificationsModule } from './modules/push-notifications/push-notif
     NotificationsModule,
     MeetingRemindersModule,
     PushNotificationsModule,
+    GuestAccessModule,
   ],
 })
 export class AppModule {}
