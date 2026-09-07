@@ -1,6 +1,7 @@
 import {
   HardHat,
   Home,
+  KeyRound,
   SprayCan,
   Wrench,
   type LucideIcon,
@@ -20,6 +21,14 @@ import {
  * Mantenimientos" es `SupervisorMantenimiento`. Códigos existentes en la
  * instancia: Requester, SuperUser, Guest, Supplier, Propietarios, Team,
  * MaintOffice, SupervisorLimpieza, SupervisorMantenimiento, AdminOffice, TPM.
+ *
+ * `SupervisorCAV` es la excepción: el grupo **todavía no existe en
+ * openMAINT**. Se declara aquí por adelantado para que la app ya sepa qué
+ * pantalla y qué color le corresponden en cuanto el grupo se cree del lado de
+ * openMAINT — hasta entonces, ninguna cuenta real lo trae en `availableRoles`
+ * y el selector de rol no lo va a mostrar. El cian es provisional: pendiente
+ * de que producto confirme el color (no choca con los otros tres, pero no está
+ * validado con nadie más).
  */
 
 export type RoleView = {
@@ -85,6 +94,22 @@ export const ROLE_VIEWS: Record<string, RoleView> = {
     ring: "border-amber-600",
     solid: "bg-amber-600",
     homeRoute: "/owner/dashboard",
+  },
+  /**
+   * Solo la subsección Autorizaciones está implementada; Disuasión, Acceso
+   * remoto y Eventos quedan para cuando se decida el resto del alcance.
+   */
+  SupervisorCAV: {
+    name: "Supervisor CAV",
+    short: "Accesos",
+    desc: "Autorizaciones de acceso",
+    icon: KeyRound,
+    dot: "bg-cyan-600",
+    text: "text-cyan-700",
+    soft: "bg-cyan-50",
+    ring: "border-cyan-600",
+    solid: "bg-cyan-600",
+    homeRoute: "/supervisor-cav/autorizaciones",
   },
 };
 
