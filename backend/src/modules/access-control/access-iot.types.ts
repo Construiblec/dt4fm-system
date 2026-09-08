@@ -1,6 +1,6 @@
 /**
  * Contrato con la VPS central de accesos. Refleja
- * `docs/accesos y huespedes/mvp-minimo-y-contrato-iot.md` §3.3: si este archivo
+ * `docs/accesos y huespedes/guia-servidor-vps-accesos.md` §4: si este archivo
  * y ese documento divergen, manda el documento.
  */
 

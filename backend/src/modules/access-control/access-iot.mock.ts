@@ -93,7 +93,7 @@ interface StoredCredential {
 /**
  * Implementación en memoria del contrato de la VPS, para desarrollar y probar
  * mientras no exista. Es la referencia ejecutable de
- * `docs/accesos y huespedes/mvp-minimo-y-contrato-iot.md` §3.3.
+ * `docs/accesos y huespedes/guia-servidor-vps-accesos.md` §4.
  */
 @Injectable()
 export class AccessIotMockGateway extends AccessIotGateway {

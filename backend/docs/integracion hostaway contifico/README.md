@@ -37,7 +37,7 @@ El backend en **NestJS** actúa como intermediario: transforma los datos, crea l
 >
 > El nombre `POST /webhooks/hostaway` **volvió a existir**, pero en otro módulo y con otro
 > propósito: lo sirve `access-control` para proyectar reservas y emitir credenciales de acceso.
-> Ver [control de accesos](../accesos%20y%20huespedes/mvp-minimo-y-contrato-iot.md). Si se
+> Ver [control de accesos](../accesos%20y%20huespedes/README.md). Si se
 > reactiva el webhook de facturación habrá que decidir si comparten ruta o se separan.
 
 ---
