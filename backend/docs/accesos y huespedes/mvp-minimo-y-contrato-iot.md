@@ -64,9 +64,15 @@ contrato:
    o la LAN caída (Pi ↔ terminal). Son incidentes distintos, con responsables distintos, y
    soporte no puede actuar sin saber cuál. Por eso `GET /v1/health` debe separarlos
    ([3.3](#33-endpoints-que-necesito-consumir)).
-2. **Si la Pi sondea al servidor central en vez de recibir empuje, vuelve la cola** —y con ella el
-   PIN guardado en disco mientras espera. Es la única decisión que sigue abierta, y está en
-   [3.6](#36-las-dos-bases-de-datos-del-lado-iot).
+2. **El túnel es persistente hoy, y eso resuelve el `PUT` síncrono.** El servidor alcanza cada
+   terminal por Tailscale 4via6 y le habla ISAPI **directamente**: la Raspberry es un *subnet
+   router* pasivo, no un agente que sondea. No hay cola y ningún PIN espera en disco. Verificado en
+   el código — ver [análisis del servidor de accesos](analisis-servidor-accesos.md).
+
+   **Pero la pregunta baja un nivel.** El plan del equipo IoT relega Tailscale a contingencia y
+   reintroduce un gateway por edificio detrás de una VPS central. Si el tramo VPS → gateway es
+   síncrono, todo lo anterior aguanta; si el gateway sondea, vuelven la cola y el PIN en reposo.
+   Hay que pedir que se resuelva síncrono.
 
 ---
 
@@ -86,7 +92,7 @@ contrato:
 | `access_credential` | **Se queda** | Es la autoridad: no puede delegarse sin perder unicidad, cifrado y vínculo con la reserva. |
 | `guest_stay` | **Se queda** | Ancla estable del token del huésped y `token_version`, que es lo único que da revocación real a un enlace autocontenido. Hostaway no tiene dónde guardarlo. |
 
-Del lado de openMAINT se mantiene el único cambio del README: el atributo `HostawayListingId` en
+Del lado de openMAINT se mantiene el único cambio del README: el atributo `HostawayListingID` en
 la clase `Unit` ([README §5.8](README.md#58-cambio-requerido-en-openmaint)). Cuesta un atributo,
 no toca el esquema del backend y de paso arregla la asignación manual de `Unit` en
 `cleaning-tasks.service.ts`.
@@ -103,6 +109,7 @@ Un registro = un permiso: un PIN, para un sujeto, en un edificio, con una ventan
 | `display_name` | `text` | no | Nombre al emitir. Denormalizado: la auditoría debe seguir legible si la reserva desaparece. |
 | `scope` | `text` | no | `pedestrian`, `vehicular`, `both`. CHECK. |
 | `building_id` | `int` | no | `Building._id` de openMAINT. Es lo que se envía al servidor central. |
+| *(unicidad)* | | | El índice único es `(building_id, pin_fingerprint)`, **sin `scope`**: un `both` y un `pedestrian` con el mismo PIN no colisionarían incluyendo el ámbito, pero sí en el terminal peatonal, que es donde importa. |
 | `openmaint_unit_id` | `int` | sí | `Unit._id` cuando el permiso es de un departamento. |
 | `pin_ciphertext` | `text` | no | AES-256-GCM, formato `iv:tag:ciphertext` en base64url. Cifrado y no hasheado porque el portal lo muestra en cada visita. |
 | `pin_fingerprint` | `text` | no | `HMAC-SHA256(clave, pin)` en hex. Unicidad y enfriamiento sin descifrar nada. |
@@ -145,7 +152,7 @@ edificio con esa huella tenga `valid_to` dentro de los últimos `ACCESS_PIN_COOL
 | `id` | `uuid` PK | no | Viaja dentro del token del huésped. |
 | `hostaway_reservation_id` | `text` UNIQUE | no | Clave natural y único enlace con Hostaway. |
 | `listing_id` | `text` | no | `listingMapId`. Se conserva aunque la unidad ya esté resuelta, para rehacer el mapeo. |
-| `openmaint_unit_id` | `int` | sí | Resuelto vía `HostawayListingId`. **Nulo es estado esperado**, no error: sin mapeo el panel no muestra departamento, pero el PIN funciona. |
+| `openmaint_unit_id` | `int` | sí | Resuelto vía `HostawayListingID`. **Nulo es estado esperado**, no error: sin mapeo el panel no muestra departamento, pero el PIN funciona. |
 | `building_id` | `int` | sí | Derivado de la unidad. Cacheado para no consultar openMAINT en cada carga. |
 | `guest_name` | `text` | no | Huésped principal. |
 | `guest_email` | `text` | sí | Nulo cuando el canal lo oculta (Airbnb). |
@@ -332,13 +339,18 @@ fecha, donde **el PIN no cambia** —el huésped ya lo tiene anotado— y solo s
 {
   "buildingId": 42,
   "scope": "pedestrian",
-  "pin": "482913",
+  "subjectType": "guest",
+  "pin": "4821",
   "validFrom": "2026-09-14T12:00:00-05:00",
   "validTo":   "2026-09-18T15:00:00-05:00",
   "displayName": "Ana Perez",
   "unitId": 1187
 }
 ```
+
+`subjectType` (`guest` / `tenant` / `employee`) se añadió al implementar el backend: sin él la VPS
+no puede derivar el prefijo reservado `DT4-G-` / `DT4-T-` / `DT4-E-` que exige
+[D-06](decisiones-arquitectura-y-seguridad.md#d-06--identidad-de-la-credencial-y-espacio-de-nombres).
 
 Respuesta que necesito, con **detalle por dispositivo**:
 
@@ -417,8 +429,13 @@ IoT responde. Es la consecuencia de las dos decisiones anteriores.
   dónde recibirlas. La auditoría se sirve consultando `GET /v1/events` cuando alguien abre la
   pantalla, no ingiriendo un flujo continuo que iría a parar a ningún sitio.
 
-**¿Empujar o consultar, entonces?** Consultar, y por una razón concreta: **empujar solo tiene
-sentido si hay dónde guardar**. Un webhook que recibe eventos para descartarlos es infraestructura
+**¿Empujar o consultar, entonces?** La pregunta está mal planteada, y el código lo aclara:
+**hoy el servidor central no recibe eventos de ninguna forma** — nada en él lee `AcsEvent` ni
+expone un receptor. No hay auditoría de aperturas en ningún sitio, ni aquí ni allá. Antes de elegir
+transporte hay que construir la fuente.
+
+Cuando exista, la respuesta es consultar mientras no haya `access_event`, porque **empujar solo
+tiene sentido si hay dónde guardar**. Un webhook que recibe eventos para descartarlos es infraestructura
 sin destinatario, y encima paga el peor rasgo del despliegue actual —el propio repositorio
 documenta que *«Render duerme y reinicia la instancia»* (`reset-token.service.ts`)—: un evento
 empujado a una instancia dormida se pierde o llega tarde, y sin `dedupe_key` en base de datos no
@@ -521,20 +538,14 @@ El PIN llega, se escribe en el terminal y se descarta. Nunca toca el disco de la
 Eso se sostiene **si el servidor central puede empujar a la Raspberry en el momento**, que es lo
 que un túnel persistente permite.
 
-> **Decisión abierta, la única que queda.** ¿El túnel deja al servidor central llamar a la Pi
-> cuando quiera, o es la Pi la que sondea al central?
+> **Resuelto.** El túnel es Tailscale 4via6 y es persistente: el servidor central habla ISAPI
+> directamente con cada terminal, sin intermediario que sondee. El `PUT` se relaya en el momento y
+> contesta con el resultado real, así que **el PIN no necesita guardarse en ningún sitio**.
 >
-> * **Túnel persistente** (WireGuard, túnel inverso, websocket): el central relaya mi `PUT` en el
->   momento, contesta con el resultado real y **ningún PIN se guarda en ningún sitio**. Es el
->   contrato descrito en este documento y la opción recomendada.
-> * **La Pi sondea:** el central tiene que **retener mi escritura** hasta que la Pi pregunte. Eso
->   reintroduce la cola de trabajos y, con ella, el PIN en su disco. Si es el caso, hacen falta
->   tres cosas: cifrarlo en reposo, borrarlo en cuanto la Pi confirme, y devolverme el estado
->   `queued` más un callback `POST /iot/credentials/callback` —que este documento había
->   eliminado— para que la credencial no se quede en `pending` hasta que la descubra un barrido.
->
-> La diferencia no es de rendimiento sino de superficie: en la primera opción el PIN existe
-> cifrado en un solo sitio; en la segunda, en dos.
+> Queda un pendiente real, distinto: hoy el servidor **sí guarda el PIN en claro** en su SQLite
+> (`users.pin` y `device_users.pin_on_device`), porque es él quien gestiona las credenciales. Al
+> pasar la gestión al backend eso desaparece solo — recibe el PIN, lo escribe y lo descarta. Ver
+> [análisis del servidor de accesos](analisis-servidor-accesos.md).
 
 ### 3.7. Garantías operativas
 
@@ -588,28 +599,32 @@ Compromisos, no endpoints. Los necesito por escrito porque determinan qué puede
 | ¿Longitud del PIN? | **4 dígitos.** Con las tres exigencias de [3.5](#35-hechos-del-hardware-ya-confirmados). |
 | ¿Aceptan el contrato de endpoints? | **Sí.** Cinco endpoints, `PUT` idempotente, detalle por dispositivo. |
 | ¿Empujar eventos o consultarlos? | **Consultarlos**, mientras no exista `access_event` ([3.4](#34-el-backend-no-expone-nada-al-servidor-central)). |
+| ¿Quién lleva el ciclo de vida de la credencial? | **El backend.** La VPS no lo duplica ([D-01](decisiones-arquitectura-y-seguridad.md#d-01--el-backend-lleva-el-ciclo-de-vida-de-la-credencial)). |
+| ¿De quién es el portal del huésped? | **De DT4FM.** Sale del alcance de la VPS ([D-02](decisiones-arquitectura-y-seguridad.md#d-02--el-portal-del-huésped-es-de-dt4fm)). |
+| ¿En qué sentido concilia? | **El aparato informa, Postgres decide** ([D-04](decisiones-arquitectura-y-seguridad.md#d-04--la-conciliación-la-hace-el-backend)). |
 
 ### Bloquea el desarrollo
 
-1. **¿El túnel es persistente o la Pi sondea?** Decide si el `PUT` sigue siendo síncrono o si
-   vuelven la cola, el estado `queued`, el callback y el PIN en disco ([3.6](#36-las-dos-bases-de-datos-del-lado-iot)).
-2. **¿`buildingId` será el `Building._id` de openMAINT?** Si no, hay tabla de mapeo y el esquema
+1. **¿`buildingId` será el `Building._id` de openMAINT?** Si no, hay tabla de mapeo y el esquema
    deja de ser de dos tablas. Los códigos de tres letras (`BAT`, `ING`, `PRA`, `REP`) viajan como
    etiqueta, no como clave.
-3. **URL de staging y token.** Sin esto no se puede desarrollar contra nada.
+2. **URL de staging y service token de Cloudflare Access.** Sin esto no se puede desarrollar
+   contra nada.
 
 ### Queda por confirmar
 
+3. ¿Confirman el tramo VPS ↔ gateway síncrono? Es lo que decidió [D-05](decisiones-arquitectura-y-seguridad.md#d-05--el-tramo-vps--gateway-es-síncrono); falta que lo acepten.
 4. ¿Bloquea el terminal tras N intentos fallidos? Con PIN de 4 dígitos es la mitigación principal.
 5. ¿Exige el terminal PIN único entre sus usuarios? Y su tope de usuarios por modelo.
-6. Latencia esperada de una escritura, y comportamiento con el túnel o la LAN caídos.
-7. Quién hace la conciliación y la purga, y cómo veo yo sus resultados.
-8. Retención de eventos en el servidor central: hasta qué fecha puedo consultar hacia atrás.
+6. Latencia esperada de una escritura — decide qué promete el panel.
+7. Retención de eventos: hasta qué fecha puedo consultar hacia atrás — hoy no se guardan.
 
 ---
 
 ## Referencias
 
+* [Decisiones de arquitectura y seguridad](decisiones-arquitectura-y-seguridad.md) — el registro que resuelve lo que este documento dejaba abierto
+* [Análisis del servidor de accesos existente](analisis-servidor-accesos.md) — revisión del código de Ingeniería IoT
 * [Diseño completo de accesos y portal del huésped](README.md) — modelo de siete tablas y agente por edificio
 * [Alarmas IoT → correctivo](../../../docs/integrations/openmaint-iot-alarms.md) — contrato vigente con el servidor IoT
 * [Módulo de limpieza](../limpieza%20modulo/limpieza-modulo.md) — `CleaningTask`, origen de las credenciales de personal

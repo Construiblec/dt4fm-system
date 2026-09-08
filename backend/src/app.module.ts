@@ -18,6 +18,7 @@ import { MeetingRemindersModule } from './modules/meeting-reminders/meeting-remi
 import { PreventiveMaintenanceModule } from './modules/preventive-maintenance/preventive-maintenance.module';
 import { MaintenanceSupervisionModule } from './modules/maintenance-supervision/maintenance-supervision.module';
 import { PasswordRecoveryModule } from './modules/password-recovery/password-recovery.module';
+import { AccessControlModule } from './modules/access-control/access-control.module';
 import { PushNotificationsModule } from './modules/push-notifications/push-notifications.module';
 
 @Module({
@@ -46,6 +47,7 @@ import { PushNotificationsModule } from './modules/push-notifications/push-notif
     NotificationsModule,
     MeetingRemindersModule,
     PushNotificationsModule,
+    AccessControlModule,
   ],
 })
 export class AppModule {}

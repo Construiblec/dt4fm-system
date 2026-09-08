@@ -405,7 +405,7 @@ Un solo atributo nuevo, ninguna clase nueva:
 
 | Clase | Atributo | Tipo | Para qué |
 |---|---|---|---|
-| `Unit` | `HostawayListingId` | `text` | Resolver `listingMapId` → `Unit._id`. |
+| `Unit` | `HostawayListingID` | `text` | Resolver `listingMapId` → `Unit._id`. |
 
 Es el cambio de mayor rendimiento por esfuerzo de todo el documento. Además del portal, **arregla una carencia actual del módulo de limpieza**: hoy `cleaning-tasks.service.ts` crea la tarea sin rellenar `Unit`, que se asigna a mano después. Con el mapeo, la asignación se vuelve automática.
 
@@ -973,7 +973,7 @@ Bucle de sondeo, cliente ISAPI con lo aprendido en la fase 2, buffer de eventos,
 
 Enganche en el webhook de Hostaway y en el ciclo de `CleaningTask`. Conciliación nocturna, purga diaria, `/access/health`.
 
-Aquí entra también el atributo `HostawayListingId` en `Unit` y el `UnitResolverService`. Puede adelantarse: es independiente y ya mejora el módulo de limpieza por sí solo.
+Aquí entra también el atributo `HostawayListingID` en `Unit` y el `UnitResolverService`. Puede adelantarse: es independiente y ya mejora el módulo de limpieza por sí solo.
 
 ### Fase 6 — Portal del huésped
 

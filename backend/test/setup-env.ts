@@ -74,3 +74,15 @@ process.env.HISTORIAL_EMAIL_ENABLED = 'false';
 
 process.env.CALENDAR_TIMEZONE ??= 'America/Guayaquil';
 process.env.PORT ??= '0';
+
+// Control de accesos. Las claves son literales fijos y no `??=`: las suites
+// cifran y descifran con ellas, y heredar otro valor del entorno haría fallar
+// el camino feliz sin motivo aparente. El scheduler apagado, como el resto.
+process.env.ACCESS_PIN_KEY = Buffer.alloc(32, 7).toString('base64');
+process.env.ACCESS_PIN_FINGERPRINT_KEY = Buffer.alloc(32, 9).toString('base64');
+process.env.ACCESS_IOT_USE_MOCK = 'true';
+process.env.ACCESS_IOT_URL ??= 'http://accesos.invalid';
+process.env.ACCESS_IOT_TOKEN ??= 'mock-client-id:mock-client-secret';
+process.env.ACCESS_SCHEDULER_ENABLED = 'false';
+process.env.ACCESS_ALLOW_PIN_REVEAL = 'false';
+process.env.HOSTAWAY_WEBHOOK_SECRET = 'test-hostaway-secret';

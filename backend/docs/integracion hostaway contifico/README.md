@@ -28,7 +28,17 @@ Esta integración conecta tres sistemas:
 | **Contifico** | Destino de facturación. Recibe los datos y genera la factura electrónica. |
 | **openMAINT** | Almacenamiento. Guarda un registro de cada factura generada (o de cada intento fallido). |
 
-El backend en **NestJS** actúa como intermediario: recibe el webhook de Hostaway, transforma los datos, crea la factura en Contifico y guarda el resultado en openMAINT.
+El backend en **NestJS** actúa como intermediario: transforma los datos, crea la factura en Contifico y guarda el resultado en openMAINT.
+
+> **Al día de hoy la facturación NO entra por webhook.** El endpoint `POST /webhooks/hostaway`
+> que describía este documento se eliminó en `afe3f06`, y `billing.controller.ts` expone hoy un
+> solo `POST /billing/run`, que dispara `BillingSchedulerService` una vez al día. Todo lo que
+> sigue sobre el webhook describe el diseño original, no lo desplegado.
+>
+> El nombre `POST /webhooks/hostaway` **volvió a existir**, pero en otro módulo y con otro
+> propósito: lo sirve `access-control` para proyectar reservas y emitir credenciales de acceso.
+> Ver [control de accesos](../accesos%20y%20huespedes/mvp-minimo-y-contrato-iot.md). Si se
+> reactiva el webhook de facturación habrá que decidir si comparten ruta o se separan.
 
 ---
 
@@ -106,7 +116,8 @@ Define la forma esperada del payload que envía Hostaway. Incluye los campos fin
 Archivo principal de la integración. Orquesta los tres pasos: validar reservación → crear factura en Contifico → guardar en openMAINT. Aquí se encuentra el mapeo de campos.
 
 #### `billing.controller.ts`
-Expone el endpoint `POST /webhooks/hostaway`. Siempre responde `200 OK` para que Hostaway no reintente el envío.
+**Desactualizado:** hoy expone `POST /billing/run`, no el webhook. El disparo diario lo hace
+`billing-scheduler.service.ts` con `BILLING_SCHEDULER_ENABLED`.
 
 #### `billing.module.ts`
 Importa `ContificoModule` y `OpenmaintModule`, registra el controller y el service.
@@ -146,6 +157,9 @@ Configuradas en **Render → Environment → Environment Variables**:
 |---|---|
 | **URL** | `https://tu-backend.onrender.com/webhooks/hostaway` |
 | **Events** | `reservation_created`, `reservation_updated` |
+
+> Esa URL la atiende hoy el módulo de **control de accesos**, que exige la cabecera
+> `x-hostaway-secret` y responde `401` sin ella. Al configurar el webhook hay que añadirla.
 
 > **Importante:** Solo el Account Owner puede acceder a Settings en Hostaway. Los usuarios admin no tienen acceso a esta sección aunque tengan todos los permisos.
 

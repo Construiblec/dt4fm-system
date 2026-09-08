@@ -32,6 +32,16 @@ export class SessionRoleService {
    * `OpenmaintSession` no descarta aunque no debería ocurrir en la práctica.
    */
   async resolveRole(sessionId: string): Promise<string | null> {
+    return (await this.resolveIdentity(sessionId)).role;
+  }
+
+  /**
+   * Rol y username en una sola llamada, para quien necesita anotar *quién* hizo
+   * algo además de comprobar que puede hacerlo.
+   */
+  async resolveIdentity(
+    sessionId: string,
+  ): Promise<{ role: string | null; username: string }> {
     if (!sessionId?.trim()) {
       throw new UnauthorizedException('Falta la sesión de openMAINT');
     }
@@ -43,7 +53,7 @@ export class SessionRoleService {
         throw new UnauthorizedException('Sesión de openMAINT no válida');
       }
 
-      return session.role ?? null;
+      return { role: session.role ?? null, username: session.username ?? '' };
     } catch (error) {
       if (error instanceof UnauthorizedException) {
         throw error;

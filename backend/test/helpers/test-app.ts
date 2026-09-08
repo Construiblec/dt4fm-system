@@ -17,6 +17,8 @@ import { CorrectiveMaintOpenmaintService } from '../../src/modules/maintenance-s
 import { IotAlarmOpenmaintService } from '../../src/modules/iot-alarms/iot-alarm.openmaint.service';
 import { PasswordRecoveryOpenmaintService } from '../../src/modules/password-recovery/password-recovery.openmaint.service';
 import { PaymentsOpenmaintRepository } from '../../src/modules/payments/payments-openmaint.repository';
+import { AccessIotGateway } from '../../src/modules/access-control/access-iot.gateway';
+import { UnitResolverService } from '../../src/integrations/openmaint/unit-resolver.service';
 
 import { MailerService } from '../../src/modules/notifications/mail/mailer.service';
 import { ContificoService } from '../../src/integrations/contifico/contifico.service';
@@ -39,6 +41,8 @@ import {
   createIotAlarmOpenmaintServiceMock,
   createPasswordRecoveryOpenmaintServiceMock,
   createPaymentsOpenmaintRepositoryMock,
+  createAccessIotGatewayMock,
+  createUnitResolverServiceMock,
 } from '../mocks/gateways.mock';
 import {
   createMailerServiceMock,
@@ -90,6 +94,9 @@ export interface TestAppMocks {
   hostaway: ReturnType<typeof createHostawayServiceMock>;
   notifications: ReturnType<typeof createNotificationsServiceMock>;
   pushDispatch: ReturnType<typeof createPushDispatchServiceMock>;
+  /** VPS central de accesos: no existe todavía, siempre va doblada. */
+  accessIot: ReturnType<typeof createAccessIotGatewayMock>;
+  unitResolver: ReturnType<typeof createUnitResolverServiceMock>;
 }
 
 export const createFreshMocks = (): TestAppMocks => ({
@@ -110,6 +117,8 @@ export const createFreshMocks = (): TestAppMocks => ({
   hostaway: createHostawayServiceMock(),
   notifications: createNotificationsServiceMock(),
   pushDispatch: createPushDispatchServiceMock(),
+  accessIot: createAccessIotGatewayMock(),
+  unitResolver: createUnitResolverServiceMock(),
 });
 
 export interface CreateTestAppOptions {
@@ -165,7 +174,11 @@ export async function createTestApp(
     .overrideProvider(HostawayService)
     .useValue(mocks.hostaway)
     .overrideProvider(PushDispatchService)
-    .useValue(mocks.pushDispatch);
+    .useValue(mocks.pushDispatch)
+    .overrideProvider(AccessIotGateway)
+    .useValue(mocks.accessIot)
+    .overrideProvider(UnitResolverService)
+    .useValue(mocks.unitResolver);
 
   if (!options.realNotificationsService) {
     builder
