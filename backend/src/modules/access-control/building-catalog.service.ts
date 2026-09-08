@@ -40,6 +40,16 @@ export class BuildingCatalogService {
     }
   }
 
+  /**
+   * Fuerza a releer el catálogo en la próxima consulta. Sirve cuando el equipo
+   * IoT instala hardware en un edificio nuevo y no se quiere esperar al TTL ni
+   * reiniciar el proceso.
+   */
+  invalidate(): void {
+    this.cache = null;
+    this.cachedAt = 0;
+  }
+
   async isCovered(buildingId: number): Promise<boolean> {
     const buildings = await this.list();
 

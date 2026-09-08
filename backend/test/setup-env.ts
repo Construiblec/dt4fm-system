@@ -86,3 +86,12 @@ process.env.ACCESS_IOT_TOKEN ??= 'mock-client-id:mock-client-secret';
 process.env.ACCESS_SCHEDULER_ENABLED = 'false';
 process.env.ACCESS_ALLOW_PIN_REVEAL = 'false';
 process.env.HOSTAWAY_WEBHOOK_SECRET = 'test-hostaway-secret';
+
+// Ventana de vigencia del huésped, con `=` literal y no `??=`: ConfigModule
+// carga el .env del desarrollador, así que sin fijarlos aquí la suite pasaba a
+// depender de la configuración local de quien la ejecuta. Los márgenes van en 3
+// a propósito, para que la aritmética de lead/grace quede realmente probada.
+process.env.ACCESS_CHECKIN_HOUR = '15';
+process.env.ACCESS_CHECKOUT_HOUR = '11';
+process.env.ACCESS_GUEST_LEAD_HOURS = '3';
+process.env.ACCESS_GUEST_GRACE_HOURS = '3';

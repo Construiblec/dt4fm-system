@@ -132,10 +132,12 @@ export class GuestStayService {
       return;
     }
 
-    const existing = await this.credentialService.findLive(
+    // Sin fijar el ámbito: si a este huésped le ampliaron el acceso a mano
+    // (p. ej. a `both` porque trajo vehículo), buscar solo `pedestrian`
+    // devolvería null y acabaríamos emitiéndole un segundo PIN.
+    const existing = await this.credentialService.findLiveBySubject(
       'guest',
       stay.hostawayReservationId,
-      'pedestrian',
     );
 
     if (existing) {

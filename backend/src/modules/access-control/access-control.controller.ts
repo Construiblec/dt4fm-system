@@ -25,6 +25,7 @@ import { SessionRoleService } from '../../integrations/openmaint/session-role.se
 import { AccessIotGateway } from './access-iot.gateway';
 import { BuildingCatalogService } from './building-catalog.service';
 import { CredentialService } from './credential.service';
+import { ChangeScopeDto } from './dto/change-scope.dto';
 import { CreateCredentialDto } from './dto/create-credential.dto';
 import { ListCredentialsQueryDto } from './dto/list-credentials.dto';
 import { RevokeCredentialDto } from './dto/revoke-credential.dto';
@@ -118,6 +119,40 @@ export class AccessControlController {
     return this.toPublicView(
       await this.credentialService.revoke(id, dto.reason),
     );
+  }
+
+  @Post('credentials/:id/scope')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Cambiar el ámbito de una credencial vigente',
+    description:
+      'Asignación manual de acceso vehicular. El PIN NO cambia: el dueño ya lo tiene anotado. Las credenciales que nacen de una reserva salen siempre como peatonales, así que este es el camino para darle la barrera a un huésped que trae vehículo.',
+  })
+  @ApiHeader({ name: 'x-session-token', description: 'Sesión de openMAINT' })
+  @ApiResponse({
+    status: 200,
+    description: 'Ámbito actualizado y resincronizado.',
+  })
+  @ApiResponse({
+    status: 400,
+    description:
+      'La credencial no está vigente, el edificio no tiene entrada vehicular, o el sujeto ya tiene otra credencial con ese ámbito.',
+  })
+  @ApiResponse({ status: 404, description: 'La credencial no existe.' })
+  async changeScope(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ChangeScopeDto,
+    @Headers('x-session-token') sessionToken: string,
+  ) {
+    const username = await this.requireAdmin(sessionToken);
+
+    const credential = await this.credentialService.changeScope(id, dto.scope);
+
+    this.logger.log(
+      `Ámbito cambiado a ${dto.scope}: credencial=${id} usuario=${username}`,
+    );
+
+    return this.toPublicView(credential);
   }
 
   /**

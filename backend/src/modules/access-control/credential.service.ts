@@ -204,6 +204,75 @@ export class CredentialService {
     return this.credentials.count({ where: { syncState: 'failed' } });
   }
 
+  /**
+   * Cambia el ámbito de una credencial viva **sin tocar el PIN**: el dueño ya
+   * lo tiene anotado, igual que en un cambio de fechas. El `PUT` a la VPS
+   * declara el estado deseado completo, así que ampliar escribe en las puertas
+   * nuevas y reducir la retira de las que dejan de estar en el ámbito.
+   */
+  async changeScope(
+    id: string,
+    scope: CredentialScope,
+  ): Promise<AccessCredential> {
+    const credential = await this.findById(id);
+
+    if (!LIVE_STATUSES.includes(credential.status)) {
+      throw new BadRequestException(
+        'Solo se puede cambiar el ámbito de una credencial vigente',
+      );
+    }
+
+    if (credential.scope === scope) {
+      return credential;
+    }
+
+    await this.assertScopeAvailable(credential.buildingId, scope);
+
+    // El índice único es por (sujeto, ámbito): si ya hay otra credencial viva
+    // con el ámbito destino, mover esta crearía un duplicado.
+    const colision = await this.findLive(
+      credential.subjectType,
+      credential.subjectRef,
+      scope,
+    );
+
+    if (colision) {
+      throw new BadRequestException(
+        `El sujeto ya tiene una credencial vigente con ámbito ${scope}`,
+      );
+    }
+
+    credential.scope = scope;
+    credential.syncState = 'pending';
+    credential.syncAttempts = 0;
+    await this.credentials.save(credential);
+
+    return this.sync(credential);
+  }
+
+  /**
+   * Pedir acceso vehicular en un edificio que solo tiene entrada peatonal es un
+   * error del operador, no algo que deba escribirse y fallar en el aparato.
+   */
+  private async assertScopeAvailable(
+    buildingId: number,
+    scope: CredentialScope,
+  ): Promise<void> {
+    if (scope === 'pedestrian') {
+      return;
+    }
+
+    const building = (await this.catalog.list()).find(
+      (item) => item.buildingId === buildingId,
+    );
+
+    if (building && !building.scopes.includes('vehicular')) {
+      throw new BadRequestException(
+        `El edificio ${buildingId} no tiene entrada vehicular`,
+      );
+    }
+  }
+
   async findLive(
     subjectType: SubjectType,
     subjectRef: string,
@@ -211,6 +280,20 @@ export class CredentialService {
   ): Promise<AccessCredential | null> {
     return this.credentials.findOne({
       where: { subjectType, subjectRef, scope, status: In(LIVE_STATUSES) },
+    });
+  }
+
+  /**
+   * Igual que `findLive` pero sin fijar el ámbito. Lo usa la emisión automática:
+   * si a un huésped le ampliaron el ámbito a mano, buscar solo `pedestrian`
+   * devolvería null y se le emitiría un segundo PIN.
+   */
+  async findLiveBySubject(
+    subjectType: SubjectType,
+    subjectRef: string,
+  ): Promise<AccessCredential | null> {
+    return this.credentials.findOne({
+      where: { subjectType, subjectRef, status: In(LIVE_STATUSES) },
     });
   }
 

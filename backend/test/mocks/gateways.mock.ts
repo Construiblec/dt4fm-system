@@ -155,23 +155,25 @@ export const ING_BUILDING_ID = 3025058;
 export const PRA_BUILDING_ID = 3019998;
 export const BAT_BUILDING_ID = 3025059;
 
+export const DEFAULT_ACCESS_BUILDINGS = [
+  {
+    buildingId: ING_BUILDING_ID,
+    code: 'ING',
+    name: 'Inglaterra',
+    online: true,
+    scopes: ['pedestrian', 'vehicular'],
+  },
+  {
+    buildingId: PRA_BUILDING_ID,
+    code: 'PRA',
+    name: 'Pradera',
+    online: true,
+    scopes: ['pedestrian', 'vehicular'],
+  },
+];
+
 export const createAccessIotGatewayMock = () => ({
-  listBuildings: jest.fn().mockResolvedValue([
-    {
-      buildingId: ING_BUILDING_ID,
-      code: 'ING',
-      name: 'Inglaterra',
-      online: true,
-      scopes: ['pedestrian', 'vehicular'],
-    },
-    {
-      buildingId: PRA_BUILDING_ID,
-      code: 'PRA',
-      name: 'Pradera',
-      online: true,
-      scopes: ['pedestrian', 'vehicular'],
-    },
-  ]),
+  listBuildings: jest.fn().mockResolvedValue(DEFAULT_ACCESS_BUILDINGS),
   listDevices: jest.fn().mockResolvedValue([]),
   putCredential: jest.fn().mockImplementation((credentialId: string) =>
     Promise.resolve({
