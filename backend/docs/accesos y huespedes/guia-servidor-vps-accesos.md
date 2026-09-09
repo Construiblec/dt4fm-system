@@ -20,11 +20,11 @@ Backend DT4FM (Render + Postgres)     AUTORIDAD DE NEGOCIO
   reserva, huésped, ciclo de vida, PIN, portal
         │  HTTPS · Cloudflare Access · service token
         ▼
-VPS central  ◀── TU PARTE           AUTORIDAD DE DISPOSITIVOS
+VPS central  ◀── La parte de IoT           AUTORIDAD DE DISPOSITIVOS
   inventario, employeeNo, orquestación, eventos
         │  credencial propia por gateway
         ▼
-Gateway por edificio ◀── TU PARTE    EJECUCIÓN
+Gateway por edificio ◀── La parte de IoT    EJECUCIÓN
   ISAPI dentro de la LAN aislada
         ▼
 Terminales Hikvision                 DECISIÓN SIN RED
