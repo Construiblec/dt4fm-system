@@ -35,6 +35,8 @@ const corsOptions: CorsOptions = {
     'x-session-token',
     'x-employee-id',
     'x-cleaning-employee-id',
+    'x-guest-token',
+    'x-guest-link-secret',
   ],
 };
 
@@ -104,6 +106,24 @@ async function bootstrap() {
         description: 'Secreto compartido del webhook de alarmas IoT',
       },
       'x-iot-secret',
+    )
+    .addApiKey(
+      {
+        type: 'apiKey',
+        name: 'x-guest-token',
+        in: 'header',
+        description: 'Token del magiclink del huésped',
+      },
+      'x-guest-token',
+    )
+    .addApiKey(
+      {
+        type: 'apiKey',
+        name: 'x-guest-link-secret',
+        in: 'header',
+        description: 'Secreto compartido para emitir magiclinks de huésped',
+      },
+      'x-guest-link-secret',
     )
     .build();
 

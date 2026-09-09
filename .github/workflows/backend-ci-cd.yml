@@ -98,11 +98,28 @@ jobs:
           RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
         run: |
           if [ -z "$RENDER_DEPLOY_HOOK" ]; then
-            echo "Error: RENDER_DEPLOY_HOOK no está configurado en GitHub Secrets."
+            echo "::error::RENDER_DEPLOY_HOOK no está configurado en GitHub Secrets."
             exit 1
           fi
-          curl -X POST "$RENDER_DEPLOY_HOOK"
-          echo "Despliegue de producción disparado exitosamente en Render."
+          # Antes esto era un `curl -X POST` a secas seguido de un echo de
+          # "exitosamente". Como curl sale con código 0 aunque Render conteste
+          # 401, un hook revocado se veía idéntico a un despliegue correcto y
+          # el paso salía en verde sin haber disparado nada. Ahora se mira el
+          # código HTTP y se vuelca el cuerpo, que trae el deploy id.
+          #
+          # La URL del hook no se imprime nunca: lleva la clave dentro.
+          respuesta=$(curl -sS -w '\n%{http_code}' -X POST "$RENDER_DEPLOY_HOOK")
+          estado=$(printf '%s' "$respuesta" | tail -n 1)
+          cuerpo=$(printf '%s' "$respuesta" | sed '$d')
+
+          echo "Render respondió HTTP $estado: $cuerpo"
+
+          if [ "$estado" != "200" ] && [ "$estado" != "201" ]; then
+            echo "::error::El deploy hook de producción devolvió HTTP $estado. Si es 401 o 404, la URL fue revocada: regenérala en Render (Settings -> Deploy Hook) y actualiza el secret RENDER_DEPLOY_HOOK."
+            exit 1
+          fi
+
+          echo "Despliegue de producción disparado; el deploy id del cuerpo permite seguirlo en el panel de Render."
 
       - name: Disparar Webhook de Despliegue en Render (Staging)
         if: github.ref == 'refs/heads/develop'
@@ -110,11 +127,27 @@ jobs:
           RENDER_DEPLOY_HOOK_STAGING: ${{ secrets.RENDER_DEPLOY_HOOK_STAGING }}
         run: |
           if [ -z "$RENDER_DEPLOY_HOOK_STAGING" ]; then
-            echo "Error: RENDER_DEPLOY_HOOK_STAGING no está configurado en GitHub Secrets."
+            echo "::error::RENDER_DEPLOY_HOOK_STAGING no está configurado en GitHub Secrets."
             exit 1
           fi
-          curl -X POST "$RENDER_DEPLOY_HOOK_STAGING"
-          echo "Despliegue de staging disparado exitosamente en Render."
+          # Mismo arreglo que en producción: se comprueba el código HTTP en vez
+          # de dar por hecho que el webhook funcionó. Esto es justo lo que
+          # ocultó que staging llevaba tiempo actualizándose por el Auto-Deploy
+          # de Render y no por este paso.
+          #
+          # La URL del hook no se imprime nunca: lleva la clave dentro.
+          respuesta=$(curl -sS -w '\n%{http_code}' -X POST "$RENDER_DEPLOY_HOOK_STAGING")
+          estado=$(printf '%s' "$respuesta" | tail -n 1)
+          cuerpo=$(printf '%s' "$respuesta" | sed '$d')
+
+          echo "Render respondió HTTP $estado: $cuerpo"
+
+          if [ "$estado" != "200" ] && [ "$estado" != "201" ]; then
+            echo "::error::El deploy hook de staging devolvió HTTP $estado. Si es 401 o 404, la URL fue revocada: regenérala en Render (Settings -> Deploy Hook) y actualiza el secret RENDER_DEPLOY_HOOK_STAGING."
+            exit 1
+          fi
+
+          echo "Despliegue de staging disparado; el deploy id del cuerpo permite seguirlo en el panel de Render."
 
       # El webhook responde de inmediato pero el despliegue es asíncrono: un
       # curl a /health justo después contestaría con la versión ANTERIOR y

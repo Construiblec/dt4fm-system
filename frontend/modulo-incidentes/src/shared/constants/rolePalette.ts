@@ -1,6 +1,8 @@
 import {
   HardHat,
   Home,
+  KeyRound,
+  ListChecks,
   SprayCan,
   Wrench,
   type LucideIcon,
@@ -19,7 +21,16 @@ import {
  * Description. El Code de "TPM Equipment" es `MaintOffice` y el de "Supervisor
  * Mantenimientos" es `SupervisorMantenimiento`. Códigos existentes en la
  * instancia: Requester, SuperUser, Guest, Supplier, Propietarios, Team,
- * MaintOffice, SupervisorLimpieza, SupervisorMantenimiento, AdminOffice, TPM.
+ * MaintOffice, SupervisorLimpieza, SupervisorMantenimiento, AsistenteSL,
+ * AdminOffice, TPM.
+ *
+ * `SupervisorCAV` es la excepción: el grupo **todavía no existe en
+ * openMAINT**. Se declara aquí por adelantado para que la app ya sepa qué
+ * pantalla y qué color le corresponden en cuanto el grupo se cree del lado de
+ * openMAINT — hasta entonces, ninguna cuenta real lo trae en `availableRoles`
+ * y el selector de rol no lo va a mostrar. El cian es provisional: pendiente
+ * de que producto confirme el color (no choca con los otros tres, pero no está
+ * validado con nadie más).
  */
 
 export type RoleView = {
@@ -74,6 +85,29 @@ export const ROLE_VIEWS: Record<string, RoleView> = {
     solid: "bg-violet-600",
     homeRoute: "/supervisor",
   },
+  /**
+   * Asiste al Supervisor de Limpieza. En openMAINT el grupo `AsistenteSL`
+   * tiene escritura sobre `CleaningTask` y `CorrectiveMaint`, pero
+   * **ninguna sobre `PreventiveMaint`**: un panel de preventivos le devolvería
+   * un 403, así que no se le ofrece.
+   *
+   * Por ahora la vista solo aterriza; el contenido está por definir. El fucsia
+   * es provisional, pendiente de que producto lo valide: se eligió cercano al
+   * violeta del Supervisor de Limpieza para señalar el parentesco, pero
+   * separado para que no se confundan en el selector.
+   */
+  AsistenteSL: {
+    name: "Asistente de Supervisión de Limpiezas",
+    short: "Asistencia",
+    desc: "Apoyo a supervisión de limpiezas",
+    icon: ListChecks,
+    dot: "bg-fuchsia-600",
+    text: "text-fuchsia-700",
+    soft: "bg-fuchsia-50",
+    ring: "border-fuchsia-600",
+    solid: "bg-fuchsia-600",
+    homeRoute: "/asistente-sl",
+  },
   Propietarios: {
     name: "Residente",
     short: "Residente",
@@ -85,6 +119,22 @@ export const ROLE_VIEWS: Record<string, RoleView> = {
     ring: "border-amber-600",
     solid: "bg-amber-600",
     homeRoute: "/owner/dashboard",
+  },
+  /**
+   * Solo la subsección Autorizaciones está implementada; Disuasión, Acceso
+   * remoto y Eventos quedan para cuando se decida el resto del alcance.
+   */
+  SupervisorCAV: {
+    name: "Supervisor CAV",
+    short: "Accesos",
+    desc: "Autorizaciones de acceso",
+    icon: KeyRound,
+    dot: "bg-cyan-600",
+    text: "text-cyan-700",
+    soft: "bg-cyan-50",
+    ring: "border-cyan-600",
+    solid: "bg-cyan-600",
+    homeRoute: "/supervisor-cav/autorizaciones",
   },
 };
 
@@ -139,7 +189,15 @@ export const getRoleLabel = (
     return "";
   }
 
-  return labels?.[code] ?? ROLE_VIEWS[code]?.name ?? code;
+  const fromOpenmaint = labels?.[code];
+
+  // Algunos grupos tienen la Description igual que el Code ("AsistenteSL"):
+  // no aporta nada y se lee mal en el chip, así que ahí gana el catálogo.
+  if (fromOpenmaint && fromOpenmaint !== code) {
+    return fromOpenmaint;
+  }
+
+  return ROLE_VIEWS[code]?.name ?? fromOpenmaint ?? code;
 };
 
 /**
