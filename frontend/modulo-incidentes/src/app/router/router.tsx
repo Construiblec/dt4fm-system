@@ -1,6 +1,5 @@
 import { Navigate, createBrowserRouter } from "react-router-dom";
 import { RequireRole } from "@/app/router/RequireRole";
-import { AsistenteSLDashboardPage } from "@/modules/asistente-sl/pages/AsistenteSLDashboardPage";
 import { AccountPage } from "@/modules/auth/pages/AccountPage";
 import { LoginPage } from "@/modules/auth/pages/LoginPage";
 import { RoleSelectPage } from "@/modules/auth/pages/RoleSelectPage";
@@ -16,6 +15,8 @@ import { PreventiveMaintenanceDetailPage } from "@/modules/incidentes/pages/Prev
 import { ReportIncidentPage } from "@/modules/incidentes/pages/ReportIncidentPage";
 import { SupervisorDashboardPage } from "@/modules/supervisor/pages/SupervisorDashboardPage";
 import { SupervisorTaskDetailPage } from "@/modules/supervisor/pages/SupervisorTaskDetailPage";
+import { AsistenteSLDashboardPage } from "@/modules/asistente-sl/pages/AsistenteSLDashboardPage";
+import { AsistenteSLTaskDetailPage } from "@/modules/asistente-sl/pages/AsistenteSLTaskDetailPage";
 import { MaintenanceSupervisorDashboardPage } from "@/modules/supervisor-mantenimiento/pages/MaintenanceSupervisorDashboardPage";
 import { MaintenanceSupervisorDetailPage } from "@/modules/supervisor-mantenimiento/pages/MaintenanceSupervisorDetailPage";
 import { AuthorizationsListPage } from "@/modules/supervisor-cav/pages/AuthorizationsListPage";
@@ -66,6 +67,23 @@ export const router = createBrowserRouter([
       </RequireRole>
     ),
   },
+  // ── Asistente de Supervisión de Limpiezas ─────────────────────────────────
+  {
+    path: "/asistente-sl",
+    element: (
+      <RequireRole roles={["AsistenteSL", "SuperUser"]}>
+        <AsistenteSLDashboardPage />
+      </RequireRole>
+    ),
+  },
+  {
+    path: "/asistente-sl/tasks/:id",
+    element: (
+      <RequireRole roles={["AsistenteSL", "SuperUser"]}>
+        <AsistenteSLTaskDetailPage />
+      </RequireRole>
+    ),
+  },
   // ── Supervisión de mantenimiento ──────────────────────────────────────────
   {
     path: "/supervisor-mantenimiento",
@@ -99,16 +117,6 @@ export const router = createBrowserRouter([
     element: (
       <RequireRole roles={["SupervisorCAV", "SuperUser"]}>
         <AuthorizationDetailPage />
-      </RequireRole>
-    ),
-  },
-  // ── Asistente de Supervisión de Limpiezas ─────────────────────────────────
-  // Solo aterriza: el contenido está por definir (ver la página).
-  {
-    path: "/asistente-sl",
-    element: (
-      <RequireRole roles={["AsistenteSL", "SuperUser"]}>
-        <AsistenteSLDashboardPage />
       </RequireRole>
     ),
   },

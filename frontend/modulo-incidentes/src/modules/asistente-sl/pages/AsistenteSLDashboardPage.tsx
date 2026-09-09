@@ -1,57 +1,118 @@
-import { Construction } from "lucide-react";
+import { useEffect, useState } from "react";
 import { AppLayout } from "@/app/layout/AppLayout";
-import { FloatingReportButton } from "@/modules/incidentes/components/FloatingReportButton";
 import { AppHeader } from "@/shared/components/AppHeader";
-import { getRoleView } from "@/shared/constants/rolePalette";
+import { useSupervisorTasks } from "@/modules/supervisor/hooks/useSupervisorTasks";
+import { SupervisorFilters } from "@/modules/supervisor/components/SupervisorFilters";
+import { FloatingReportButton } from "@/modules/incidentes/components/FloatingReportButton";
+import { ReviewModal } from "@/modules/supervisor/components/ReviewModal";
+import type { CleaningTask } from "@/modules/incidentes/types/CleaningTask";
+import { ClipboardList } from "lucide-react";
+import { AsistenteSLTaskCard } from "@/modules/asistente-sl/components/AsistenteSLTaskCard";
 
-/**
- * Inicio del rol `AsistenteSL` (Asistente de Supervisión de Limpiezas).
- *
- * Es deliberadamente un esqueleto: da acceso a lo transversal —avisos, cambio
- * de rol, cuenta, reportar novedad— mientras se define qué contenido le toca.
- * El cuerpo se sustituye cuando se decida; el resto de la pantalla ya no habrá
- * que tocarlo.
- *
- * Lo que este rol **no** puede hacer, por si tienta añadirlo aquí: en openMAINT
- * no tiene ningún permiso sobre `PreventiveMaint`, así que un listado de
- * preventivos devolvería 403. Sí tiene escritura sobre `CleaningTask` y
- * `CorrectiveMaint`.
- */
 export const AsistenteSLDashboardPage = () => {
-  const view = getRoleView("AsistenteSL");
+  const { tasks, loading, error, total, filters, load, applyFilters, clearFilters } =
+    useSupervisorTasks();
+  const [taskToReview, setTaskToReview] = useState<CleaningTask | null>(null);
+
+  useEffect(() => {
+    void load({});
+  }, [load]);
+
+  const handleReviewSuccess = (taskId: number, approved: boolean) => {
+    // Actualiza la fase localmente sin refetch para evitar parpadeo
+    void load({
+      phase: filters.phase || undefined,
+      date: filters.date || undefined,
+      employeeId: filters.employeeId ? Number(filters.employeeId) : undefined,
+    });
+    console.info(`Tarea ${taskId} ${approved ? "aprobada" : "rechazada"}`);
+  };
+
+  const pendingReview = tasks.filter((t) => t.phase === "Completed").length;
 
   return (
     <AppLayout className="bg-gray-100">
-      <main className="flex min-h-screen flex-col bg-gray-100">
+      <main className="min-h-screen flex flex-col bg-gray-100">
         <AppHeader />
 
-        {/* La barra inferior es fija; el contenido deja aire debajo. */}
+        {/* Deja pasar el botón flotante; la barra inferior la reserva AppLayout. */}
         <section className="flex-1 px-4 pb-20">
           <div className="mx-auto w-full max-w-sm space-y-5">
             <h1 className="text-center text-2xl font-bold text-slate-900">
-              {view.name}
+              Asistente de Supervisión de Limpiezas
             </h1>
 
-            <div className="flex flex-col items-center gap-3 rounded-2xl bg-white p-8 text-center shadow-sm">
-              <div
-                className={`flex h-12 w-12 items-center justify-center rounded-full ${view.soft}`}
-              >
-                <Construction className={`h-6 w-6 ${view.text}`} />
+            {/* Stats bar */}
+            <div className="flex gap-3">
+              <div className="flex-1 rounded-xl bg-white p-3 shadow-sm text-center">
+                <p className="text-2xl font-bold text-slate-900">{total}</p>
+                <p className="text-xs text-slate-400 mt-0.5">Total</p>
               </div>
-
-              <p className="text-sm font-semibold text-slate-900">
-                Sección en construcción
-              </p>
-              <p className="text-sm text-slate-500">
-                Mientras tanto puedes reportar novedades, revisar tus avisos y
-                gestionar tu cuenta desde la barra inferior.
-              </p>
+              <div className="flex-1 rounded-xl bg-fuchsia-50 p-3 shadow-sm text-center">
+                <p className="text-2xl font-bold text-fuchsia-700">{pendingReview}</p>
+                <p className="text-xs text-fuchsia-400 mt-0.5">Por revisar</p>
+              </div>
             </div>
+
+            {/* Filters */}
+            <SupervisorFilters
+              phase={filters.phase}
+              date={filters.date}
+              onPhaseChange={(phase) => applyFilters({ phase })}
+              onDateChange={(date) => applyFilters({ date })}
+              onClear={clearFilters}
+            />
+
+            {/* Loading */}
+            {loading && (
+              <div className="rounded-xl bg-white p-4 text-sm text-slate-500 shadow-sm">
+                Cargando tareas...
+              </div>
+            )}
+
+            {/* Error */}
+            {!loading && error && (
+              <div className="rounded-xl bg-red-50 p-4 text-sm text-red-600 shadow-sm">
+                {error}
+              </div>
+            )}
+
+            {/* Empty */}
+            {!loading && !error && tasks.length === 0 && (
+              <div className="flex flex-col items-center gap-3 rounded-xl bg-white p-8 shadow-sm text-center">
+                <ClipboardList className="h-10 w-10 text-slate-300" />
+                <p className="text-sm text-slate-400">
+                  No hay tareas con los filtros actuales
+                </p>
+              </div>
+            )}
+
+            {/* Task list */}
+            {!loading && !error && tasks.length > 0 && (
+              <div className="space-y-4">
+                {tasks.map((task) => (
+                  <AsistenteSLTaskCard
+                    key={task.id}
+                    task={task}
+                    onReview={setTaskToReview}
+                  />
+                ))}
+              </div>
+            )}
           </div>
         </section>
 
         <FloatingReportButton />
       </main>
+
+      {/* Review modal */}
+      {taskToReview && (
+        <ReviewModal
+          task={taskToReview}
+          onClose={() => setTaskToReview(null)}
+          onSuccess={handleReviewSuccess}
+        />
+      )}
     </AppLayout>
   );
 };
