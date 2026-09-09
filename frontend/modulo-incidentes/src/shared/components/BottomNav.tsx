@@ -5,6 +5,7 @@ import {
   CreditCard,
   Home,
   KeyRound,
+  ListChecks,
   User,
   type LucideIcon,
 } from "lucide-react";
@@ -74,6 +75,16 @@ const CAV_TABS: Tab[] = [
   { label: "Cuenta", icon: User, route: "/cuenta" },
 ];
 
+/**
+ * Asistente de Supervisión de Limpiezas: mientras su inicio sea un esqueleto,
+ * "Inicio" es más honesto que "Tareas" — todavía no hay ninguna lista que
+ * abrir. Cuando se defina el contenido, esto probablemente pase a TEAM_TABS.
+ */
+const ASSISTANT_TABS: Tab[] = [
+  { label: "Inicio", icon: ListChecks, route: "" },
+  { label: "Cuenta", icon: User, route: "/cuenta" },
+];
+
 export const BottomNav = () => {
   const navigate = useNavigate();
   const { pathname } = useLocation();
@@ -83,7 +94,14 @@ export const BottomNav = () => {
   const view = getRoleView(role);
   const isOwnerArea = home === "/owner/dashboard";
   const isCavArea = home.startsWith("/supervisor-cav");
-  const tabs = isOwnerArea ? OWNER_TABS : isCavArea ? CAV_TABS : TEAM_TABS;
+  const isAssistantArea = home === "/asistente-sl";
+  const tabs = isOwnerArea
+    ? OWNER_TABS
+    : isCavArea
+      ? CAV_TABS
+      : isAssistantArea
+        ? ASSISTANT_TABS
+        : TEAM_TABS;
 
   return (
     <nav className="fixed bottom-0 left-0 z-40 flex w-full justify-center">
