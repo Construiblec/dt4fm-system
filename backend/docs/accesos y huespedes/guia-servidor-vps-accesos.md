@@ -37,8 +37,6 @@ credencial en `sync_state = 'pending'` y un barrido cada 10 minutos.
 
 ### Lo que NO va en la VPS
 
-Tres cosas, y conviene que estén claras antes de escribir código:
-
 | No va | Por qué |
 |---|---|
 | **Ciclo de vida de la credencial** | Reserva, cancelación y cambio de fechas llegan al backend y a ningún otro sitio. Replicar la intención abajo crea dos verdades y ninguna forma de saber cuál gana |
@@ -57,7 +55,7 @@ Bloquean todo lo demás.
 |---|---|
 | **`buildingId` = `Building._id` de openMAINT**, entero | Es la clave con la que el backend decide dónde colocar una credencial. Si la VPS usa nombres propios (`torre-a`) hace falta una tabla de mapeo. Reales: Inglaterra `3025058`, Pradera `3019998`, Republica `564939` |
 | **`credentialId` lo propone el backend** (uuid) y viaja en la URL | De él derivas el `employeeNo`. Es lo que hace idempotente reenviar una escritura y precisa una revocación |
-| **Prefijo `DT4-` en `employeeNo`** | Marca lo creado por este sistema. **Nunca borres un usuario sin ese prefijo** |
+| **Prefijo `DT4-` en `employeeNo`** | Marca lo creado por este sistema. **Nunca borrar un usuario sin ese prefijo** |
 | **`unitId` = `Unit._id`**, opcional | Solo contexto. El acceso no puede depender de que el mapeo exista |
 | **`deviceId`** lo eliges tú, estable | El backend lo guarda en `sync_detail` y lo usa para conciliar. Si cambia, pierde la traza |
 
@@ -121,19 +119,18 @@ solicitud.
 Digest ISAPI, **usuario distinto por dispositivo**, secreto por variable de entorno en sitio. Las
 credenciales ISAPI viven en el gateway, no en la VPS.
 
-### Lo que necesito de ti
+### Lo que se necesita de IoT
 
-- **URL base con TLS y certificado válido, una por entorno.** Necesito **staging**: no voy a
-  desarrollar contra las puertas de un edificio habitado.
-- **El service token** (`client-id` y `client-secret`), que guardo como `ACCESS_IOT_TOKEN` con el
+- **URL base con TLS y certificado válido, una por entorno.** Se necesita **staging**: no se va a
+  desarrollar ni testear contra las puertas de un edificio habitado.
+- **El service token** (`client-id` y `client-secret`), que se guarda como `ACCESS_IOT_TOKEN` con el
   formato `<client-id>:<client-secret>`.
 - **Procedimiento de rotación sin caída**: aceptar el token anterior y el nuevo durante un plazo.
-- **Límites**: cuánto tarda como máximo una escritura, cuántas peticiones por minuto aguantas, y qué
-  devuelves al limitar (`429` + `Retry-After`).
+- **Límites**: cuánto tarda como máximo una escritura, cuántas peticiones por minuto aguanta los servidores IoT, y qué se devuelve al limitar (`429` + `Retry-After`).
 
 ---
 
-## 4. Los endpoints que debes exponer
+## 4. Los endpoints que se deben exponer
 
 Siete operaciones. Es exactamente lo que el backend llama hoy
 ([access-iot.client.ts](../../src/modules/access-control/access-iot.client.ts)).
@@ -154,7 +151,7 @@ vehicular. Lo cachea 10 minutos.
 ```
 
 **Un edificio que no figure aquí no recibe credenciales**, sin error. Así que este endpoint es el
-interruptor real de la cobertura: añadir hardware a un edificio nuevo es una operación tuya, y el
+interruptor real de la cobertura: añadir hardware a un edificio nuevo es una operación de IoT, y el
 backend se entera solo.
 
 ### `GET /v1/devices` — inventario de aparatos
@@ -191,7 +188,7 @@ Cuerpo que envía el backend:
 }
 ```
 
-- `scope` — `pedestrian` / `vehicular` / `both`. Determina en qué dispositivos del edificio escribes.
+- `scope` — `pedestrian` / `vehicular` / `both`. Determina en qué dispositivos del edificio se escribe.
   `both` = todos.
 - `subjectType` — `guest` / `tenant` / `employee`. Solo para derivar el prefijo del `employeeNo`.
 - `unitId` — puede venir `null`. No condiciona el acceso.
@@ -320,7 +317,7 @@ compartidas con los residentes cargados a mano que el backend no conoce. Su índ
 unicidad entre lo que él emite, **no frente a lo que ya había en el aparato**. Que la escritura falle
 y el backend regenere es autocorrector.
 
-**No expongas un endpoint de «¿está libre este PIN?».** Sería un oráculo de enumeración: con 10.000
+**No exponer un endpoint de «¿está libre este PIN?».** Sería un oráculo de enumeración: con 10.000
 combinaciones, alguien puede recorrerlas todas. Dejar fallar la escritura no filtra nada.
 
 ### Reintentos del lado del backend
@@ -378,10 +375,10 @@ una huella.
 En el backend el PIN existe cifrado en un solo sitio del mundo (`access_credential.pin_ciphertext`,
 AES-256-GCM con clave fuera de `DATABASE_URL`), y se descifra en un único punto del código.
 
-### PIN de 4 dígitos: lo que te toca a ti
+### PIN de 4 dígitos: lo que le toca al de IoT
 
 Son 10.000 combinaciones y las puertas están en **modo PIN solo**, así que el PIN por sí solo abre.
-Decisión del cliente, contra la recomendación de 6. Dos de las tres mitigaciones son tuyas:
+Decisión del cliente, contra la recomendación de 6. Dos de las tres mitigaciones son de IoT:
 
 1. **Bloqueo por intentos fallidos en el terminal**, activado en el aprovisionamiento de **cada**
    dispositivo y verificado. Es la mitigación que sustituye a la longitud, y está en el hardware.
@@ -442,7 +439,7 @@ Lo que hace el backend cada noche, por dispositivo:
 | **Sin** prefijo `DT4-` | **Reporta y no toca.** Es un residente cargado a mano |
 | En ambos con vigencia distinta | Reemite el `PUT` con el valor de Postgres |
 
-Tu parte es que `GET /v1/devices/{id}/inventory` sea **completo** y que `managed` sea fiable.
+La parte de IoT es que `GET /v1/devices/{id}/inventory` sea **completo** y que `managed` sea fiable.
 
 ---
 
