@@ -2,6 +2,7 @@ import {
   HardHat,
   Home,
   KeyRound,
+  ListChecks,
   SprayCan,
   Wrench,
   type LucideIcon,
@@ -20,7 +21,8 @@ import {
  * Description. El Code de "TPM Equipment" es `MaintOffice` y el de "Supervisor
  * Mantenimientos" es `SupervisorMantenimiento`. Códigos existentes en la
  * instancia: Requester, SuperUser, Guest, Supplier, Propietarios, Team,
- * MaintOffice, SupervisorLimpieza, SupervisorMantenimiento, AdminOffice, TPM.
+ * MaintOffice, SupervisorLimpieza, SupervisorMantenimiento, AsistenteSL,
+ * AdminOffice, TPM.
  *
  * `SupervisorCAV` es la excepción: el grupo **todavía no existe en
  * openMAINT**. Se declara aquí por adelantado para que la app ya sepa qué
@@ -82,6 +84,29 @@ export const ROLE_VIEWS: Record<string, RoleView> = {
     ring: "border-violet-600",
     solid: "bg-violet-600",
     homeRoute: "/supervisor",
+  },
+  /**
+   * Asiste al Supervisor de Limpieza. En openMAINT el grupo `AsistenteSL`
+   * tiene escritura sobre `CleaningTask` y `CorrectiveMaint`, pero
+   * **ninguna sobre `PreventiveMaint`**: un panel de preventivos le devolvería
+   * un 403, así que no se le ofrece.
+   *
+   * Por ahora la vista solo aterriza; el contenido está por definir. El fucsia
+   * es provisional, pendiente de que producto lo valide: se eligió cercano al
+   * violeta del Supervisor de Limpieza para señalar el parentesco, pero
+   * separado para que no se confundan en el selector.
+   */
+  AsistenteSL: {
+    name: "Asistente de Supervisión de Limpiezas",
+    short: "Asistencia",
+    desc: "Apoyo a supervisión de limpiezas",
+    icon: ListChecks,
+    dot: "bg-fuchsia-600",
+    text: "text-fuchsia-700",
+    soft: "bg-fuchsia-50",
+    ring: "border-fuchsia-600",
+    solid: "bg-fuchsia-600",
+    homeRoute: "/asistente-sl",
   },
   Propietarios: {
     name: "Residente",
@@ -164,7 +189,15 @@ export const getRoleLabel = (
     return "";
   }
 
-  return labels?.[code] ?? ROLE_VIEWS[code]?.name ?? code;
+  const fromOpenmaint = labels?.[code];
+
+  // Algunos grupos tienen la Description igual que el Code ("AsistenteSL"):
+  // no aporta nada y se lee mal en el chip, así que ahí gana el catálogo.
+  if (fromOpenmaint && fromOpenmaint !== code) {
+    return fromOpenmaint;
+  }
+
+  return ROLE_VIEWS[code]?.name ?? fromOpenmaint ?? code;
 };
 
 /**
