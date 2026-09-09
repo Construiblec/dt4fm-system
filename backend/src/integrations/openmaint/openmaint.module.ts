@@ -6,6 +6,8 @@ import { OpenmaintAuthService } from './openmaint.auth.service';
 import { OpenmaintRolesService } from './openmaint.roles.service';
 import { OpenmaintServiceSession } from './openmaint.service-session';
 import { OpenmaintUsersService } from './openmaint.users.service';
+import { SessionRoleService } from './session-role.service';
+import { UnitResolverService } from './unit-resolver.service';
 
 @Module({
   imports: [HttpModule],
@@ -16,6 +18,8 @@ import { OpenmaintUsersService } from './openmaint.users.service';
     OpenmaintRolesService,
     OpenmaintServiceSession,
     OpenmaintUsersService,
+    SessionRoleService,
+    UnitResolverService,
   ],
   exports: [
     OpenmaintClient,
@@ -24,6 +28,8 @@ import { OpenmaintUsersService } from './openmaint.users.service';
     OpenmaintRolesService,
     OpenmaintServiceSession,
     OpenmaintUsersService,
+    SessionRoleService,
+    UnitResolverService,
   ],
 })
 export class OpenmaintModule {}

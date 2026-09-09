@@ -149,6 +149,30 @@ const authApi = axios.create({
   headers: { "Content-Type": "application/json" },
 });
 
+/**
+ * Adjunta la sesión a toda petición que salga por aquí.
+ *
+ * Los endpoints de residentes (`/owners/:tenantId/...`) tomaban la identidad
+ * del número de la URL y no pedían ninguna cabecera; ahora el backend exige la
+ * sesión y comprueba que ese identificador sea el de quien llama. Sin este
+ * interceptor, el dashboard del propietario responde 401.
+ *
+ * Se lee de `localStorage` y no del store de Zustand a propósito: este módulo
+ * lo importa el propio store, y hacerlo al revés cerraría el ciclo de imports.
+ *
+ * Las rutas públicas (login, registro, verificación, listado de edificios)
+ * ignoran la cabecera, así que enviarla siempre no molesta.
+ */
+authApi.interceptors.request.use((config) => {
+  const sessionId = localStorage.getItem("sessionId");
+
+  if (sessionId) {
+    config.headers.Authorization = sessionId;
+  }
+
+  return config;
+});
+
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 
 /**
@@ -254,8 +278,11 @@ export const uploadPaymentVoucher = async (
 ): Promise<{ success: boolean; message: string }> => {
   const formData = new FormData();
   formData.append("file", file);
-  const { data } = await axios.post<{ success: boolean; message: string }>(
-    `${backendBaseUrl}/owners/payments/${paymentId}/voucher`,
+  // Va por `authApi` y no por `axios` suelto para que el interceptor adjunte
+  // la sesión: el endpoint dejó de ser anónimo. El Content-Type se deja que
+  // lo ponga el navegador, que es quien conoce el boundary del multipart.
+  const { data } = await authApi.post<{ success: boolean; message: string }>(
+    `/owners/payments/${paymentId}/voucher`,
     formData,
     { headers: { "Content-Type": "multipart/form-data" } },
   );

@@ -141,3 +141,78 @@ export const createPaymentsOpenmaintRepositoryMock = () => ({
 export type PaymentsOpenmaintRepositoryMock = ReturnType<
   typeof createPaymentsOpenmaintRepositoryMock
 >;
+
+// ─── AccessIotGateway ───────────────────────────────────────────────────────
+// La VPS central de accesos todavía no existe; en producción el módulo resuelve
+// a AccessIotMockGateway con ACCESS_IOT_USE_MOCK. Aquí se sustituye por un
+// doble de jest para poder forzar `partial`, `unreachable` y `pin_conflict`,
+// que el mock en memoria solo produce en escenarios muy concretos.
+//
+// El catálogo por defecto cubre Inglaterra y Pradera y NO Batán ni Republica,
+// que es lo que hace que un edificio sin cobertura sea un caso probable.
+
+export const ING_BUILDING_ID = 3025058;
+export const PRA_BUILDING_ID = 3019998;
+export const BAT_BUILDING_ID = 3025059;
+
+export const DEFAULT_ACCESS_BUILDINGS = [
+  {
+    buildingId: ING_BUILDING_ID,
+    code: 'ING',
+    name: 'Inglaterra',
+    online: true,
+    scopes: ['pedestrian', 'vehicular'],
+  },
+  {
+    buildingId: PRA_BUILDING_ID,
+    code: 'PRA',
+    name: 'Pradera',
+    online: true,
+    scopes: ['pedestrian', 'vehicular'],
+  },
+];
+
+export const createAccessIotGatewayMock = () => ({
+  listBuildings: jest.fn().mockResolvedValue(DEFAULT_ACCESS_BUILDINGS),
+  listDevices: jest.fn().mockResolvedValue([]),
+  putCredential: jest.fn().mockImplementation((credentialId: string) =>
+    Promise.resolve({
+      credentialId,
+      state: 'written',
+      devices: [
+        {
+          deviceId: 'ING-PEATONAL-1',
+          state: 'written',
+          employeeNo: 'DT4-T-abcdef01',
+        },
+      ],
+    }),
+  ),
+  deleteCredential: jest
+    .fn()
+    .mockImplementation((credentialId: string) =>
+      Promise.resolve({ credentialId, state: 'written', devices: [] }),
+    ),
+  getCredential: jest.fn().mockResolvedValue(null),
+  getHealth: jest.fn().mockResolvedValue({ buildings: [] }),
+  getDeviceInventory: jest
+    .fn()
+    .mockResolvedValue({ users: [], nextCursor: null }),
+});
+
+export type AccessIotGatewayMock = ReturnType<
+  typeof createAccessIotGatewayMock
+>;
+
+// ─── UnitResolverService ────────────────────────────────────────────────────
+// Vive en integrations/openmaint pero inyecta OpenmaintClient directo, así que
+// sin este doble caería en el trap.
+
+export const createUnitResolverServiceMock = () => ({
+  byListingId: jest.fn().mockResolvedValue(null),
+  forget: jest.fn(),
+});
+
+export type UnitResolverServiceMock = ReturnType<
+  typeof createUnitResolverServiceMock
+>;

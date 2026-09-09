@@ -7,9 +7,7 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  *
  * El índice GIN es el que hace eficiente el `&&` (solapamiento) del fan-out.
  */
-export class PushSubscriptionMultipleRoles1787600000000
-  implements MigrationInterface
-{
+export class PushSubscriptionMultipleRoles1787600000000 implements MigrationInterface {
   name = 'PushSubscriptionMultipleRoles1787600000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
@@ -26,14 +24,18 @@ export class PushSubscriptionMultipleRoles1787600000000
     await queryRunner.query(
       `DROP INDEX "public"."IDX_3245138de70e8f2e153e36ee0b"`,
     );
-    await queryRunner.query(`ALTER TABLE "push_subscriptions" DROP COLUMN "role"`);
+    await queryRunner.query(
+      `ALTER TABLE "push_subscriptions" DROP COLUMN "role"`,
+    );
     await queryRunner.query(
       `CREATE INDEX "IDX_push_subscriptions_roles" ON "push_subscriptions" USING GIN ("roles")`,
     );
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`DROP INDEX "public"."IDX_push_subscriptions_roles"`);
+    await queryRunner.query(
+      `DROP INDEX "public"."IDX_push_subscriptions_roles"`,
+    );
     await queryRunner.query(`ALTER TABLE "push_subscriptions" ADD "role" text`);
     // Al revertir solo sobrevive el primer rol: la columna no admite varios.
     await queryRunner.query(

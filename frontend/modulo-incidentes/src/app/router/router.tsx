@@ -1,4 +1,6 @@
 import { Navigate, createBrowserRouter } from "react-router-dom";
+import { RequireRole } from "@/app/router/RequireRole";
+import { AsistenteSLDashboardPage } from "@/modules/asistente-sl/pages/AsistenteSLDashboardPage";
 import { AccountPage } from "@/modules/auth/pages/AccountPage";
 import { LoginPage } from "@/modules/auth/pages/LoginPage";
 import { RoleSelectPage } from "@/modules/auth/pages/RoleSelectPage";
@@ -16,6 +18,8 @@ import { SupervisorDashboardPage } from "@/modules/supervisor/pages/SupervisorDa
 import { SupervisorTaskDetailPage } from "@/modules/supervisor/pages/SupervisorTaskDetailPage";
 import { MaintenanceSupervisorDashboardPage } from "@/modules/supervisor-mantenimiento/pages/MaintenanceSupervisorDashboardPage";
 import { MaintenanceSupervisorDetailPage } from "@/modules/supervisor-mantenimiento/pages/MaintenanceSupervisorDetailPage";
+import { AuthorizationsListPage } from "@/modules/supervisor-cav/pages/AuthorizationsListPage";
+import { AuthorizationDetailPage } from "@/modules/supervisor-cav/pages/AuthorizationDetailPage";
 import { OwnerRegisterPage } from "@/modules/owners/pages/OwnerRegisterPage";
 import { OwnerDashboardPage } from "@/modules/owners/pages/OwnerDashboardPage";
 import { OwnerPaymentsPage } from "@/modules/owners/pages/OwnerPaymentsPage";
@@ -46,25 +50,111 @@ export const router = createBrowserRouter([
     element: <PastPreventiveMaintenancePage />,
   },
   { path: "/reportar-incidente", element: <ReportIncidentPage /> },
-  { path: "/supervisor", element: <SupervisorDashboardPage /> },
-  { path: "/supervisor/tasks/:id", element: <SupervisorTaskDetailPage /> },
+  {
+    path: "/supervisor",
+    element: (
+      <RequireRole roles={["SupervisorLimpieza", "SuperUser"]}>
+        <SupervisorDashboardPage />
+      </RequireRole>
+    ),
+  },
+  {
+    path: "/supervisor/tasks/:id",
+    element: (
+      <RequireRole roles={["SupervisorLimpieza", "SuperUser"]}>
+        <SupervisorTaskDetailPage />
+      </RequireRole>
+    ),
+  },
   // ── Supervisión de mantenimiento ──────────────────────────────────────────
   {
     path: "/supervisor-mantenimiento",
-    element: <MaintenanceSupervisorDashboardPage />,
+    element: (
+      <RequireRole roles={["SupervisorMantenimiento", "SuperUser"]}>
+        <MaintenanceSupervisorDashboardPage />
+      </RequireRole>
+    ),
   },
   {
     path: "/supervisor-mantenimiento/:kind/:id",
-    element: <MaintenanceSupervisorDetailPage />,
+    element: (
+      <RequireRole roles={["SupervisorMantenimiento", "SuperUser"]}>
+        <MaintenanceSupervisorDetailPage />
+      </RequireRole>
+    ),
+  },
+  // ── Supervisor CAV (Accesos) ────────────────────────────────────────────────
+  // Solo Autorizaciones por ahora; Disuasión, Acceso remoto y Eventos quedan
+  // fuera de este alcance.
+  {
+    path: "/supervisor-cav/autorizaciones",
+    element: (
+      <RequireRole roles={["SupervisorCAV", "SuperUser"]}>
+        <AuthorizationsListPage />
+      </RequireRole>
+    ),
+  },
+  {
+    path: "/supervisor-cav/autorizaciones/:id",
+    element: (
+      <RequireRole roles={["SupervisorCAV", "SuperUser"]}>
+        <AuthorizationDetailPage />
+      </RequireRole>
+    ),
+  },
+  // ── Asistente de Supervisión de Limpiezas ─────────────────────────────────
+  // Solo aterriza: el contenido está por definir (ver la página).
+  {
+    path: "/asistente-sl",
+    element: (
+      <RequireRole roles={["AsistenteSL", "SuperUser"]}>
+        <AsistenteSLDashboardPage />
+      </RequireRole>
+    ),
   },
   // ── Propietarios ──────────────────────────────────────────────────────────
   // El login de residentes se unificó en /login; queda la redirección para los
   // enlaces antiguos y el acceso directo al alta.
   { path: "/owner/auth", element: <Navigate to="/login" replace /> },
   { path: "/owner/register", element: <OwnerRegisterPage /> },
-  { path: "/owner/dashboard", element: <OwnerDashboardPage /> },
-  { path: "/owner/payments", element: <OwnerPaymentsPage /> },
-  { path: "/owner/reservations", element: <OwnerReservationsPage /> },
-  { path: "/owner/reservations/:areaId", element: <OwnerReservationDetailPage /> },
-  { path: "/owner/profile", element: <OwnerProfilePage /> },
+  {
+    path: "/owner/dashboard",
+    element: (
+      <RequireRole roles={["Propietarios", "SuperUser"]}>
+        <OwnerDashboardPage />
+      </RequireRole>
+    ),
+  },
+  {
+    path: "/owner/payments",
+    element: (
+      <RequireRole roles={["Propietarios", "SuperUser"]}>
+        <OwnerPaymentsPage />
+      </RequireRole>
+    ),
+  },
+  {
+    path: "/owner/reservations",
+    element: (
+      <RequireRole roles={["Propietarios", "SuperUser"]}>
+        <OwnerReservationsPage />
+      </RequireRole>
+    ),
+  },
+  {
+    path: "/owner/reservations/:areaId",
+    element: (
+      <RequireRole roles={["Propietarios", "SuperUser"]}>
+        <OwnerReservationDetailPage />
+      </RequireRole>
+    ),
+  },
+  {
+    path: "/owner/profile",
+    element: (
+      <RequireRole roles={["Propietarios", "SuperUser"]}>
+        <OwnerProfilePage />
+      </RequireRole>
+    ),
+  },
 ]);
