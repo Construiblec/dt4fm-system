@@ -91,10 +91,14 @@ export const ROLE_VIEWS: Record<string, RoleView> = {
    * **ninguna sobre `PreventiveMaint`**: un panel de preventivos le devolvería
    * un 403, así que no se le ofrece.
    *
-   * Por ahora la vista solo aterriza; el contenido está por definir. El fucsia
-   * es provisional, pendiente de que producto lo valide: se eligió cercano al
-   * violeta del Supervisor de Limpieza para señalar el parentesco, pero
-   * separado para que no se confundan en el selector.
+   * Tiene su propia ruta (`/asistente-sl`) para que `getSelectableRoles`
+   * lo muestre como opción independiente de `SupervisorLimpieza` cuando la
+   * cuenta tiene ambos grupos. El panel muestra exactamente los mismos datos
+   * (tareas Completed/Reviewed) porque los permisos son equivalentes.
+   *
+   * El fucsia es provisional, pendiente de que producto lo valide: se eligió
+   * cercano al violeta del Supervisor de Limpieza para señalar el parentesco,
+   * pero separado para que no se confundan en el selector.
    */
   AsistenteSL: {
     name: "Asistente de Supervisión de Limpiezas",
