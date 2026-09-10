@@ -11,6 +11,7 @@ import { firstValueFrom } from 'rxjs';
 import {
   getMockCheckouts,
   getMockGuestReservation,
+  HostawayAccessReservation,
   HostawayCheckoutsResponse,
   HostawayBillingReservation,
   HostawayGuestReservation,
@@ -38,7 +39,11 @@ const MAX_CHECKOUT_PAGES = 25;
  */
 type RawHostawayReservation = {
   id?: number;
+  /** El mismo `id` en cadena. No confundir con `reservationId`, que es del canal. */
+  hostawayReservationId?: string;
   status?: string;
+  checkInTime?: number;
+  checkOutTime?: number;
   guestFirstName?: string;
   guestLastName?: string;
   guestName?: string;
@@ -339,6 +344,89 @@ export class HostawayService {
    * Filtra por paymentStatus=Paid y status válidos.
    * Usa cursor-based pagination con afterId para recorrer todos los resultados.
    */
+  /**
+   * Reservas de una fecha de llegada **para control de accesos**.
+   *
+   * No reutiliza `getReservationsByArrivalDate` a propósito: aquel filtra por
+   * `paymentStatus === 'Paid'` porque nació para facturar, y una reserva
+   * directa llega con `paymentStatus: 'Unknown'`. Con ese filtro el barrido no
+   * la vería, y como interpreta «ausente de Hostaway» = «cancelada», acabaría
+   * revocándole el PIN a un huésped legítimo.
+   *
+   * Tampoco filtra por `status`: devuelve todo lo que Hostaway conoce de esa
+   * fecha para que el barrido distinga «ya no existe» de «existe pero no toca
+   * emitir». Quién genera credencial y quién la revoca se decide en
+   * `GuestStayService`.
+   */
+  async getReservationsForAccess(
+    date: string,
+  ): Promise<HostawayAccessReservation[]> {
+    const token = await this.getAccessToken();
+    const reservas: HostawayAccessReservation[] = [];
+    let afterId: number | undefined = undefined;
+
+    for (let page = 1; page <= MAX_CHECKOUT_PAGES; page += 1) {
+      const params: Record<string, unknown> = {
+        arrivalStartDate: date,
+        arrivalEndDate: date,
+        limit: HOSTAWAY_PAGE_SIZE,
+        includeResources: 1,
+      };
+
+      if (afterId !== undefined) {
+        params.afterId = afterId;
+      }
+
+      const response = await this.performRequest<{
+        result?: RawHostawayReservation[];
+      }>(`Consulta de accesos Hostaway página ${page}`, () =>
+        firstValueFrom(
+          this.httpService.get('https://api.hostaway.com/v1/reservations', {
+            timeout: this.requestTimeoutMs,
+            headers: { Authorization: `Bearer ${token}` },
+            params,
+          }),
+        ),
+      );
+
+      const lote = response.data?.result ?? [];
+
+      for (const raw of lote) {
+        reservas.push({
+          // `reservationId` NO: es el identificador del canal. Debe coincidir
+          // con lo que guarda el webhook o la misma reserva acabaría con dos
+          // credenciales, que el índice único no puede detectar.
+          hostawayReservationId: String(
+            raw.hostawayReservationId ?? raw.id ?? '',
+          ),
+          status: raw.status ?? '',
+          guestName: raw.guestName?.trim()
+            ? raw.guestName
+            : `${raw.guestFirstName ?? ''} ${raw.guestLastName ?? ''}`.trim() ||
+              'Huésped',
+          guestEmail: raw.guestEmail ?? null,
+          listingMapId: String(raw.listingMapId ?? ''),
+          arrivalDate: raw.arrivalDate ?? date,
+          departureDate: raw.departureDate ?? '',
+          checkInTime: raw.checkInTime ?? null,
+          checkOutTime: raw.checkOutTime ?? null,
+        });
+      }
+
+      if (lote.length < HOSTAWAY_PAGE_SIZE) {
+        break;
+      }
+
+      afterId = lote[lote.length - 1]?.id;
+    }
+
+    this.logger.log(
+      `[Accesos] ${reservas.length} reserva(s) con llegada ${date}`,
+    );
+
+    return reservas;
+  }
+
   async getReservationsByArrivalDate(
     date: string,
   ): Promise<HostawayBillingReservation[]> {
