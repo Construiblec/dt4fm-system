@@ -36,6 +36,25 @@ export interface HostawayBillingReservation {
   nights: number;
 }
 
+/**
+ * Reserva vista desde el control de accesos. Es deliberadamente distinta de
+ * `HostawayBillingReservation`: facturar exige cobro confirmado, pero abrir una
+ * puerta solo exige que la reserva exista. Por eso trae `status` en crudo —la
+ * decisión de emitir o revocar se toma aguas abajo— y las horas de la propia
+ * reserva, que Hostaway da por reserva y no son iguales en todos los listings.
+ */
+export interface HostawayAccessReservation {
+  hostawayReservationId: string;
+  status: string;
+  guestName: string;
+  guestEmail: string | null;
+  listingMapId: string;
+  arrivalDate: string;
+  departureDate: string;
+  checkInTime: number | null;
+  checkOutTime: number | null;
+}
+
 export interface HostawayCheckoutsResponse {
   result: HostawayReservation[];
   count: number;
@@ -121,10 +140,12 @@ export function getMockCheckouts(
 }
 
 /**
- * Reserva vista desde el acceso del huésped. A diferencia de
- * `HostawayBillingReservation`, la clave es el `id` **interno** de Hostaway,
- * que es el que acepta `GET /v1/reservations/{id}`: `hostawayReservationId` es
- * el identificador del canal (Airbnb, Booking) y no sirve para consultar.
+ * Reserva vista desde el acceso del huésped. La clave es el `id` **interno** de
+ * Hostaway, que es el que acepta `GET /v1/reservations/{id}`. Ojo con los
+ * nombres parecidos que trae la respuesta: `hostawayReservationId` es ese mismo
+ * id en cadena, mientras que `reservationId` y `channelReservationId` son el
+ * identificador del canal (`563484-guest-…-HMFQM523QX`) y no sirven para
+ * consultar ni para identificar la reserva dentro de este backend.
  */
 export interface HostawayGuestReservation {
   id: number;

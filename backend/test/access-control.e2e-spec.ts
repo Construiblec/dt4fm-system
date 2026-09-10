@@ -15,6 +15,7 @@ import {
 import { BuildingCatalogService } from '../src/modules/access-control/building-catalog.service';
 import { CredentialService } from '../src/modules/access-control/credential.service';
 import { GuestStayService } from '../src/modules/access-control/guest-stay.service';
+import { ReservationSweepService } from '../src/modules/access-control/reservation-sweep.service';
 import { GuestStay } from '../src/modules/access-control/entities/guest-stay.entity';
 
 const SESSION = { 'x-session-token': MOCK_SESSION_ID };
@@ -42,6 +43,7 @@ describe('AccessControlController (e2e)', () => {
   let credentialService: CredentialService;
   let guestStayService: GuestStayService;
   let catalog: BuildingCatalogService;
+  let sweep: ReservationSweepService;
 
   beforeAll(async () => {
     ({ app, mocks } = await createTestApp());
@@ -49,6 +51,7 @@ describe('AccessControlController (e2e)', () => {
     credentialService = app.get(CredentialService);
     guestStayService = app.get(GuestStayService);
     catalog = app.get(BuildingCatalogService);
+    sweep = app.get(ReservationSweepService);
   });
 
   afterAll(async () => {
@@ -459,7 +462,7 @@ describe('AccessControlController (e2e)', () => {
     const cuerpo = (overrides: Record<string, unknown> = {}) => ({
       action: 'reservation_created',
       data: {
-        reservationId: 44712233,
+        hostawayReservationId: '44712233',
         listingMapId: 288172,
         guestName: 'Ana Pérez',
         guestEmail: 'ana@example.com',
@@ -512,6 +515,33 @@ describe('AccessControlController (e2e)', () => {
         .send({ action: 'reservation_created' })
         .expect(400);
     });
+
+    // `reservationId` es el id del canal. Si se aceptara, el barrido —que usa
+    // el id interno— crearía una segunda credencial para la misma reserva.
+    it('ignora reservationId del canal y no procesa sin el id interno', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/webhooks/hostaway')
+        .set('x-hostaway-secret', 'test-hostaway-secret')
+        .send(
+          cuerpo({
+            hostawayReservationId: undefined,
+            reservationId: '563484-guest-526348749-confirmation-HMFQM523QX',
+          }),
+        )
+        .expect(200);
+
+      expect(res.body.processed).toBe(false);
+    });
+
+    it('usa el id interno cuando llega como `id`', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/webhooks/hostaway')
+        .set('x-hostaway-secret', 'test-hostaway-secret')
+        .send(cuerpo({ hostawayReservationId: undefined, id: 65895170 }))
+        .expect(200);
+
+      expect(res.body.processed).toBe(true);
+    });
   });
 
   describe('proyección de la reserva', () => {
@@ -527,8 +557,19 @@ describe('AccessControlController (e2e)', () => {
       ...overrides,
     });
 
+    /** Proyecta y exige estancia: un null aquí es un fallo, no un caso válido. */
+    const proyectar = async (overrides: Record<string, unknown> = {}) => {
+      const stay = await guestStayService.upsertFromReservation(
+        reserva(overrides),
+      );
+
+      if (!stay) throw new Error('La reserva no se proyectó');
+
+      return stay;
+    };
+
     it('crea la estancia y emite credencial en un edificio con cobertura', async () => {
-      const stay = await guestStayService.upsertFromReservation(reserva());
+      const stay = await proyectar();
 
       expect(stay.buildingId).toBe(ING_BUILDING_ID);
       expect(stay.openmaintUnitId).toBe(1187);
@@ -548,7 +589,7 @@ describe('AccessControlController (e2e)', () => {
         buildingId: BAT_BUILDING_ID,
       });
 
-      const stay = await guestStayService.upsertFromReservation(reserva());
+      const stay = await proyectar();
 
       // La estancia existe igual: es el cimiento del portal, no un accesorio.
       expect(stay.buildingId).toBe(BAT_BUILDING_ID);
@@ -561,7 +602,7 @@ describe('AccessControlController (e2e)', () => {
     it('crea la estancia SIN credencial si el listing no está mapeado', async () => {
       mocks.unitResolver.byListingId.mockResolvedValue(null);
 
-      const stay = await guestStayService.upsertFromReservation(reserva());
+      const stay = await proyectar();
 
       expect(stay.buildingId).toBeNull();
       expect(
@@ -570,7 +611,7 @@ describe('AccessControlController (e2e)', () => {
     });
 
     it('aplica los márgenes de acceso sobre el check-in y el check-out', async () => {
-      const stay = await guestStayService.upsertFromReservation(reserva());
+      const stay = await proyectar();
 
       // 15:00 −05:00 menos 3 h de margen = 17:00 UTC del día de llegada.
       expect(stay.accessValidFrom.toISOString()).toBe(
@@ -607,9 +648,7 @@ describe('AccessControlController (e2e)', () => {
     it('revoca la credencial cuando la reserva se cancela', async () => {
       await guestStayService.upsertFromReservation(reserva());
 
-      const stay = await guestStayService.upsertFromReservation(
-        reserva({ status: 'cancelled' }),
-      );
+      const stay = await proyectar({ status: 'cancelled' });
 
       expect(stay.status).toBe('cancelled');
       expect(
@@ -619,7 +658,7 @@ describe('AccessControlController (e2e)', () => {
     });
 
     it('no emite un segundo PIN si al huésped le ampliaron el ámbito a mano', async () => {
-      const stay = await guestStayService.upsertFromReservation(reserva());
+      const stay = await proyectar();
       const original = await credentialService.findLiveBySubject(
         'guest',
         '44712233',
@@ -638,11 +677,145 @@ describe('AccessControlController (e2e)', () => {
       expect(stay.id).toBe(vivas[0].guestStayId);
     });
 
+    it('no proyecta ni emite para una consulta (status inquiry)', async () => {
+      const stay = await guestStayService.upsertFromReservation(
+        reserva({ status: 'inquiry' }),
+      );
+
+      expect(stay).toBeNull();
+      expect(await dataSource.getRepository(GuestStay).count()).toBe(0);
+      expect(mocks.accessIot.putCredential).not.toHaveBeenCalled();
+    });
+
+    it('usa las horas de la reserva por encima de las de entorno', async () => {
+      // El listing de Pradera llega con checkInTime 16, no con el 15 global.
+      const stay = await proyectar({ checkInTime: 16, checkOutTime: 10 });
+
+      // 16:00-05:00 = 21:00Z, menos 3 h de margen = 18:00Z.
+      expect(stay.accessValidFrom.toISOString()).toBe(
+        '2026-09-14T18:00:00.000Z',
+      );
+      expect(stay.accessValidTo.toISOString()).toBe('2026-09-18T18:00:00.000Z');
+    });
+
+    it('cae a las horas de entorno si la reserva no las trae', async () => {
+      const stay = await proyectar();
+
+      expect(stay.accessValidFrom.toISOString()).toBe(
+        '2026-09-14T17:00:00.000Z',
+      );
+    });
+
     it('no duplica la estancia al reprocesar la misma reserva', async () => {
       await guestStayService.upsertFromReservation(reserva());
       await guestStayService.upsertFromReservation(reserva());
 
       expect(await dataSource.getRepository(GuestStay).count()).toBe(1);
+    });
+  });
+
+  describe('barrido de reservas', () => {
+    const deHostaway = (overrides: Record<string, unknown> = {}) => ({
+      hostawayReservationId: '44712233',
+      status: 'new',
+      guestName: 'Ana Pérez',
+      guestEmail: null,
+      listingMapId: '288172',
+      arrivalDate: '2026-09-14',
+      departureDate: '2026-09-18',
+      checkInTime: 15,
+      checkOutTime: 11,
+      ...overrides,
+    });
+
+    // El fallo que motivó separar la consulta de accesos de la de facturación:
+    // una reserva directa llega con paymentStatus 'Unknown', el filtro de
+    // facturación la escondía y el barrido le revocaba el PIN al huésped.
+    it('conserva la credencial de una reserva que sigue en Hostaway', async () => {
+      await guestStayService.upsertFromReservation({
+        hostawayReservationId: '44712233',
+        listingId: '288172',
+        guestName: 'Ana Pérez',
+        arrivalDate: '2026-09-14',
+        departureDate: '2026-09-18',
+        status: 'new',
+        issuedBy: 'hostaway-webhook',
+      });
+
+      mocks.hostaway.getReservationsForAccess.mockResolvedValue([deHostaway()]);
+
+      await sweep.reconcileDate('2026-09-14');
+
+      const viva = await credentialService.findLiveBySubject(
+        'guest',
+        '44712233',
+      );
+      expect(viva).not.toBeNull();
+      expect(mocks.accessIot.deleteCredential).not.toHaveBeenCalled();
+    });
+
+    it('revoca cuando la reserva ya no está en Hostaway', async () => {
+      await guestStayService.upsertFromReservation({
+        hostawayReservationId: '44712233',
+        listingId: '288172',
+        guestName: 'Ana Pérez',
+        arrivalDate: '2026-09-14',
+        departureDate: '2026-09-18',
+        status: 'new',
+        issuedBy: 'hostaway-webhook',
+      });
+
+      mocks.hostaway.getReservationsForAccess.mockResolvedValue([
+        deHostaway({ hostawayReservationId: '99999999' }),
+      ]);
+
+      await sweep.reconcileDate('2026-09-14');
+
+      expect(
+        await credentialService.findLiveBySubject('guest', '44712233'),
+      ).toBeNull();
+    });
+
+    it('no cancela nada si Hostaway devuelve la lista vacía', async () => {
+      await guestStayService.upsertFromReservation({
+        hostawayReservationId: '44712233',
+        listingId: '288172',
+        guestName: 'Ana Pérez',
+        arrivalDate: '2026-09-14',
+        departureDate: '2026-09-18',
+        status: 'new',
+        issuedBy: 'hostaway-webhook',
+      });
+
+      mocks.hostaway.getReservationsForAccess.mockResolvedValue([]);
+
+      await sweep.reconcileDate('2026-09-14');
+
+      expect(
+        await credentialService.findLiveBySubject('guest', '44712233'),
+      ).not.toBeNull();
+    });
+
+    it('propaga el estado real y revoca una cancelación que el webhook perdió', async () => {
+      await guestStayService.upsertFromReservation({
+        hostawayReservationId: '44712233',
+        listingId: '288172',
+        guestName: 'Ana Pérez',
+        arrivalDate: '2026-09-14',
+        departureDate: '2026-09-18',
+        status: 'new',
+        issuedBy: 'hostaway-webhook',
+      });
+
+      mocks.hostaway.getReservationsForAccess.mockResolvedValue([
+        deHostaway({ status: 'cancelled' }),
+      ]);
+
+      await sweep.reconcileDate('2026-09-14');
+
+      expect(
+        await credentialService.findLiveBySubject('guest', '44712233'),
+      ).toBeNull();
     });
   });
 });
