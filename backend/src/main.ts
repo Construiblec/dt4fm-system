@@ -1,59 +1,9 @@
-import { CorsOptions } from '@nestjs/common/interfaces/external/cors-options.interface';
-import { Logger, ValidationPipe } from '@nestjs/common';
+import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { validationPipeOptions } from './config/validation.config';
-import { isOriginAllowed, resolveAllowedOrigins } from './config/cors.config';
-
-/**
- * Tipado aparte (en vez de pasar el objeto literal directo a `enableCors`)
- * para que el callback de `origin` quede contextualmente tipado como
- * `(err: Error | null, origin?: StaticOrigin) => void` y no como `any`.
- */
-const corsLogger = new Logger('CORS');
-
-const corsOptions: CorsOptions = {
-  origin: (origin, callback) => {
-    // Sin Origin (curl, servidor a servidor, el webhook IoT de la
-    // Raspberry) no hay navegador de por medio, así que CORS no aplica:
-    // dejarlas pasar aquí no abre nada que ya no estuviera abierto. Solo el
-    // navegador exige y hace cumplir esta cabecera.
-    if (!origin || isOriginAllowed(origin)) {
-      callback(null, true);
-      return;
-    }
-
-    // `false`, no `new Error(...)`: el error hacía que el preflight
-    // respondiera 500, que en el navegador se ve como "fallo del servidor" y
-    // manda a depurar al lado equivocado. Con `false` la respuesta sale sin
-    // `Access-Control-Allow-Origin` y el navegador dice exactamente lo que
-    // pasa. El log deja el origen rechazado en Render, que es el dato que
-    // hace falta para saber qué añadir a `CORS_ALLOWED_ORIGINS`.
-    corsLogger.warn(
-      `Origin rechazado: ${origin} — permitidos: ${resolveAllowedOrigins().join(', ')}`,
-    );
-    callback(null, false);
-  },
-  credentials: true,
-  methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
-  allowedHeaders: [
-    'Content-Type',
-    'Authorization',
-    // ExtJS lo añade solo en cada `Ext.Ajax.request` (`useDefaultXhrHeader`),
-    // así que la página personalizada de openMAINT lo pide en el preflight.
-    'X-Requested-With',
-    'x-role',
-    'x-session-token',
-    'x-employee-id',
-    'x-cleaning-employee-id',
-    'x-guest-token',
-    'x-guest-link-secret',
-  ],
-  // Sin esto cada preflight se repite: la auditoría midió 4 de 353-480 ms en
-  // un solo login (H-3). 24 h es el techo que respeta Chrome.
-  maxAge: 86400,
-};
+import { corsOptions } from './config/cors.config';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
