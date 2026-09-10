@@ -14,9 +14,25 @@ const DEFAULT_ALLOWED_ORIGINS = [
 ];
 
 /**
+ * El navegador manda el `Origin` como esquema + host + puerto, en minúsculas y
+ * sin barra final ni ruta. La comparación es exacta, así que normalizamos los
+ * dos lados: `https://Construiblec.cloud/` copiado de la barra de direcciones
+ * tiene que casar con el `https://construiblec.cloud` que llega en la cabecera.
+ *
+ * No quita el puerto: `https://host:8443` es un origen distinto de
+ * `https://host`, y unificarlos sería abrir uno que no se declaró.
+ */
+export function normalizeOrigin(origin: string): string {
+  return origin.trim().toLowerCase().replace(/\/+$/, '');
+}
+
+/**
  * Lee `CORS_ALLOWED_ORIGINS` (lista separada por comas) en cada llamada, no
  * una sola vez al arrancar, para que quede cubierto por `setup-env.ts` en las
  * suites E2E sin depender del orden de imports.
+ *
+ * Ojo: la variable **reemplaza** a `DEFAULT_ALLOWED_ORIGINS`, no se suma a
+ * ella. Si está definida, cada entorno declara la lista completa de los suyos.
  */
 export function resolveAllowedOrigins(): string[] {
   const fromEnv = process.env.CORS_ALLOWED_ORIGINS;
@@ -25,8 +41,10 @@ export function resolveAllowedOrigins(): string[] {
     return DEFAULT_ALLOWED_ORIGINS;
   }
 
-  return fromEnv
-    .split(',')
-    .map((origin) => origin.trim())
-    .filter(Boolean);
+  return fromEnv.split(',').map(normalizeOrigin).filter(Boolean);
+}
+
+/** `true` si el `Origin` recibido está declarado, comparando ya normalizado. */
+export function isOriginAllowed(origin: string): boolean {
+  return resolveAllowedOrigins().includes(normalizeOrigin(origin));
 }
