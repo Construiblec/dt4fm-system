@@ -124,6 +124,16 @@ Las reglas que no son obvias, todas en
 **Automático — `POST /webhooks/hostaway`.** Responde `200` siempre y trabaja en segundo plano: un
 fallo de accesos no puede romper nada aguas arriba. Protegido por `HOSTAWAY_WEBHOOK_SECRET` con
 `timingSafeEqual`; sin secreto configurado responde `503` en vez de quedar abierto.
+
+**El identificador es `hostawayReservationId` (o `id`), nunca `reservationId`.** La respuesta de
+Hostaway trae los tres: los dos primeros son el id interno (`"65895170"`), y `reservationId` /
+`channelReservationId` son el del canal (`563484-guest-…-HMFQM523QX`). Como el barrido usa el
+interno, tomar el del canal daría **dos credenciales vivas para la misma reserva**, y el índice
+único no puede verlo porque los `subject_ref` difieren.
+
+**Solo emiten `new`, `modified`, `confirmed` y `ownerStay`** — lista blanca, no negra. Con lista
+negra, un `inquiry` (una consulta de alguien interesado, que ni siquiera es una reserva) abría la
+puerta del edificio. Los estados de cancelación revocan; el resto no proyecta la estancia siquiera.
 [guest-stay.service.ts](../../src/modules/access-control/guest-stay.service.ts) resuelve el edificio
 por `Unit.HostawayListingID` en openMAINT, calcula la vigencia y emite. Reserva cancelada
 (`cancelled` / `declined` / `expired`) revoca en bloque.
@@ -134,10 +144,12 @@ es manual, con `POST /access/credentials/:id/scope`.
 **Manual — `POST /access/credentials`.** Para residentes y personal, y para cualquier caso que el
 webhook no cubra.
 
-**Vigencia.** `arrival_date` a las `ACCESS_CHECKIN_HOUR` menos `ACCESS_GUEST_LEAD_HOURS`, hasta
-`departure_date` a las `ACCESS_CHECKOUT_HOUR` más `ACCESS_GUEST_GRACE_HOURS`. Hostaway solo da
-fechas, no horas. La conversión a instante ocurre en **un único punto** (`LOCAL_UTC_OFFSET = '-05:00'`,
-Ecuador no tiene horario de verano); si algún día hay un edificio en otra zona, se cambia ahí.
+**Vigencia.** Manda la hora de la propia reserva (`checkInTime` / `checkOutTime`), que Hostaway da
+**por reserva y no es igual en todos los listings** — hay listings de Pradera con `checkInTime: 16`
+frente al 15 habitual. `ACCESS_CHECKIN_HOUR` / `ACCESS_CHECKOUT_HOUR` son solo el respaldo cuando la
+reserva no las trae. A eso se le restan `ACCESS_GUEST_LEAD_HOURS` y se le suman
+`ACCESS_GUEST_GRACE_HOURS`. La conversión a instante ocurre en **un único punto**
+(`LOCAL_UTC_OFFSET = '-05:00'`, Ecuador no tiene horario de verano).
 
 ## 6. Endpoints
 
@@ -180,6 +192,12 @@ fijo trunca en silencio en terminales llenos.
 El barrido de reservas existe porque un webhook perdido no se nota: la reserva no se proyecta y el
 huésped llega sin PIN, o peor, una cancelación no entregada deja un PIN vivo.
 
+**Usa `getReservationsForAccess()`, no la consulta de facturación.** Aquella filtra por
+`paymentStatus === 'Paid'`, y una reserva directa llega con `'Unknown'`: el barrido no la veía y,
+como interpreta «ausente de Hostaway» = «cancelada», le revocaba el PIN a un huésped legítimo. La
+consulta de accesos no filtra por estado ni por cobro — quién emite y quién revoca se decide en
+`GuestStayService`.
+
 ## 8. Variables de entorno
 
 Definidas en [.env.example](../../.env.example).
@@ -197,7 +215,7 @@ Definidas en [.env.example](../../.env.example).
 | `ACCESS_SYNC_MAX_ATTEMPTS` | `5` |
 | `ACCESS_ALLOW_PIN_REVEAL` | `false` |
 | `ACCESS_SCHEDULER_ENABLED` | `false`. Solo `true` activa los barridos |
-| `ACCESS_CHECKIN_HOUR` / `ACCESS_CHECKOUT_HOUR` | `15` / `11`. Deben coincidir con lo pactado con el huésped |
+| `ACCESS_CHECKIN_HOUR` / `ACCESS_CHECKOUT_HOUR` | `15` / `11`. **Solo respaldo**: manda el `checkInTime` de la reserva |
 | `ACCESS_GUEST_LEAD_HOURS` / `ACCESS_GUEST_GRACE_HOURS` | Margen antes de llegada y después de salida |
 
 Las dos claves se generan igual, y **no son intercambiables**:

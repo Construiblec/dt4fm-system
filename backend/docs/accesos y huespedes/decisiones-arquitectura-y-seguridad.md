@@ -226,6 +226,7 @@ Nada bloquea el desarrollo; es acuerdo operativo, no diseño.
   dice «tu PIN» o «tu PIN se está activando».
 - Plazo de anonimización de los datos personales de `guest_stay` tras el check-out.
 - Ventana y responsable de la migración de la base de Inglaterra y Pradera.
-- Confirmar `ACCESS_CHECKIN_HOUR` / `ACCESS_CHECKOUT_HOUR` contra la configuración real de los
-  listings de Hostaway, y si Inglaterra y Pradera difieren. Hoy el backend tiene **un solo par
-  global**, no uno por edificio.
+~~Confirmar `ACCESS_CHECKIN_HOUR` / `ACCESS_CHECKOUT_HOUR` contra los listings de Hostaway.~~
+**Resuelto el 2026-09-10:** la respuesta de Hostaway trae `checkInTime` y `checkOutTime` por
+reserva, y no son uniformes (un listing de Pradera llega con 16). El backend usa el valor de la
+reserva y deja las variables de entorno como respaldo, así que no hace falta un par por edificio.

@@ -37,8 +37,11 @@ export class ReservationsController {
   @ApiResponse({ status: 401, description: 'Secreto de webhook inválido.' })
   @ApiResponse({ status: 503, description: 'Webhook sin configurar.' })
   receive(@Body() dto: HostawayWebhookDto) {
+    // `hostawayReservationId` o `id`, nunca `reservationId`: ese es el id del
+    // canal (`563484-guest-…-HMFQM523QX`) y el barrido guarda el interno, así
+    // que la misma reserva acabaría con dos credenciales vivas.
     const reservationId = String(
-      dto.data.reservationId ?? dto.data.id ?? '',
+      dto.data.hostawayReservationId ?? dto.data.id ?? '',
     ).trim();
 
     if (!reservationId || !dto.data.arrivalDate || !dto.data.departureDate) {
@@ -67,6 +70,8 @@ export class ReservationsController {
         arrivalDate: dto.data.arrivalDate!,
         departureDate: dto.data.departureDate!,
         status: dto.data.status,
+        checkInTime: dto.data.checkInTime,
+        checkOutTime: dto.data.checkOutTime,
         issuedBy: 'hostaway-webhook',
       });
     } catch (error) {

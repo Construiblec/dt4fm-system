@@ -1,12 +1,15 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
+  IsInt,
   IsNotEmpty,
   IsObject,
   IsOptional,
   IsString,
   Matches,
+  Max,
   MaxLength,
+  Min,
   ValidateNested,
 } from 'class-validator';
 
@@ -15,13 +18,16 @@ import {
  * global usa `whitelist`, así que el resto del cuerpo de Hostaway se descarta.
  */
 export class HostawayWebhookDataDto {
-  @ApiPropertyOptional({ description: 'Id de la reserva', example: 44712233 })
+  @ApiPropertyOptional({
+    description: 'Id interno de la reserva en Hostaway',
+    example: '65895170',
+  })
   @IsOptional()
-  reservationId?: string | number;
+  hostawayReservationId?: string | number;
 
   @ApiPropertyOptional({
-    description: 'Id de la reserva (nombre alterno)',
-    example: 44712233,
+    description: 'Id interno de la reserva (nombre alterno)',
+    example: 65895170,
   })
   @IsOptional()
   id?: string | number;
@@ -69,6 +75,20 @@ export class HostawayWebhookDataDto {
   @IsString()
   @MaxLength(60)
   status?: string;
+
+  @ApiPropertyOptional({ description: 'Hora local de check-in', example: 15 })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(23)
+  checkInTime?: number;
+
+  @ApiPropertyOptional({ description: 'Hora local de check-out', example: 11 })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(23)
+  checkOutTime?: number;
 }
 
 export class HostawayWebhookDto {

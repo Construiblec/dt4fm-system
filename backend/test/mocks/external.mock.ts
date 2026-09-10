@@ -37,6 +37,7 @@ export type ContificoServiceMock = ReturnType<
 export const createHostawayServiceMock = () => ({
   getCheckouts: jest.fn().mockResolvedValue({ result: [] }),
   getReservationsByArrivalDate: jest.fn().mockResolvedValue([]),
+  getReservationsForAccess: jest.fn().mockResolvedValue([]),
   getCheckoutsByDate: jest.fn().mockResolvedValue({ result: [] }),
 });
 

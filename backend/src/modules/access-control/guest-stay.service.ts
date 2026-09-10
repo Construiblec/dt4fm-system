@@ -19,7 +19,21 @@ const DEFAULT_CHECKOUT_HOUR = 11;
 const DEFAULT_LEAD_HOURS = 3;
 const DEFAULT_GRACE_HOURS = 3;
 
-const CANCELLED_STATUSES = ['cancelled', 'declined', 'expired'];
+/**
+ * Lista blanca, no negra. Con una lista negra cualquier estado nuevo o
+ * inesperado emitía PIN: `inquiry` —una consulta de alguien interesado, que ni
+ * siquiera es una reserva— abría la puerta del edificio.
+ */
+const ISSUING_STATUSES = ['new', 'modified', 'confirmed', 'ownerstay'];
+
+const CANCELLED_STATUSES = [
+  'cancelled',
+  'declined',
+  'expired',
+  'inquirydenied',
+  'inquirytimedout',
+  'inquirynotpossible',
+];
 
 export interface ReservationInput {
   hostawayReservationId: string;
@@ -29,6 +43,10 @@ export interface ReservationInput {
   arrivalDate: string;
   departureDate: string;
   status?: string | null;
+  /** Horas de la propia reserva. Hostaway las da por reserva y no son iguales
+   * en todos los listings; las variables de entorno son solo el respaldo. */
+  checkInTime?: number | null;
+  checkOutTime?: number | null;
   issuedBy: string;
 }
 
@@ -50,7 +68,18 @@ export class GuestStayService {
    * `guest_stay` es el cimiento del portal, no un accesorio de los PINes. Solo
    * la emisión depende de la cobertura.
    */
-  async upsertFromReservation(input: ReservationInput): Promise<GuestStay> {
+  async upsertFromReservation(
+    input: ReservationInput,
+  ): Promise<GuestStay | null> {
+    if (!this.isCancelled(input.status) && !this.isIssuing(input.status)) {
+      // Ni emite ni revoca: una consulta o una reserva a medias no es una
+      // estancia, y crearla ensuciaría el cimiento del portal.
+      this.logger.log(
+        `Reserva ${input.hostawayReservationId} en estado "${input.status ?? ''}": no se proyecta`,
+      );
+      return null;
+    }
+
     const stay = await this.persist(input);
 
     if (this.isCancelled(input.status)) {
@@ -81,12 +110,20 @@ export class GuestStayService {
     const location = await this.unitResolver.byListingId(input.listingId);
     const accessValidFrom = this.atLocalHour(
       input.arrivalDate,
-      this.hour('ACCESS_CHECKIN_HOUR', DEFAULT_CHECKIN_HOUR),
+      this.reservationHour(
+        input.checkInTime,
+        'ACCESS_CHECKIN_HOUR',
+        DEFAULT_CHECKIN_HOUR,
+      ),
       -this.hour('ACCESS_GUEST_LEAD_HOURS', DEFAULT_LEAD_HOURS),
     );
     const accessValidTo = this.atLocalHour(
       input.departureDate,
-      this.hour('ACCESS_CHECKOUT_HOUR', DEFAULT_CHECKOUT_HOUR),
+      this.reservationHour(
+        input.checkOutTime,
+        'ACCESS_CHECKOUT_HOUR',
+        DEFAULT_CHECKOUT_HOUR,
+      ),
       this.hour('ACCESS_GUEST_GRACE_HOURS', DEFAULT_GRACE_HOURS),
     );
 
@@ -183,6 +220,27 @@ export class GuestStayService {
 
   private isCancelled(status?: string | null): boolean {
     return CANCELLED_STATUSES.includes((status ?? '').toLowerCase());
+  }
+
+  private isIssuing(status?: string | null): boolean {
+    return ISSUING_STATUSES.includes((status ?? '').toLowerCase());
+  }
+
+  /** La hora de la reserva manda; la variable de entorno solo cubre su ausencia. */
+  private reservationHour(
+    fromReservation: number | null | undefined,
+    envName: string,
+    fallback: number,
+  ): number {
+    if (
+      Number.isInteger(fromReservation) &&
+      fromReservation! >= 0 &&
+      fromReservation! <= 23
+    ) {
+      return fromReservation!;
+    }
+
+    return this.hour(envName, fallback);
   }
 
   private atLocalHour(date: string, hour: number, offsetHours: number): Date {

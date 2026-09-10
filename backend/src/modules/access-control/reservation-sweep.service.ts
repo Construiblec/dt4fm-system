@@ -4,7 +4,7 @@ import { Cron } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { HostawayService } from '../../integrations/hostaway/hostaway.service';
-import { HostawayBillingReservation } from '../../integrations/hostaway/hostaway.mock';
+import { HostawayAccessReservation } from '../../integrations/hostaway/hostaway.mock';
 import { BUSINESS_TIMEZONE } from '../push-notifications/scheduler/scheduler.constants';
 import { CredentialService } from './credential.service';
 import { GuestStay } from './entities/guest-stay.entity';
@@ -43,10 +43,10 @@ export class ReservationSweepService {
   }
 
   async reconcileDate(date: string): Promise<void> {
-    let reservations: HostawayBillingReservation[];
+    let reservations: HostawayAccessReservation[];
 
     try {
-      reservations = await this.hostaway.getReservationsByArrivalDate(date);
+      reservations = await this.hostaway.getReservationsForAccess(date);
     } catch (error) {
       // Un fallo de Hostaway no puede traducirse en revocaciones masivas.
       this.logger.warn(
@@ -64,7 +64,11 @@ export class ReservationSweepService {
           guestEmail: reservation.guestEmail,
           arrivalDate: reservation.arrivalDate,
           departureDate: reservation.departureDate,
-          status: 'confirmed',
+          // El estado real, no 'confirmed' fijo: si no, el barrido resucitaría
+          // una reserva que Hostaway ya dio por cancelada.
+          status: reservation.status,
+          checkInTime: reservation.checkInTime,
+          checkOutTime: reservation.checkOutTime,
           issuedBy: 'hostaway-sweep',
         });
       } catch (error) {
@@ -85,7 +89,7 @@ export class ReservationSweepService {
   private async cancelDisappeared(
     date: string,
     total: number,
-    reservations: HostawayBillingReservation[],
+    reservations: HostawayAccessReservation[],
   ): Promise<void> {
     const locales = await this.stays.find({
       where: { arrivalDate: date },

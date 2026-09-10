@@ -5,7 +5,11 @@
  * Viven aquí y no en el service para que otros módulos puedan importarlos sin
  * arrastrar el service entero (y sin crear ciclos de import).
  */
-export const SUPERVISOR_ROLES = ['SuperUser', 'SupervisorLimpieza', 'AsistenteSL'];
+export const SUPERVISOR_ROLES = [
+  'SuperUser',
+  'SupervisorLimpieza',
+  'AsistenteSL',
+];
 
 export const isSupervisorRole = (role?: string) =>
   Boolean(role && SUPERVISOR_ROLES.includes(role));
