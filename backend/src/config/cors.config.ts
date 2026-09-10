@@ -1,3 +1,6 @@
+import { CorsOptions } from '@nestjs/common/interfaces/external/cors-options.interface';
+import { Logger } from '@nestjs/common';
+
 /**
  * Orígenes del piloto, por si `CORS_ALLOWED_ORIGINS` no está definida en el
  * entorno. Cubren los tres casos reales de hoy (ver `APP_BASE_URL` en
@@ -48,3 +51,51 @@ export function resolveAllowedOrigins(): string[] {
 export function isOriginAllowed(origin: string): boolean {
   return resolveAllowedOrigins().includes(normalizeOrigin(origin));
 }
+
+const corsLogger = new Logger('CORS');
+
+/**
+ * Opciones que consume `app.enableCors` en `main.ts`. Viven aquí, y no allí,
+ * para poder probarlas sin levantar la aplicación entera.
+ *
+ * **`allowedHeaders` está ausente a propósito.** Sin esa clave, el paquete
+ * `cors` refleja las cabeceras que el navegador pida en el preflight
+ * (`Access-Control-Request-Headers`) — su comportamiento por defecto. La lista
+ * explícita que había antes obligaba a desplegar cada vez que un cliente
+ * estrenaba una cabecera, y eso fue justo lo que dejó fuera a la página
+ * personalizada de openMAINT: ExtJS añade `X-Requested-With` por su cuenta en
+ * cada `Ext.Ajax.request`, sin que la página lo declare.
+ *
+ * No afloja nada: la frontera es `origin`. A un origen que ya declaraste de
+ * confianza no lo contiene la lista de cabeceras —puede mandar lo que quiera—,
+ * y a uno que no está declarado el preflight lo para antes de mirarlas. Quien
+ * decide sigue siendo `CORS_ALLOWED_ORIGINS`, que se cambia sin tocar código.
+ */
+export const corsOptions: CorsOptions = {
+  origin: (origin, callback) => {
+    // Sin Origin (curl, servidor a servidor, el webhook IoT de la
+    // Raspberry) no hay navegador de por medio, así que CORS no aplica:
+    // dejarlas pasar aquí no abre nada que ya no estuviera abierto. Solo el
+    // navegador exige y hace cumplir esta cabecera.
+    if (!origin || isOriginAllowed(origin)) {
+      callback(null, true);
+      return;
+    }
+
+    // `false`, no `new Error(...)`: el error hacía que el preflight
+    // respondiera 500, que en el navegador se ve como "fallo del servidor" y
+    // manda a depurar al lado equivocado. Con `false` la respuesta sale sin
+    // `Access-Control-Allow-Origin` y el navegador dice exactamente lo que
+    // pasa. El log deja el origen rechazado en Render, que es el dato que
+    // hace falta para saber qué añadir a `CORS_ALLOWED_ORIGINS`.
+    corsLogger.warn(
+      `Origin rechazado: ${origin} — permitidos: ${resolveAllowedOrigins().join(', ')}`,
+    );
+    callback(null, false);
+  },
+  credentials: true,
+  methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
+  // Sin esto cada preflight se repite: la auditoría midió 4 de 353-480 ms en
+  // un solo login (H-3). 24 h es el techo que respeta Chrome.
+  maxAge: 86400,
+};
