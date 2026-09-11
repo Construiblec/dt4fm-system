@@ -2,8 +2,7 @@
 
 **Fecha:** 2026-09-11 · **Rama:** `feature/magiclink`
 
-Documenta el módulo `guest-portal`, que reemplaza por completo al antiguo `guest-access`
-(7-sep) y lo reconstruye sobre `guest_stay`, tal como fija la decisión
+Documenta el módulo `guest-portal` construye sobre `guest_stay`, tal como fija la decisión
 [D-02](../decisiones-arquitectura-y-seguridad.md#d-02--el-portal-del-huésped-es-de-dt4fm)
 de este mismo directorio. El README general del control de accesos
 ([`../README.md`](../README.md)) lo daba como pendiente en su §10; este documento es el
@@ -11,23 +10,7 @@ que cierra ese pendiente.
 
 ---
 
-## 1. Por qué se reconstruyó en vez de completarse
-
-`guest-access` se escribió un día antes que `guest_stay` y calculaba su propia ventana de
-acceso a partir del `id` de Hostaway, con márgenes propios
-(`GUEST_LINK_LEAD_HOURS`/`GRACE_HOURS`, ±24 h por defecto). Con esos valores, el enlace
-abría **41 h antes** de que el PIN funcionara y seguía abierto **29 h después** de que
-dejara de funcionar: el huésped podía ver un código que la puerta ya no aceptaba.
-
-`guest_stay` ya resuelve esa ventana correctamente —con la unidad y el edificio
-resueltos contra openMAINT, y desde el 10-sep con la hora de check-in/check-out **de
-cada reserva**, no un valor global— así que reconstruir encima era estrictamente mejor
-que arreglar el cálculo duplicado.
-
-Se retiró `guest-access` completo: `guest-access.service.ts`, su controlador, sus
-guards, y el `HostawayService.getReservationById()` que solo existía para él.
-
-## 2. Decisión de diseño central: el token es un puntero, no una copia
+## 1. Decisión de diseño central: el token es un puntero, no una copia
 
 El token **no lleva fechas**. Firma únicamente:
 
@@ -50,18 +33,17 @@ toda modificación de reserva pasa por el mismo `GuestStayService.upsertFromRese
 que recalcula `access_valid_from`/`access_valid_to` y los guarda. El enlace los hereda
 solo, sin ningún código nuevo de por medio.
 
-## 3. Decisiones de producto (tomadas explícitamente, no supuestas)
+## 2. Decisiones de producto (tomadas explícitamente, no supuestas)
 
 | Decisión | Valor | Por qué |
 |---|---|---|
 | Segundo factor | **Ninguno** | El enlace es la única credencial. Compartirlo es responsabilidad del huésped, no del sistema |
 | Visibilidad del PIN | Inmediata al abrir, **dentro de la ventana de acceso** | Antes del check-in dice *"Tu PIN se mostrará a la hora de tu check-in"*; después del check-out, el enlace deja de abrir |
 | Regenerar PIN | **No invalida** el enlace | El portal siempre muestra el PIN vigente; el enlace nunca cachea uno viejo |
-| `token_version` | Freno de emergencia **manual**, no ligado al flujo normal | Sirve para el caso raro (enlace enviado al correo equivocado). Subir el contador invalida todos los enlaces de esa estancia |
 | Edificios sin cobertura (Batán, República) | **Sí** reciben enlace | El portal es más que el PIN; el bloque de credenciales se sustituye por un aviso (`pinState: "sin-cobertura"`) |
 | Emisión del enlace | Pensada para ser automática al confirmarse la reserva | **No implementado aún** — ver §6 |
 
-## 4. Piezas nuevas
+## 3. Piezas nuevas
 
 **Dentro de `access-control`** (no se tocó su lógica, solo se sumó una pieza):
 
@@ -87,7 +69,7 @@ Su valor no es visual: expone campos crudos (`openmaintUnitId`, `syncState`) que
 ven en ninguna pantalla, y sirve de diagnóstico de qué listings de Hostaway no están
 mapeados a una unidad de openMAINT.
 
-## 5. Endpoints
+## 4. Endpoints
 
 | Ruta | Auth | Qué hace |
 |---|---|---|
@@ -97,7 +79,7 @@ mapeados a una unidad de openMAINT.
 `pinState` puede ser `disponible`, `antes-del-checkin`, `finalizado`, o `sin-cobertura`
 — el frontend decide qué texto mostrar según ese campo, nunca inventa uno propio.
 
-## 6. Lo que falta
+## 5. Lo que falta
 
 - **Envío automático del enlace.** Hoy solo existe la emisión manual vía
   `POST /guest/magic-link`. Conectarlo a `GuestStayService.upsertFromReservation()`
@@ -108,12 +90,12 @@ mapeados a una unidad de openMAINT.
   PIN nuevo fuera del automatismo de `pin_conflict`. El frontend de Supervisor CAV ya
   espera `POST /access-authorizations/:id/regenerate`, que no tiene contraparte en el
   backend.
-- **Extender el check-out a mano.** `CredentialService.reschedule()` existe y mueve la
+- **Extender el check-out a mano (No es urgente, todo se registra en hostaway).** `CredentialService.reschedule()` existe y mueve la
   ventana de una credencial, pero solo se dispara automáticamente cuando Hostaway avisa
   de una modificación — no hay endpoint para que un humano lo haga sin que la orden venga
   de Hostaway.
 
-## 7. Verificado
+## 6. Verificado
 
 292 pruebas unitarias + 193 E2E contra Postgres real, y un recorrido manual completo:
 enlace sin cobertura, antes del check-in, estancia cancelada (401), extensión de
