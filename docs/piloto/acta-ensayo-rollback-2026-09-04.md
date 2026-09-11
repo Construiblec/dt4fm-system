@@ -187,13 +187,6 @@ Confirmado además por tres consultas directas independientes. **Nadie ejecutó 
 
 **Causa:** en staging el *Start Command* es `npm run migration:run:prod && node dist/main.js`, así que cada arranque aplica las migraciones pendientes. Y el servicio se suspende solo cada 15 minutos sin tráfico.
 
-**Asimetría entre entornos, no documentada hasta ahora:**
-
-| | Cuándo corre las migraciones | ¿Un reinicio las re-aplica? |
-|---|---|---|
-| Staging | Encadenadas al *Start Command* | **Sí, siempre** |
-| Producción | En el *Pre-Deploy Command* | No — solo un despliegue |
-
 ---
 
 ## 5. La cadena de fallo observada
@@ -240,31 +233,3 @@ Resultado opuesto ante la misma acción, según el código desplegado. **Causa c
 
 ---
 
-## 7. Hallazgos
-
-Los tres primeros son defectos del propio procedimiento, ya corregidos en el documento. El resto quedó registrado en el [Backlog Post-Piloto](backlog-post-piloto.md).
-
-| ID | Sev. | Hallazgo |
-|---|---|---|
-| — | — | El procedimiento exigía una credencial que no especificaba. Corregido en el punto 3 |
-| — | — | **`main` y `develop` están protegidas:** el `git push` que indicaba el documento no funciona. Corregido en el punto 2 |
-| — | — | **La ventana de riesgo dura hasta que el despliegue tenga éxito.** Corregido en la §3 |
-| BP-020 | **P2** | El smoke test posterior al despliegue está desactivado por falta del secret `RENDER_SERVICE_URL_STAGING`. Demostrado en vivo: pipeline en verde, despliegue fallido |
-| BP-021 | **P2** | El backend no puede desplegarse si openMAINT no responde. Muere por `Timed Out` a los ~15 min, sin indicar la causa |
-| BP-022 | P3 | Asimetría staging/producción en cuándo corren las migraciones, no documentada |
-| BP-023 | P3 | Sin definir quién autoriza un PR de reversión fuera de horario |
-| BP-024 | P3 | Arranque en frío de 41,6 s en staging: contaminaría las sesiones de usabilidad |
-| BP-025 | P3 | El *Instant Rollback* del frontend solo aplica a producción y nunca se ha probado |
-| BP-026 | P4 | Staging tras el SSO de Vercel: ninguna verificación automática puede comprobarlo |
-
-**Hallazgo incidental, corregido el mismo día:** revisando los registros de arranque se detectó que staging tenía **activos los dos schedulers que envían correo** (pagos y recordatorios de reuniones), programados para las 03:00, apuntando a la instancia de openMAINT de desarrollo — que es el clon refrescado con datos de producción, es decir, con direcciones de correo reales. Se desactivaron antes de que llegaran a ejecutarse.
-
----
-
-## 8. Estado final
-
-Staging quedó limpio: 2 migraciones, sin la tabla de ensayo, ramas `drill/` eliminadas del remoto. No quedó nada que revertir.
-
-Trazabilidad de los cambios del ensayo: PR **#61** (cambio inofensivo), **#62** (su reversión), **#63** (migración de ensayo), **#64** (retirada de la migración), **#65** (correcciones al procedimiento).
-
-**Pendiente:** ensayar la restauración de openMAINT sobre el clon — documentada en el punto 5 del procedimiento, nunca ejecutada.
