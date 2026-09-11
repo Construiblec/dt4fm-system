@@ -11,6 +11,7 @@ import { AccessIotGateway } from './access-iot.gateway';
 import { AccessIotMockGateway } from './access-iot.mock';
 import { BuildingCatalogService } from './building-catalog.service';
 import { CredentialService } from './credential.service';
+import { GuestPortalDataService } from './guest-portal-data.service';
 import { GuestStayService } from './guest-stay.service';
 import { ReservationSweepService } from './reservation-sweep.service';
 import { ReservationsController } from './reservations.controller';
@@ -35,6 +36,7 @@ import { SyncRetryService } from './sync-retry.service';
     CredentialService,
     SyncRetryService,
     GuestStayService,
+    GuestPortalDataService,
     ReservationSweepService,
     AccessMaintenanceService,
     {
@@ -48,6 +50,8 @@ import { SyncRetryService } from './sync-retry.service';
           : new AccessIotClient(httpService, configService),
     },
   ],
-  exports: [CredentialService, GuestStayService],
+  // `GuestPortalDataService` es lo único que consume el portal del huésped:
+  // así `CredentialService` —y con él `revealPin()`— no llega a ese módulo.
+  exports: [CredentialService, GuestStayService, GuestPortalDataService],
 })
 export class AccessControlModule {}

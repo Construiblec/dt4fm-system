@@ -10,11 +10,9 @@ import { AxiosError, AxiosRequestConfig, AxiosResponse } from 'axios';
 import { firstValueFrom } from 'rxjs';
 import {
   getMockCheckouts,
-  getMockGuestReservation,
   HostawayAccessReservation,
   HostawayCheckoutsResponse,
   HostawayBillingReservation,
-  HostawayGuestReservation,
 } from './hostaway.mock';
 
 interface TokenCache {
@@ -520,78 +518,5 @@ export class HostawayService {
    */
   async getCheckoutsByDate(date: string): Promise<HostawayCheckoutsResponse> {
     return this.getCheckouts(date, date);
-  }
-
-  /**
-   * Consulta una reserva puntual por su `id` interno de Hostaway.
-   *
-   * Es la pieza que necesita el acceso del huésped: el magiclink lleva dentro
-   * el `id` de la reserva, y al canjearlo hay que releerla para saber si sigue
-   * viva y con qué fechas. Por eso devuelve el `status` en crudo en vez de
-   * filtrarlo como hacen los listados —una reserva cancelada no se omite, se
-   * informa, y quien llama decide qué hacer con ella.
-   *
-   * `null` cuando Hostaway responde 404: la reserva no existe o se borró.
-   */
-  async getReservationById(
-    reservationId: number,
-  ): Promise<HostawayGuestReservation | null> {
-    const useMock =
-      this.configService.get<string>('HOSTAWAY_USE_MOCK') === 'true';
-
-    if (useMock) {
-      this.logger.warn('[MOCK] Usando reserva de prueba de Hostaway');
-      return getMockGuestReservation(reservationId);
-    }
-
-    const token = await this.getAccessToken();
-
-    const response = await this.performRequest<{
-      result?: RawHostawayReservation;
-    }>(`Consulta de la reserva Hostaway ${reservationId}`, () =>
-      firstValueFrom(
-        this.httpService.get(
-          `https://api.hostaway.com/v1/reservations/${reservationId}`,
-          {
-            timeout: this.requestTimeoutMs,
-            headers: { Authorization: `Bearer ${token}` },
-            params: { includeResources: 1 },
-            // El 404 es una respuesta legítima —la reserva no existe—, no un
-            // fallo de red: se acepta aquí para no pasar por el camino de
-            // reintentos y excepciones de performRequest.
-            validateStatus: (status) => status === 200 || status === 404,
-          },
-        ),
-      ),
-    );
-
-    if (response.status === 404) {
-      this.logger.warn(`Hostaway: la reserva ${reservationId} no existe`);
-      return null;
-    }
-
-    const r = response.data?.result;
-
-    if (!r) {
-      this.logger.warn(
-        `Hostaway: la reserva ${reservationId} vino sin cuerpo utilizable`,
-      );
-      return null;
-    }
-
-    return {
-      id: Number(r.id ?? reservationId),
-      status: r.status ?? '',
-      guestName: r.guestFirstName
-        ? `${r.guestFirstName} ${r.guestLastName ?? ''}`.trim()
-        : (r.guestName ?? 'Huesped'),
-      guestEmail: r.guestEmail ?? null,
-      listingName: r.listingName ?? '',
-      listingMapId: String(r.listingMapId ?? ''),
-      arrivalDate: r.arrivalDate ?? '',
-      departureDate: r.departureDate ?? '',
-      confirmationCode: r.confirmationCode ?? '',
-      nights: r.nights ?? 0,
-    };
   }
 }
