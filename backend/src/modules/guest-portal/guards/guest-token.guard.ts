@@ -7,8 +7,9 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import type { Request } from 'express';
-import { GuestAccessService, GuestIdentity } from '../guest-access.service';
+import { GuestPortalData } from '../../access-control/guest-portal-data.service';
 import { RateLimiterService } from '../../password-recovery/rate-limiter.service';
+import { GuestPortalService } from '../guest-portal.service';
 
 /** Cabecera propia, alternativa a `Authorization`. */
 export const GUEST_TOKEN_HEADER = 'x-guest-token';
@@ -29,8 +30,8 @@ const MAX_REDEEMS_PER_IP = 120;
  *    del correo y el frontend todavía no tiene nada guardado.
  *
  * El tercero va último a propósito: un token en la URL queda en el historial
- * del navegador y en los logs de cualquier proxy intermedio, así que la idea es
- * que el frontend lo saque del query string cuanto antes y lo mande por
+ * del navegador y en los registros de cualquier proxy intermedio, así que la
+ * idea es que el frontend lo saque del query string cuanto antes y lo mande por
  * cabecera de ahí en adelante.
  */
 const readToken = (request: Request): string => {
@@ -50,24 +51,24 @@ const readToken = (request: Request): string => {
   return typeof fromQuery === 'string' ? fromQuery.trim() : '';
 };
 
-/** La identidad resuelta queda aquí para que el controlador pueda leerla. */
+/** Los datos resueltos quedan aquí para que el controlador puedan leerlos. */
 export interface RequestWithGuest extends Request {
-  guest?: GuestIdentity;
+  guest?: GuestPortalData;
 }
 
 /**
- * Exige un magiclink válido en los endpoints del huésped.
+ * Exige un enlace válido en los endpoints del huésped.
  *
  * Es el equivalente de `OwnerSessionGuard` para quien no tiene cuenta: el
  * huésped nunca inicia sesión, su única credencial es el enlace firmado. Por
  * eso, igual que allí, **ningún identificador de la ruta o del cuerpo sirve
- * como credencial**: la reserva a la que el huésped tiene derecho sale siempre
+ * como credencial**: la estancia a la que el huésped tiene derecho sale siempre
  * del token, y el controlador debe leerla de `request.guest`.
  */
 @Injectable()
 export class GuestTokenGuard implements CanActivate {
   constructor(
-    private readonly guestAccess: GuestAccessService,
+    private readonly portal: GuestPortalService,
     private readonly rateLimiter: RateLimiterService,
   ) {}
 
@@ -79,13 +80,12 @@ export class GuestTokenGuard implements CanActivate {
       throw new UnauthorizedException('Falta el enlace de acceso');
     }
 
-    // El límite se comprueba antes de resolver, que es lo que puede acabar
-    // consultando a Hostaway. Ponerlo en el controlador no serviría: los guards
-    // corren antes que el handler, así que la llamada ya se habría hecho.
+    // El límite se comprueba antes de resolver, que es lo que consulta la base
+    // y descifra un PIN. Ponerlo en el controlador no serviría: los guards
+    // corren antes que el handler, así que el trabajo ya estaría hecho.
     //
-    // No protege el token —uno inventado ni siquiera pasa la firma— sino la
-    // cuota de la API: frena que un cliente en bucle dispare una consulta por
-    // petición cada vez que vence la caché de la reserva.
+    // No protege el token —uno inventado ni siquiera pasa la firma— sino el
+    // coste de un cliente en bucle sobre un enlace legítimo.
     if (
       !this.rateLimiter.hit(
         this.bucketKey(request),
@@ -99,7 +99,7 @@ export class GuestTokenGuard implements CanActivate {
       );
     }
 
-    request.guest = await this.guestAccess.resolve(token);
+    request.guest = await this.portal.resolve(token);
 
     return true;
   }

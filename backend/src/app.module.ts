@@ -20,7 +20,7 @@ import { MaintenanceSupervisionModule } from './modules/maintenance-supervision/
 import { PasswordRecoveryModule } from './modules/password-recovery/password-recovery.module';
 import { AccessControlModule } from './modules/access-control/access-control.module';
 import { PushNotificationsModule } from './modules/push-notifications/push-notifications.module';
-import { GuestAccessModule } from './modules/guest-access/guest-access.module';
+import { GuestPortalModule } from './modules/guest-portal/guest-portal.module';
 
 @Module({
   imports: [
@@ -49,7 +49,7 @@ import { GuestAccessModule } from './modules/guest-access/guest-access.module';
     MeetingRemindersModule,
     PushNotificationsModule,
     AccessControlModule,
-    GuestAccessModule,
+    GuestPortalModule,
   ],
 })
 export class AppModule {}
