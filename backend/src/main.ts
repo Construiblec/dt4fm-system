@@ -125,6 +125,14 @@ async function bootstrap() {
       },
       'x-guest-link-secret',
     )
+    .addBasicAuth(
+      {
+        type: 'http',
+        scheme: 'basic',
+        description: 'login/password del unified webhook de Hostaway',
+      },
+      'hostaway-webhook',
+    )
     .build();
 
   if (process.env.ENABLE_DOCS === 'true') {

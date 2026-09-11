@@ -1,5 +1,6 @@
 import { Injectable, InternalServerErrorException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { AxiosRequestConfig } from 'axios';
 import { OpenmaintAuthService } from './openmaint.auth.service';
 
 @Injectable()
@@ -21,11 +22,16 @@ export class OpenmaintServiceSession {
    * caché aquí es seguro y beneficia a los tres consumidores a la vez, pero
    * requiere decidir la caducidad, así que se deja para cuando haga falta.
    */
-  async get(): Promise<string> {
+  async get(config?: AxiosRequestConfig): Promise<string> {
     const username = this.configService.get<string>('OPENMAINT_USERNAME') ?? '';
     const password = this.configService.get<string>('OPENMAINT_PASSWORD') ?? '';
 
-    const response = await this.authService.login(username, password);
+    const response = await this.authService.login(
+      username,
+      password,
+      undefined,
+      config,
+    );
 
     if (!response?.data?._id) {
       throw new InternalServerErrorException(

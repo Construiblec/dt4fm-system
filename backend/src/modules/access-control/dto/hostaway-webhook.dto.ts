@@ -1,5 +1,4 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
 import {
   IsInt,
   IsNotEmpty,
@@ -10,12 +9,18 @@ import {
   Max,
   MaxLength,
   Min,
-  ValidateNested,
 } from 'class-validator';
 
+export const HOSTAWAY_RESERVATION_OBJECT = 'reservation';
+
+export const HOSTAWAY_RESERVATION_EVENTS = [
+  'reservation.created',
+  'reservation.updated',
+];
+
 /**
- * Solo los campos que el control de accesos necesita. El `ValidationPipe`
- * global usa `whitelist`, así que el resto del cuerpo de Hostaway se descarta.
+ * Solo los campos que el control de accesos necesita; el resto se descarta. Se
+ * valida en el controller, una vez confirmado que el objeto es una reserva.
  */
 export class HostawayWebhookDataDto {
   @ApiPropertyOptional({
@@ -69,7 +74,7 @@ export class HostawayWebhookDataDto {
 
   @ApiPropertyOptional({
     description: 'Estado de la reserva en Hostaway',
-    example: 'confirmed',
+    example: 'new',
   })
   @IsOptional()
   @IsString()
@@ -91,22 +96,32 @@ export class HostawayWebhookDataDto {
   checkOutTime?: number;
 }
 
+/** Sobre del unified webhook: Hostaway no filtra, así que llegan todos los objetos. */
 export class HostawayWebhookDto {
+  @ApiProperty({ description: 'Tipo de objeto', example: 'reservation' })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(60)
+  object: string;
+
   @ApiProperty({
     description: 'Evento de Hostaway',
-    example: 'reservation_updated',
+    example: 'reservation.created',
   })
   @IsString()
   @IsNotEmpty()
   @MaxLength(120)
-  action: string;
+  event: string;
+
+  @ApiPropertyOptional({ description: 'Cuenta de Hostaway', example: 149703 })
+  @IsOptional()
+  @IsInt()
+  accountId?: number;
 
   @ApiProperty({
-    description: 'Datos de la reserva',
+    description: 'Objeto del evento; para reservas, HostawayWebhookDataDto',
     type: HostawayWebhookDataDto,
   })
   @IsObject()
-  @ValidateNested()
-  @Type(() => HostawayWebhookDataDto)
-  data: HostawayWebhookDataDto;
+  data: Record<string, unknown>;
 }

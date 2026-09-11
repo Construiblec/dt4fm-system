@@ -74,6 +74,15 @@ describe('UnitResolverService', () => {
     expect(get).toHaveBeenCalledTimes(1);
   });
 
+  // Un fallo no es «sin mapear»: el llamador decide si reintentar o reutilizar el edificio.
+  it('propaga un fallo de red en vez de confundirlo con un listing sin mapear', async () => {
+    const get = jest.fn().mockRejectedValue(new Error('ECONNRESET'));
+
+    await expect(buildService(get).byListingId('566095')).rejects.toThrow(
+      'ECONNRESET',
+    );
+  });
+
   it('no cachea un fallo de red: un corte no puede dejar el listing sin resolver 5 minutos', async () => {
     const get = jest
       .fn()
@@ -81,10 +90,19 @@ describe('UnitResolverService', () => {
       .mockResolvedValueOnce({ data: [card(3728730)] });
     const service = buildService(get);
 
-    await expect(service.byListingId('566095')).resolves.toBeNull();
+    await expect(service.byListingId('566095')).rejects.toThrow();
     await expect(service.byListingId('566095')).resolves.toMatchObject({
       unitId: 3728730,
     });
+  });
+
+  it('acota la consulta con un timeout', async () => {
+    const get = jest.fn().mockResolvedValue({ data: [card(3728730)] });
+
+    await buildService(get).byListingId('566095');
+
+    const [, , config] = get.mock.calls[0] as [string, string, unknown];
+    expect(config).toEqual({ timeout: 5_000 });
   });
 
   it('olvida una entrada cacheada cuando se le pide', async () => {

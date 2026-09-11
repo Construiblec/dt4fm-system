@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { AxiosRequestConfig } from 'axios';
 import { OpenmaintClient } from './openmaint.client';
 
 /**
@@ -35,12 +36,15 @@ export class OpenmaintAuthService {
     username: string,
     password: string,
     role?: string,
+    config?: AxiosRequestConfig,
   ): Promise<OpenmaintSessionResponse> {
     const body = { username, password, ...(role ? { role } : {}) };
 
     return (await this.client.post(
       '/sessions?scope=service&returnId=true',
       body,
+      undefined,
+      config,
     )) as OpenmaintSessionResponse;
   }
 

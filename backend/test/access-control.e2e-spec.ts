@@ -459,86 +459,193 @@ describe('AccessControlController (e2e)', () => {
   });
 
   describe('POST /webhooks/hostaway', () => {
-    const cuerpo = (overrides: Record<string, unknown> = {}) => ({
-      action: 'reservation_created',
+    const basic = (credentials: string) =>
+      `Basic ${Buffer.from(credentials).toString('base64')}`;
+
+    const AUTH = basic('test-hostaway:test-hostaway-secret');
+
+    /** Sobre real del unified webhook, con campos que el DTO descarta. */
+    const evento = (
+      data: Record<string, unknown> = {},
+      envelope: Record<string, unknown> = {},
+    ) => ({
+      object: 'reservation',
+      event: 'reservation.created',
+      accountId: 149703,
+      ...envelope,
       data: {
+        id: 44712233,
         hostawayReservationId: '44712233',
+        reservationId: '288172-guest-526348749-confirmation-HMFQM523QX',
         listingMapId: 288172,
+        channelName: 'airbnbOfficial',
         guestName: 'Ana Pérez',
-        guestEmail: 'ana@example.com',
+        guestEmail: null,
         arrivalDate: '2026-09-14',
         departureDate: '2026-09-18',
-        status: 'confirmed',
-        ...overrides,
+        checkInTime: 15,
+        checkOutTime: 11,
+        status: 'new',
+        paymentStatus: 'Unknown',
+        financeField: [{ name: 'baseRate', value: 36 }],
+        ...data,
       },
     });
 
-    it('401 con un secreto que no cuadra', async () => {
-      await request(app.getHttpServer())
-        .post('/webhooks/hostaway')
-        .set('x-hostaway-secret', 'otro-secreto')
-        .send(cuerpo())
-        .expect(401);
+    const enviar = (body: object, auth: string | null = AUTH) => {
+      const req = request(app.getHttpServer()).post('/webhooks/hostaway');
+
+      return (auth ? req.set('Authorization', auth) : req).send(body);
+    };
+
+    const credencialViva = () =>
+      credentialService.findLive('guest', '44712233', 'pedestrian');
+
+    it('401 con una contraseña que no cuadra', async () => {
+      await enviar(evento(), basic('test-hostaway:otra')).expect(401);
     });
 
-    it('401 sin secreto', async () => {
-      await request(app.getHttpServer())
-        .post('/webhooks/hostaway')
-        .send(cuerpo())
-        .expect(401);
+    it('401 sin credenciales', async () => {
+      await enviar(evento(), null).expect(401);
     });
 
-    it('200 y acepta el trabajo con el secreto correcto', async () => {
-      const res = await request(app.getHttpServer())
+    it('401 con la cabecera x-hostaway-secret, que ya no se acepta', async () => {
+      await request(app.getHttpServer())
         .post('/webhooks/hostaway')
         .set('x-hostaway-secret', 'test-hostaway-secret')
-        .send(cuerpo())
-        .expect(200);
+        .send(evento())
+        .expect(401);
+    });
+
+    it('proyecta la reserva y emite el PIN con reservation.created', async () => {
+      const res = await enviar(evento()).expect(200);
 
       expect(res.body).toEqual({ received: true, processed: true });
+      expect(await dataSource.getRepository(GuestStay).count()).toBe(1);
+      expect(await credencialViva()).not.toBeNull();
     });
 
-    it('200 pero no procesa si faltan las fechas', async () => {
-      const res = await request(app.getHttpServer())
-        .post('/webhooks/hostaway')
-        .set('x-hostaway-secret', 'test-hostaway-secret')
-        .send(cuerpo({ arrivalDate: undefined, departureDate: undefined }))
-        .expect(200);
+    it('responde sin esperar a la VPS: el PIN queda pendiente de empuje', async () => {
+      mocks.accessIot.putCredential.mockReturnValueOnce(
+        new Promise(() => undefined),
+      );
+
+      await enviar(evento()).expect(200);
+
+      expect((await credencialViva())?.syncState).toBe('pending');
+    });
+
+    // Hostaway no filtra: un 4xx sería un email de alerta por cada mensaje.
+    it('ignora con 200 los objetos que no son reservas, sin validarlos', async () => {
+      const res = await enviar({
+        object: 'conversationMessage',
+        event: 'message.received',
+        accountId: 149703,
+        data: { id: 1, body: 'Hola', status: 7 },
+      }).expect(200);
+
+      expect(res.body.processed).toBe(false);
+      expect(await dataSource.getRepository(GuestStay).count()).toBe(0);
+    });
+
+    it('ignora con 200 un evento de reserva desconocido', async () => {
+      const res = await enviar(
+        evento({}, { event: 'reservation.archived' }),
+      ).expect(200);
 
       expect(res.body.processed).toBe(false);
     });
 
-    it('400 con un cuerpo que no tiene la forma esperada', async () => {
-      await request(app.getHttpServer())
-        .post('/webhooks/hostaway')
-        .set('x-hostaway-secret', 'test-hostaway-secret')
-        .send({ action: 'reservation_created' })
-        .expect(400);
+    it('no proyecta una reserva pending sin confirmar', async () => {
+      const res = await enviar(evento({ status: 'pending' })).expect(200);
+
+      expect(res.body.processed).toBe(false);
+      expect(await dataSource.getRepository(GuestStay).count()).toBe(0);
+    });
+
+    it('revoca el PIN cuando llega la cancelación', async () => {
+      await guestStayService.upsertFromReservation({
+        hostawayReservationId: '44712233',
+        listingId: '288172',
+        guestName: 'Ana Pérez',
+        arrivalDate: '2026-09-14',
+        departureDate: '2026-09-18',
+        status: 'new',
+        issuedBy: 'hostaway-webhook',
+      });
+
+      await enviar(
+        evento({ status: 'cancelled' }, { event: 'reservation.updated' }),
+      ).expect(200);
+
+      expect(await credencialViva()).toBeNull();
+    });
+
+    it('una entrega repetida no emite un segundo PIN', async () => {
+      await enviar(evento()).expect(200);
+      await enviar(evento()).expect(200);
+
+      expect(
+        await credentialService.list({ subject: '44712233' }),
+      ).toHaveLength(1);
+    });
+
+    it('503 si openMAINT no responde para una reserva nueva, para que Hostaway reintente', async () => {
+      mocks.unitResolver.byListingId.mockRejectedValueOnce(
+        new Error('ETIMEDOUT'),
+      );
+
+      await enviar(evento()).expect(503);
+      expect(await dataSource.getRepository(GuestStay).count()).toBe(0);
+    });
+
+    // Mismo día, entrada 23:00 y salida 00:00: la vigencia sale invertida.
+    it('200 sin reintento ante un error de negocio nuestro', async () => {
+      const res = await enviar(
+        evento({
+          departureDate: '2026-09-14',
+          checkInTime: 23,
+          checkOutTime: 0,
+        }),
+      ).expect(200);
+
+      expect(res.body.processed).toBe(false);
+    });
+
+    it('200 sin procesar si la reserva trae un formato inesperado', async () => {
+      const res = await enviar(evento({ arrivalDate: '14/09/2026' })).expect(
+        200,
+      );
+
+      expect(res.body.processed).toBe(false);
+    });
+
+    it('200 pero no procesa si faltan las fechas', async () => {
+      const res = await enviar(
+        evento({ arrivalDate: undefined, departureDate: undefined }),
+      ).expect(200);
+
+      expect(res.body.processed).toBe(false);
+    });
+
+    it('400 con un cuerpo que no es un evento de Hostaway', async () => {
+      await enviar({ data: {} }).expect(400);
     });
 
     // `reservationId` es el id del canal. Si se aceptara, el barrido —que usa
     // el id interno— crearía una segunda credencial para la misma reserva.
     it('ignora reservationId del canal y no procesa sin el id interno', async () => {
-      const res = await request(app.getHttpServer())
-        .post('/webhooks/hostaway')
-        .set('x-hostaway-secret', 'test-hostaway-secret')
-        .send(
-          cuerpo({
-            hostawayReservationId: undefined,
-            reservationId: '563484-guest-526348749-confirmation-HMFQM523QX',
-          }),
-        )
-        .expect(200);
+      const res = await enviar(
+        evento({ hostawayReservationId: undefined, id: undefined }),
+      ).expect(200);
 
       expect(res.body.processed).toBe(false);
     });
 
     it('usa el id interno cuando llega como `id`', async () => {
-      const res = await request(app.getHttpServer())
-        .post('/webhooks/hostaway')
-        .set('x-hostaway-secret', 'test-hostaway-secret')
-        .send(cuerpo({ hostawayReservationId: undefined, id: 65895170 }))
-        .expect(200);
+      const res = await enviar(
+        evento({ hostawayReservationId: undefined }),
+      ).expect(200);
 
       expect(res.body.processed).toBe(true);
     });
@@ -711,6 +818,30 @@ describe('AccessControlController (e2e)', () => {
       await guestStayService.upsertFromReservation(reserva());
 
       expect(await dataSource.getRepository(GuestStay).count()).toBe(1);
+    });
+
+    it('reutiliza el edificio guardado si openMAINT no responde', async () => {
+      await proyectar();
+      mocks.unitResolver.byListingId.mockRejectedValueOnce(
+        new Error('ETIMEDOUT'),
+      );
+
+      const stay = await proyectar({ departureDate: '2026-09-20' });
+
+      expect(stay.buildingId).toBe(ING_BUILDING_ID);
+    });
+
+    it('revoca aunque openMAINT no responda: cancelar no necesita edificio', async () => {
+      await proyectar();
+      mocks.unitResolver.byListingId.mockRejectedValueOnce(
+        new Error('ETIMEDOUT'),
+      );
+
+      await proyectar({ status: 'cancelled' });
+
+      expect(
+        await credentialService.findLive('guest', '44712233', 'pedestrian'),
+      ).toBeNull();
     });
   });
 
