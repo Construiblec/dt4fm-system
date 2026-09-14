@@ -1,44 +1,9 @@
-import { CorsOptions } from '@nestjs/common/interfaces/external/cors-options.interface';
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { validationPipeOptions } from './config/validation.config';
-import { resolveAllowedOrigins } from './config/cors.config';
-
-/**
- * Tipado aparte (en vez de pasar el objeto literal directo a `enableCors`)
- * para que el callback de `origin` quede contextualmente tipado como
- * `(err: Error | null, origin?: StaticOrigin) => void` y no como `any`.
- */
-const corsOptions: CorsOptions = {
-  origin: (origin, callback) => {
-    const allowedOrigins = resolveAllowedOrigins();
-
-    // Sin Origin (curl, servidor a servidor, el webhook IoT de la
-    // Raspberry) no hay navegador de por medio, así que CORS no aplica:
-    // dejarlas pasar aquí no abre nada que ya no estuviera abierto. Solo el
-    // navegador exige y hace cumplir esta cabecera.
-    if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, true);
-      return;
-    }
-
-    callback(new Error(`Origin no permitido por CORS: ${origin}`));
-  },
-  credentials: true,
-  methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
-  allowedHeaders: [
-    'Content-Type',
-    'Authorization',
-    'x-role',
-    'x-session-token',
-    'x-employee-id',
-    'x-cleaning-employee-id',
-    'x-guest-token',
-    'x-guest-link-secret',
-  ],
-};
+import { corsOptions } from './config/cors.config';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);

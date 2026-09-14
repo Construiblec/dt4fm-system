@@ -54,3 +54,7 @@ pids
 
 # Diagnostic reports (https://nodejs.org/api/report.html)
 report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
+
+# Notas de prueba locales: referencian secretos/uuids de un entorno de desarrollo
+# concreto, no tienen sentido como documentación compartida.
+docs/accesos y huespedes/portal-del-huesped/pruebas-locales.md
