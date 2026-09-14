@@ -34,6 +34,8 @@ export interface IssueCredentialInput {
   validTo: Date;
   issuedBy: string;
   guestStayId?: string | null;
+  /** No espera a la VPS: la fila ya queda en `pending` para `sync-retry`. */
+  deferSync?: boolean;
 }
 
 @Injectable()
@@ -78,10 +80,14 @@ export class CredentialService {
 
     const credential = await this.persistWithFreshPin(input);
 
-    return this.sync(credential);
+    return this.push(credential, input.deferSync);
   }
 
-  async revoke(id: string, reason: string): Promise<AccessCredential> {
+  async revoke(
+    id: string,
+    reason: string,
+    deferSync = false,
+  ): Promise<AccessCredential> {
     const credential = await this.credentials.findOne({ where: { id } });
 
     if (!credential) {
@@ -98,20 +104,21 @@ export class CredentialService {
     credential.syncAttempts = 0;
     await this.credentials.save(credential);
 
-    return this.sync(credential);
+    return this.push(credential, deferSync);
   }
 
   /** Revoca en bloque; se usa al cancelarse una reserva. */
   async revokeByGuestStay(
     guestStayId: string,
     reason: string,
+    deferSync = false,
   ): Promise<number> {
     const live = await this.credentials.find({
       where: { guestStayId, status: In(LIVE_STATUSES) },
     });
 
     for (const credential of live) {
-      await this.revoke(credential.id, reason);
+      await this.revoke(credential.id, reason, deferSync);
     }
 
     return live.length;
@@ -125,6 +132,7 @@ export class CredentialService {
     id: string,
     validFrom: Date,
     validTo: Date,
+    deferSync = false,
   ): Promise<AccessCredential> {
     const credential = await this.credentials.findOne({ where: { id } });
 
@@ -144,7 +152,25 @@ export class CredentialService {
     credential.syncAttempts = 0;
     await this.credentials.save(credential);
 
-    return this.sync(credential);
+    return this.push(credential, deferSync);
+  }
+
+  /** Con `deferSync` el empuje corre sin esperarlo; si falla, lo recoge `sync-retry`. */
+  private push(
+    credential: AccessCredential,
+    deferSync = false,
+  ): Promise<AccessCredential> {
+    if (!deferSync) {
+      return this.sync(credential);
+    }
+
+    void this.sync(credential).catch((error) =>
+      this.logger.warn(
+        `Empuje diferido de ${credential.id} fallido: ${this.describe(error)}`,
+      ),
+    );
+
+    return Promise.resolve(credential);
   }
 
   /**

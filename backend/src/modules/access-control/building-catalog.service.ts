@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { AccessIotGateway } from './access-iot.gateway';
 import { AccessIotBuilding } from './access-iot.types';
 
@@ -10,12 +10,21 @@ const CACHE_TTL_MS = 10 * 60 * 1000;
  * lado IoT, no un despliegue del backend.
  */
 @Injectable()
-export class BuildingCatalogService {
+export class BuildingCatalogService implements OnModuleInit {
   private readonly logger = new Logger(BuildingCatalogService.name);
   private cache: AccessIotBuilding[] | null = null;
   private cachedAt = 0;
 
   constructor(private readonly iot: AccessIotGateway) {}
+
+  /** En frío, el primer webhook pagaría la consulta a la VPS dentro del plazo de Hostaway. */
+  onModuleInit(): void {
+    void this.list().catch((error) =>
+      this.logger.warn(
+        `No se pudo precargar el catálogo de edificios: ${this.describe(error)}`,
+      ),
+    );
+  }
 
   async list(): Promise<AccessIotBuilding[]> {
     if (this.cache && Date.now() - this.cachedAt < CACHE_TTL_MS) {

@@ -85,6 +85,7 @@ process.env.ACCESS_IOT_URL ??= 'http://accesos.invalid';
 process.env.ACCESS_IOT_TOKEN ??= 'mock-client-id:mock-client-secret';
 process.env.ACCESS_SCHEDULER_ENABLED = 'false';
 process.env.ACCESS_ALLOW_PIN_REVEAL = 'false';
+process.env.HOSTAWAY_WEBHOOK_USER = 'test-hostaway';
 process.env.HOSTAWAY_WEBHOOK_SECRET = 'test-hostaway-secret';
 
 // Ventana de vigencia del huésped, con `=` literal y no `??=`: ConfigModule
