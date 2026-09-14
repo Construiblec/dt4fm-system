@@ -5,8 +5,9 @@ import {
   GuestPortalData,
   GuestPortalDataService,
 } from '../access-control/guest-portal-data.service';
+import { GuestLinkService } from '../guest-link/guest-link.service';
+import { GuestTokenService } from '../guest-link/guest-token.service';
 import { GuestPortalService } from './guest-portal.service';
-import { GuestTokenService } from './guest-token.service';
 
 const HOUR = 60 * 60 * 1000;
 const STAY = 'c47ca6f1-f675-4653-a3a6-31487feb054b';
@@ -45,24 +46,44 @@ type Harness = {
   service: GuestPortalService;
   findStay: jest.Mock;
   getPortalData: jest.Mock;
+  deliver: jest.Mock;
 };
 
+/**
+ * `GuestLinkService` se dobla, pero su `issue()` usa el `GuestTokenService`
+ * real: así los tokens que emite el harness son verificables por el mismo
+ * servicio, que es lo que `resolve()` necesita.
+ */
 const harness = (stay: GuestStay | null): Harness => {
+  const tokens = new GuestTokenService(config);
   const findStay = jest.fn().mockResolvedValue(stay);
   const getPortalData = jest
     .fn()
     .mockResolvedValue({ stayId: STAY } as GuestPortalData);
+  const deliver = jest.fn().mockResolvedValue({
+    outcome: 'sent',
+    channel: 'webhook',
+    target: 'https://ejemplo.test/hook',
+  });
 
   const data = { findStay, getPortalData } as unknown as GuestPortalDataService;
+  const guestLink = {
+    isConfigured: () => tokens.isConfigured(),
+    issue: (s: { id: string; tokenVersion: number }) => {
+      const token = tokens.create(s.id, s.tokenVersion);
+      return {
+        token,
+        url: `https://dt4fm.example.com/guest/dashboard?token=${encodeURIComponent(token)}`,
+      };
+    },
+    deliver,
+  } as unknown as GuestLinkService;
 
   return {
     findStay,
     getPortalData,
-    service: new GuestPortalService(
-      data,
-      new GuestTokenService(config),
-      config,
-    ),
+    deliver,
+    service: new GuestPortalService(data, tokens, guestLink),
   };
 };
 
@@ -96,6 +117,27 @@ describe('GuestPortalService', () => {
       );
 
       await expect(service.issueLink(STAY)).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('envío manual', () => {
+    it('fuerza el envío aunque ya se hubiera enviado', async () => {
+      const stay = stayWith();
+      const { service, deliver } = harness(stay);
+
+      const resultado = await service.deliverLink(STAY);
+
+      expect(resultado.outcome).toBe('sent');
+      expect(deliver).toHaveBeenCalledWith(stay, { force: true });
+    });
+
+    it('aplica las mismas comprobaciones que la emisión', async () => {
+      const { service, deliver } = harness(stayWith({ status: 'cancelled' }));
+
+      await expect(service.deliverLink(STAY)).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(deliver).not.toHaveBeenCalled();
     });
   });
 

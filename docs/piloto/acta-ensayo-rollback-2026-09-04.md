@@ -237,5 +237,8 @@ Resultado opuesto ante la misma acción, según el código desplegado. **Causa c
 
 Los tres primeros son defectos del propio procedimiento, ya corregidos en el documento. El resto quedó registrado en el [Backlog Post-Piloto](backlog-post-piloto.md).
 
+
 | ID | Sev. | Hallazgo |
+|---|---|---|
 | BP-023 | P3 | Sin definir quién autoriza un PR de reversión fuera de horario |
+---

@@ -1,4 +1,5 @@
 import type {
+  AccessLevel,
   Authorization,
   AuthorizationResponse,
   ListAuthorizationsResponse,
@@ -6,9 +7,8 @@ import type {
 
 /**
  * Datos quemados para Autorizaciones. Se activan con `VITE_CAV_MOCK=true`
- * (ver `authorizationsService.ts`) porque ni Hostaway ni el sistema de
- * control de acceso están integrados todavía — sin esto no hay forma de ver
- * la pantalla con contenido real.
+ * (ver `authorizationsService.ts`). Ya existe backend real, así que esto queda
+ * solo para trabajar la pantalla sin levantar el entorno completo.
  *
  * Las fechas se calculan relativas a hoy para que la reserva siempre caiga
  * dentro del rango "próximos 7 días" que trae `useAuthorizations` por
@@ -23,38 +23,35 @@ const daysFromNow = (days: number, time = "15:00:00"): string => {
 /** Vive en memoria del módulo: sobrevive a la navegación, no a un refresco. */
 let authorizations: Authorization[] = [
   {
-    id: 1,
+    id: "6b1f2c80-0d2a-4f1e-9a33-1c7e5b204a01",
     guestName: "Marta Ruiz",
-    unitLabel: "Torre A · UI R302",
+    unitLabel: "Inglaterra · UI R302",
     checkIn: daysFromNow(1),
     checkOut: daysFromNow(4, "11:00:00"),
-    pinStatus: "ready",
-    lastSentAt: daysFromNow(-2, "09:12:00"),
+    accessLevel: "both",
   },
   {
-    id: 2,
+    id: "6b1f2c80-0d2a-4f1e-9a33-1c7e5b204a02",
     guestName: "Carlos Medina",
-    unitLabel: "Torre B · UI I41",
+    unitLabel: "Pradera · UI I41",
     checkIn: daysFromNow(2),
     checkOut: daysFromNow(5, "11:00:00"),
-    pinStatus: "pending",
-    lastSentAt: null,
+    accessLevel: "pedestrian",
   },
   {
-    id: 3,
+    id: "6b1f2c80-0d2a-4f1e-9a33-1c7e5b204a03",
     guestName: "Ana Torres",
-    unitLabel: "Torre A · UI P02",
+    unitLabel: "Inglaterra · UI P02",
     checkIn: daysFromNow(3),
     checkOut: daysFromNow(6, "11:00:00"),
-    pinStatus: "ready",
-    lastSentAt: null,
+    accessLevel: "vehicular",
   },
 ];
 
 /** Una API real tarda; sin esto los estados de carga nunca se ven. */
 const delay = () => new Promise((resolve) => setTimeout(resolve, 400));
 
-const findOrThrow = (id: number): Authorization => {
+const findOrThrow = (id: string): Authorization => {
   const found = authorizations.find((item) => item.id === id);
   if (!found) throw new Error(`[mock] No existe la autorización ${id}`);
   return found;
@@ -67,30 +64,30 @@ export const mockListAuthorizations =
   };
 
 export const mockGetAuthorization = async (
-  id: number,
+  id: string,
 ): Promise<AuthorizationResponse> => {
   await delay();
   return { data: findOrThrow(id) };
 };
 
+/**
+ * El PIN no viaja al frontend ni siquiera aquí, así que renovar no cambia nada
+ * visible: el efecto real ocurre en la base y lo ve el huésped en su portal.
+ */
 export const mockRegeneratePin = async (
-  id: number,
+  id: string,
 ): Promise<AuthorizationResponse> => {
   await delay();
-  authorizations = authorizations.map((item) =>
-    item.id === id ? { ...item, pinStatus: "pending" } : item,
-  );
   return { data: findOrThrow(id) };
 };
 
-export const mockSendPin = async (
-  id: number,
+export const mockUpdateAccessLevel = async (
+  id: string,
+  accessLevel: AccessLevel,
 ): Promise<AuthorizationResponse> => {
   await delay();
   authorizations = authorizations.map((item) =>
-    item.id === id
-      ? { ...item, pinStatus: "ready", lastSentAt: new Date().toISOString() }
-      : item,
+    item.id === id ? { ...item, accessLevel } : item,
   );
   return { data: findOrThrow(id) };
 };
