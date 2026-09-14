@@ -251,6 +251,39 @@ export class CredentialService {
   }
 
   /**
+   * Renueva el PIN de una credencial viva a petición de un supervisor.
+   *
+   * Es la contraparte deliberada de `reschedule()` y `changeScope()`, que
+   * **nunca** tocan el PIN: aquí cambiarlo es justamente el propósito. El caso
+   * real es el huésped que dice que alguien vio su código.
+   *
+   * No hay que avisarle del código nuevo por ningún canal aparte: el portal lee
+   * el PIN vigente en cada visita, así que el enlace que ya tiene muestra el
+   * nuevo sin reemitir nada.
+   */
+  async regeneratePin(id: string): Promise<AccessCredential> {
+    const credential = await this.findById(id);
+
+    if (!LIVE_STATUSES.includes(credential.status)) {
+      throw new BadRequestException(
+        'Solo se puede renovar el PIN de una credencial vigente',
+      );
+    }
+
+    // `rotatePin` ya respeta la unicidad por edificio y el enfriamiento, porque
+    // pasa por el mismo `PinGeneratorService` que la emisión.
+    const rotada = await this.rotatePin(credential);
+
+    rotada.syncState = 'pending';
+    rotada.syncAttempts = 0;
+    await this.credentials.save(rotada);
+
+    this.logger.log(`PIN renovado para la credencial ${rotada.id}`);
+
+    return this.sync(rotada);
+  }
+
+  /**
    * Pedir acceso vehicular en un edificio que solo tiene entrada peatonal es un
    * error del operador, no algo que deba escribirse y fallar en el aparato.
    */

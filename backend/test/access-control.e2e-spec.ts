@@ -12,8 +12,10 @@ import {
   DEFAULT_ACCESS_BUILDINGS,
   ING_BUILDING_ID,
 } from './mocks/gateways.mock';
+import { AuthorizationsService } from '../src/modules/access-control/authorizations.service';
 import { BuildingCatalogService } from '../src/modules/access-control/building-catalog.service';
 import { CredentialService } from '../src/modules/access-control/credential.service';
+import { AccessCredential } from '../src/modules/access-control/entities/access-credential.entity';
 import { GuestStayService } from '../src/modules/access-control/guest-stay.service';
 import { ReservationSweepService } from '../src/modules/access-control/reservation-sweep.service';
 import { GuestStay } from '../src/modules/access-control/entities/guest-stay.entity';
@@ -816,6 +818,229 @@ describe('AccessControlController (e2e)', () => {
       expect(
         await credentialService.findLiveBySubject('guest', '44712233'),
       ).toBeNull();
+    });
+  });
+
+  /**
+   * La pantalla de Autorizaciones del Supervisor CAV.
+   *
+   * Vive en este archivo y no en uno propio a propósito: comparte `guest_stay`
+   * y `access_credential`, que el `beforeEach` de arriba trunca. Jest paraleliza
+   * por archivo, así que dos suites sobre las mismas tablas se pisan entre sí.
+   */
+  describe('Autorizaciones (Supervisor CAV)', () => {
+    /** El frontend de CAV manda la sesión en `Authorization`, sin esquema. */
+    const CAV_SESSION = { authorization: MOCK_SESSION_ID };
+    const UNIDAD_ING = 1187;
+
+    let authorizations: AuthorizationsService;
+
+    const crearEstancia = (overrides: Record<string, unknown> = {}) =>
+      guestStayService.upsertFromReservation({
+        hostawayReservationId: '44712233',
+        listingId: '288172',
+        guestName: 'Ana Pérez',
+        guestEmail: 'ana@example.com',
+        arrivalDate: '2026-09-14',
+        departureDate: '2026-09-18',
+        status: 'confirmed',
+        issuedBy: 'test',
+        ...overrides,
+      });
+
+    const huellaDe = async (subjectRef: string): Promise<string> => {
+      const credencial = await dataSource
+        .getRepository(AccessCredential)
+        .findOne({ where: { subjectRef } });
+
+      return credencial!.pinFingerprint;
+    };
+
+    beforeEach(() => {
+      authorizations = app.get(AuthorizationsService);
+
+      mocks.openmaint.getUnitsByBuilding.mockResolvedValue({
+        data: [{ _id: UNIDAD_ING, Description: 'UI R302', Code: 'R302' }],
+      });
+      // Las unidades se cachean 5 minutos: sin esto un test arrastra las del
+      // anterior, igual que pasa con el catálogo de edificios.
+      authorizations.invalidate();
+    });
+
+    describe('autenticación y rol', () => {
+      it('401 sin cabecera de sesión', async () => {
+        await request(app.getHttpServer())
+          .get('/access-authorizations')
+          .expect(401);
+      });
+
+      it('403 con un rol que no gestiona accesos', async () => {
+        mocks.openmaint.getSession.mockResolvedValue(
+          mockSession({ role: 'MaintOffice' }),
+        );
+
+        await request(app.getHttpServer())
+          .get('/access-authorizations')
+          .set(CAV_SESSION)
+          .expect(403);
+      });
+
+      it('200 con SupervisorCAV', async () => {
+        mocks.openmaint.getSession.mockResolvedValue(
+          mockSession({ role: 'SupervisorCAV', username: 'cav.mock' }),
+        );
+
+        await request(app.getHttpServer())
+          .get('/access-authorizations')
+          .set(CAV_SESSION)
+          .expect(200);
+      });
+
+      it('también acepta la sesión en x-session-token', async () => {
+        await request(app.getHttpServer())
+          .get('/access-authorizations')
+          .set(SESSION)
+          .expect(200);
+      });
+    });
+
+    describe('GET /access-authorizations', () => {
+      it('compone "edificio · unidad" y no devuelve el PIN', async () => {
+        await crearEstancia();
+
+        const res = await request(app.getHttpServer())
+          .get('/access-authorizations?from=2026-09-01&to=2026-09-30')
+          .set(CAV_SESSION)
+          .expect(200);
+
+        expect(res.body.data).toHaveLength(1);
+        expect(res.body.data[0]).toMatchObject({
+          guestName: 'Ana Pérez',
+          unitLabel: 'Inglaterra · UI R302',
+          accessLevel: 'pedestrian',
+        });
+        expect(JSON.stringify(res.body)).not.toContain('pin');
+      });
+
+      it('deja fuera las estancias de edificios sin control de accesos', async () => {
+        // Batán no está en el catálogo: la estancia se proyecta, pero nunca
+        // llega a tener credencial, y sin credencial no hay nada que gestionar.
+        mocks.unitResolver.byListingId.mockResolvedValue({
+          unitId: 99,
+          buildingId: BAT_BUILDING_ID,
+        });
+
+        await crearEstancia();
+
+        const res = await request(app.getHttpServer())
+          .get('/access-authorizations')
+          .set(CAV_SESSION)
+          .expect(200);
+
+        expect(res.body.data).toEqual([]);
+      });
+
+      it('respeta el rango de fechas de llegada', async () => {
+        await crearEstancia();
+
+        const res = await request(app.getHttpServer())
+          .get('/access-authorizations?from=2026-10-01&to=2026-10-31')
+          .set(CAV_SESSION)
+          .expect(200);
+
+        expect(res.body.data).toEqual([]);
+      });
+
+      it('400 con un rango que no tiene formato de fecha', async () => {
+        await request(app.getHttpServer())
+          .get('/access-authorizations?from=ayer')
+          .set(CAV_SESSION)
+          .expect(400);
+      });
+    });
+
+    describe('GET /access-authorizations/:stayId', () => {
+      it('devuelve el detalle sin el PIN', async () => {
+        const estancia = await crearEstancia();
+
+        const res = await request(app.getHttpServer())
+          .get(`/access-authorizations/${estancia!.id}`)
+          .set(CAV_SESSION)
+          .expect(200);
+
+        expect(res.body.data.id).toBe(estancia!.id);
+        expect(res.body.data).not.toHaveProperty('pin');
+      });
+
+      it('404 con una estancia que no existe', async () => {
+        await request(app.getHttpServer())
+          .get('/access-authorizations/11111111-2222-4333-a444-555555555555')
+          .set(CAV_SESSION)
+          .expect(404);
+      });
+
+      it('400 con un id que no es uuid', async () => {
+        await request(app.getHttpServer())
+          .get('/access-authorizations/44712233')
+          .set(CAV_SESSION)
+          .expect(400);
+      });
+    });
+
+    describe('POST /access-authorizations/:stayId/regenerate', () => {
+      it('cambia el PIN de verdad y no lo devuelve', async () => {
+        const estancia = await crearEstancia();
+        const antes = await huellaDe('44712233');
+
+        const res = await request(app.getHttpServer())
+          .post(`/access-authorizations/${estancia!.id}/regenerate`)
+          .set(CAV_SESSION)
+          .expect(200);
+
+        expect(await huellaDe('44712233')).not.toBe(antes);
+        expect(JSON.stringify(res.body)).not.toContain('pin');
+      });
+
+      it('404 si la estancia no tiene credencial viva', async () => {
+        mocks.unitResolver.byListingId.mockResolvedValue({
+          unitId: 99,
+          buildingId: BAT_BUILDING_ID,
+        });
+
+        const estancia = await crearEstancia();
+
+        await request(app.getHttpServer())
+          .post(`/access-authorizations/${estancia!.id}/regenerate`)
+          .set(CAV_SESSION)
+          .expect(404);
+      });
+    });
+
+    describe('POST /access-authorizations/:stayId/access-level', () => {
+      it('amplía el ámbito sin tocar el PIN', async () => {
+        const estancia = await crearEstancia();
+        const antes = await huellaDe('44712233');
+
+        const res = await request(app.getHttpServer())
+          .post(`/access-authorizations/${estancia!.id}/access-level`)
+          .set(CAV_SESSION)
+          .send({ accessLevel: 'both' })
+          .expect(200);
+
+        expect(res.body.data.accessLevel).toBe('both');
+        // El dueño ya lo tiene anotado: cambiar de ámbito no puede cambiárselo.
+        expect(await huellaDe('44712233')).toBe(antes);
+      });
+
+      it('400 con un nivel que no existe', async () => {
+        const estancia = await crearEstancia();
+
+        await request(app.getHttpServer())
+          .post(`/access-authorizations/${estancia!.id}/access-level`)
+          .set(CAV_SESSION)
+          .send({ accessLevel: 'helicoptero' })
+          .expect(400);
+      });
     });
   });
 });

@@ -5,6 +5,8 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { HostawayModule } from '../../integrations/hostaway/hostaway.module';
 import { OpenmaintModule } from '../../integrations/openmaint/openmaint.module';
 import { AccessControlController } from './access-control.controller';
+import { AuthorizationsController } from './authorizations.controller';
+import { AuthorizationsService } from './authorizations.service';
 import { AccessIotClient } from './access-iot.client';
 import { AccessMaintenanceService } from './access-maintenance.service';
 import { AccessIotGateway } from './access-iot.gateway';
@@ -28,7 +30,11 @@ import { SyncRetryService } from './sync-retry.service';
     OpenmaintModule,
     HostawayModule,
   ],
-  controllers: [AccessControlController, ReservationsController],
+  controllers: [
+    AccessControlController,
+    AuthorizationsController,
+    ReservationsController,
+  ],
   providers: [
     PinCipherService,
     PinGeneratorService,
@@ -37,6 +43,7 @@ import { SyncRetryService } from './sync-retry.service';
     SyncRetryService,
     GuestStayService,
     GuestPortalDataService,
+    AuthorizationsService,
     ReservationSweepService,
     AccessMaintenanceService,
     {

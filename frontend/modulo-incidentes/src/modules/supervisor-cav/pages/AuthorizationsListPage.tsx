@@ -6,7 +6,6 @@ import { useAuthorizations } from "@/modules/supervisor-cav/hooks/useAuthorizati
 import { AppHeader } from "@/shared/components/AppHeader";
 import { DateField } from "@/shared/components/DateField";
 import { ListStateMessage } from "@/modules/incidentes/components/ListStateMessage";
-import { badgeClass } from "@/shared/constants/statusPalette";
 import { formatMediumDate } from "@/shared/utils/dateUtils";
 
 const inputLabel =
@@ -95,21 +94,13 @@ export const AuthorizationsListPage = () => {
                   key={item.id}
                   className="rounded-xl bg-white p-4 shadow-sm"
                 >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <h3 className="text-base font-semibold text-slate-900">
-                        {item.guestName}
-                      </h3>
-                      <p className="mt-0.5 truncate text-xs text-slate-500">
-                        {item.unitLabel}
-                      </p>
-                    </div>
-
-                    {item.pinStatus === "pending" ? (
-                      <span className={`shrink-0 ${badgeClass("assigned")}`}>
-                        Pendiente de enviar
-                      </span>
-                    ) : null}
+                  <div className="min-w-0">
+                    <h3 className="text-base font-semibold text-slate-900">
+                      {item.guestName}
+                    </h3>
+                    <p className="mt-0.5 truncate text-xs text-slate-500">
+                      {item.unitLabel}
+                    </p>
                   </div>
 
                   <div className="mt-3 space-y-1.5 text-sm text-slate-600">
