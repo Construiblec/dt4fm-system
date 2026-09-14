@@ -1,8 +1,15 @@
-import { Injectable, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { UnitResolverService } from '../../integrations/openmaint/unit-resolver.service';
+import {
+  UnitLocation,
+  UnitResolverService,
+} from '../../integrations/openmaint/unit-resolver.service';
 import { GuestLinkService } from '../guest-link/guest-link.service';
 import { BuildingCatalogService } from './building-catalog.service';
 import { CredentialService } from './credential.service';
@@ -49,6 +56,8 @@ export interface ReservationInput {
   checkInTime?: number | null;
   checkOutTime?: number | null;
   issuedBy: string;
+  /** El webhook no puede esperar a la VPS dentro del plazo de Hostaway. */
+  deferSync?: boolean;
 }
 
 @Injectable()
@@ -88,6 +97,7 @@ export class GuestStayService {
       const revoked = await this.credentialService.revokeByGuestStay(
         stay.id,
         'reservation_cancelled',
+        input.deferSync,
       );
 
       if (revoked > 0) {
@@ -99,7 +109,7 @@ export class GuestStayService {
       return stay;
     }
 
-    await this.syncCredential(stay, input.issuedBy);
+    await this.syncCredential(stay, input.issuedBy, input.deferSync);
 
     // El enlace del portal se entrega una sola vez, cuando la estancia nace.
     // Una modificación no lo reenvía: el enlace ya entregado sigue valiendo
@@ -136,7 +146,7 @@ export class GuestStayService {
       where: { hostawayReservationId: input.hostawayReservationId },
     });
 
-    const location = await this.unitResolver.byListingId(input.listingId);
+    const location = await this.resolveLocation(input, existing);
     const accessValidFrom = this.atLocalHour(
       input.arrivalDate,
       this.reservationHour(
@@ -182,6 +192,7 @@ export class GuestStayService {
   private async syncCredential(
     stay: GuestStay,
     issuedBy: string,
+    deferSync?: boolean,
   ): Promise<void> {
     if (stay.buildingId === null) {
       this.logger.warn(
@@ -218,6 +229,7 @@ export class GuestStayService {
           existing.id,
           stay.accessValidFrom,
           stay.accessValidTo,
+          deferSync,
         );
       }
 
@@ -235,7 +247,31 @@ export class GuestStayService {
       validTo: stay.accessValidTo,
       issuedBy,
       guestStayId: stay.id,
+      deferSync,
     });
+  }
+
+  /**
+   * openMAINT caído solo es fatal sin edificio que reutilizar: sin él no se emite,
+   * y el 503 deja reintentar a Hostaway. Una cancelación no necesita edificio.
+   */
+  private async resolveLocation(
+    input: ReservationInput,
+    existing: GuestStay | null,
+  ): Promise<UnitLocation | null> {
+    try {
+      return await this.unitResolver.byListingId(input.listingId);
+    } catch (error) {
+      if (existing?.buildingId != null || this.isCancelled(input.status)) {
+        return null;
+      }
+
+      throw new ServiceUnavailableException(
+        `openMAINT no resolvió el listing ${input.listingId}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
   }
 
   private statusFromDates(from: Date, to: Date): GuestStay['status'] {
