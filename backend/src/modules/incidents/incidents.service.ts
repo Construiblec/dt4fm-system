@@ -16,7 +16,7 @@ import { PushDispatchService } from '../push-notifications/push-dispatch.service
 import { CompleteIncidentDto } from './dto/complete-incident.dto';
 import { CreateIncidentDto } from './dto/create-incident.dto';
 
-type UploadedImage = {
+export type UploadedImage = {
   buffer: Buffer;
   originalname: string;
   mimetype: string;

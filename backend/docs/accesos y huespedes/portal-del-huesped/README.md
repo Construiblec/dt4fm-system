@@ -64,10 +64,8 @@ solo, sin ningún código nuevo de por medio.
   `x-guest-token`, o `?token=` (solo para la primera carga).
 - `guest-portal.controller.ts` — `POST /guest/magic-link` y `GET /guest/me`.
 
-**Frontend:** `GuestDashboardPage.tsx` en `/guest/dashboard`, texto plano sin estilos.
-Su valor no es visual: expone campos crudos (`openmaintUnitId`, `syncState`) que hoy no se
-ven en ninguna pantalla, y sirve de diagnóstico de qué listings de Hostaway no están
-mapeados a una unidad de openMAINT.
+**Frontend:** portal diseñado y responsive (ver §7). El diagnóstico con los campos crudos
+(`openmaintUnitId`, `syncState`) sigue disponible con `?debug=1`.
 
 ## 4. Endpoints
 
@@ -75,9 +73,33 @@ mapeados a una unidad de openMAINT.
 |---|---|---|
 | `POST /guest/magic-link` | Sesión de openMAINT, rol `SuperUser` | Emite el enlace de una estancia (`stayId`, uuid de `guest_stay`) |
 | `GET /guest/me` | El propio enlace | Devuelve los datos del portal. `pin` solo viene si `pinState: "disponible"` |
+| `POST /guest/incidents` | El propio enlace | Abre un correctivo desde el portal (multipart: `description`, `location?`, `images[]`) |
 
 `pinState` puede ser `disponible`, `antes-del-checkin`, `finalizado`, o `sin-cobertura`
 — el frontend decide qué texto mostrar según ese campo, nunca inventa uno propio.
+
+Campos que `GET /guest/me` añade para el portal diseñado:
+
+| Campo | Qué es |
+|---|---|
+| `checkInAt` / `checkOutAt` | Check-in y check-out exactos, sin los márgenes de acceso. Se reconstruyen como `access_valid_from + ACCESS_GUEST_LEAD_HOURS` (y el simétrico con la gracia) en [`guest-stay-timing.ts`](../../../src/modules/access-control/guest-stay-timing.ts) |
+| `hasVehicularAccess` | La credencial viva incluye la entrada vehicular (`both` o `vehicular`) |
+| `canReportIncident` | Misma regla que aplica `POST /guest/incidents`: estancia no cancelada, ya empezó el check-in, no terminó el acceso y la reserva está vinculada a un edificio |
+| `unitName`, `buildingName`, `buildingAddress` | Leídos de las tarjetas `Unit` y `Building` de openMAINT con la sesión de servicio, cacheados 12 h. Nulos si openMAINT no responde: el portal no falla por eso |
+
+`POST /guest/incidents` responde:
+
+| Código | Cuándo |
+|---|---|
+| 201 | Correctivo abierto. Devuelve `incidentId` y el resultado de los adjuntos |
+| 400 | Descripción vacía o adjunto que no es PNG, JPG o WEBP |
+| 401 | Enlace inválido, cancelado o vencido |
+| 403 | Todavía no empezó el check-in |
+| 413 | Alguna imagen supera 5 MB |
+| 422 | La reserva no está vinculada a un edificio |
+| 429 | Más de 5 reportes en 24 h para la misma estancia |
+| 502 | openMAINT no pudo abrir el correctivo |
+| 503 | Falta `OPENMAINT_GUEST_REQUESTER_ID` |
 
 ## 5. Lo que falta
 
@@ -95,6 +117,13 @@ mapeados a una unidad de openMAINT.
   de una modificación — no hay endpoint para que un humano lo haga sin que la orden venga
   de Hostaway.
 
+- **Apertura remota de la puerta vehicular.** El portal muestra el bloque cuando
+  `hasVehicularAccess`, con el botón deshabilitado ("Próximamente"). El contrato con la VPS
+  no tiene ningún comando para abrir puertas: hace falta un endpoint nuevo en la VPS, una
+  ruta en el backend protegida por el enlace, límite por estancia, auditoría de aperturas y
+  una decisión explícita sobre quién puede abrir a distancia (el enlace no tiene segundo
+  factor).
+
 ## 6. Verificado
 
 292 pruebas unitarias + 193 E2E contra Postgres real, y un recorrido manual completo:
@@ -103,3 +132,33 @@ check-out con el **mismo** token (sin reemitir), y `token_version` como freno de
 emergencia. El detalle de cómo reproducirlo está en `pruebas-locales.md`, en esta misma
 carpeta — no se sube al repositorio porque referencia datos y secretos de un entorno
 local concreto.
+
+## 7. Portal diseñado
+
+Rutas del frontend, todas sin `RequireRole`:
+
+| Ruta | Qué muestra |
+|---|---|
+| `/guest/dashboard` | PIN (o su estado), puerta vehicular, estadía, cómo llegar y reporte de incidencias |
+| `/guest/como-llegar` | Mapa y botón para abrir Google Maps (en escritorio el mapa va integrado en el panel) |
+| `/guest/incidencia` | Formulario de reporte. Solo existe desde el check-in; antes redirige al panel |
+
+Decisiones:
+
+- **Responsive.** En el celular es una columna en el orden del diseño; en escritorio, dos
+  columnas (accesos a la izquierda, estadía y mapa a la derecha). No usa `AppLayout`: sus
+  banners son del personal y su tope de 448 px desperdiciaría el escritorio.
+- **Token fuera de la URL.** La primera carga guarda el token en `sessionStorage`
+  (`dt4fm-guest-token`) y quita `?token=` de la barra. Así no queda en el historial ni viaja
+  como `Referer` al mapa. `clearSession()` del personal no lo borra, y `/guest` está excluido
+  del destino tras login.
+- **Incidencias como invitado.** El huésped nunca recibe una sesión de openMAINT. El correctivo
+  se abre con la sesión de servicio y el Employee "Portal Huésped" como solicitante
+  (`OPENMAINT_GUEST_REQUESTER_ID`). Edificio y unidad salen de la estancia, nunca del cuerpo de
+  la petición. Las notas llevan un bloque `--- Datos del huésped ---` con nombre, correo,
+  reserva y estancia.
+- **Google Maps sin API key.** Miniatura con el embed `https://www.google.com/maps?q=…&output=embed`
+  y enlace oficial de Maps URLs, que en el celular abre la app. El embed sin clave no está
+  documentado por Google: si lo retira, solo se pierde la miniatura.
+- **Correos de incidencia escapados.** Todo el texto libre que llega a los correos se escapa
+  (`escapeHtml`), porque ahora cualquier huésped escribe esa descripción.
