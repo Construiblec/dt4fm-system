@@ -5,16 +5,16 @@ import {
   ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import {
   GuestPortalData,
   GuestPortalDataService,
 } from '../access-control/guest-portal-data.service';
 import { GuestStay } from '../access-control/entities/guest-stay.entity';
-import { GuestTokenService } from './guest-token.service';
-
-/** Ruta del frontend que recibe el enlace. Convive con `/owner/dashboard`. */
-const GUEST_DASHBOARD_PATH = '/guest/dashboard';
+import {
+  GuestLinkDeliveryResult,
+  GuestLinkService,
+} from '../guest-link/guest-link.service';
+import { GuestTokenService } from '../guest-link/guest-token.service';
 
 /** El enlace recién emitido. */
 export interface IssuedGuestLink {
@@ -29,11 +29,13 @@ export interface IssuedGuestLink {
 }
 
 /**
- * Emite y canjea los enlaces con los que el huésped entra a su portal.
+ * Canjea los enlaces con los que el huésped entra a su portal, y ofrece la
+ * emisión y el envío manuales para administración.
  *
- * Reparto de responsabilidades: `GuestTokenService` sabe firmar y verificar,
- * `GuestPortalDataService` sabe leer los datos de accesos, y este servicio sabe
- * **quién tiene derecho a entrar y hasta cuándo**.
+ * Reparto de responsabilidades: `GuestLinkService` arma y entrega el enlace,
+ * `GuestTokenService` verifica la firma, `GuestPortalDataService` lee los
+ * datos de accesos, y este servicio decide **quién tiene derecho a entrar y
+ * hasta cuándo**.
  *
  * Todas las decisiones de vigencia se toman contra `guest_stay` en el instante
  * del canje, nunca contra lo que diga el token.
@@ -45,7 +47,7 @@ export class GuestPortalService {
   constructor(
     private readonly data: GuestPortalDataService,
     private readonly guestToken: GuestTokenService,
-    private readonly configService: ConfigService,
+    private readonly guestLink: GuestLinkService,
   ) {}
 
   // ── Emisión ───────────────────────────────────────────────────────────────
@@ -56,6 +58,38 @@ export class GuestPortalService {
    * se sustituye por un aviso.
    */
   async issueLink(stayId: string): Promise<IssuedGuestLink> {
+    const stay = await this.requireIssuable(stayId);
+    const { token, url } = this.guestLink.issue(stay);
+
+    this.logger.log(
+      `Enlace emitido para la estancia ${stay.id} ` +
+        `(reserva ${stay.hostawayReservationId}, versión ${stay.tokenVersion}), ` +
+        `vigente hasta ${stay.accessValidTo.toISOString()}`,
+    );
+
+    return {
+      token,
+      url,
+      stayId: stay.id,
+      reservationId: stay.hostawayReservationId,
+      guestName: stay.guestName,
+      guestEmail: stay.guestEmail,
+      accessValidTo: stay.accessValidTo,
+    };
+  }
+
+  /**
+   * Envía el enlace por el canal configurado, **forzando** aunque ya se haya
+   * enviado: es el camino para "el huésped dice que no le llegó".
+   */
+  async deliverLink(stayId: string): Promise<GuestLinkDeliveryResult> {
+    const stay = await this.requireIssuable(stayId);
+
+    return this.guestLink.deliver(stay, { force: true });
+  }
+
+  /** Las tres razones por las que una estancia no puede recibir enlace. */
+  private async requireIssuable(stayId: string): Promise<GuestStay> {
     this.assertConfigured();
 
     const stay = await this.data.findStay(stayId);
@@ -76,30 +110,7 @@ export class GuestPortalService {
       );
     }
 
-    const token = this.guestToken.create(stay.id, stay.tokenVersion);
-
-    this.logger.log(
-      `Enlace emitido para la estancia ${stay.id} ` +
-        `(reserva ${stay.hostawayReservationId}, versión ${stay.tokenVersion}), ` +
-        `vigente hasta ${stay.accessValidTo.toISOString()}`,
-    );
-
-    return {
-      token,
-      url: this.buildUrl(token),
-      stayId: stay.id,
-      reservationId: stay.hostawayReservationId,
-      guestName: stay.guestName,
-      guestEmail: stay.guestEmail,
-      accessValidTo: stay.accessValidTo,
-    };
-  }
-
-  private buildUrl(token: string): string {
-    const base =
-      this.configService.get<string>('APP_BASE_URL')?.replace(/\/$/, '') ?? '';
-
-    return `${base}${GUEST_DASHBOARD_PATH}?token=${encodeURIComponent(token)}`;
+    return stay;
   }
 
   // ── Canje ─────────────────────────────────────────────────────────────────

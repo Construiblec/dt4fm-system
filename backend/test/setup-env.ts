@@ -48,6 +48,13 @@ process.env.VAPID_SUBJECT ??= 'mailto:no-reply@example.com';
 process.env.PASSWORD_RESET_SECRET ??= 'test-only-secret-do-not-use-in-prod';
 process.env.APP_BASE_URL ??= 'http://localhost:5173';
 
+// Entrega del enlace del portal. `webhook` para que el factory elija ese canal,
+// pero el canal real se sustituye en test-app.ts por un doble: ninguna suite
+// debe salir a la red. La URL es ficticia a propósito.
+process.env.GUEST_LINK_CHANNEL = 'webhook';
+process.env.GUEST_LINK_WEBHOOK_URL = 'https://webhook.invalid/pruebas';
+process.env.GUEST_LINK_WEBHOOK_SECRET = '';
+
 // Webhook IoT: secreto fijo y conocido por los tests.
 //
 // `=` y no `??=` a propósito: las suites mandan este literal en la cabecera

@@ -6,10 +6,11 @@ import { validationPipeOptions } from '../../config/validation.config';
 import { SessionRoleService } from '../../integrations/openmaint/session-role.service';
 import { GuestPortalDataService } from '../access-control/guest-portal-data.service';
 import { GuestStay } from '../access-control/entities/guest-stay.entity';
+import { GuestLinkService } from '../guest-link/guest-link.service';
+import { GuestTokenService } from '../guest-link/guest-token.service';
 import { RateLimiterService } from '../password-recovery/rate-limiter.service';
 import { GuestPortalController } from './guest-portal.controller';
 import { GuestPortalService } from './guest-portal.service';
-import { GuestTokenService } from './guest-token.service';
 
 const HOUR = 60 * 60 * 1000;
 const STAY = 'c47ca6f1-f675-4653-a3a6-31487feb054b';
@@ -46,11 +47,34 @@ describe('GuestPortalController', () => {
         })[key],
     } as unknown as ConfigService;
 
+    // `GuestLinkService` se dobla, pero su `issue()` usa el `GuestTokenService`
+    // real del módulo, para que los tokens emitidos sean verificables.
+    const tokens = new GuestTokenService(config);
+    const deliver = jest.fn().mockResolvedValue({
+      outcome: 'sent',
+      channel: 'webhook',
+      target: 'https://ejemplo.test/hook',
+    });
+
     const moduleRef = await Test.createTestingModule({
       controllers: [GuestPortalController],
       providers: [
         GuestPortalService,
-        GuestTokenService,
+        { provide: GuestTokenService, useValue: tokens },
+        {
+          provide: GuestLinkService,
+          useValue: {
+            isConfigured: () => tokens.isConfigured(),
+            issue: (s: { id: string; tokenVersion: number }) => {
+              const token = tokens.create(s.id, s.tokenVersion);
+              return {
+                token,
+                url: `https://dt4fm.example.com/guest/dashboard?token=${encodeURIComponent(token)}`,
+              };
+            },
+            deliver,
+          },
+        },
         RateLimiterService,
         { provide: ConfigService, useValue: config },
         {
@@ -131,6 +155,29 @@ describe('GuestPortalController', () => {
     await request(app.getHttpServer())
       .get(`/guest/me?token=${encodeURIComponent(token)}`)
       .expect(200);
+  });
+
+  it('envía el enlace por el canal y no devuelve el token', async () => {
+    const response = await request(app.getHttpServer())
+      .post('/guest/magic-link/deliver')
+      .set('x-session-token', SESION_ADMIN)
+      .send({ stayId: STAY })
+      .expect(200);
+
+    expect(response.body).toMatchObject({
+      outcome: 'sent',
+      channel: 'webhook',
+    });
+    expect(response.body).not.toHaveProperty('token');
+    expect(response.body).not.toHaveProperty('url');
+  });
+
+  it('no envía enlaces sin rol de administración', async () => {
+    await request(app.getHttpServer())
+      .post('/guest/magic-link/deliver')
+      .set('x-session-token', 'sesion-de-limpieza')
+      .send({ stayId: STAY })
+      .expect(403);
   });
 
   it('no emite enlaces sin sesión de openMAINT', async () => {

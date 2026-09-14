@@ -19,6 +19,7 @@ import { AccessCredential } from '../src/modules/access-control/entities/access-
 import { GuestStayService } from '../src/modules/access-control/guest-stay.service';
 import { ReservationSweepService } from '../src/modules/access-control/reservation-sweep.service';
 import { GuestStay } from '../src/modules/access-control/entities/guest-stay.entity';
+import { GuestLinkDelivery } from '../src/modules/guest-link/entities/guest-link-delivery.entity';
 
 const SESSION = { 'x-session-token': MOCK_SESSION_ID };
 
@@ -1041,6 +1042,130 @@ describe('AccessControlController (e2e)', () => {
           .send({ accessLevel: 'helicoptero' })
           .expect(400);
       });
+    });
+  });
+
+  /**
+   * Entrega del enlace del portal al proyectarse la reserva.
+   *
+   * Se llama a `upsertFromReservation` directo, como hace «proyección de la
+   * reserva» más arriba: el webhook HTTP procesa en segundo plano y no hay
+   * nada que esperar de forma determinista.
+   */
+  describe('entrega del enlace del portal', () => {
+    const reserva = (overrides: Record<string, unknown> = {}) => ({
+      hostawayReservationId: '44712233',
+      listingId: '288172',
+      guestName: 'Ana Pérez',
+      guestEmail: 'ana@example.com',
+      arrivalDate: '2026-09-14',
+      departureDate: '2026-09-18',
+      status: 'confirmed',
+      issuedBy: 'hostaway-webhook',
+      ...overrides,
+    });
+
+    const enviosDe = (stayId: string) =>
+      dataSource
+        .getRepository(GuestLinkDelivery)
+        .find({ where: { guestStayId: stayId }, order: { createdAt: 'ASC' } });
+
+    beforeEach(() => {
+      mocks.openmaint.getSession.mockResolvedValue(
+        mockSession({ role: 'SuperUser', username: 'admin.mock' }),
+      );
+    });
+
+    it('una estancia nueva entrega el enlace una vez, con la URL del portal', async () => {
+      const estancia = await guestStayService.upsertFromReservation(reserva());
+
+      expect(mocks.guestLinkChannel.send).toHaveBeenCalledTimes(1);
+
+      const [payload] = mocks.guestLinkChannel.send.mock.calls[0] as [
+        { event: string; stay: { id: string }; link: { url: string } },
+      ];
+      expect(payload.event).toBe('guest-link.issued');
+      expect(payload.stay.id).toBe(estancia!.id);
+      expect(payload.link.url).toContain('/guest/dashboard?token=');
+      // Ni el PIN ni el token suelto viajan al canal.
+      expect(JSON.stringify(payload)).not.toContain('"pin"');
+
+      const envios = await enviosDe(estancia!.id);
+      expect(envios).toHaveLength(1);
+      expect(envios[0]).toMatchObject({ status: 'sent', channel: 'webhook' });
+    });
+
+    it('la URL entregada abre el portal', async () => {
+      await guestStayService.upsertFromReservation(reserva());
+
+      const [payload] = mocks.guestLinkChannel.send.mock.calls[0] as [
+        { link: { url: string } },
+      ];
+      const token = new URL(payload.link.url).searchParams.get('token')!;
+
+      await request(app.getHttpServer())
+        .get('/guest/me')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+    });
+
+    it('una modificación de la reserva NO reenvía el enlace', async () => {
+      await guestStayService.upsertFromReservation(reserva());
+      const estancia = await guestStayService.upsertFromReservation(
+        reserva({ departureDate: '2026-09-20', status: 'modified' }),
+      );
+
+      // El enlace ya entregado no lleva fechas: sigue valiendo con la nueva.
+      expect(mocks.guestLinkChannel.send).toHaveBeenCalledTimes(1);
+      expect(await enviosDe(estancia!.id)).toHaveLength(1);
+    });
+
+    it('también se entrega en edificios sin control de accesos', async () => {
+      mocks.unitResolver.byListingId.mockResolvedValue({
+        unitId: 99,
+        buildingId: BAT_BUILDING_ID,
+      });
+
+      const estancia = await guestStayService.upsertFromReservation(reserva());
+
+      // Sin credencial, pero con enlace: el portal es más que el PIN.
+      expect(
+        await credentialService.findLiveBySubject('guest', '44712233'),
+      ).toBeNull();
+      expect(await enviosDe(estancia!.id)).toHaveLength(1);
+    });
+
+    it('un canal caído deja constancia y no impide emitir el PIN', async () => {
+      mocks.guestLinkChannel.send.mockResolvedValueOnce({
+        success: false,
+        target: 'https://webhook.invalid/pruebas',
+        httpStatus: 503,
+        error: 'status=503',
+      });
+
+      const estancia = await guestStayService.upsertFromReservation(reserva());
+
+      const [envio] = await enviosDe(estancia!.id);
+      expect(envio).toMatchObject({ status: 'failed', httpStatus: 503 });
+      // La proyección y el PIN son independientes del canal.
+      expect(
+        await credentialService.findLiveBySubject('guest', '44712233'),
+      ).not.toBeNull();
+    });
+
+    it('POST /guest/magic-link/deliver reenvía aunque ya se hubiera enviado', async () => {
+      const estancia = await guestStayService.upsertFromReservation(reserva());
+
+      const res = await request(app.getHttpServer())
+        .post('/guest/magic-link/deliver')
+        .set(SESSION)
+        .send({ stayId: estancia!.id })
+        .expect(200);
+
+      expect(res.body).toMatchObject({ outcome: 'sent', channel: 'webhook' });
+      expect(res.body).not.toHaveProperty('token');
+      expect(mocks.guestLinkChannel.send).toHaveBeenCalledTimes(2);
+      expect(await enviosDe(estancia!.id)).toHaveLength(2);
     });
   });
 });

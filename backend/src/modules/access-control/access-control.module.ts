@@ -4,6 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { HostawayModule } from '../../integrations/hostaway/hostaway.module';
 import { OpenmaintModule } from '../../integrations/openmaint/openmaint.module';
+import { GuestLinkModule } from '../guest-link/guest-link.module';
 import { AccessControlController } from './access-control.controller';
 import { AuthorizationsController } from './authorizations.controller';
 import { AuthorizationsService } from './authorizations.service';
@@ -29,6 +30,9 @@ import { SyncRetryService } from './sync-retry.service';
     HttpModule,
     OpenmaintModule,
     HostawayModule,
+    // Para entregar el enlace del portal cuando nace una estancia. No crea
+    // ciclo: guest-link no importa nada de este módulo.
+    GuestLinkModule,
   ],
   controllers: [
     AccessControlController,

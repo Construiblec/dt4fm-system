@@ -78,6 +78,42 @@ export class GuestPortalController {
     return link;
   }
 
+  @Post('magic-link/deliver')
+  @HttpCode(HttpStatus.OK)
+  @ApiHeader({ name: 'x-session-token', description: 'Sesión de openMAINT' })
+  @ApiOperation({
+    summary: 'Enviar el enlace de acceso por el canal configurado',
+    description:
+      'Fuerza el envío aunque ya se haya hecho antes: es el camino para "el ' +
+      'huésped dice que no le llegó". El envío normal es automático al ' +
+      'proyectarse la reserva. La respuesta dice si salió y por dónde; nunca ' +
+      'incluye el token.',
+  })
+  @ApiResponse({ status: 200, description: 'Resultado del envío.' })
+  @ApiResponse({ status: 401, description: 'Falta la sesión de openMAINT.' })
+  @ApiResponse({
+    status: 403,
+    description: 'Se requiere rol de administración.',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'La estancia no existe, está cancelada o ya terminó.',
+  })
+  async deliverLink(
+    @Body() dto: IssueGuestLinkDto,
+    @Headers('x-session-token') sessionToken: string,
+  ) {
+    const username = await this.requireAdmin(sessionToken);
+
+    const result = await this.portal.deliverLink(dto.stayId);
+
+    this.logger.log(
+      `Envío del enlace de la estancia ${dto.stayId} por ${username}: ${result.outcome}`,
+    );
+
+    return result;
+  }
+
   @Get('me')
   @UseGuards(GuestTokenGuard)
   @ApiHeader({

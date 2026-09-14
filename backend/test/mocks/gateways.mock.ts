@@ -216,3 +216,20 @@ export const createUnitResolverServiceMock = () => ({
 export type UnitResolverServiceMock = ReturnType<
   typeof createUnitResolverServiceMock
 >;
+
+// ─── Canal de entrega del enlace del portal ───────────────────────────────────
+// Sustituye al canal real (webhook) para que ninguna suite salga a la red. Por
+// defecto "entrega" con éxito; una suite lo cambia para probar el fallo.
+
+export const createGuestLinkChannelMock = () => ({
+  name: 'webhook',
+  send: jest.fn().mockResolvedValue({
+    success: true,
+    target: 'https://webhook.invalid/pruebas',
+    httpStatus: 200,
+  }),
+});
+
+export type GuestLinkChannelMock = ReturnType<
+  typeof createGuestLinkChannelMock
+>;

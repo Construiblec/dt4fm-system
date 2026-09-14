@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { UnitResolverService } from '../../integrations/openmaint/unit-resolver.service';
+import { GuestLinkService } from '../guest-link/guest-link.service';
 import { BuildingCatalogService } from './building-catalog.service';
 import { CredentialService } from './credential.service';
 import { GuestStay } from './entities/guest-stay.entity';
@@ -60,6 +61,7 @@ export class GuestStayService {
     private readonly unitResolver: UnitResolverService,
     private readonly catalog: BuildingCatalogService,
     private readonly credentialService: CredentialService,
+    private readonly guestLink: GuestLinkService,
     private readonly configService: ConfigService,
   ) {}
 
@@ -80,7 +82,7 @@ export class GuestStayService {
       return null;
     }
 
-    const stay = await this.persist(input);
+    const { stay, created } = await this.persist(input);
 
     if (this.isCancelled(input.status)) {
       const revoked = await this.credentialService.revokeByGuestStay(
@@ -99,10 +101,37 @@ export class GuestStayService {
 
     await this.syncCredential(stay, input.issuedBy);
 
+    // El enlace del portal se entrega una sola vez, cuando la estancia nace.
+    // Una modificación no lo reenvía: el enlace ya entregado sigue valiendo
+    // porque no lleva fechas dentro. Y se entrega aunque el edificio no tenga
+    // lector, porque el portal es más que el PIN.
+    if (created) {
+      await this.deliverLink(stay);
+    }
+
     return stay;
   }
 
-  private async persist(input: ReservationInput): Promise<GuestStay> {
+  /**
+   * Best-effort, igual que el webhook de reservas: un canal de entrega caído no
+   * puede impedir que la estancia y su PIN existan. El fallo queda registrado
+   * en `guest_link_delivery` para reenviarlo a mano.
+   */
+  private async deliverLink(stay: GuestStay): Promise<void> {
+    try {
+      await this.guestLink.deliver(stay);
+    } catch (error) {
+      this.logger.error(
+        `No se pudo entregar el enlace de la estancia ${stay.id}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+  }
+
+  private async persist(
+    input: ReservationInput,
+  ): Promise<{ stay: GuestStay; created: boolean }> {
     const existing = await this.stays.findOne({
       where: { hostawayReservationId: input.hostawayReservationId },
     });
@@ -146,7 +175,7 @@ export class GuestStayService {
         : this.statusFromDates(accessValidFrom, accessValidTo),
     });
 
-    return this.stays.save(stay);
+    return { stay: await this.stays.save(stay), created: existing === null };
   }
 
   /** Emite si no había credencial, y solo mueve la vigencia si ya la había. */
