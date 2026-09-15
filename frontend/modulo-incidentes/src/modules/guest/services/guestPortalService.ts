@@ -17,15 +17,35 @@ export type GuestPortalData = {
   /** Nulo cuando el listing de Hostaway no está mapeado a una unidad. */
   openmaintUnitId: number | null;
   buildingId: number | null;
+  /** Fechas puras `YYYY-MM-DD`: no pasarlas por `new Date()` directamente. */
   arrivalDate: string;
   departureDate: string;
   accessValidFrom: string;
   accessValidTo: string;
+  checkInAt: string;
+  checkOutAt: string;
   stayStatus: "pending" | "active" | "completed" | "cancelled";
   pinState: GuestPinState;
   pin: string | null;
   credentialId: string | null;
   syncState: "pending" | "synced" | "failed" | null;
+  hasVehicularAccess: boolean;
+  canReportIncident: boolean;
+  unitName: string | null;
+  buildingName: string | null;
+  buildingAddress: string | null;
+};
+
+export type GuestIncidentInput = {
+  description: string;
+  location?: string;
+  images: File[];
+};
+
+export type GuestIncidentResult = {
+  incidentId: number;
+  attachmentsUploaded: number;
+  attachmentsFailed: number;
 };
 
 const api = axios.create({
@@ -33,22 +53,43 @@ const api = axios.create({
 });
 
 /**
- * El huésped no tiene sesión: su única credencial es el token del enlace.
- *
- * Se manda por cabecera y no en el query string. El backend acepta `?token=`
- * para la primera carga, pero un token en la URL queda en el historial del
- * navegador y en los registros de cualquier proxy; en cuanto la página lo tiene
- * leído, las llamadas van por `Authorization`.
+ * El huésped no tiene sesión: su única credencial es el token del enlace, y
+ * viaja siempre por cabecera, nunca en la URL.
  */
+const authHeader = (token: string) => ({ Authorization: `Bearer ${token}` });
+
 export const getGuestPortalData = async (
   token: string,
 ): Promise<GuestPortalData> => {
   const { data } = await api.get<GuestPortalData>("/guest/me", {
-    headers: { Authorization: `Bearer ${token}` },
+    headers: authHeader(token),
   });
 
   return data;
 };
+
+export const createGuestIncident = async (
+  token: string,
+  input: GuestIncidentInput,
+): Promise<GuestIncidentResult> => {
+  const form = new FormData();
+  form.append("description", input.description);
+
+  if (input.location) form.append("location", input.location);
+
+  input.images.forEach((image) => form.append("images", image, image.name));
+
+  const { data } = await api.post<GuestIncidentResult>(
+    "/guest/incidents",
+    form,
+    { headers: authHeader(token) },
+  );
+
+  return data;
+};
+
+export const isGuestLinkInvalid = (error: unknown): boolean =>
+  axios.isAxiosError(error) && error.response?.status === 401;
 
 /** El mensaje que devolvió el backend, para mostrarlo tal cual. */
 export const getGuestApiErrorMessage = (

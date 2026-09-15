@@ -356,6 +356,21 @@ export class CredentialService {
     });
   }
 
+  /**
+   * Todas las credenciales vivas de un huésped, en orden estable. El índice
+   * único es por ámbito, así que puede haber más de una a la vez.
+   */
+  findLiveForGuest(reservationId: string): Promise<AccessCredential[]> {
+    return this.credentials.find({
+      where: {
+        subjectType: 'guest',
+        subjectRef: reservationId,
+        status: In(LIVE_STATUSES),
+      },
+      order: { createdAt: 'ASC' },
+    });
+  }
+
   /** Único punto del código que revela un PIN. */
   revealPin(credential: AccessCredential): string {
     return this.cipher.decrypt(credential.pinCiphertext);
