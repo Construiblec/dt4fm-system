@@ -29,6 +29,28 @@ const HOSTAWAY_PAGE_SIZE = 100;
 /** Tope defensivo de páginas para no quedar iterando ante un cursor anómalo */
 const MAX_CHECKOUT_PAGES = 25;
 
+/** Id de conversación que devuelve el modo mock; no existe en Hostaway. */
+const MOCK_CONVERSATION_ID = 900000;
+
+/** Por dónde sale un mensaje de una conversación de Hostaway. */
+export type HostawayCommunicationType =
+  | 'channel'
+  | 'email'
+  | 'sms'
+  | 'whatsapp';
+
+export interface HostawayConversation {
+  id: number;
+  reservationId: number | null;
+  channelId: number | null;
+}
+
+type RawHostawayConversation = {
+  id?: number;
+  reservationId?: number | string | null;
+  channelId?: number | null;
+};
+
 /**
  * Los campos de `/v1/reservations` que necesita el acceso del huésped. Se
  * declaran en vez de dejarlos en `any` porque este camino alimenta una decisión
@@ -46,6 +68,8 @@ type RawHostawayReservation = {
   guestLastName?: string;
   guestName?: string;
   guestEmail?: string;
+  phone?: string;
+  channelName?: string;
   listingName?: string;
   listingMapId?: number | string;
   arrivalDate?: string;
@@ -68,6 +92,10 @@ export class HostawayService {
 
   private async delay(ms: number): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  private useMock(): boolean {
+    return this.configService.get<string>('HOSTAWAY_USE_MOCK') === 'true';
   }
 
   private isRetryableError(error: AxiosError | Error): boolean {
@@ -112,20 +140,22 @@ export class HostawayService {
   private async performRequest<T>(
     operationName: string,
     request: () => Promise<AxiosResponse<T>>,
+    options: { maxRetries?: number } = {},
   ): Promise<AxiosResponse<T>> {
+    const maxRetries = options.maxRetries ?? this.maxRetries;
     let lastError: AxiosError | Error | null = null;
 
-    for (let attempt = 1; attempt <= this.maxRetries + 1; attempt++) {
+    for (let attempt = 1; attempt <= maxRetries + 1; attempt++) {
       try {
         return await request();
       } catch (error) {
         lastError = error as AxiosError | Error;
         const safeMessage = this.buildSafeErrorMessage(lastError);
         const shouldRetry =
-          attempt <= this.maxRetries && this.isRetryableError(lastError);
+          attempt <= maxRetries && this.isRetryableError(lastError);
 
         this.logger.warn(
-          `${operationName} fallo en intento ${attempt}/${this.maxRetries + 1}` +
+          `${operationName} fallo en intento ${attempt}/${maxRetries + 1}` +
             (safeMessage ? ` -> ${safeMessage}` : ''),
         );
 
@@ -237,10 +267,7 @@ export class HostawayService {
     dateFrom: string,
     dateTo: string,
   ): Promise<HostawayCheckoutsResponse> {
-    const useMock =
-      this.configService.get<string>('HOSTAWAY_USE_MOCK') === 'true';
-
-    if (useMock) {
+    if (this.useMock()) {
       this.logger.warn('[MOCK] Usando datos de prueba de Hostaway');
       return getMockCheckouts(dateFrom, dateTo);
     }
@@ -403,6 +430,8 @@ export class HostawayService {
             : `${raw.guestFirstName ?? ''} ${raw.guestLastName ?? ''}`.trim() ||
               'Huésped',
           guestEmail: raw.guestEmail ?? null,
+          guestPhone: raw.phone ?? null,
+          channelName: raw.channelName ?? null,
           listingMapId: String(raw.listingMapId ?? ''),
           arrivalDate: raw.arrivalDate ?? date,
           departureDate: raw.departureDate ?? '',
@@ -518,5 +547,112 @@ export class HostawayService {
    */
   async getCheckoutsByDate(date: string): Promise<HostawayCheckoutsResponse> {
     return this.getCheckouts(date, date);
+  }
+
+  // ── Mensajería ────────────────────────────────────────────────────────────
+  //
+  // Sin reintentos a propósito: quien llama es la proyección de una reserva,
+  // que Hostaway espera con plazo (ver `deferSync`), y reintentar el POST de un
+  // mensaje puede duplicarlo. Un fallo queda en `guest_link_delivery` y se
+  // reintenta en la siguiente actualización de la reserva.
+
+  /**
+   * Conversación de Hostaway asociada a una reserva, o `null` si aún no existe
+   * (Hostaway la crea con la reserva, pero no siempre antes del webhook).
+   */
+  async findConversationByReservation(
+    hostawayReservationId: string,
+  ): Promise<HostawayConversation | null> {
+    if (this.useMock()) {
+      this.logger.warn(
+        `[MOCK] Conversación simulada para la reserva ${hostawayReservationId}`,
+      );
+      return {
+        id: MOCK_CONVERSATION_ID,
+        reservationId: Number(hostawayReservationId) || null,
+        channelId: null,
+      };
+    }
+
+    const token = await this.getAccessToken();
+
+    const response = await this.performRequest<{
+      result?: RawHostawayConversation[];
+    }>(
+      `Consulta de conversaciones Hostaway (reserva ${hostawayReservationId})`,
+      () =>
+        firstValueFrom(
+          this.httpService.get('https://api.hostaway.com/v1/conversations', {
+            timeout: this.requestTimeoutMs,
+            headers: { Authorization: `Bearer ${token}` },
+            params: { reservationId: hostawayReservationId, limit: 10 },
+          }),
+        ),
+      { maxRetries: 0 },
+    );
+
+    // Igual que con los checkouts: no fiarse del filtro, comprobar el resultado.
+    const propia = (response.data?.result ?? []).find(
+      (c) =>
+        c.id != null && String(c.reservationId ?? '') === hostawayReservationId,
+    );
+
+    if (!propia) {
+      return null;
+    }
+
+    return {
+      id: propia.id as number,
+      reservationId: Number(propia.reservationId) || null,
+      channelId: propia.channelId ?? null,
+    };
+  }
+
+  /** Publica un mensaje en la conversación. El cuerpo nunca se registra en el log. */
+  async sendConversationMessage(
+    conversationId: number,
+    body: string,
+    communicationType: HostawayCommunicationType = 'channel',
+  ): Promise<{ messageId: number | null }> {
+    if (this.useMock()) {
+      this.logger.warn(
+        `[MOCK] Mensaje simulado en la conversación ${conversationId} (${communicationType})`,
+      );
+      return { messageId: 0 };
+    }
+
+    const token = await this.getAccessToken();
+
+    const response = await this.performRequest<{
+      status?: string;
+      message?: string;
+      result?: { id?: number };
+    }>(
+      `Envío de mensaje Hostaway (conversación ${conversationId})`,
+      () =>
+        firstValueFrom(
+          this.httpService.post(
+            `https://api.hostaway.com/v1/conversations/${conversationId}/messages`,
+            { body, communicationType },
+            {
+              timeout: this.requestTimeoutMs,
+              headers: {
+                Authorization: `Bearer ${token}`,
+                'Content-Type': 'application/json',
+              },
+            },
+          ),
+        ),
+      { maxRetries: 0 },
+    );
+
+    // Hostaway puede responder 200 con `status: 'fail'`.
+    if (response.data?.status && response.data.status !== 'success') {
+      throw new ServiceUnavailableException(
+        `Hostaway rechazó el mensaje: ${response.data.message ?? 'sin detalle'}`,
+      );
+    }
+
+    return { messageId: response.data?.result?.id ?? null };
   }
 }
