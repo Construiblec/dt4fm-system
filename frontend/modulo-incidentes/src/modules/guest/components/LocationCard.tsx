@@ -17,8 +17,7 @@ export const LocationCard = ({ address, buildingName }: LocationCardProps) => {
 
   return (
     <GuestSection icon={MapPin} title="Cómo llegar">
-      {/* En escritorio el nombre y la dirección suben por encima del mapa. */}
-      <div className="flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="relative aspect-[16/10] bg-slate-100">
           <iframe
             title={`Mapa de ${label}`}
@@ -37,7 +36,7 @@ export const LocationCard = ({ address, buildingName }: LocationCardProps) => {
             className="absolute inset-0 focus:outline-none focus-visible:ring-4 focus-visible:ring-inset focus-visible:ring-brand/40"
           />
         </div>
-        <div className="flex items-start gap-3 border-t border-slate-100 p-4 lg:order-first lg:border-b lg:border-t-0">
+        <div className="flex items-start gap-3 border-t border-slate-100 p-4">
           <MapPin className="mt-0.5 h-5 w-5 shrink-0 text-brand" />
           <div className="space-y-0.5">
             {buildingName ? (
