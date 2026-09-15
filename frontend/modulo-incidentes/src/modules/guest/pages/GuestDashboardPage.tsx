@@ -13,10 +13,9 @@ import { useGuestPortal } from "../hooks/useGuestPortal";
 import { useGuestToken } from "../hooks/useGuestToken";
 
 /**
- * Portal del huésped. En el celular es una sola columna en el orden del diseño;
- * en escritorio, dos columnas: accesos a la izquierda, estadía y mapa a la
- * derecha. Los contenedores de columna son `contents` en móvil para que el
- * orden (`order-*`) atraviese las dos columnas.
+ * Portal del huésped. En escritorio, dos columnas: accesos y estadía a la
+ * izquierda, ubicación e incidencias a la derecha. En el celular las columnas
+ * se apilan, y ese orden es justo el del diseño móvil.
  */
 export const GuestDashboardPage = () => {
   const { token, debug, urlClean } = useGuestToken();
@@ -36,23 +35,25 @@ export const GuestDashboardPage = () => {
 
   const data = portal.data;
   const address = data.buildingAddress;
+  const showMap = Boolean(address) && urlClean;
 
   return (
     <GuestPageShell>
       <GuestHeader data={data} />
 
-      <div className="mt-6 flex flex-col gap-6 lg:mt-8 lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)] lg:items-start">
-        <div className="contents lg:flex lg:flex-col lg:gap-6">
-          <div className="order-1 lg:order-none">
-            <PinCard data={data} />
-          </div>
-          {data.hasVehicularAccess ? (
-            <div className="order-2 lg:order-none">
-              <VehicularGateCard />
-            </div>
-          ) : null}
-          {data.canReportIncident ? (
-            <div className="order-5 lg:order-none">
+      <div className="mt-6 grid gap-6 lg:mt-8 lg:grid-cols-2 lg:items-start">
+        <div className="flex flex-col gap-6">
+          <PinCard data={data} />
+          {data.hasVehicularAccess ? <VehicularGateCard /> : null}
+          <StayCard data={data} />
+        </div>
+
+        {showMap || data.canReportIncident ? (
+          <div className="flex flex-col gap-6">
+            {showMap && address ? (
+              <LocationCard address={address} buildingName={data.buildingName} />
+            ) : null}
+            {data.canReportIncident ? (
               <ActionRow
                 to="/guest/incidencia"
                 icon={TriangleAlert}
@@ -60,23 +61,9 @@ export const GuestDashboardPage = () => {
                 title="Reportar una incidencia"
                 subtitle="Se registra como invitado, sin crear una cuenta."
               />
-            </div>
-          ) : null}
-        </div>
-
-        <div className="contents lg:flex lg:flex-col lg:gap-6">
-          <div className="order-3 lg:order-none">
-            <StayCard data={data} />
+            ) : null}
           </div>
-          {address && urlClean ? (
-            <div className="order-4 lg:order-none">
-              <LocationCard
-                address={address}
-                buildingName={data.buildingName}
-              />
-            </div>
-          ) : null}
-        </div>
+        ) : null}
       </div>
 
       {debug ? <GuestDebugPanel data={data} /> : null}
