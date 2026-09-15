@@ -13,9 +13,9 @@ import { useGuestPortal } from "../hooks/useGuestPortal";
 import { useGuestToken } from "../hooks/useGuestToken";
 
 /**
- * Portal del huésped. En escritorio, dos columnas: accesos y estadía a la
+ * Portal del huésped. En escritorio, dos columnas: estadía y accesos a la
  * izquierda, ubicación e incidencias a la derecha. En el celular las columnas
- * se apilan, y ese orden es justo el del diseño móvil.
+ * se apilan en ese mismo orden.
  */
 export const GuestDashboardPage = () => {
   const { token, debug, urlClean } = useGuestToken();
@@ -43,9 +43,9 @@ export const GuestDashboardPage = () => {
 
       <div className="mt-6 grid gap-6 lg:mt-8 lg:grid-cols-2 lg:items-start">
         <div className="flex flex-col gap-6">
+          <StayCard data={data} />
           <PinCard data={data} />
           {data.hasVehicularAccess ? <VehicularGateCard /> : null}
-          <StayCard data={data} />
         </div>
 
         {showMap || data.canReportIncident ? (
@@ -59,7 +59,7 @@ export const GuestDashboardPage = () => {
                 icon={TriangleAlert}
                 tone="danger"
                 title="Reportar una incidencia"
-                subtitle="Se registra como invitado, sin crear una cuenta."
+                subtitle="¿Algo no funciona en tu alojamiento? Avísanos y lo revisamos."
               />
             ) : null}
           </div>
