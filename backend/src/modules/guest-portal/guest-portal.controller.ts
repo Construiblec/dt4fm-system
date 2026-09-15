@@ -6,6 +6,7 @@ import {
   Get,
   Headers,
   HttpCode,
+  HttpException,
   HttpStatus,
   Logger,
   Post,
@@ -25,9 +26,11 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { SessionRoleService } from '../../integrations/openmaint/session-role.service';
+import { RateLimiterService } from '../password-recovery/rate-limiter.service';
 import type { UploadedImage } from '../incidents/incidents.service';
 import { CreateGuestIncidentDto } from './dto/create-guest-incident.dto';
 import { IssueGuestLinkDto } from './dto/issue-guest-link.dto';
+import { RedeemShortLinkDto } from './dto/redeem-short-link.dto';
 import { GuestIncidentService } from './guest-incident.service';
 import { GuestLocationService } from './guest-location.service';
 import { GuestPortalService } from './guest-portal.service';
@@ -36,6 +39,7 @@ import {
   GuestTokenGuard,
 } from './guards/guest-token.guard';
 import type { RequestWithGuest } from './guards/guest-token.guard';
+import type { Request } from 'express';
 
 /**
  * Mismo criterio que `AccessControlController`: `SuperUser` es el administrador
@@ -47,6 +51,10 @@ const PORTAL_ADMIN_ROLES = ['SuperUser'];
 const MAX_INCIDENT_IMAGES = 6;
 const MAX_INCIDENT_IMAGE_BYTES = 5 * 1024 * 1024;
 
+// Más estricto que el guard: aquí el límite es lo que frena adivinar códigos.
+const MAX_SHORT_LINK_REDEEMS_PER_IP = 30;
+const HOUR_MS = 60 * 60 * 1000;
+
 @ApiTags('Portal del huésped')
 @Controller('guest')
 export class GuestPortalController {
@@ -57,6 +65,7 @@ export class GuestPortalController {
     private readonly sessionRoleService: SessionRoleService,
     private readonly location: GuestLocationService,
     private readonly incidents: GuestIncidentService,
+    private readonly rateLimiter: RateLimiterService,
   ) {}
 
   @Post('magic-link')
@@ -132,6 +141,37 @@ export class GuestPortalController {
     );
 
     return result;
+  }
+
+  @Post('short-link/redeem')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Canjear el código del enlace corto por el token del portal',
+    description:
+      'El frontend lo llama al abrir `/g/<código>` y sigue con el token como ' +
+      'si hubiera llegado en `?token=`.',
+  })
+  @ApiResponse({ status: 200, description: 'Devuelve `{ token }`.' })
+  @ApiResponse({
+    status: 401,
+    description: 'Código inexistente, o estancia cancelada o vencida.',
+  })
+  @ApiResponse({ status: 429, description: 'Demasiados intentos.' })
+  redeemShortLink(@Req() request: Request, @Body() dto: RedeemShortLinkDto) {
+    const allowed = this.rateLimiter.hit(
+      `guest:short-link:ip:${request.ip ?? 'desconocida'}`,
+      MAX_SHORT_LINK_REDEEMS_PER_IP,
+      HOUR_MS,
+    );
+
+    if (!allowed) {
+      throw new HttpException(
+        'Demasiados intentos. Espera unos minutos y vuelve a intentarlo.',
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+
+    return this.portal.redeemShortLink(dto.code);
   }
 
   @Get('me')

@@ -1217,7 +1217,7 @@ describe('AccessControlController (e2e)', () => {
       ];
       expect(payload.event).toBe('guest-link.issued');
       expect(payload.stay.id).toBe(estancia!.id);
-      expect(payload.link.url).toContain('/guest/dashboard?token=');
+      expect(payload.link.url).toMatch(/\/g\/[0-9A-Za-z]{10}$/);
       // Ni el PIN ni el token suelto viajan al canal.
       expect(JSON.stringify(payload)).not.toContain('"pin"');
 
@@ -1232,7 +1232,13 @@ describe('AccessControlController (e2e)', () => {
       const [payload] = mocks.guestLinkChannel.send.mock.calls[0] as [
         { link: { url: string } },
       ];
-      const token = new URL(payload.link.url).searchParams.get('token')!;
+      const code = payload.link.url.split('/').pop();
+
+      const canje = await request(app.getHttpServer())
+        .post('/guest/short-link/redeem')
+        .send({ code })
+        .expect(200);
+      const token = (canje.body as { token: string }).token;
 
       await request(app.getHttpServer())
         .get('/guest/me')

@@ -9,6 +9,7 @@ import {
 import { NoopLinkChannel } from './delivery/noop-link.channel';
 import { WebhookLinkChannel } from './delivery/webhook-link.channel';
 import { GuestLinkDelivery } from './entities/guest-link-delivery.entity';
+import { GuestShortLink } from './entities/guest-short-link.entity';
 import { GuestLinkService } from './guest-link.service';
 import { GuestTokenService } from './guest-token.service';
 
@@ -47,7 +48,10 @@ function guestLinkChannelFactory(
  * estancia; `guest-portal`, para verificar el enlace cuando se abre.
  */
 @Module({
-  imports: [TypeOrmModule.forFeature([GuestLinkDelivery]), HttpModule],
+  imports: [
+    TypeOrmModule.forFeature([GuestLinkDelivery, GuestShortLink]),
+    HttpModule,
+  ],
   providers: [
     GuestTokenService,
     GuestLinkService,
