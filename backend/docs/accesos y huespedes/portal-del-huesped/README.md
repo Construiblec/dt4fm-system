@@ -139,8 +139,7 @@ Rutas del frontend, todas sin `RequireRole`:
 
 | Ruta | Qué muestra |
 |---|---|
-| `/guest/dashboard` | PIN (o su estado), puerta vehicular, estadía, cómo llegar y reporte de incidencias |
-| `/guest/como-llegar` | Mapa y botón para abrir Google Maps (en escritorio el mapa va integrado en el panel) |
+| `/guest/dashboard` | PIN (o su estado), puerta vehicular, estadía, mapa del edificio y reporte de incidencias |
 | `/guest/incidencia` | Formulario de reporte. Solo existe desde el check-in; antes redirige al panel |
 
 Decisiones:
@@ -154,11 +153,17 @@ Decisiones:
   del destino tras login.
 - **Incidencias como invitado.** El huésped nunca recibe una sesión de openMAINT. El correctivo
   se abre con la sesión de servicio y el Employee "Portal Huésped" como solicitante
-  (`OPENMAINT_GUEST_REQUESTER_ID`). Edificio y unidad salen de la estancia, nunca del cuerpo de
-  la petición. Las notas llevan un bloque `--- Datos del huésped ---` con nombre, correo,
+  (`OPENMAINT_GUEST_REQUESTER_ID`). Edificio, planta y unidad salen de la estancia, nunca del
+  cuerpo de la petición: la planta es el atributo `Floor` de la tarjeta `Unit`, y se omite si la
+  unidad no tiene una. Las notas llevan un bloque `--- Datos del huésped ---` con nombre, correo,
   reserva y estancia.
-- **Google Maps sin API key.** Miniatura con el embed `https://www.google.com/maps?q=…&output=embed`
-  y enlace oficial de Maps URLs, que en el celular abre la app. El embed sin clave no está
-  documentado por Google: si lo retira, solo se pierde la miniatura.
+- **Google Maps sin API key.** Una sola tarjeta con el mapa y la dirección, directamente en el
+  panel. El mapa es el embed `https://www.google.com/maps?q=…&output=embed`; tocarlo abre el
+  enlace oficial de Maps URLs, que en el celular abre la app. El embed sin clave no está
+  documentado por Google: si lo retira, solo se pierde la imagen del mapa.
+- **De dónde sale la dirección.** De los atributos `Address` y `City` de la tarjeta `Building`
+  en openMAINT, leídos por `GuestLocationService`. No se guarda en la base del backend: para
+  corregir una dirección se edita el edificio en openMAINT, y el portal la toma en menos de
+  12 h (lo que dura la caché) o al reiniciar el backend.
 - **Correos de incidencia escapados.** Todo el texto libre que llega a los correos se escapa
   (`escapeHtml`), porque ahora cualquier huésped escribe esa descripción.

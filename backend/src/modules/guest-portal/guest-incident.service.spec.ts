@@ -34,6 +34,7 @@ const guestWith = (overrides: Partial<GuestPortalData> = {}): GuestPortalData =>
 
 const harness = (
   env: Record<string, string> = { OPENMAINT_GUEST_REQUESTER_ID: '555' },
+  floorId: number | null = 3055144,
 ) => {
   const createIncident = jest.fn().mockResolvedValue({
     incidentId: 777,
@@ -52,6 +53,7 @@ const harness = (
         unitName: 'P12',
         buildingName: 'Pradera',
         buildingAddress: null,
+        floorId,
       }),
     } as unknown as GuestLocationService,
     new RateLimiterService(),
@@ -80,12 +82,27 @@ describe('GuestIncidentService', () => {
       555,
       expect.objectContaining({
         buildingId: 3019998,
+        floorId: 3055144,
         unitId: 4242,
         priority: CM_PRIORITY_IDS.MEDIUM,
         floorArea: 'Huésped - P12 - Baño principal',
       }),
       [],
     );
+  });
+
+  it('no envía planta si la unidad no tiene una asignada en openMAINT', async () => {
+    const { service, createIncident } = harness(undefined, null);
+
+    await service.report(guestWith(), dto, [], NOW);
+
+    const [, , sent] = createIncident.mock.calls[0] as [
+      string,
+      number,
+      Record<string, unknown>,
+    ];
+
+    expect(sent).not.toHaveProperty('floorId');
   });
 
   it('deja en las notas quién reporta y de qué reserva', async () => {
@@ -128,6 +145,30 @@ describe('GuestIncidentService', () => {
 
     expect(notes).not.toContain('--- Datos del visitante ---');
     expect(notes.match(/--- Datos del huésped ---/g)).toHaveLength(1);
+  });
+
+  it('no deja marcado HTML en lo que llega a la bitácora de openMAINT', async () => {
+    const { service, createIncident } = harness();
+
+    await service.report(
+      guestWith({ guestName: '<img src=x onerror=alert(1)>' }),
+      {
+        description: 'Fuga <b>grave</b>',
+        location: '<script>x</script>',
+      },
+      [],
+      NOW,
+    );
+
+    const [, , { notes, floorArea }] = createIncident.mock.calls[0] as [
+      string,
+      number,
+      { notes: string; floorArea: string },
+    ];
+
+    expect(notes).not.toMatch(/[<>]/);
+    expect(floorArea).not.toMatch(/[<>]/);
+    expect(notes).toContain('Fuga ‹b›grave‹/b›');
   });
 
   it('no acepta reportes antes del check-in', async () => {

@@ -6,6 +6,7 @@ const unitCard = {
   _id: 4242,
   Code: 'I47',
   Description: 'Departamento I47',
+  Floor: 3055144,
   _Building_description: 'I - Inglaterra',
 };
 
@@ -39,13 +40,29 @@ const cards = () =>
   );
 
 describe('GuestLocationService', () => {
-  it('arma unidad, edificio y dirección a partir de las tarjetas', async () => {
+  it('arma unidad, planta, edificio y dirección a partir de las tarjetas', async () => {
     const { service } = harness(cards());
 
     await expect(service.lookup(4242, 3025058)).resolves.toEqual({
       unitName: 'I47',
       buildingName: 'Inglaterra',
       buildingAddress: 'Av. Inglaterra N31-120 y Mariana de Jesús, Quito',
+      floorId: 3055144,
+    });
+  });
+
+  it('deja la planta en nulo si la unidad no tiene una asignada', async () => {
+    const get = jest.fn().mockImplementation((path: string) =>
+      Promise.resolve({
+        data: path.includes('/Unit/')
+          ? { ...unitCard, Floor: null }
+          : buildingCard,
+      }),
+    );
+    const { service } = harness(get);
+
+    await expect(service.lookup(4242, 3025058)).resolves.toMatchObject({
+      floorId: null,
     });
   });
 
@@ -61,6 +78,7 @@ describe('GuestLocationService', () => {
       unitName: 'I47',
       buildingName: 'I - Inglaterra',
       buildingAddress: null,
+      floorId: 3055144,
     });
   });
 
@@ -89,7 +107,12 @@ describe('GuestLocationService', () => {
     const get = jest.fn().mockRejectedValue(new Error('ETIMEDOUT'));
     const { service } = harness(get);
 
-    const vacio = { unitName: null, buildingName: null, buildingAddress: null };
+    const vacio = {
+      unitName: null,
+      buildingName: null,
+      buildingAddress: null,
+      floorId: null,
+    };
 
     await expect(service.lookup(4242, 3025058)).resolves.toEqual(vacio);
     await expect(service.lookup(4242, 3025058)).resolves.toEqual(vacio);
@@ -103,6 +126,7 @@ describe('GuestLocationService', () => {
       unitName: null,
       buildingName: null,
       buildingAddress: null,
+      floorId: null,
     });
     expect(session.get).not.toHaveBeenCalled();
     expect(get).not.toHaveBeenCalled();

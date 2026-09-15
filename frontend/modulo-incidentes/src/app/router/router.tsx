@@ -27,7 +27,6 @@ import { OwnerPaymentsPage } from "@/modules/owners/pages/OwnerPaymentsPage";
 import { OwnerReservationsPage } from "@/modules/owners/pages/OwnerReservationsPage";
 import { OwnerProfilePage } from "@/modules/owners/pages/OwnerProfilePage";
 import { GuestDashboardPage } from "@/modules/guest/pages/GuestDashboardPage";
-import { GuestDirectionsPage } from "@/modules/guest/pages/GuestDirectionsPage";
 import { GuestIncidentPage } from "@/modules/guest/pages/GuestIncidentPage";
 import { OwnerReservationDetailPage } from "@/modules/owners/pages/reservation/OwnerReservationDetailPage";
 
@@ -171,6 +170,5 @@ export const router = createBrowserRouter([
   // Sin `RequireRole`: el huésped no tiene cuenta en openMAINT. Su única
   // credencial es el token firmado del enlace, y quien lo valida es el backend.
   { path: "/guest/dashboard", element: <GuestDashboardPage /> },
-  { path: "/guest/como-llegar", element: <GuestDirectionsPage /> },
   { path: "/guest/incidencia", element: <GuestIncidentPage /> },
 ]);

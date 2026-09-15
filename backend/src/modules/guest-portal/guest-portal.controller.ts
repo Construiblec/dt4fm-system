@@ -159,12 +159,10 @@ export class GuestPortalController {
   async getMe(@Req() request: RequestWithGuest) {
     const guest = request.guest!;
     // Solo aquí y no en el guard: el POST de incidencias no necesita los textos.
-    const location = await this.location.lookup(
-      guest.openmaintUnitId,
-      guest.buildingId,
-    );
+    const { unitName, buildingName, buildingAddress } =
+      await this.location.lookup(guest.openmaintUnitId, guest.buildingId);
 
-    return { ...guest, ...location };
+    return { ...guest, unitName, buildingName, buildingAddress };
   }
 
   @Post('incidents')

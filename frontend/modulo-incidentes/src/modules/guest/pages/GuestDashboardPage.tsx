@@ -1,4 +1,4 @@
-import { MapPin, TriangleAlert } from "lucide-react";
+import { TriangleAlert } from "lucide-react";
 import { ActionRow } from "../components/ActionRow";
 import { GuestDebugPanel } from "../components/GuestDebugPanel";
 import { GuestHeader } from "../components/GuestHeader";
@@ -68,23 +68,11 @@ export const GuestDashboardPage = () => {
           <div className="order-3 lg:order-none">
             <StayCard data={data} />
           </div>
-          {address ? (
-            <div className="order-4 lg:hidden">
-              <ActionRow
-                to="/guest/como-llegar"
-                icon={MapPin}
-                tone="brand"
-                title="Cómo llegar"
-                subtitle="Ubicación del edificio y ruta en Google Maps."
-              />
-            </div>
-          ) : null}
           {address && urlClean ? (
-            <div className="hidden lg:block">
+            <div className="order-4 lg:order-none">
               <LocationCard
                 address={address}
                 buildingName={data.buildingName}
-                withTitle
               />
             </div>
           ) : null}

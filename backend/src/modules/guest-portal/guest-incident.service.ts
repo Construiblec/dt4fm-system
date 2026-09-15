@@ -77,7 +77,7 @@ export class GuestIncidentService {
 
     try {
       const sessionId = await this.serviceSession.get();
-      const { unitName } = await this.location.lookup(
+      const { unitName, floorId } = await this.location.lookup(
         guest.openmaintUnitId,
         guest.buildingId,
       );
@@ -87,6 +87,7 @@ export class GuestIncidentService {
         requesterId,
         {
           buildingId: guest.buildingId!,
+          ...(floorId ? { floorId } : {}),
           ...(guest.openmaintUnitId ? { unitId: guest.openmaintUnitId } : {}),
           priority: CM_PRIORITY_IDS.MEDIUM,
           floorArea: this.shortDescription(unitName, guest, dto.location),
@@ -184,8 +185,8 @@ export class GuestIncidentService {
     lines.push(
       '',
       '--- Datos del huésped ---',
-      `Nombre: ${guest.guestName}`,
-      `Correo: ${guest.guestEmail ?? 'No disponible'}`,
+      `Nombre: ${this.clean(guest.guestName)}`,
+      `Correo: ${guest.guestEmail ? this.clean(guest.guestEmail) : 'No disponible'}`,
       `Reserva Hostaway: ${guest.reservationId}`,
       `Estancia: ${guest.stayId}`,
       `Unidad: ${unitName ?? 'No disponible'}`,
@@ -194,7 +195,16 @@ export class GuestIncidentService {
     return lines.join('\n');
   }
 
+  /**
+   * openMAINT mete las notas sin escapar en el HTML de su bitácora: un `<` del
+   * huésped sería marcado real en la pantalla del personal. Se cambian por
+   * comillas angulares, que se leen igual y no son HTML.
+   */
   private clean(value: string): string {
-    return value.replace(RESERVED_MARKERS, '').trim();
+    return value
+      .replace(RESERVED_MARKERS, '')
+      .replace(/</g, '‹')
+      .replace(/>/g, '›')
+      .trim();
   }
 }

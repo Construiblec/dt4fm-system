@@ -6,12 +6,15 @@ export interface GuestLocation {
   unitName: string | null;
   buildingName: string | null;
   buildingAddress: string | null;
+  /** Planta de la unidad (clase `Floor`); la usa el reporte de incidencias. */
+  floorId: number | null;
 }
 
 interface UnitCard {
   Code?: string | null;
   Name?: string | null;
   Description?: string | null;
+  Floor?: number | null;
   _Building_description?: string | null;
 }
 
@@ -26,6 +29,7 @@ const EMPTY: GuestLocation = {
   unitName: null,
   buildingName: null,
   buildingAddress: null,
+  floorId: null,
 };
 
 const TIMEOUT_MS = 4_000;
@@ -126,6 +130,10 @@ export class GuestLocationService {
             text(unit?._Building_description) ??
             text(building?.Description),
           buildingAddress: address || null,
+          floorId:
+            typeof unit?.Floor === 'number' && unit.Floor > 0
+              ? unit.Floor
+              : null,
         },
       };
     } catch (error) {

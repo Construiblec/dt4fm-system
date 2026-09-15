@@ -132,6 +132,7 @@ describe('GuestPortalController', () => {
               unitName: 'P12',
               buildingName: 'Pradera',
               buildingAddress: 'Av. de ejemplo 123, Quito',
+              floorId: 3055144,
             }),
           },
         },
@@ -276,6 +277,8 @@ describe('GuestPortalController', () => {
       buildingName: 'Pradera',
       buildingAddress: 'Av. de ejemplo 123, Quito',
     });
+    // La planta solo sirve para abrir correctivos; el portal no la necesita.
+    expect(response.body).not.toHaveProperty('floorId');
   });
 
   describe('POST /guest/incidents', () => {
