@@ -11,13 +11,17 @@ import { GuestTokenService } from './guest-token.service';
 const HOUR = 60 * 60 * 1000;
 const STAY = 'c47ca6f1-f675-4653-a3a6-31487feb054b';
 
-const config = {
-  get: (key: string) =>
-    ({
-      GUEST_MAGICLINK_SECRET: 'secreto-de-pruebas-suficientemente-largo',
-      APP_BASE_URL: 'https://dt4fm.example.com/',
-    })[key],
-} as unknown as ConfigService;
+const configWith = (extra: Record<string, string> = {}) =>
+  ({
+    get: (key: string) =>
+      ({
+        GUEST_MAGICLINK_SECRET: 'secreto-de-pruebas-suficientemente-largo',
+        APP_BASE_URL: 'https://dt4fm.example.com/',
+        ...extra,
+      })[key],
+  }) as unknown as ConfigService;
+
+const config = configWith();
 
 const stayWith = (
   overrides: Partial<GuestLinkStayInput> = {},
@@ -27,6 +31,7 @@ const stayWith = (
   hostawayReservationId: '90000002',
   guestName: 'Bruno Salas',
   guestEmail: 'bruno@example.com',
+  channelName: 'airbnbOfficial',
   arrivalDate: '2026-09-13',
   departureDate: '2026-09-17',
   accessValidFrom: new Date(Date.now() - 24 * HOUR),
@@ -45,8 +50,11 @@ type Harness = {
 
 const harness = (options: {
   alreadySent?: boolean;
+  /** Último intento registrado para la estancia, si lo hay. */
+  lastDelivery?: Partial<GuestLinkDelivery>;
   sendResult?: GuestLinkSendResult;
   sendThrows?: boolean;
+  config?: ConfigService;
 }): Harness => {
   const send = options.sendThrows
     ? jest.fn().mockRejectedValue(new Error('canal roto'))
@@ -58,6 +66,7 @@ const harness = (options: {
         },
       );
   const exists = jest.fn().mockResolvedValue(options.alreadySent ?? false);
+  const findOne = jest.fn().mockResolvedValue(options.lastDelivery ?? null);
   const save = jest
     .fn()
     .mockImplementation((row: unknown) => Promise.resolve(row));
@@ -65,9 +74,12 @@ const harness = (options: {
   const channel = { name: 'webhook', send } as unknown as GuestLinkChannel;
   const deliveries = {
     exists,
+    findOne,
     save,
     create: (row: unknown) => row,
   } as unknown as Repository<GuestLinkDelivery>;
+
+  const cfg = options.config ?? config;
 
   return {
     send,
@@ -75,9 +87,9 @@ const harness = (options: {
     save,
     service: new GuestLinkService(
       deliveries,
-      new GuestTokenService(config),
+      new GuestTokenService(cfg),
       channel,
-      config,
+      cfg,
     ),
   };
 };
@@ -126,6 +138,35 @@ describe('GuestLinkService', () => {
       expect(payload).not.toHaveProperty('token');
     });
 
+    it('incluye el canal de la reserva para que el canal compuesto pueda enrutar', async () => {
+      const { service, send } = harness({});
+
+      await service.deliver(stayWith({ channelName: 'direct' }));
+
+      const [payload] = send.mock.calls[0] as [Record<string, unknown>];
+
+      expect((payload.stay as Record<string, unknown>).channelName).toBe(
+        'direct',
+      );
+    });
+
+    it('registra el canal que realmente entregó cuando el canal delega', async () => {
+      const { service, save } = harness({
+        sendResult: {
+          success: true,
+          channel: 'email',
+          target: 'bruno@example.com',
+        },
+      });
+
+      const resultado = await service.deliver(stayWith());
+
+      expect(resultado.channel).toBe('email');
+      expect(save).toHaveBeenCalledWith(
+        expect.objectContaining({ channel: 'email', status: 'sent' }),
+      );
+    });
+
     it('registra el envío correcto', async () => {
       const { service, save } = harness({});
 
@@ -162,6 +203,62 @@ describe('GuestLinkService', () => {
 
       expect(resultado.outcome).toBe('sent');
       expect(send).toHaveBeenCalledTimes(1);
+    });
+
+    describe('espera entre reintentos', () => {
+      const failedAgo = (ms: number): Partial<GuestLinkDelivery> => ({
+        status: 'failed',
+        createdAt: new Date(Date.now() - ms),
+      });
+
+      it('no reintenta un fallo reciente', async () => {
+        const { service, send, save } = harness({
+          lastDelivery: failedAgo(5 * 60 * 1000),
+        });
+
+        // Hostaway manda varios reservation.updated seguidos: sin esto, cada
+        // uno volvería a pegarle al canal.
+        const resultado = await service.deliver(stayWith());
+
+        expect(resultado.outcome).toBe('skipped');
+        expect(resultado.error).toBe('retry_cooldown');
+        expect(send).not.toHaveBeenCalled();
+        expect(save).not.toHaveBeenCalled();
+      });
+
+      it('reintenta cuando el fallo ya es viejo', async () => {
+        const { service, send } = harness({
+          lastDelivery: failedAgo(2 * HOUR),
+        });
+
+        const resultado = await service.deliver(stayWith());
+
+        expect(resultado.outcome).toBe('sent');
+        expect(send).toHaveBeenCalledTimes(1);
+      });
+
+      it('con GUEST_LINK_RETRY_COOLDOWN_MINUTES=0 reintenta siempre', async () => {
+        const { service, send } = harness({
+          lastDelivery: failedAgo(1000),
+          config: configWith({ GUEST_LINK_RETRY_COOLDOWN_MINUTES: '0' }),
+        });
+
+        const resultado = await service.deliver(stayWith());
+
+        expect(resultado.outcome).toBe('sent');
+        expect(send).toHaveBeenCalledTimes(1);
+      });
+
+      it('con force reintenta aunque el fallo sea reciente', async () => {
+        const { service, send } = harness({
+          lastDelivery: failedAgo(1000),
+        });
+
+        const resultado = await service.deliver(stayWith(), { force: true });
+
+        expect(resultado.outcome).toBe('sent');
+        expect(send).toHaveBeenCalledTimes(1);
+      });
     });
 
     it('un canal que falla deja constancia y no lanza', async () => {

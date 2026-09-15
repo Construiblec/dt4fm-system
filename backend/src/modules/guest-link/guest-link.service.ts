@@ -26,6 +26,7 @@ export interface GuestLinkStayInput {
   hostawayReservationId: string;
   guestName: string;
   guestEmail: string | null;
+  channelName: string | null;
   arrivalDate: string;
   departureDate: string;
   accessValidFrom: Date;
@@ -85,19 +86,32 @@ export class GuestLinkService {
    *
    * **Nunca lanza.** Quien llama suele ser la proyección de una reserva, y un
    * canal caído no puede impedir que la estancia y su PIN existan. El fallo
-   * queda en `guest_link_delivery` para reenviarlo a mano.
+   * queda en `guest_link_delivery` para reintentarlo o reenviarlo a mano.
    *
-   * Sin `force`, se salta si ya hubo un envío correcto para esta estancia con
-   * el `token_version` vigente: es lo que evita reenviar en cada modificación
-   * de Hostaway. Subir `token_version` (freno de emergencia) invalida ese
-   * envío previo y vuelve a enviar.
+   * Sin `force`, se salta en dos casos: si ya hubo un envío correcto para esta
+   * estancia con el `token_version` vigente —lo que evita reenviar en cada
+   * modificación de Hostaway—, o si el último intento falló hace menos de
+   * `GUEST_LINK_RETRY_COOLDOWN_MINUTES` —lo que evita ráfagas cuando Hostaway
+   * manda varios `reservation.updated` seguidos. Subir `token_version` (freno
+   * de emergencia) invalida el envío previo y vuelve a enviar.
    */
   async deliver(
     stay: GuestLinkStayInput,
     options: { force?: boolean } = {},
   ): Promise<GuestLinkDeliveryResult> {
-    if (!options.force && (await this.alreadySent(stay))) {
-      return { outcome: 'skipped', channel: this.channel.name, target: '' };
+    if (!options.force) {
+      if (await this.alreadySent(stay)) {
+        return { outcome: 'skipped', channel: this.channel.name, target: '' };
+      }
+
+      if (await this.recentlyFailed(stay)) {
+        return {
+          outcome: 'skipped',
+          channel: this.channel.name,
+          target: '',
+          error: 'retry_cooldown',
+        };
+      }
     }
 
     const { url } = this.issue(stay);
@@ -117,11 +131,13 @@ export class GuestLinkService {
       };
     }
 
+    const channelUsed = result.channel ?? this.channel.name;
+
     await this.deliveries.save(
       this.deliveries.create({
         guestStayId: stay.id,
         tokenVersion: stay.tokenVersion,
-        channel: this.channel.name,
+        channel: channelUsed,
         target: result.target,
         status: result.success ? 'sent' : 'failed',
         httpStatus: result.httpStatus ?? null,
@@ -131,17 +147,17 @@ export class GuestLinkService {
 
     if (result.success) {
       this.logger.log(
-        `Enlace de la estancia ${stay.id} entregado por ${this.channel.name}`,
+        `Enlace de la estancia ${stay.id} entregado por ${channelUsed}`,
       );
     } else {
       this.logger.warn(
-        `Enlace de la estancia ${stay.id} NO entregado por ${this.channel.name}: ${result.error ?? 'sin motivo'}`,
+        `Enlace de la estancia ${stay.id} NO entregado por ${channelUsed}: ${result.error ?? 'sin motivo'}`,
       );
     }
 
     return {
       outcome: result.success ? 'sent' : 'failed',
-      channel: this.channel.name,
+      channel: channelUsed,
       target: result.target,
       httpStatus: result.httpStatus,
       error: result.error,
@@ -158,6 +174,33 @@ export class GuestLinkService {
     });
   }
 
+  private async recentlyFailed(stay: GuestLinkStayInput): Promise<boolean> {
+    const cooldownMs = this.retryCooldownMinutes() * 60_000;
+
+    if (cooldownMs <= 0) {
+      return false;
+    }
+
+    const last = await this.deliveries.findOne({
+      where: { guestStayId: stay.id, tokenVersion: stay.tokenVersion },
+      order: { createdAt: 'DESC' },
+    });
+
+    return (
+      last !== null &&
+      last.status === 'failed' &&
+      Date.now() - last.createdAt.getTime() < cooldownMs
+    );
+  }
+
+  private retryCooldownMinutes(): number {
+    const raw = Number(
+      this.configService.get<string>('GUEST_LINK_RETRY_COOLDOWN_MINUTES'),
+    );
+
+    return Number.isFinite(raw) && raw >= 0 ? raw : 60;
+  }
+
   private payloadFor(stay: GuestLinkStayInput, url: string): GuestLinkPayload {
     return {
       event: 'guest-link.issued',
@@ -167,6 +210,7 @@ export class GuestLinkService {
         reservationId: stay.hostawayReservationId,
         guestName: stay.guestName,
         guestEmail: stay.guestEmail,
+        channelName: stay.channelName,
         arrivalDate: stay.arrivalDate,
         departureDate: stay.departureDate,
         accessValidFrom: stay.accessValidFrom.toISOString(),

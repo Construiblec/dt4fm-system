@@ -60,6 +60,9 @@ process.env.GUEST_MAGICLINK_SECRET ??=
 process.env.GUEST_LINK_CHANNEL = 'webhook';
 process.env.GUEST_LINK_WEBHOOK_URL = 'https://webhook.invalid/pruebas';
 process.env.GUEST_LINK_WEBHOOK_SECRET = '';
+// Sin espera entre reintentos: las suites encadenan un fallo y una
+// actualización en el mismo segundo.
+process.env.GUEST_LINK_RETRY_COOLDOWN_MINUTES = '0';
 
 // Webhook IoT: secreto fijo y conocido por los tests.
 //

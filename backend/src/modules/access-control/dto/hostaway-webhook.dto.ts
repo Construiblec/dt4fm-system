@@ -57,6 +57,24 @@ export class HostawayWebhookDataDto {
   guestEmail?: string;
 
   @ApiPropertyOptional({
+    description: 'Teléfono del huésped',
+    example: '+593986556536',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  phone?: string;
+
+  @ApiPropertyOptional({
+    description: 'Canal de la reserva en Hostaway',
+    example: 'airbnbOfficial',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  channelName?: string;
+
+  @ApiPropertyOptional({
     description: 'Llegada, YYYY-MM-DD',
     example: '2026-09-14',
   })

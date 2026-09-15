@@ -16,6 +16,7 @@ const payload: GuestLinkPayload = {
     reservationId: '90000002',
     guestName: 'Bruno Salas',
     guestEmail: 'bruno@example.com',
+    channelName: 'airbnbOfficial',
     arrivalDate: '2026-09-13',
     departureDate: '2026-09-17',
     accessValidFrom: '2026-09-13T17:00:00.000Z',

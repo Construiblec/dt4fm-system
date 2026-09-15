@@ -17,6 +17,8 @@ export interface GuestLinkPayload {
     reservationId: string;
     guestName: string;
     guestEmail: string | null;
+    /** `channelName` de Hostaway (`airbnbOfficial`, `direct`…), o nulo si no se conoce. */
+    channelName: string | null;
     arrivalDate: string;
     departureDate: string;
     accessValidFrom: string;
@@ -33,6 +35,11 @@ export interface GuestLinkSendResult {
   success: boolean;
   /** A dónde se envió, tal como lo entienda el canal (URL, correo, número). */
   target: string;
+  /**
+   * Canal que realmente entregó, cuando un canal compuesto delega en otro.
+   * Si falta, cuenta el nombre del canal configurado.
+   */
+  channel?: string;
   /** Código HTTP cuando aplica. */
   httpStatus?: number;
   /** Motivo legible cuando `success` es `false`. */
