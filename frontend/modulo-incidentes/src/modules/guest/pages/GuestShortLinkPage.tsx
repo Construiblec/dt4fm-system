@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useEffect } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { GuestSkeleton } from "../components/GuestSkeleton";
 import { GuestStateScreen } from "../components/GuestStateScreen";
 import {
@@ -12,6 +12,8 @@ import { storeGuestToken } from "../services/guestToken";
 /** Entrada del enlace corto: canjea el código, guarda el token y abre el portal. */
 export const GuestShortLinkPage = () => {
   const { code = "" } = useParams();
+  const [searchParams] = useSearchParams();
+  const debug = searchParams.get("debug") === "1";
   const navigate = useNavigate();
 
   const redeem = useQuery({
@@ -28,8 +30,11 @@ export const GuestShortLinkPage = () => {
     if (!redeem.data) return;
 
     storeGuestToken(redeem.data);
-    navigate("/guest/dashboard", { replace: true });
-  }, [redeem.data, navigate]);
+    navigate(
+      { pathname: "/guest/dashboard", search: debug ? "?debug=1" : "" },
+      { replace: true },
+    );
+  }, [redeem.data, debug, navigate]);
 
   if (!code) return <GuestStateScreen variant="missing" />;
   if (redeem.isError) {

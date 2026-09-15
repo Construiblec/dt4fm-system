@@ -60,12 +60,12 @@ solo, sin ningún código nuevo de por medio.
   solo qué va dentro del payload.
 - `guest-portal.service.ts` — decide si un enlace sigue sirviendo: firma válida,
   `token_version` vigente, estancia no cancelada, dentro de la ventana de acceso.
-- `guards/guest-token.guard.ts` — exige el token en `Authorization: Bearer`,
-  `x-guest-token`, o `?token=` (solo para la primera carga).
+- `guards/guest-token.guard.ts` — exige el token en `Authorization: Bearer` o
+  `x-guest-token`. Nunca se acepta en la URL.
 - `guest-portal.controller.ts` — `POST /guest/magic-link` y `GET /guest/me`.
 
 **Frontend:** portal diseñado y responsive (ver §7). El diagnóstico con los campos crudos
-(`openmaintUnitId`, `syncState`) sigue disponible con `?debug=1`.
+(`openmaintUnitId`, `syncState`) sigue disponible con `?debug=1` (p. ej. `/g/<código>?debug=1`).
 
 ## 4. Endpoints
 
@@ -154,10 +154,10 @@ Decisiones:
   estancia y su `token_version`. No se forja como el token firmado, pero con esa entropía y el
   límite de canjes por IP no se adivina. Subir `token_version` o cancelar la estancia lo invalida
   igual que al token. Es reutilizable a propósito: las vistas previas de WhatsApp o Slack lo
-  abren antes que el huésped. `?token=` en `/guest/dashboard` sigue funcionando.
-- **Token fuera de la URL.** La primera carga guarda el token en `sessionStorage`
-  (`dt4fm-guest-token`) y quita `?token=` de la barra. Así no queda en el historial ni viaja
-  como `Referer` al mapa. `clearSession()` del personal no lo borra, y `/guest` está excluido
+  abren antes que el huésped.
+- **Token fuera de la URL.** El token nunca aparece en la barra: `/g/<código>` lo recibe en el
+  cuerpo del canje y lo guarda en `sessionStorage` (`dt4fm-guest-token`). Así no queda en el
+  historial ni viaja como `Referer` al mapa. `clearSession()` del personal no lo borra, y `/guest` está excluido
   del destino tras login.
 - **Incidencias como invitado.** El huésped nunca recibe una sesión de openMAINT. El correctivo
   se abre con la sesión de servicio y el Employee "Portal Huésped" como solicitante

@@ -231,7 +231,7 @@ describe('GuestPortalController', () => {
     expect(response.body).toMatchObject({ stayId: STAY, pin: '4813' });
   });
 
-  it('acepta el token también por cabecera propia y por query string', async () => {
+  it('acepta el token también por cabecera propia, pero no en la URL', async () => {
     const { token } = await emitir();
 
     await request(app.getHttpServer())
@@ -239,11 +239,9 @@ describe('GuestPortalController', () => {
       .set('x-guest-token', token)
       .expect(200);
 
-    // El query string es el de la primera carga, cuando el huésped abre el
-    // enlace del correo y el frontend todavía no tiene el token guardado.
     await request(app.getHttpServer())
       .get(`/guest/me?token=${encodeURIComponent(token)}`)
-      .expect(200);
+      .expect(401);
   });
 
   it('envía el enlace por el canal y no devuelve el token', async () => {

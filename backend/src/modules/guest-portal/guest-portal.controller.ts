@@ -148,8 +148,8 @@ export class GuestPortalController {
   @ApiOperation({
     summary: 'Canjear el código del enlace corto por el token del portal',
     description:
-      'El frontend lo llama al abrir `/g/<código>` y sigue con el token como ' +
-      'si hubiera llegado en `?token=`.',
+      'El frontend lo llama al abrir `/g/<código>` y usa el token por ' +
+      'cabecera en el resto de llamadas.',
   })
   @ApiResponse({ status: 200, description: 'Devuelve `{ token }`.' })
   @ApiResponse({
@@ -179,8 +179,8 @@ export class GuestPortalController {
   @ApiHeader({
     name: GUEST_TOKEN_HEADER,
     description:
-      'Token del enlace. También se acepta en `Authorization: Bearer` o, ' +
-      'solo para la primera carga, en el query string `?token=`.',
+      'Token obtenido al canjear el enlace corto. También se acepta en ' +
+      '`Authorization: Bearer`.',
     required: false,
   })
   @ApiOperation({

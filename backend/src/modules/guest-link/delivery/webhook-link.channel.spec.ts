@@ -23,7 +23,7 @@ const payload: GuestLinkPayload = {
     buildingId: 3019998,
     openmaintUnitId: 4242,
   },
-  link: { url: 'https://dt4fm.example.com/guest/dashboard?token=abc.def' },
+  link: { url: 'https://dt4fm.example.com/g/aB3dE5fG7h' },
 };
 
 const configWith = (values: Record<string, string | undefined>) =>
