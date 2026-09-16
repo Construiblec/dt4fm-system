@@ -122,7 +122,7 @@ export class GuestStayService {
     // filtro cuando termine la prueba piloto.
     if (
       (created || stay.status !== 'completed') &&
-      stay.guestName?.includes('Pamela')
+      stay.guestName?.includes('Pame')
     ) {
       await this.deliverLink(stay);
     }
