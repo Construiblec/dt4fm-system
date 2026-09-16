@@ -116,7 +116,14 @@ export class GuestStayService {
     // que reintenta los fallos —p. ej. la conversación de Airbnb que aún no
     // existía en `reservation.created`—. Se entrega aunque el edificio no
     // tenga lector, porque el portal es más que el PIN.
-    if (created || stay.status !== 'completed') {
+    // TEMPORAL: mientras se valida el envío automático con una reserva real,
+    // solo se entrega si el huésped es la reserva de prueba (evita mandarle
+    // el enlace a huéspedes reales conectados por Hostaway). Quitar este
+    // filtro cuando termine la prueba piloto.
+    if (
+      (created || stay.status !== 'completed') &&
+      stay.guestName?.includes('Pamela')
+    ) {
       await this.deliverLink(stay);
     }
 

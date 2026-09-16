@@ -1219,7 +1219,7 @@ describe('AccessControlController (e2e)', () => {
     const reserva = (overrides: Record<string, unknown> = {}) => ({
       hostawayReservationId: '44712233',
       listingId: '288172',
-      guestName: 'Ana Pérez',
+      guestName: 'Pamela Pérez',
       guestEmail: 'ana@example.com',
       arrivalDate: '2026-09-14',
       departureDate: '2026-09-18',
