@@ -14,18 +14,14 @@ import { GuestLinkService } from '../guest-link/guest-link.service';
 import { BuildingCatalogService } from './building-catalog.service';
 import { CredentialService } from './credential.service';
 import { GuestStay } from './entities/guest-stay.entity';
-
-/**
- * Ecuador es UTC−5 todo el año, sin horario de verano. Es el único punto donde
- * una fecha de Hostaway (`YYYY-MM-DD`) se convierte en un instante; si algún
- * día hay un edificio en otra zona, se cambia aquí.
- */
-const LOCAL_UTC_OFFSET = '-05:00';
-
-const DEFAULT_CHECKIN_HOUR = 15;
-const DEFAULT_CHECKOUT_HOUR = 11;
-const DEFAULT_LEAD_HOURS = 3;
-const DEFAULT_GRACE_HOURS = 3;
+import {
+  atLocalHour,
+  configHour,
+  DEFAULT_CHECKIN_HOUR,
+  DEFAULT_CHECKOUT_HOUR,
+  graceHours,
+  leadHours,
+} from './guest-stay-timing';
 
 /**
  * Lista blanca, no negra. Con una lista negra cualquier estado nuevo o
@@ -152,23 +148,23 @@ export class GuestStayService {
     });
 
     const location = await this.resolveLocation(input, existing);
-    const accessValidFrom = this.atLocalHour(
+    const accessValidFrom = atLocalHour(
       input.arrivalDate,
       this.reservationHour(
         input.checkInTime,
         'ACCESS_CHECKIN_HOUR',
         DEFAULT_CHECKIN_HOUR,
       ),
-      -this.hour('ACCESS_GUEST_LEAD_HOURS', DEFAULT_LEAD_HOURS),
+      -leadHours(this.configService),
     );
-    const accessValidTo = this.atLocalHour(
+    const accessValidTo = atLocalHour(
       input.departureDate,
       this.reservationHour(
         input.checkOutTime,
         'ACCESS_CHECKOUT_HOUR',
         DEFAULT_CHECKOUT_HOUR,
       ),
-      this.hour('ACCESS_GUEST_GRACE_HOURS', DEFAULT_GRACE_HOURS),
+      graceHours(this.configService),
     );
 
     const stay = this.stays.create({
@@ -313,20 +309,6 @@ export class GuestStayService {
       return fromReservation!;
     }
 
-    return this.hour(envName, fallback);
-  }
-
-  private atLocalHour(date: string, hour: number, offsetHours: number): Date {
-    const base = new Date(
-      `${date}T${String(hour).padStart(2, '0')}:00:00${LOCAL_UTC_OFFSET}`,
-    );
-
-    return new Date(base.getTime() + offsetHours * 60 * 60 * 1000);
-  }
-
-  private hour(name: string, fallback: number): number {
-    const raw = Number(this.configService.get<string>(name));
-
-    return Number.isInteger(raw) && raw >= 0 && raw <= 23 ? raw : fallback;
+    return configHour(this.configService, envName, fallback);
   }
 }

@@ -16,6 +16,7 @@ import { NoopLinkChannel } from './delivery/noop-link.channel';
 import { RoutedLinkChannel } from './delivery/routed-link.channel';
 import { WebhookLinkChannel } from './delivery/webhook-link.channel';
 import { GuestLinkDelivery } from './entities/guest-link-delivery.entity';
+import { GuestShortLink } from './entities/guest-short-link.entity';
 import { GuestLinkService } from './guest-link.service';
 import { GuestTokenService } from './guest-token.service';
 
@@ -68,7 +69,7 @@ function guestLinkChannelFactory(
  */
 @Module({
   imports: [
-    TypeOrmModule.forFeature([GuestLinkDelivery]),
+    TypeOrmModule.forFeature([GuestLinkDelivery, GuestShortLink]),
     HttpModule,
     HostawayModule,
     NotificationsModule,

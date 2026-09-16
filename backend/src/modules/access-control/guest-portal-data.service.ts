@@ -1,9 +1,21 @@
 import { Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { CredentialService } from './credential.service';
 import { GuestStay } from './entities/guest-stay.entity';
-import { SyncState } from './entities/access-credential.entity';
+import {
+  AccessCredential,
+  CredentialScope,
+  SyncState,
+} from './entities/access-credential.entity';
+import {
+  checkInInstant,
+  checkOutInstant,
+  graceHours,
+  incidentEligibility,
+  leadHours,
+} from './guest-stay-timing';
 
 /**
  * Por qué el portal no ve su PIN todavía, cuando no lo ve.
@@ -31,13 +43,22 @@ export interface GuestPortalData {
   departureDate: string;
   accessValidFrom: Date;
   accessValidTo: Date;
+  /** Check-in y check-out exactos, sin los márgenes de acceso. */
+  checkInAt: Date;
+  checkOutAt: Date;
   stayStatus: GuestStay['status'];
   pinState: GuestPinState;
   pin: string | null;
   /** Diagnóstico: si la credencial existe pero no llegó a la puerta. */
   credentialId: string | null;
   syncState: SyncState | null;
+  hasVehicularAccess: boolean;
+  /** Misma regla que aplica `POST /guest/incidents`, calculada en un solo sitio. */
+  canReportIncident: boolean;
 }
+
+/** La credencial que el portal muestra cuando hay varias vivas. */
+const SCOPE_PRIORITY: CredentialScope[] = ['both', 'pedestrian', 'vehicular'];
 
 /**
  * Única superficie por la que el portal del huésped llega a los datos de
@@ -57,6 +78,7 @@ export class GuestPortalDataService {
     @InjectRepository(GuestStay)
     private readonly stays: Repository<GuestStay>,
     private readonly credentials: CredentialService,
+    private readonly configService: ConfigService,
   ) {}
 
   findStay(stayId: string): Promise<GuestStay | null> {
@@ -67,11 +89,13 @@ export class GuestPortalDataService {
     stay: GuestStay,
     now: Date = new Date(),
   ): Promise<GuestPortalData> {
-    // Sin fijar el ámbito, igual que hace la emisión automática: a un huésped
-    // con vehículo pueden haberle ampliado la credencial a `both`.
-    const credential = await this.credentials.findLiveBySubject(
-      'guest',
-      stay.hostawayReservationId,
+    const credential = this.pickCredential(
+      await this.credentials.findLiveForGuest(stay.hostawayReservationId),
+    );
+
+    const checkInAt = checkInInstant(
+      stay.accessValidFrom,
+      leadHours(this.configService),
     );
 
     const base = {
@@ -86,7 +110,22 @@ export class GuestPortalDataService {
       departureDate: stay.departureDate,
       accessValidFrom: stay.accessValidFrom,
       accessValidTo: stay.accessValidTo,
+      checkInAt,
+      checkOutAt: checkOutInstant(
+        stay.accessValidTo,
+        graceHours(this.configService),
+      ),
       stayStatus: stay.status,
+      canReportIncident:
+        incidentEligibility(
+          {
+            stayStatus: stay.status,
+            buildingId: stay.buildingId,
+            checkInAt,
+            accessValidTo: stay.accessValidTo,
+          },
+          now,
+        ) === 'ok',
     };
 
     if (!credential) {
@@ -96,6 +135,7 @@ export class GuestPortalDataService {
         pin: null,
         credentialId: null,
         syncState: null,
+        hasVehicularAccess: false,
       };
     }
 
@@ -111,7 +151,21 @@ export class GuestPortalDataService {
           : null,
       credentialId: credential.id,
       syncState: credential.syncState,
+      hasVehicularAccess: credential.scope !== 'pedestrian',
     };
+  }
+
+  /** Determinista: con varias vivas, gana la de mayor alcance y luego la más antigua. */
+  private pickCredential(
+    live: AccessCredential[],
+  ): AccessCredential | undefined {
+    for (const scope of SCOPE_PRIORITY) {
+      const match = live.find((credential) => credential.scope === scope);
+
+      if (match) return match;
+    }
+
+    return undefined;
   }
 
   /**

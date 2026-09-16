@@ -1,12 +1,17 @@
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { validationPipeOptions } from './config/validation.config';
 import { corsOptions } from './config/cors.config';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+
+  // Render pone un proxy delante: sin esto `request.ip` es la del proxy y los
+  // límites por IP los comparten todos los clientes.
+  app.set('trust proxy', 1);
 
   app.enableCors(corsOptions);
 

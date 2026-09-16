@@ -5,6 +5,7 @@ import {
   GuestLinkSendResult,
 } from './delivery/guest-link-channel.interface';
 import { GuestLinkDelivery } from './entities/guest-link-delivery.entity';
+import { GuestShortLink } from './entities/guest-short-link.entity';
 import { GuestLinkService, GuestLinkStayInput } from './guest-link.service';
 import { GuestTokenService } from './guest-token.service';
 
@@ -46,6 +47,7 @@ type Harness = {
   send: jest.Mock;
   exists: jest.Mock;
   save: jest.Mock;
+  shortRows: Partial<GuestShortLink>[];
 };
 
 const harness = (options: {
@@ -71,6 +73,19 @@ const harness = (options: {
     .fn()
     .mockImplementation((row: unknown) => Promise.resolve(row));
 
+  const shortRows: Partial<GuestShortLink>[] = [];
+  const shortLinks = {
+    create: (row: Partial<GuestShortLink>) => row,
+    save: (row: Partial<GuestShortLink>) => {
+      shortRows.push(row);
+      return Promise.resolve(row);
+    },
+    findOne: ({ where }: { where: { codeHash: string } }) =>
+      Promise.resolve(
+        shortRows.find((row) => row.codeHash === where.codeHash) ?? null,
+      ),
+  } as unknown as Repository<GuestShortLink>;
+
   const channel = { name: 'webhook', send } as unknown as GuestLinkChannel;
   const deliveries = {
     exists,
@@ -85,8 +100,10 @@ const harness = (options: {
     send,
     exists,
     save,
+    shortRows,
     service: new GuestLinkService(
       deliveries,
+      shortLinks,
       new GuestTokenService(cfg),
       channel,
       cfg,
@@ -96,21 +113,57 @@ const harness = (options: {
 
 describe('GuestLinkService', () => {
   describe('emisión', () => {
-    it('arma la URL del portal sin doble barra y con el token', () => {
+    it('arma una URL corta sin doble barra y sin el token', async () => {
       const { service } = harness({});
 
-      const { url, token } = service.issue({ id: STAY, tokenVersion: 1 });
+      const { url, token } = await service.issue({ id: STAY, tokenVersion: 1 });
 
-      expect(url).toBe(
-        `https://dt4fm.example.com/guest/dashboard?token=${encodeURIComponent(token)}`,
+      expect(url).toMatch(
+        /^https:\/\/dt4fm\.example\.com\/g\/[0-9A-Za-z]{10}$/,
       );
+      expect(url).not.toContain(token);
     });
 
-    it('el token es verificable por GuestTokenService', () => {
+    it('guarda solo el hash del código', async () => {
+      const { service, shortRows } = harness({});
+
+      const { url } = await service.issue({ id: STAY, tokenVersion: 2 });
+      const code = url.split('/').pop()!;
+
+      expect(shortRows).toHaveLength(1);
+      expect(shortRows[0]).toMatchObject({
+        guestStayId: STAY,
+        tokenVersion: 2,
+      });
+      expect(shortRows[0].codeHash).not.toContain(code);
+    });
+
+    it('el código se canjea por un token verificable de la misma estancia', async () => {
       const { service } = harness({});
       const tokens = new GuestTokenService(config);
 
-      const { token } = service.issue({ id: STAY, tokenVersion: 3 });
+      const { url } = await service.issue({ id: STAY, tokenVersion: 3 });
+      const redeemed = await service.redeem(url.split('/').pop()!);
+
+      expect(redeemed).toMatchObject({ stayId: STAY, tokenVersion: 3 });
+      expect(tokens.verify(redeemed!.token)).toMatchObject({
+        stayId: STAY,
+        tokenVersion: 3,
+      });
+    });
+
+    it('un código desconocido o mal formado no se canjea', async () => {
+      const { service } = harness({});
+
+      await expect(service.redeem('ZZZZZZZZZZ')).resolves.toBeNull();
+      await expect(service.redeem('../../etc')).resolves.toBeNull();
+    });
+
+    it('el token es verificable por GuestTokenService', async () => {
+      const { service } = harness({});
+      const tokens = new GuestTokenService(config);
+
+      const { token } = await service.issue({ id: STAY, tokenVersion: 3 });
 
       expect(tokens.verify(token)).toMatchObject({
         stayId: STAY,
@@ -132,7 +185,7 @@ describe('GuestLinkService', () => {
         'Bruno Salas',
       );
       expect((payload.link as Record<string, string>).url).toContain(
-        '/guest/dashboard?token=',
+        'https://dt4fm.example.com/g/',
       );
       expect(JSON.stringify(payload)).not.toContain('"pin"');
       expect(payload).not.toHaveProperty('token');

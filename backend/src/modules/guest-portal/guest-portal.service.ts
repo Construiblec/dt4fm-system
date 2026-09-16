@@ -59,7 +59,7 @@ export class GuestPortalService {
    */
   async issueLink(stayId: string): Promise<IssuedGuestLink> {
     const stay = await this.requireIssuable(stayId);
-    const { token, url } = this.guestLink.issue(stay);
+    const { token, url } = await this.guestLink.issue(stay);
 
     this.logger.log(
       `Enlace emitido para la estancia ${stay.id} ` +
@@ -114,6 +114,27 @@ export class GuestPortalService {
   }
 
   // ── Canje ─────────────────────────────────────────────────────────────────
+
+  /** Cambia el código del enlace corto por el token, si la estancia sigue viva. */
+  async redeemShortLink(code: string): Promise<{ token: string }> {
+    this.assertConfigured();
+
+    const link = await this.guestLink.redeem(code?.trim() ?? '');
+
+    if (!link) {
+      throw new UnauthorizedException(this.invalidTokenMessage());
+    }
+
+    const stay = await this.data.findStay(link.stayId);
+
+    if (!stay) {
+      throw new UnauthorizedException(this.invalidTokenMessage());
+    }
+
+    this.assertUsable(stay, link.tokenVersion);
+
+    return { token: link.token };
+  }
 
   /**
    * Convierte el token del enlace en los datos del portal, o falla.

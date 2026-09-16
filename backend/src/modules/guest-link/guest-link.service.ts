@@ -1,5 +1,6 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { createHash, randomBytes } from 'crypto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { GUEST_LINK_CHANNEL } from './delivery/guest-link-channel.interface';
@@ -9,10 +10,35 @@ import type {
   GuestLinkSendResult,
 } from './delivery/guest-link-channel.interface';
 import { GuestLinkDelivery } from './entities/guest-link-delivery.entity';
+import { GuestShortLink } from './entities/guest-short-link.entity';
 import { GuestTokenService } from './guest-token.service';
 
-/** Ruta del frontend que recibe el enlace. Convive con `/owner/dashboard`. */
-const GUEST_DASHBOARD_PATH = '/guest/dashboard';
+/** Ruta corta del frontend que canjea el código por el token. */
+const GUEST_SHORT_LINK_PATH = '/g';
+
+// 62^10 ≈ 2^59: inadivinable por fuerza bruta con el rate-limit del canje.
+const SHORT_CODE_ALPHABET =
+  '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
+const SHORT_CODE_LENGTH = 10;
+const SHORT_CODE_PATTERN = /^[0-9A-Za-z]{10}$/;
+
+// Descarta bytes >= 248 (múltiplo de 62) para que ningún carácter salga más a menudo.
+const newShortCode = (): string => {
+  let code = '';
+
+  while (code.length < SHORT_CODE_LENGTH) {
+    for (const byte of randomBytes(16)) {
+      if (byte >= 248) continue;
+      code += SHORT_CODE_ALPHABET[byte % SHORT_CODE_ALPHABET.length];
+      if (code.length === SHORT_CODE_LENGTH) break;
+    }
+  }
+
+  return code;
+};
+
+const hashShortCode = (code: string): string =>
+  createHash('sha256').update(code).digest('hex');
 
 /**
  * Lo que este módulo necesita saber de una estancia. Es un DTO plano y no la
@@ -63,6 +89,8 @@ export class GuestLinkService {
   constructor(
     @InjectRepository(GuestLinkDelivery)
     private readonly deliveries: Repository<GuestLinkDelivery>,
+    @InjectRepository(GuestShortLink)
+    private readonly shortLinks: Repository<GuestShortLink>,
     private readonly tokens: GuestTokenService,
     @Inject(GUEST_LINK_CHANNEL) private readonly channel: GuestLinkChannel,
     private readonly configService: ConfigService,
@@ -72,13 +100,41 @@ export class GuestLinkService {
     return this.tokens.isConfigured();
   }
 
-  /** Emite el enlace de una estancia. No decide si la estancia lo merece. */
-  issue(
+  /** Emite el enlace (corto) de una estancia. No decide si la estancia lo merece. */
+  async issue(
     stay: Pick<GuestLinkStayInput, 'id' | 'tokenVersion'>,
-  ): IssuedGuestLink {
+  ): Promise<IssuedGuestLink> {
     const token = this.tokens.create(stay.id, stay.tokenVersion);
+    const code = newShortCode();
 
-    return { token, url: this.buildUrl(token) };
+    await this.shortLinks.save(
+      this.shortLinks.create({
+        codeHash: hashShortCode(code),
+        guestStayId: stay.id,
+        tokenVersion: stay.tokenVersion,
+      }),
+    );
+
+    return { token, url: this.buildUrl(code) };
+  }
+
+  /** Token de la estancia a la que apunta el código, o `null`. No decide vigencia. */
+  async redeem(
+    code: string,
+  ): Promise<{ stayId: string; tokenVersion: number; token: string } | null> {
+    if (!SHORT_CODE_PATTERN.test(code)) return null;
+
+    const link = await this.shortLinks.findOne({
+      where: { codeHash: hashShortCode(code) },
+    });
+
+    if (!link) return null;
+
+    return {
+      stayId: link.guestStayId,
+      tokenVersion: link.tokenVersion,
+      token: this.tokens.create(link.guestStayId, link.tokenVersion),
+    };
   }
 
   /**
@@ -114,7 +170,7 @@ export class GuestLinkService {
       }
     }
 
-    const { url } = this.issue(stay);
+    const { url } = await this.issue(stay);
     const payload = this.payloadFor(stay, url);
 
     let result: GuestLinkSendResult;
@@ -222,10 +278,10 @@ export class GuestLinkService {
     };
   }
 
-  private buildUrl(token: string): string {
+  private buildUrl(code: string): string {
     const base =
       this.configService.get<string>('APP_BASE_URL')?.replace(/\/$/, '') ?? '';
 
-    return `${base}${GUEST_DASHBOARD_PATH}?token=${encodeURIComponent(token)}`;
+    return `${base}${GUEST_SHORT_LINK_PATH}/${code}`;
   }
 }

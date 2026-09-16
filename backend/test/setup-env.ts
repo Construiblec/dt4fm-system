@@ -64,6 +64,9 @@ process.env.GUEST_LINK_WEBHOOK_SECRET = '';
 // actualización en el mismo segundo.
 process.env.GUEST_LINK_RETRY_COOLDOWN_MINUTES = '0';
 
+// Solicitante de las incidencias del portal; ningún test depende del valor.
+process.env.OPENMAINT_GUEST_REQUESTER_ID ??= '8191306';
+
 // Webhook IoT: secreto fijo y conocido por los tests.
 //
 // `=` y no `??=` a propósito: las suites mandan este literal en la cabecera

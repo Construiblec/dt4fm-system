@@ -19,36 +19,14 @@ const HOUR_MS = 60 * 60 * 1000;
 /** Canjes de enlace por IP y por hora. */
 const MAX_REDEEMS_PER_IP = 120;
 
-/**
- * El token puede llegar de tres formas, por orden de preferencia:
- *
- * 1. `Authorization: Bearer <token>` — la que debe usar el frontend en sus
- *    llamadas, una vez que leyó el token de la URL.
- * 2. `x-guest-token` — alternativa para clientes que no controlan la cabecera
- *    de autorización.
- * 3. `?token=` — solo para la primera carga, cuando el huésped abre el enlace
- *    del correo y el frontend todavía no tiene nada guardado.
- *
- * El tercero va último a propósito: un token en la URL queda en el historial
- * del navegador y en los registros de cualquier proxy intermedio, así que la
- * idea es que el frontend lo saque del query string cuanto antes y lo mande por
- * cabecera de ahí en adelante.
- */
+// Solo por cabecera: en la URL quedaría en el historial y en los logs de proxies.
 const readToken = (request: Request): string => {
   const header =
     (request.headers[GUEST_TOKEN_HEADER] as string | undefined) ??
     request.headers.authorization ??
     '';
 
-  const fromHeader = header.replace(/^Bearer\s+/i, '').trim();
-
-  if (fromHeader) {
-    return fromHeader;
-  }
-
-  const fromQuery = (request.query as Record<string, unknown>)?.token;
-
-  return typeof fromQuery === 'string' ? fromQuery.trim() : '';
+  return header.replace(/^Bearer\s+/i, '').trim();
 };
 
 /** Los datos resueltos quedan aquí para que el controlador puedan leerlos. */

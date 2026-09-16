@@ -1,3 +1,5 @@
+import { escapeHtml } from '../../common/utils/html-escape.util';
+
 export interface CompleteIncidentTemplateParams {
   incidentNumber: string;
   incidentLocation: string;
@@ -10,27 +12,25 @@ export interface CompleteIncidentTemplateParams {
 export function getTemplateCompleteIncident(
   params: CompleteIncidentTemplateParams,
 ): string {
-  const {
-    incidentNumber,
-    incidentLocation,
-    incidentBuilding,
-    incidentPriority,
-    incidentCreatedAt,
-    incidentNotes,
-  } = params;
+  const { incidentPriority, incidentCreatedAt, incidentNotes } = params;
+
+  // Texto libre de openMAINT: se escapa antes de tocar el HTML.
+  const incidentNumber = escapeHtml(params.incidentNumber);
+  const incidentLocation = escapeHtml(params.incidentLocation);
+  const incidentBuilding = escapeHtml(params.incidentBuilding);
 
   // ───────── SAFE PARSING ─────────
   const notes = incidentNotes || '';
   const parts = notes.split('--- Datos del visitante ---');
 
-  const description = (parts[0] || '').trim();
+  const description = escapeHtml((parts[0] || '').trim());
   const visitorBlock = parts[1] || '';
 
   const nameMatch = visitorBlock.match(/Nombre:\s*(.*?)\s*Tel[eé]fono:/i);
   const phoneMatch = visitorBlock.match(/Tel[eé]fono:\s*(.*)/i);
 
-  const visitorName = nameMatch?.[1]?.trim();
-  const visitorPhone = phoneMatch?.[1]?.trim();
+  const visitorName = escapeHtml(nameMatch?.[1]?.trim());
+  const visitorPhone = escapeHtml(phoneMatch?.[1]?.trim());
 
   // ───────── PRIORIDAD (TONOS FRIOS) ─────────
   const priorityMap: Record<string, { text: string; color: string }> = {
