@@ -60,6 +60,10 @@ process.env.GUEST_MAGICLINK_SECRET ??=
 process.env.GUEST_LINK_CHANNEL = 'webhook';
 process.env.GUEST_LINK_WEBHOOK_URL = 'https://webhook.invalid/pruebas';
 process.env.GUEST_LINK_WEBHOOK_SECRET = '';
+// Sin espera entre reintentos: las suites encadenan un fallo y una
+// actualización en el mismo segundo.
+process.env.GUEST_LINK_RETRY_COOLDOWN_MINUTES = '0';
+
 // Solicitante de las incidencias del portal; ningún test depende del valor.
 process.env.OPENMAINT_GUEST_REQUESTER_ID ??= '8191306';
 

@@ -48,6 +48,9 @@ export interface HostawayAccessReservation {
   status: string;
   guestName: string;
   guestEmail: string | null;
+  guestPhone: string | null;
+  /** `airbnbOfficial`, `bookingcom`, `direct`… Decide el canal del enlace. */
+  channelName: string | null;
   listingMapId: string;
   arrivalDate: string;
   departureDate: string;

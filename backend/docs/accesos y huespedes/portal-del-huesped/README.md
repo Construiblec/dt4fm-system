@@ -41,7 +41,7 @@ solo, sin ningún código nuevo de por medio.
 | Visibilidad del PIN | Inmediata al abrir, **dentro de la ventana de acceso** | Antes del check-in dice *"Tu PIN se mostrará a la hora de tu check-in"*; después del check-out, el enlace deja de abrir |
 | Regenerar PIN | **No invalida** el enlace | El portal siempre muestra el PIN vigente; el enlace nunca cachea uno viejo |
 | Edificios sin cobertura (Batán, República) | **Sí** reciben enlace | El portal es más que el PIN; el bloque de credenciales se sustituye por un aviso (`pinState: "sin-cobertura"`) |
-| Emisión del enlace | Pensada para ser automática al confirmarse la reserva | **No implementado aún** — ver §6 |
+| Emisión del enlace | **Automática** al proyectarse la reserva, con `GUEST_LINK_CHANNEL=hostaway` | Ver §5. Solo viaja la URL del portal, nunca el PIN (D-10) |
 
 ## 3. Piezas nuevas
 
@@ -102,13 +102,39 @@ Campos que `GET /guest/me` añade para el portal diseñado:
 | 502 | openMAINT no pudo abrir el correctivo |
 | 503 | Falta `OPENMAINT_GUEST_REQUESTER_ID` |
 
-## 5. Lo que falta
+## 5. Entrega automática del enlace
 
-- **Envío automático del enlace.** Hoy solo existe la emisión manual vía
-  `POST /guest/magic-link`. Conectarlo a `GuestStayService.upsertFromReservation()`
-  exige sacar `GuestTokenService` a un módulo aparte, para evitar una dependencia
-  circular (`access-control` necesitaría el token, `guest-portal` necesita
-  `access-control`).
+`GuestStayService.upsertFromReservation()` llama a `GuestLinkService.deliver()` en cada
+proyección de una reserva no cancelada. El canal lo decide `GUEST_LINK_CHANNEL`
+(`backend/src/modules/guest-link/delivery/`); con `hostaway`, el enrutado es:
+
+| `channelName` de la reserva | Canal | Si falla |
+|---|---|---|
+| `airbnbOfficial`, `bookingcom`, `vrboOfficial`… | Mensaje en la conversación de Hostaway (`POST /v1/conversations/{id}/messages`, `communicationType: channel`), que lo relaya al chat del canal | Correo al `guestEmail`, si lo hay |
+| `direct`, vacío o nulo | Correo al `guestEmail` con `MailerService` | — |
+
+Reglas que no son obvias:
+
+- **`deliver()` es idempotente**: salta si ya hay un envío `sent` para el `token_version`
+  vigente. Por eso llamarlo en cada `reservation.updated` no reenvía, solo **reintenta los
+  fallos** — típicamente la conversación de Airbnb que aún no existía en
+  `reservation.created`. `GUEST_LINK_RETRY_COOLDOWN_MINUTES` (60) evita ráfagas.
+- **Airbnb no comparte el correo del huésped** (`guestEmail: null` en la API real): para
+  esas reservas el mensaje de Hostaway es el único canal automático. Si falla, queda
+  `failed` en `guest_link_delivery` hasta la siguiente actualización, el barrido de las
+  05:00, o el reenvío manual con `POST /guest/magic-link/deliver`.
+- **Sin reintentos HTTP en la mensajería** (`maxRetries: 0`): el webhook de Hostaway
+  espera la respuesta, y reintentar el POST de un mensaje puede duplicarlo.
+- `guest_link_delivery.channel` guarda el canal que **realmente** entregó
+  (`hostaway-message` o `email`), no el configurado.
+- `guest_stay.guest_phone` se guarda desde ya, sin uso: es para el futuro canal de
+  WhatsApp.
+
+Pendiente de verificar en real, fuera de mock: que Airbnb no enmascare el enlace en el
+chat.
+
+## 6. Lo que falta
+
 - **Regenerar PIN a demanda.** No existe ningún endpoint para que un supervisor pida un
   PIN nuevo fuera del automatismo de `pin_conflict`. El frontend de Supervisor CAV ya
   espera `POST /access-authorizations/:id/regenerate`, que no tiene contraparte en el
@@ -117,13 +143,6 @@ Campos que `GET /guest/me` añade para el portal diseñado:
   ventana de una credencial, pero solo se dispara automáticamente cuando Hostaway avisa
   de una modificación — no hay endpoint para que un humano lo haga sin que la orden venga
   de Hostaway.
-
-- **Apertura remota de la puerta vehicular.** El portal muestra el bloque cuando
-  `hasVehicularAccess`, con el botón deshabilitado ("Próximamente"). El contrato con la VPS
-  no tiene ningún comando para abrir puertas: hace falta un endpoint nuevo en la VPS, una
-  ruta en el backend protegida por el enlace, límite por estancia, auditoría de aperturas y
-  una decisión explícita sobre quién puede abrir a distancia (el enlace no tiene segundo
-  factor).
 
 ## 6. Verificado
 

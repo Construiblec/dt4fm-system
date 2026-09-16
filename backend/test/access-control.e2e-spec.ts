@@ -528,6 +528,36 @@ describe('AccessControlController (e2e)', () => {
       expect(await credencialViva()).not.toBeNull();
     });
 
+    it('guarda el canal y el teléfono de la reserva', async () => {
+      await enviar(evento({ phone: '+593986556536' })).expect(200);
+
+      // El canal decide por dónde se entrega el enlace; el teléfono queda
+      // listo para el futuro canal de WhatsApp.
+      const stay = await dataSource
+        .getRepository(GuestStay)
+        .findOneByOrFail({ hostawayReservationId: '44712233' });
+
+      expect(stay.channelName).toBe('airbnbOfficial');
+      expect(stay.guestPhone).toBe('+593986556536');
+    });
+
+    it('una actualización sin canal ni teléfono no borra los conocidos', async () => {
+      await enviar(evento({ phone: '+593986556536' })).expect(200);
+      await enviar(
+        evento(
+          { channelName: undefined, phone: undefined, status: 'modified' },
+          { event: 'reservation.updated' },
+        ),
+      ).expect(200);
+
+      const stay = await dataSource
+        .getRepository(GuestStay)
+        .findOneByOrFail({ hostawayReservationId: '44712233' });
+
+      expect(stay.channelName).toBe('airbnbOfficial');
+      expect(stay.guestPhone).toBe('+593986556536');
+    });
+
     it('responde sin esperar a la VPS: el PIN queda pendiente de empuje', async () => {
       mocks.accessIot.putCredential.mockReturnValueOnce(
         new Promise(() => undefined),
@@ -854,6 +884,8 @@ describe('AccessControlController (e2e)', () => {
       status: 'new',
       guestName: 'Ana Pérez',
       guestEmail: null,
+      guestPhone: null,
+      channelName: 'airbnbOfficial',
       listingMapId: '288172',
       arrivalDate: '2026-09-14',
       departureDate: '2026-09-18',
@@ -1187,7 +1219,7 @@ describe('AccessControlController (e2e)', () => {
     const reserva = (overrides: Record<string, unknown> = {}) => ({
       hostawayReservationId: '44712233',
       listingId: '288172',
-      guestName: 'Ana Pérez',
+      guestName: 'Pamela Pérez',
       guestEmail: 'ana@example.com',
       arrivalDate: '2026-09-14',
       departureDate: '2026-09-18',
@@ -1255,6 +1287,38 @@ describe('AccessControlController (e2e)', () => {
       // El enlace ya entregado no lleva fechas: sigue valiendo con la nueva.
       expect(mocks.guestLinkChannel.send).toHaveBeenCalledTimes(1);
       expect(await enviosDe(estancia!.id)).toHaveLength(1);
+    });
+
+    it('un envío fallido se reintenta en la siguiente actualización', async () => {
+      mocks.guestLinkChannel.send.mockResolvedValueOnce({
+        success: false,
+        target: '',
+        error: 'conversation_not_found',
+      });
+
+      await guestStayService.upsertFromReservation(reserva());
+      const estancia = await guestStayService.upsertFromReservation(
+        reserva({ status: 'modified' }),
+      );
+
+      // Es la red de seguridad para la conversación de Airbnb que aún no
+      // existía cuando llegó reservation.created. La espera entre reintentos
+      // está en 0 en setup-env.ts.
+      expect(mocks.guestLinkChannel.send).toHaveBeenCalledTimes(2);
+
+      const envios = await enviosDe(estancia!.id);
+      expect(envios.map((e) => e.status)).toEqual(['failed', 'sent']);
+    });
+
+    it('el canal de la reserva viaja en el payload para poder enrutar', async () => {
+      await guestStayService.upsertFromReservation(
+        reserva({ channelName: 'direct' }),
+      );
+
+      const [payload] = mocks.guestLinkChannel.send.mock.calls[0] as [
+        { stay: { channelName: string | null } },
+      ];
+      expect(payload.stay.channelName).toBe('direct');
     });
 
     it('también se entrega en edificios sin control de accesos', async () => {

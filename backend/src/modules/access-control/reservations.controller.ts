@@ -93,6 +93,8 @@ export class ReservationsController {
         listingId: String(data.listingMapId ?? ''),
         guestName: data.guestName ?? 'Huésped',
         guestEmail: data.guestEmail ?? null,
+        guestPhone: data.phone ?? null,
+        channelName: data.channelName ?? null,
         arrivalDate: data.arrivalDate,
         departureDate: data.departureDate,
         status: data.status,

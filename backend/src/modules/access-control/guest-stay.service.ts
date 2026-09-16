@@ -44,6 +44,9 @@ export interface ReservationInput {
   listingId: string;
   guestName: string;
   guestEmail?: string | null;
+  guestPhone?: string | null;
+  /** `channelName` de Hostaway. Decide por dónde se entrega el enlace. */
+  channelName?: string | null;
   arrivalDate: string;
   departureDate: string;
   status?: string | null;
@@ -107,11 +110,20 @@ export class GuestStayService {
 
     await this.syncCredential(stay, input.issuedBy, input.deferSync);
 
-    // El enlace del portal se entrega una sola vez, cuando la estancia nace.
-    // Una modificación no lo reenvía: el enlace ya entregado sigue valiendo
-    // porque no lleva fechas dentro. Y se entrega aunque el edificio no tenga
-    // lector, porque el portal es más que el PIN.
-    if (created) {
+    // `deliver()` es idempotente: salta si ya hubo un envío correcto, así que
+    // una modificación no reenvía un enlace ya entregado (sigue valiendo porque
+    // no lleva fechas dentro). Llamarlo también en las actualizaciones es lo
+    // que reintenta los fallos —p. ej. la conversación de Airbnb que aún no
+    // existía en `reservation.created`—. Se entrega aunque el edificio no
+    // tenga lector, porque el portal es más que el PIN.
+    // TEMPORAL: mientras se valida el envío automático con una reserva real,
+    // solo se entrega si el huésped es la reserva de prueba (evita mandarle
+    // el enlace a huéspedes reales conectados por Hostaway). Quitar este
+    // filtro cuando termine la prueba piloto.
+    if (
+      (created || stay.status !== 'completed') &&
+      stay.guestName?.includes('Pamela')
+    ) {
       await this.deliverLink(stay);
     }
 
@@ -172,6 +184,9 @@ export class GuestStayService {
       buildingId: location?.buildingId ?? existing?.buildingId ?? null,
       guestName: input.guestName,
       guestEmail: input.guestEmail ?? null,
+      // Un evento que no traiga el campo no borra el valor ya conocido.
+      guestPhone: input.guestPhone?.trim() || existing?.guestPhone || null,
+      channelName: input.channelName?.trim() || existing?.channelName || null,
       arrivalDate: input.arrivalDate,
       departureDate: input.departureDate,
       accessValidFrom,
