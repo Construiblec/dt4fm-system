@@ -67,14 +67,28 @@ const harness = (stay: GuestStay | null): Harness => {
   });
 
   const data = { findStay, getPortalData } as unknown as GuestPortalDataService;
+  const codes = new Map<string, { id: string; tokenVersion: number }>();
   const guestLink = {
     isConfigured: () => tokens.isConfigured(),
     issue: (s: { id: string; tokenVersion: number }) => {
-      const token = tokens.create(s.id, s.tokenVersion);
-      return {
-        token,
-        url: `https://dt4fm.example.com/guest/dashboard?token=${encodeURIComponent(token)}`,
-      };
+      const code = `code${codes.size.toString().padStart(6, '0')}`;
+      codes.set(code, s);
+      return Promise.resolve({
+        token: tokens.create(s.id, s.tokenVersion),
+        url: `https://dt4fm.example.com/g/${code}`,
+      });
+    },
+    redeem: (code: string) => {
+      const s = codes.get(code);
+      return Promise.resolve(
+        s
+          ? {
+              stayId: s.id,
+              tokenVersion: s.tokenVersion,
+              token: tokens.create(s.id, s.tokenVersion),
+            }
+          : null,
+      );
     },
     deliver,
   } as unknown as GuestLinkService;
@@ -94,9 +108,7 @@ describe('GuestPortalService', () => {
 
       const link = await service.issueLink(STAY);
 
-      expect(link.url).toBe(
-        `https://dt4fm.example.com/guest/dashboard?token=${encodeURIComponent(link.token)}`,
-      );
+      expect(link.url).toMatch(/^https:\/\/dt4fm\.example\.com\/g\/\w+$/);
     });
 
     it('no emite enlace para una estancia que no existe', async () => {
@@ -138,6 +150,44 @@ describe('GuestPortalService', () => {
         NotFoundException,
       );
       expect(deliver).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('canje del enlace corto', () => {
+    const codeOf = (url: string) => url.split('/').pop()!;
+
+    it('devuelve un token que abre el portal', async () => {
+      const { service } = harness(stayWith());
+      const { url } = await service.issueLink(STAY);
+
+      const { token } = await service.redeemShortLink(codeOf(url));
+
+      await expect(service.resolve(token)).resolves.toMatchObject({
+        stayId: STAY,
+      });
+    });
+
+    it('rechaza un código desconocido', async () => {
+      const { service } = harness(stayWith());
+
+      await expect(service.redeemShortLink('noexiste00')).rejects.toThrow(
+        UnauthorizedException,
+      );
+    });
+
+    it('rechaza el código de una estancia cancelada o con otra versión', async () => {
+      const { service, findStay } = harness(stayWith());
+      const { url } = await service.issueLink(STAY);
+
+      findStay.mockResolvedValue(stayWith({ status: 'cancelled' }));
+      await expect(service.redeemShortLink(codeOf(url))).rejects.toThrow(
+        UnauthorizedException,
+      );
+
+      findStay.mockResolvedValue(stayWith({ tokenVersion: 2 }));
+      await expect(service.redeemShortLink(codeOf(url))).rejects.toThrow(
+        UnauthorizedException,
+      );
     });
   });
 

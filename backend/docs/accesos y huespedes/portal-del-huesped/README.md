@@ -60,12 +60,12 @@ solo, sin ningún código nuevo de por medio.
   solo qué va dentro del payload.
 - `guest-portal.service.ts` — decide si un enlace sigue sirviendo: firma válida,
   `token_version` vigente, estancia no cancelada, dentro de la ventana de acceso.
-- `guards/guest-token.guard.ts` — exige el token en `Authorization: Bearer`,
-  `x-guest-token`, o `?token=` (solo para la primera carga).
+- `guards/guest-token.guard.ts` — exige el token en `Authorization: Bearer` o
+  `x-guest-token`. Nunca se acepta en la URL.
 - `guest-portal.controller.ts` — `POST /guest/magic-link` y `GET /guest/me`.
 
 **Frontend:** portal diseñado y responsive (ver §7). El diagnóstico con los campos crudos
-(`openmaintUnitId`, `syncState`) sigue disponible con `?debug=1`.
+(`openmaintUnitId`, `syncState`) sigue disponible con `?debug=1` (p. ej. `/g/<código>?debug=1`).
 
 ## 4. Endpoints
 
@@ -73,6 +73,7 @@ solo, sin ningún código nuevo de por medio.
 |---|---|---|
 | `POST /guest/magic-link` | Sesión de openMAINT, rol `SuperUser` | Emite el enlace de una estancia (`stayId`, uuid de `guest_stay`) |
 | `GET /guest/me` | El propio enlace | Devuelve los datos del portal. `pin` solo viene si `pinState: "disponible"` |
+| `POST /guest/short-link/redeem` | Ninguna (30 intentos/hora por IP) | Cambia el código de `/g/<código>` por `{ token }`. 401 si no existe o la estancia no está vigente |
 | `POST /guest/incidents` | El propio enlace | Abre un correctivo desde el portal (multipart: `description`, `location?`, `images[]`) |
 
 `pinState` puede ser `disponible`, `antes-del-checkin`, `finalizado`, o `sin-cobertura`
@@ -139,6 +140,7 @@ Rutas del frontend, todas sin `RequireRole`:
 
 | Ruta | Qué muestra |
 |---|---|
+| `/g/:code` | Enlace corto que se envía al huésped. Canjea el código, guarda el token y redirige a `/guest/dashboard` |
 | `/guest/dashboard` | PIN (o su estado), puerta vehicular, estadía, mapa del edificio y reporte de incidencias |
 | `/guest/incidencia` | Formulario de reporte. Solo existe desde el check-in; antes redirige al panel |
 
@@ -147,9 +149,15 @@ Decisiones:
 - **Responsive.** En el celular es una columna en el orden del diseño; en escritorio, dos
   columnas (accesos a la izquierda, estadía y mapa a la derecha). No usa `AppLayout`: sus
   banners son del personal y su tope de 448 px desperdiciaría el escritorio.
-- **Token fuera de la URL.** La primera carga guarda el token en `sessionStorage`
-  (`dt4fm-guest-token`) y quita `?token=` de la barra. Así no queda en el historial ni viaja
-  como `Referer` al mapa. `clearSession()` del personal no lo borra, y `/guest` está excluido
+- **Enlace corto.** Lo que se entrega es `APP_BASE_URL/g/<código>`: 10 caracteres base62
+  aleatorios (~59 bits) guardados solo como hash SHA-256 en `guest_short_link`, junto a la
+  estancia y su `token_version`. No se forja como el token firmado, pero con esa entropía y el
+  límite de canjes por IP no se adivina. Subir `token_version` o cancelar la estancia lo invalida
+  igual que al token. Es reutilizable a propósito: las vistas previas de WhatsApp o Slack lo
+  abren antes que el huésped.
+- **Token fuera de la URL.** El token nunca aparece en la barra: `/g/<código>` lo recibe en el
+  cuerpo del canje y lo guarda en `sessionStorage` (`dt4fm-guest-token`). Así no queda en el
+  historial ni viaja como `Referer` al mapa. `clearSession()` del personal no lo borra, y `/guest` está excluido
   del destino tras login.
 - **Incidencias como invitado.** El huésped nunca recibe una sesión de openMAINT. El correctivo
   se abre con la sesión de servicio y el Employee "Portal Huésped" como solicitante

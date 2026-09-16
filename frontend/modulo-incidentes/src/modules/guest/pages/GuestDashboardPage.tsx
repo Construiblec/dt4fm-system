@@ -18,7 +18,7 @@ import { useGuestToken } from "../hooks/useGuestToken";
  * se apilan en ese mismo orden.
  */
 export const GuestDashboardPage = () => {
-  const { token, debug, urlClean } = useGuestToken();
+  const { token, debug } = useGuestToken();
   const portal = useGuestPortal(token);
 
   if (!token) return <GuestStateScreen variant="missing" />;
@@ -35,7 +35,6 @@ export const GuestDashboardPage = () => {
 
   const data = portal.data;
   const address = data.buildingAddress;
-  const showMap = Boolean(address) && urlClean;
 
   return (
     <GuestPageShell>
@@ -48,9 +47,9 @@ export const GuestDashboardPage = () => {
           {data.hasVehicularAccess ? <VehicularGateCard /> : null}
         </div>
 
-        {showMap || data.canReportIncident ? (
+        {address || data.canReportIncident ? (
           <div className="flex flex-col gap-6">
-            {showMap && address ? (
+            {address ? (
               <LocationCard address={address} buildingName={data.buildingName} />
             ) : null}
             {data.canReportIncident ? (

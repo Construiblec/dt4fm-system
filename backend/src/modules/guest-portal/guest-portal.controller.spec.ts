@@ -90,6 +90,7 @@ describe('GuestPortalController', () => {
     // `GuestLinkService` se dobla, pero su `issue()` usa el `GuestTokenService`
     // real del módulo, para que los tokens emitidos sean verificables.
     const tokens = new GuestTokenService(config);
+    const codes = new Map<string, { id: string; tokenVersion: number }>();
     const deliver = jest.fn().mockResolvedValue({
       outcome: 'sent',
       channel: 'webhook',
@@ -106,11 +107,24 @@ describe('GuestPortalController', () => {
           useValue: {
             isConfigured: () => tokens.isConfigured(),
             issue: (s: { id: string; tokenVersion: number }) => {
-              const token = tokens.create(s.id, s.tokenVersion);
-              return {
-                token,
-                url: `https://dt4fm.example.com/guest/dashboard?token=${encodeURIComponent(token)}`,
-              };
+              const code = `code${codes.size.toString().padStart(6, '0')}`;
+              codes.set(code, s);
+              return Promise.resolve({
+                token: tokens.create(s.id, s.tokenVersion),
+                url: `https://dt4fm.example.com/g/${code}`,
+              });
+            },
+            redeem: (code: string) => {
+              const s = codes.get(code);
+              return Promise.resolve(
+                s
+                  ? {
+                      stayId: s.id,
+                      tokenVersion: s.tokenVersion,
+                      token: tokens.create(s.id, s.tokenVersion),
+                    }
+                  : null,
+              );
             },
             deliver,
           },
@@ -175,12 +189,35 @@ describe('GuestPortalController', () => {
     return response.body as { token: string; url: string };
   };
 
-  it('emite un enlace al portal del huésped', async () => {
+  it('emite un enlace corto al portal del huésped', async () => {
     const { url, token } = await emitir();
 
-    expect(url).toBe(
-      `https://dt4fm.example.com/guest/dashboard?token=${encodeURIComponent(token)}`,
-    );
+    expect(url).toMatch(/^https:\/\/dt4fm\.example\.com\/g\/\w+$/);
+    expect(url).not.toContain(token);
+  });
+
+  it('canjea el código corto por un token que abre el portal', async () => {
+    const { url } = await emitir();
+
+    const response = await request(app.getHttpServer())
+      .post('/guest/short-link/redeem')
+      .send({ code: url.split('/').pop() })
+      .expect(200);
+
+    await request(app.getHttpServer())
+      .get('/guest/me')
+      .set(
+        'Authorization',
+        `Bearer ${(response.body as { token: string }).token}`,
+      )
+      .expect(200);
+  });
+
+  it('rechaza un código corto desconocido', async () => {
+    await request(app.getHttpServer())
+      .post('/guest/short-link/redeem')
+      .send({ code: 'noexiste00' })
+      .expect(401);
   });
 
   it('canjea el enlace y devuelve los datos del portal', async () => {
@@ -194,7 +231,7 @@ describe('GuestPortalController', () => {
     expect(response.body).toMatchObject({ stayId: STAY, pin: '4813' });
   });
 
-  it('acepta el token también por cabecera propia y por query string', async () => {
+  it('acepta el token también por cabecera propia, pero no en la URL', async () => {
     const { token } = await emitir();
 
     await request(app.getHttpServer())
@@ -202,11 +239,9 @@ describe('GuestPortalController', () => {
       .set('x-guest-token', token)
       .expect(200);
 
-    // El query string es el de la primera carga, cuando el huésped abre el
-    // enlace del correo y el frontend todavía no tiene el token guardado.
     await request(app.getHttpServer())
       .get(`/guest/me?token=${encodeURIComponent(token)}`)
-      .expect(200);
+      .expect(401);
   });
 
   it('envía el enlace por el canal y no devuelve el token', async () => {

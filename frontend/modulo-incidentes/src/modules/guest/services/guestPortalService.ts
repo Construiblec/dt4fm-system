@@ -58,6 +58,16 @@ const api = axios.create({
  */
 const authHeader = (token: string) => ({ Authorization: `Bearer ${token}` });
 
+/** Canjea el código de `/g/<código>` por el token del portal. */
+export const redeemGuestShortLink = async (code: string): Promise<string> => {
+  const { data } = await api.post<{ token: string }>(
+    "/guest/short-link/redeem",
+    { code },
+  );
+
+  return data.token;
+};
+
 export const getGuestPortalData = async (
   token: string,
 ): Promise<GuestPortalData> => {
