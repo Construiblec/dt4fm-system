@@ -30,10 +30,26 @@ export type GuestPortalData = {
   credentialId: string | null;
   syncState: "pending" | "synced" | "failed" | null;
   hasVehicularAccess: boolean;
+  /** El backend ya cruzó ventana, ámbito y que la apertura remota esté activa. */
+  canOpenVehicularGate: boolean;
+  /** Mientras no sea nulo, el huésped puede bajar la barrera que abrió. */
+  vehicularGateOpenUntil: string | null;
   canReportIncident: boolean;
   unitName: string | null;
   buildingName: string | null;
   buildingAddress: string | null;
+};
+
+export type GateAction = "open" | "close";
+
+/** `uncertain`: la orden salió, pero nadie confirmó si la barrera se movió. */
+export type GateCommandResult = {
+  requestId: string;
+  outcome: "opened" | "closed" | "failed" | "uncertain";
+  errorCode?: string;
+  at?: string;
+  /** Hasta cuándo sigue arriba tras abrirla; nulo en lo demás. */
+  openUntil: string | null;
 };
 
 export type GuestIncidentInput = {
@@ -74,6 +90,20 @@ export const getGuestPortalData = async (
   const { data } = await api.get<GuestPortalData>("/guest/me", {
     headers: authHeader(token),
   });
+
+  return data;
+};
+
+export const commandVehicularGate = async (
+  token: string,
+  action: GateAction,
+  requestId: string,
+): Promise<GateCommandResult> => {
+  const { data } = await api.post<GateCommandResult>(
+    `/guest/vehicular-gate/${action}`,
+    { requestId },
+    { headers: authHeader(token) },
+  );
 
   return data;
 };

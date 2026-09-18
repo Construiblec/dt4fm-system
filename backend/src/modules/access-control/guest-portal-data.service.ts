@@ -16,6 +16,9 @@ import {
   incidentEligibility,
   leadHours,
 } from './guest-stay-timing';
+import { DoorAction } from './access-iot.types';
+import { guestGateEligibility, remoteOpenEnabled } from './remote-open.rules';
+import { RemoteOpenResult, RemoteOpenService } from './remote-open.service';
 
 /**
  * Por qué el portal no ve su PIN todavía, cuando no lo ve.
@@ -53,6 +56,10 @@ export interface GuestPortalData {
   credentialId: string | null;
   syncState: SyncState | null;
   hasVehicularAccess: boolean;
+  /** Misma regla que aplica `POST /guest/vehicular-gate/open`. */
+  canOpenVehicularGate: boolean;
+  /** Mientras no sea nulo, este huésped puede bajar la barrera que abrió. */
+  vehicularGateOpenUntil: Date | null;
   /** Misma regla que aplica `POST /guest/incidents`, calculada en un solo sitio. */
   canReportIncident: boolean;
 }
@@ -79,10 +86,20 @@ export class GuestPortalDataService {
     private readonly stays: Repository<GuestStay>,
     private readonly credentials: CredentialService,
     private readonly configService: ConfigService,
+    private readonly remoteOpen: RemoteOpenService,
   ) {}
 
   findStay(stayId: string): Promise<GuestStay | null> {
     return this.stays.findOne({ where: { id: stayId } });
+  }
+
+  /** La estancia sale de los datos que resolvió el token, nunca de la petición. */
+  commandVehicularGate(
+    guest: GuestPortalData,
+    action: DoorAction,
+    requestId: string,
+  ): Promise<RemoteOpenResult> {
+    return this.remoteOpen.forGuest(guest, action, requestId);
   }
 
   async getPortalData(
@@ -136,10 +153,24 @@ export class GuestPortalDataService {
         credentialId: null,
         syncState: null,
         hasVehicularAccess: false,
+        canOpenVehicularGate: false,
+        vehicularGateOpenUntil: null,
       };
     }
 
     const pinState = this.pinStateFor(stay, now);
+    const hasVehicularAccess = credential.scope !== 'pedestrian';
+    const canOpenVehicularGate =
+      remoteOpenEnabled(this.configService) &&
+      guestGateEligibility(
+        {
+          stayStatus: stay.status,
+          accessValidFrom: stay.accessValidFrom,
+          accessValidTo: stay.accessValidTo,
+          hasVehicularAccess,
+        },
+        now,
+      ) === 'ok';
 
     return {
       ...base,
@@ -151,7 +182,11 @@ export class GuestPortalDataService {
           : null,
       credentialId: credential.id,
       syncState: credential.syncState,
-      hasVehicularAccess: credential.scope !== 'pedestrian',
+      hasVehicularAccess,
+      canOpenVehicularGate,
+      vehicularGateOpenUntil: canOpenVehicularGate
+        ? await this.remoteOpen.guestOpenUntil(stay.id, stay.buildingId)
+        : null,
     };
   }
 

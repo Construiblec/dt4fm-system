@@ -26,6 +26,8 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { SessionRoleService } from '../../integrations/openmaint/session-role.service';
+import { RemoteOpenDto } from '../access-control/dto/remote-open.dto';
+import { GuestPortalDataService } from '../access-control/guest-portal-data.service';
 import { RateLimiterService } from '../password-recovery/rate-limiter.service';
 import type { UploadedImage } from '../incidents/incidents.service';
 import { CreateGuestIncidentDto } from './dto/create-guest-incident.dto';
@@ -66,6 +68,7 @@ export class GuestPortalController {
     private readonly location: GuestLocationService,
     private readonly incidents: GuestIncidentService,
     private readonly rateLimiter: RateLimiterService,
+    private readonly portalData: GuestPortalDataService,
   ) {}
 
   @Post('magic-link')
@@ -203,6 +206,90 @@ export class GuestPortalController {
       await this.location.lookup(guest.openmaintUnitId, guest.buildingId);
 
     return { ...guest, unitName, buildingName, buildingAddress };
+  }
+
+  @Post('vehicular-gate/open')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(GuestTokenGuard)
+  @ApiHeader({
+    name: GUEST_TOKEN_HEADER,
+    description: 'Token del enlace, o `Authorization: Bearer`.',
+    required: false,
+  })
+  @ApiOperation({
+    summary: 'Abrir la puerta vehicular del edificio de la estancia',
+    description:
+      'Solo dentro de la ventana de acceso y con acceso vehicular. `outcome` ' +
+      'puede ser `opened`, `failed` o `uncertain`: este último significa que la ' +
+      'orden salió pero nadie confirmó si se abrió.',
+  })
+  @ApiResponse({
+    status: 200,
+    description:
+      'Resultado de la apertura. `openUntil` dice hasta cuándo se puede bajar a mano.',
+  })
+  @ApiResponse({ status: 401, description: 'Enlace inválido o vencido.' })
+  @ApiResponse({
+    status: 403,
+    description:
+      'Fuera de la estadía, o la reserva no incluye acceso vehicular.',
+  })
+  @ApiResponse({
+    status: 422,
+    description: 'El edificio no tiene puerta vehicular.',
+  })
+  @ApiResponse({
+    status: 429,
+    description: 'La puerta se acaba de abrir, o se agotó el tope diario.',
+  })
+  @ApiResponse({ status: 503, description: 'Apertura remota desactivada.' })
+  openVehicularGate(
+    @Req() request: RequestWithGuest,
+    @Body() dto: RemoteOpenDto,
+  ) {
+    return this.portalData.commandVehicularGate(
+      request.guest!,
+      'open',
+      dto.requestId,
+    );
+  }
+
+  @Post('vehicular-gate/close')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(GuestTokenGuard)
+  @ApiHeader({
+    name: GUEST_TOKEN_HEADER,
+    description: 'Token del enlace, o `Authorization: Bearer`.',
+    required: false,
+  })
+  @ApiOperation({
+    summary: 'Bajar la barrera vehicular antes de que se cierre sola',
+    description:
+      'Solo quien la abrió desde el portal, y solo mientras no haya pasado el ' +
+      'cierre automático. `outcome`: `closed`, `failed` o `uncertain`.',
+  })
+  @ApiResponse({ status: 200, description: 'Resultado del cierre.' })
+  @ApiResponse({ status: 401, description: 'Enlace inválido o vencido.' })
+  @ApiResponse({
+    status: 403,
+    description:
+      'Fuera de la estadía, o la reserva no incluye acceso vehicular.',
+  })
+  @ApiResponse({
+    status: 409,
+    description: 'La barrera ya se cerró, o la abrió otra persona.',
+  })
+  @ApiResponse({ status: 429, description: 'Se acaba de cerrar.' })
+  @ApiResponse({ status: 503, description: 'Apertura remota desactivada.' })
+  closeVehicularGate(
+    @Req() request: RequestWithGuest,
+    @Body() dto: RemoteOpenDto,
+  ) {
+    return this.portalData.commandVehicularGate(
+      request.guest!,
+      'close',
+      dto.requestId,
+    );
   }
 
   @Post('incidents')

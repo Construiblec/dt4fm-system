@@ -4,6 +4,9 @@ import {
   AccessIotHealth,
   CredentialWriteResult,
   InventoryPage,
+  DoorAction,
+  DoorCommandRequest,
+  DoorCommandResult,
   PutCredentialRequest,
 } from './access-iot.types';
 
@@ -40,4 +43,11 @@ export abstract class AccessIotGateway {
     deviceId: string,
     cursor?: string,
   ): Promise<InventoryPage>;
+
+  /** Un solo intento y nunca lanza: el desenlace, incluso el incierto, va en el resultado. */
+  abstract commandDevice(
+    deviceId: string,
+    action: DoorAction,
+    request: DoorCommandRequest,
+  ): Promise<DoorCommandResult>;
 }

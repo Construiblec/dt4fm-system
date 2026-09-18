@@ -21,6 +21,7 @@ import { MaintenanceSupervisorDashboardPage } from "@/modules/supervisor-manteni
 import { MaintenanceSupervisorDetailPage } from "@/modules/supervisor-mantenimiento/pages/MaintenanceSupervisorDetailPage";
 import { AuthorizationsListPage } from "@/modules/supervisor-cav/pages/AuthorizationsListPage";
 import { AuthorizationDetailPage } from "@/modules/supervisor-cav/pages/AuthorizationDetailPage";
+import { RemoteDoorsPage } from "@/modules/supervisor-cav/pages/RemoteDoorsPage";
 import { OwnerRegisterPage } from "@/modules/owners/pages/OwnerRegisterPage";
 import { OwnerDashboardPage } from "@/modules/owners/pages/OwnerDashboardPage";
 import { OwnerPaymentsPage } from "@/modules/owners/pages/OwnerPaymentsPage";
@@ -105,7 +106,7 @@ export const router = createBrowserRouter([
     ),
   },
   // ── Supervisor CAV (Accesos) ────────────────────────────────────────────────
-  // Solo Autorizaciones por ahora; Disuasión, Acceso remoto y Eventos quedan
+  // Autorizaciones y Puertas (apertura remota); Disuasión y Eventos quedan
   // fuera de este alcance.
   {
     path: "/supervisor-cav/autorizaciones",
@@ -120,6 +121,14 @@ export const router = createBrowserRouter([
     element: (
       <RequireRole roles={["SupervisorCAV", "SuperUser"]}>
         <AuthorizationDetailPage />
+      </RequireRole>
+    ),
+  },
+  {
+    path: "/supervisor-cav/puertas",
+    element: (
+      <RequireRole roles={["SupervisorCAV", "SuperUser"]}>
+        <RemoteDoorsPage />
       </RequireRole>
     ),
   },

@@ -126,6 +126,55 @@ describe('AccessIotMockGateway', () => {
     expect(JSON.stringify(users)).not.toContain('5073');
   });
 
+  describe('commandDevice', () => {
+    const orden = (requestId: string) => ({
+      requestId,
+      actor: { type: 'staff' as const, ref: 'cav.mock' },
+    });
+
+    it('abre una puerta en línea', async () => {
+      await expect(
+        gateway.commandDevice('ING-VEHICULAR-1', 'open', orden('r-1')),
+      ).resolves.toMatchObject({ outcome: 'opened' });
+    });
+
+    it('cierra una puerta en línea', async () => {
+      await expect(
+        gateway.commandDevice('ING-VEHICULAR-1', 'close', orden('r-5')),
+      ).resolves.toMatchObject({ outcome: 'closed' });
+    });
+
+    it('una puerta caída falla con device_unreachable', async () => {
+      await expect(
+        gateway.commandDevice('PRA-VEHICULAR-1', 'open', orden('r-2')),
+      ).resolves.toEqual({
+        outcome: 'failed',
+        errorCode: 'device_unreachable',
+      });
+    });
+
+    it('una puerta desconocida es una petición inválida', async () => {
+      await expect(
+        gateway.commandDevice('NO-EXISTE', 'open', orden('r-3')),
+      ).resolves.toEqual({ outcome: 'failed', errorCode: 'invalid_request' });
+    });
+
+    it('repetir el requestId devuelve la misma apertura, no un segundo pulso', async () => {
+      const primera = await gateway.commandDevice(
+        'ING-PEATONAL-1',
+        'open',
+        orden('r-4'),
+      );
+      const segunda = await gateway.commandDevice(
+        'ING-PEATONAL-1',
+        'open',
+        orden('r-4'),
+      );
+
+      expect(segunda).toBe(primera);
+    });
+  });
+
   it('la salud separa el túnel del gateway de la LAN de cada terminal', async () => {
     const { buildings } = await gateway.getHealth();
     const pradera = buildings.find((building) => building.buildingId === PRA);

@@ -4,11 +4,11 @@ import { ArrowLeft, CheckCircle2, Clock, Info } from "lucide-react";
 import { AppLayout } from "@/app/layout/AppLayout";
 import { AccessLevelModal } from "@/modules/supervisor-cav/components/AccessLevelModal";
 import {
-  getApiErrorMessage,
   getAuthorization,
   regeneratePin,
   updateAccessLevel,
 } from "@/modules/supervisor-cav/services/authorizationsService";
+import { getApiErrorMessage } from "@/modules/supervisor-cav/services/cavApi";
 import {
   ACCESS_LEVEL_LABELS,
   type AccessLevel,

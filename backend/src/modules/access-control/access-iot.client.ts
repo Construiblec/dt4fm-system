@@ -16,6 +16,10 @@ import {
   AccessIotHealth,
   CredentialWriteResult,
   InventoryPage,
+  DONE_OUTCOME,
+  DoorAction,
+  DoorCommandRequest,
+  DoorCommandResult,
   PutCredentialRequest,
 } from './access-iot.types';
 
@@ -28,15 +32,44 @@ const BUSINESS_ERROR_CODES: AccessIotErrorCode[] = [
   'device_full',
 ];
 
+// La petición pudo llegar y mover el relé antes de cortarse: no se sabe qué pasó.
+const UNCERTAIN_NETWORK_CODES = ['ECONNABORTED', 'ETIMEDOUT', 'ECONNRESET'];
+
 interface ErrorBody {
   code?: AccessIotErrorCode;
   message?: string;
 }
 
+interface DoorCommandResponse {
+  state?: 'opened' | 'closed' | 'uncertain';
+  at?: string;
+}
+
+/** Un código tipado o un 4xx es un no seguro; un 5xx sin código o un corte a medias, incierto. */
+export const classifyCommandError = (error: unknown): DoorCommandResult => {
+  const axiosError = error as AxiosError<ErrorBody> | undefined;
+  const code = axiosError?.response?.data?.code;
+
+  if (code) return { outcome: 'failed', errorCode: code };
+
+  const status = axiosError?.response?.status;
+
+  if (status != null) {
+    return { outcome: status >= 500 ? 'uncertain' : 'failed' };
+  }
+
+  return {
+    outcome: UNCERTAIN_NETWORK_CODES.includes(axiosError?.code ?? '')
+      ? 'uncertain'
+      : 'failed',
+  };
+};
+
 @Injectable()
 export class AccessIotClient extends AccessIotGateway {
   private readonly logger = new Logger(AccessIotClient.name);
   private readonly requestTimeoutMs = 15_000;
+  private readonly commandTimeoutMs = 8_000;
   private readonly maxRetries = 2;
 
   constructor(
@@ -129,6 +162,37 @@ export class AccessIotClient extends AccessIotGateway {
     return response.data ?? { users: [], nextCursor: null };
   }
 
+  async commandDevice(
+    deviceId: string,
+    action: DoorAction,
+    request: DoorCommandRequest,
+  ): Promise<DoorCommandResult> {
+    const operation = `POST /v1/devices/${deviceId}/${action}`;
+
+    try {
+      const response = await this.send<DoorCommandResponse>(
+        {
+          method: 'POST',
+          url: `/v1/devices/${encodeURIComponent(deviceId)}/${action}`,
+          data: request,
+        },
+        this.commandTimeoutMs,
+      );
+      const { state, at } = response.data ?? {};
+      const done = DONE_OUTCOME[action];
+
+      return { outcome: state === done ? done : 'uncertain', at };
+    } catch (error) {
+      const result = classifyCommandError(error);
+      const detail =
+        this.buildSafeErrorMessage(error as Error) || (error as Error).message;
+
+      this.logger.warn(`${operation} -> ${result.outcome} (${detail})`);
+
+      return result;
+    }
+  }
+
   /**
    * Una escritura devuelve su desenlace en el cuerpo. Solo `pin_conflict` y
    * `device_full` llegan como resultado; lo demás sube como excepción, porque
@@ -163,31 +227,41 @@ export class AccessIotClient extends AccessIotGateway {
     }
   }
 
+  private send<T>(
+    config: AxiosRequestConfig,
+    timeoutMs: number,
+  ): Promise<AxiosResponse<T>> {
+    const token = this.token();
+
+    return firstValueFrom(
+      this.httpService.request<T>({
+        ...config,
+        baseURL: this.baseUrl(),
+        timeout: timeoutMs,
+        headers: {
+          ...(config.headers ?? {}),
+          // Service token de Cloudflare Access: no hay lista blanca de IP
+          // porque Render no garantiza IP de salida.
+          'CF-Access-Client-Id': token.clientId,
+          'CF-Access-Client-Secret': token.clientSecret,
+        },
+      }),
+    );
+  }
+
   private async request<T>(
     operation: string,
     config: AxiosRequestConfig,
   ): Promise<AxiosResponse<T>> {
-    const baseUrl = this.baseUrl();
-    const token = this.token();
+    // Se validan antes del bucle: una configuración ausente no se reintenta.
+    this.baseUrl();
+    this.token();
 
     let lastError: AxiosError | Error | null = null;
 
     for (let attempt = 1; attempt <= this.maxRetries + 1; attempt += 1) {
       try {
-        return await firstValueFrom(
-          this.httpService.request<T>({
-            ...config,
-            baseURL: baseUrl,
-            timeout: this.requestTimeoutMs,
-            headers: {
-              ...(config.headers ?? {}),
-              // Service token de Cloudflare Access: no hay lista blanca de IP
-              // porque Render no garantiza IP de salida.
-              'CF-Access-Client-Id': token.clientId,
-              'CF-Access-Client-Secret': token.clientSecret,
-            },
-          }),
-        );
+        return await this.send<T>(config, this.requestTimeoutMs);
       } catch (error) {
         lastError = error as AxiosError | Error;
         const safeMessage = this.buildSafeErrorMessage(lastError);

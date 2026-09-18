@@ -3,6 +3,7 @@ import {
   CalendarDays,
   ClipboardList,
   CreditCard,
+  DoorOpen,
   Home,
   KeyRound,
   User,
@@ -59,8 +60,7 @@ const OWNER_TABS: Tab[] = [
  * en vez de vivir detrás del selector de rol — quien lo tenga entra sin pasar
  * primero por su rol de siempre.
  *
- * Solo Autorizaciones está construido; cuando se sumen Disuasión, Acceso
- * remoto y Eventos, "Accesos" pasa a ser la puerta a las cuatro.
+ * Faltan Disuasión y Eventos.
  */
 const CAV_TABS: Tab[] = [
   {
@@ -69,8 +69,9 @@ const CAV_TABS: Tab[] = [
     route: "",
     // El detalle de una autorización (`/supervisor-cav/autorizaciones/:id`)
     // sigue siendo Accesos.
-    section: "/supervisor-cav",
+    section: "/supervisor-cav/autorizaciones",
   },
+  { label: "Puertas", icon: DoorOpen, route: "/supervisor-cav/puertas" },
   { label: "Cuenta", icon: User, route: "/cuenta" },
 ];
 

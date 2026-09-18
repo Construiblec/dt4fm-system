@@ -1,7 +1,6 @@
 import {
   Body,
   Controller,
-  ForbiddenException,
   Get,
   Headers,
   HttpCode,
@@ -11,7 +10,6 @@ import {
   ParseUUIDPipe,
   Post,
   Query,
-  UnauthorizedException,
 } from '@nestjs/common';
 import {
   ApiHeader,
@@ -22,23 +20,9 @@ import {
 } from '@nestjs/swagger';
 import { SessionRoleService } from '../../integrations/openmaint/session-role.service';
 import { AuthorizationsService } from './authorizations.service';
+import { requireCavIdentity } from './cav-session';
 import { ChangeAccessLevelDto } from './dto/change-access-level.dto';
 import { ListAuthorizationsQueryDto } from './dto/list-authorizations.dto';
-
-/**
- * `SupervisorCAV` es el rol de la pantalla; `SuperUser` entra a todo. Ojo: el
- * grupo `SupervisorCAV` se creó en openMAINT después que esta pantalla, así que
- * si una cuenta no lo trae en `availableRoles`, es que aún no se le asignó.
- */
-const CAV_ROLES = ['SupervisorCAV', 'SuperUser'];
-
-/**
- * La sesión llega en `Authorization` sin esquema —es lo que manda el frontend
- * de CAV— o en `x-session-token`, que es lo que usa el resto de este módulo.
- * Se aceptan las dos para no obligar a ninguno de los dos lados a cambiar.
- */
-const readSessionId = (authorization?: string, sessionToken?: string): string =>
-  (sessionToken ?? authorization ?? '').replace(/^Bearer\s+/i, '').trim();
 
 @ApiTags('Control de accesos')
 @ApiSecurity('authorization')
@@ -111,8 +95,11 @@ export class AuthorizationsController {
     @Headers('authorization') authorization: string,
     @Headers('x-session-token') sessionToken: string,
   ) {
-    const sessionId = await this.requireCavRole(authorization, sessionToken);
-    const username = await this.usernameOf(sessionId);
+    const { sessionId, username } = await requireCavIdentity(
+      this.sessionRoleService,
+      authorization,
+      sessionToken,
+    );
 
     this.logger.log(`PIN renovado: estancia=${stayId} usuario=${username}`);
 
@@ -150,32 +137,17 @@ export class AuthorizationsController {
     };
   }
 
-  /**
-   * Devuelve la sesión ya validada, para poder reusarla en las llamadas a
-   * openMAINT que resuelven los nombres de unidad.
-   */
+  /** La sesión validada se reusa en las llamadas a openMAINT que resuelven las unidades. */
   private async requireCavRole(
     authorization: string,
     sessionToken: string,
   ): Promise<string> {
-    const sessionId = readSessionId(authorization, sessionToken);
-
-    if (!sessionId) {
-      throw new UnauthorizedException('Falta la sesión de openMAINT');
-    }
-
-    const { role } = await this.sessionRoleService.resolveIdentity(sessionId);
-
-    if (!role || !CAV_ROLES.includes(role)) {
-      throw new ForbiddenException(
-        'Se requiere rol de Supervisor CAV para gestionar autorizaciones',
-      );
-    }
-
-    return sessionId;
-  }
-
-  private async usernameOf(sessionId: string): Promise<string> {
-    return (await this.sessionRoleService.resolveIdentity(sessionId)).username;
+    return (
+      await requireCavIdentity(
+        this.sessionRoleService,
+        authorization,
+        sessionToken,
+      )
+    ).sessionId;
   }
 }

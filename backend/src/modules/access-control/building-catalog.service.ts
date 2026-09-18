@@ -1,6 +1,6 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { AccessIotGateway } from './access-iot.gateway';
-import { AccessIotBuilding } from './access-iot.types';
+import { AccessIotBuilding, AccessIotDevice } from './access-iot.types';
 
 const CACHE_TTL_MS = 10 * 60 * 1000;
 
@@ -14,6 +14,8 @@ export class BuildingCatalogService implements OnModuleInit {
   private readonly logger = new Logger(BuildingCatalogService.name);
   private cache: AccessIotBuilding[] | null = null;
   private cachedAt = 0;
+  private devicesCache: AccessIotDevice[] | null = null;
+  private devicesCachedAt = 0;
 
   constructor(private readonly iot: AccessIotGateway) {}
 
@@ -57,6 +59,30 @@ export class BuildingCatalogService implements OnModuleInit {
   invalidate(): void {
     this.cache = null;
     this.cachedAt = 0;
+    this.devicesCache = null;
+    this.devicesCachedAt = 0;
+  }
+
+  /** Para resolver qué puerta es cuál; su `online` puede tener 10 minutos. */
+  async devices(): Promise<AccessIotDevice[]> {
+    if (this.devicesCache && Date.now() - this.devicesCachedAt < CACHE_TTL_MS) {
+      return this.devicesCache;
+    }
+
+    try {
+      this.devicesCache = await this.iot.listDevices();
+      this.devicesCachedAt = Date.now();
+      return this.devicesCache;
+    } catch (error) {
+      if (this.devicesCache) {
+        this.logger.warn(
+          `Inventario de puertas no disponible; se sirve el cacheado: ${this.describe(error)}`,
+        );
+        return this.devicesCache;
+      }
+
+      throw error;
+    }
   }
 
   async isCovered(buildingId: number): Promise<boolean> {
