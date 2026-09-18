@@ -116,13 +116,15 @@ export class GuestStayService {
     // que reintenta los fallos —p. ej. la conversación de Airbnb que aún no
     // existía en `reservation.created`—. Se entrega aunque el edificio no
     // tenga lector, porque el portal es más que el PIN.
-    // TEMPORAL: mientras se valida el envío automático con una reserva real,
-    // solo se entrega si el huésped es la reserva de prueba (evita mandarle
-    // el enlace a huéspedes reales conectados por Hostaway). Quitar este
-    // filtro cuando termine la prueba piloto.
+    // TEMPORAL: con el canal `hostaway` solo se entrega a la reserva de prueba
+    // para no escribir a huéspedes reales. Quitar al terminar la prueba piloto.
+    const viaHostaway =
+      (
+        this.configService.get<string>('GUEST_LINK_CHANNEL') ?? ''
+      ).toLowerCase() === 'hostaway';
     if (
       (created || stay.status !== 'completed') &&
-      stay.guestName?.includes('Pame')
+      (!viaHostaway || stay.guestName?.includes('Pame'))
     ) {
       await this.deliverLink(stay);
     }
