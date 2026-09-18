@@ -23,7 +23,8 @@ export type AccessIotErrorCode =
   | 'pin_conflict'
   | 'device_full'
   | 'unauthorized'
-  | 'invalid_request';
+  | 'invalid_request'
+  | 'remote_open_disabled';
 
 export interface AccessIotBuilding {
   buildingId: number;
@@ -96,6 +97,28 @@ export interface AccessIotHealthBuilding {
 
 export interface AccessIotHealth {
   buildings: AccessIotHealthBuilding[];
+}
+
+export type DoorAction = 'open' | 'close';
+
+/** `uncertain`: la orden salió pero nadie confirmó si el relé se activó. */
+export type DoorCommandOutcome = 'opened' | 'closed' | 'failed' | 'uncertain';
+
+export const DONE_OUTCOME: Record<DoorAction, DoorCommandOutcome> = {
+  open: 'opened',
+  close: 'closed',
+};
+
+export interface DoorCommandRequest {
+  requestId: string;
+  /** Solo para el historial de la VPS; nunca autoriza. */
+  actor: { type: 'guest' | 'staff'; ref: string };
+}
+
+export interface DoorCommandResult {
+  outcome: DoorCommandOutcome;
+  errorCode?: AccessIotErrorCode;
+  at?: string;
 }
 
 export interface InventoryUser {

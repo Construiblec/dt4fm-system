@@ -8,6 +8,7 @@ import { GuestLinkModule } from '../guest-link/guest-link.module';
 import { AccessControlController } from './access-control.controller';
 import { AuthorizationsController } from './authorizations.controller';
 import { AuthorizationsService } from './authorizations.service';
+import { DoorsController } from './doors.controller';
 import { AccessIotClient } from './access-iot.client';
 import { AccessMaintenanceService } from './access-maintenance.service';
 import { AccessIotGateway } from './access-iot.gateway';
@@ -20,13 +21,15 @@ import { ReservationSweepService } from './reservation-sweep.service';
 import { ReservationsController } from './reservations.controller';
 import { AccessCredential } from './entities/access-credential.entity';
 import { GuestStay } from './entities/guest-stay.entity';
+import { RemoteOpenRequest } from './entities/remote-open-request.entity';
 import { PinCipherService } from './pin-cipher.service';
 import { PinGeneratorService } from './pin-generator.service';
+import { RemoteOpenService } from './remote-open.service';
 import { SyncRetryService } from './sync-retry.service';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([AccessCredential, GuestStay]),
+    TypeOrmModule.forFeature([AccessCredential, GuestStay, RemoteOpenRequest]),
     HttpModule,
     OpenmaintModule,
     HostawayModule,
@@ -37,6 +40,7 @@ import { SyncRetryService } from './sync-retry.service';
   controllers: [
     AccessControlController,
     AuthorizationsController,
+    DoorsController,
     ReservationsController,
   ],
   providers: [
@@ -50,6 +54,7 @@ import { SyncRetryService } from './sync-retry.service';
     AuthorizationsService,
     ReservationSweepService,
     AccessMaintenanceService,
+    RemoteOpenService,
     {
       // Mientras la VPS no exista, ACCESS_IOT_USE_MOCK=true resuelve a la
       // implementación en memoria. Es el mismo recurso que HOSTAWAY_USE_MOCK.

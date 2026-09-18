@@ -75,6 +75,8 @@ solo, sin ningún código nuevo de por medio.
 | `GET /guest/me` | El propio enlace | Devuelve los datos del portal. `pin` solo viene si `pinState: "disponible"` |
 | `POST /guest/short-link/redeem` | Ninguna (30 intentos/hora por IP) | Cambia el código de `/g/<código>` por `{ token }`. 401 si no existe o la estancia no está vigente |
 | `POST /guest/incidents` | El propio enlace | Abre un correctivo desde el portal (multipart: `description`, `location?`, `images[]`) |
+| `POST /guest/vehicular-gate/open` | El propio enlace | Abre la barrera vehicular del edificio (`{ requestId }`). Devuelve `outcome`: `opened`, `failed` o `uncertain`. 403 fuera de la ventana o sin acceso vehicular, 429 si se acaba de abrir, 503 con `ACCESS_REMOTE_OPEN_ENABLED` apagado. `openUntil` dice hasta cuándo se puede bajar a mano. Ver [D-18](../decisiones-arquitectura-y-seguridad.md#d-18--apertura-remota-de-un-toque) |
+| `POST /guest/vehicular-gate/close` | El propio enlace | Baja la barrera antes de que se cierre sola (`{ requestId }`). Solo la que abrió este huésped y dentro del minuto; 409 si ya bajó o la abrió otro. `outcome`: `closed`, `failed` o `uncertain` |
 
 `pinState` puede ser `disponible`, `antes-del-checkin`, `finalizado`, o `sin-cobertura`
 — el frontend decide qué texto mostrar según ese campo, nunca inventa uno propio.
@@ -85,6 +87,8 @@ Campos que `GET /guest/me` añade para el portal diseñado:
 |---|---|
 | `checkInAt` / `checkOutAt` | Check-in y check-out exactos, sin los márgenes de acceso. Se reconstruyen como `access_valid_from + ACCESS_GUEST_LEAD_HOURS` (y el simétrico con la gracia) en [`guest-stay-timing.ts`](../../../src/modules/access-control/guest-stay-timing.ts) |
 | `hasVehicularAccess` | La credencial viva incluye la entrada vehicular (`both` o `vehicular`) |
+| `canOpenVehicularGate` | Misma regla que aplica `POST /guest/vehicular-gate/open`: apertura remota activada, acceso vehicular y dentro de la ventana de acceso |
+| `vehicularGateOpenUntil` | Hasta cuándo sigue arriba la barrera que abrió este huésped; mientras no sea nulo, el portal ofrece «Cerrar» |
 | `canReportIncident` | Misma regla que aplica `POST /guest/incidents`: estancia no cancelada, ya empezó el check-in, no terminó el acceso y la reserva está vinculada a un edificio |
 | `unitName`, `buildingName`, `buildingAddress` | Leídos de las tarjetas `Unit` y `Building` de openMAINT con la sesión de servicio, cacheados 12 h. Nulos si openMAINT no responde: el portal no falla por eso |
 

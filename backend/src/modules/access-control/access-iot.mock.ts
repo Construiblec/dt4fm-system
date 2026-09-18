@@ -9,6 +9,10 @@ import {
   CredentialWriteResult,
   InventoryPage,
   InventoryUser,
+  DONE_OUTCOME,
+  DoorAction,
+  DoorCommandRequest,
+  DoorCommandResult,
   PutCredentialRequest,
 } from './access-iot.types';
 
@@ -99,6 +103,7 @@ interface StoredCredential {
 export class AccessIotMockGateway extends AccessIotGateway {
   private readonly logger = new Logger(AccessIotMockGateway.name);
   private readonly store = new Map<string, StoredCredential>();
+  private readonly commands = new Map<string, DoorCommandResult>();
 
   listBuildings(): Promise<AccessIotBuilding[]> {
     return Promise.resolve(BUILDINGS);
@@ -236,6 +241,32 @@ export class AccessIotMockGateway extends AccessIotGateway {
       users: [...manual, ...managed],
       nextCursor: null,
     });
+  }
+
+  /** Deduplica por `(deviceId, requestId)`: repetir la orden no da un segundo pulso. */
+  commandDevice(
+    deviceId: string,
+    action: DoorAction,
+    request: DoorCommandRequest,
+  ): Promise<DoorCommandResult> {
+    const key = `${deviceId}:${request.requestId}`;
+    const previous = this.commands.get(key);
+
+    if (previous) return Promise.resolve(previous);
+
+    const device = DEVICES.find((candidate) => candidate.deviceId === deviceId);
+    const result: DoorCommandResult = !device
+      ? { outcome: 'failed', errorCode: 'invalid_request' }
+      : !device.online
+        ? { outcome: 'failed', errorCode: 'device_unreachable' }
+        : { outcome: DONE_OUTCOME[action], at: new Date().toISOString() };
+
+    this.commands.set(key, result);
+    this.logger.log(
+      `Orden simulada ${action} en ${deviceId} (${request.actor.type}): ${result.outcome}`,
+    );
+
+    return Promise.resolve(result);
   }
 
   private devicesFor(

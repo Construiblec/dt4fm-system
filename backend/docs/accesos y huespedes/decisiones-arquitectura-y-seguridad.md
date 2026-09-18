@@ -25,6 +25,7 @@ D-01 y D-02 las fijó el negocio. El resto se derivan de ellas.
 | [D-15](#d-15--el-inventario-se-pagina-siempre) | El inventario se pagina siempre | IoT |
 | [D-16](#d-16--un-repositorio-despliegue-parametrizado) | Un repositorio, no uno por edificio | IoT |
 | [D-17](#d-17--servicio-persistente-y-latido) | Servicio persistente y latido | IoT |
+| [D-18](#d-18--apertura-remota-de-un-toque) | Apertura remota de un toque | Ambos |
 
 ---
 
@@ -214,6 +215,38 @@ fallo peligroso del módulo.
 
 **Consecuencia.** `GET /v1/health` distingue `gatewayOnline` (túnel) de `online` por dispositivo
 (LAN): son incidentes distintos con responsables distintos.
+
+## D-18 · Apertura remota de un toque
+
+Decidido el 2026-09-18. El huésped abre la barrera **vehicular** de su edificio desde el portal; el
+Supervisor CAV abre **cualquier puerta**, peatonal o vehicular, desde el panel. En los dos casos es un
+solo toque, sin confirmación. Hay una puerta vehicular por edificio, así que el huésped ve un único
+botón.
+
+El backend autoriza y la VPS ejecuta (`POST /v1/devices/{id}/open`). Las salvaguardas:
+
+- **`ACCESS_REMOTE_OPEN_ENABLED`, apagado por defecto.** Es control físico, igual que en D-12.
+- **`requestId` por toque, deduplicado.** Repetir la petición no repite el pulso.
+- **Historial en `remote_open_request`**, escrito **antes** de llamar a la VPS.
+- **Enfriamiento de 10 s por puerta y por orden**, bajo candado, y **tope de 30 aperturas por
+  estancia al día**. Los dos se cuentan en la base, no en memoria. Por orden y no por puerta: cerrar
+  justo después de abrir es precisamente el caso de uso.
+- **El huésped solo dentro de su ventana de acceso** y con credencial `vehicular` o `both`. Es la
+  misma regla que muestra el botón en el portal.
+- **Ningún reintento automático.**
+
+**Qué pasa con un resultado incierto.** Si la orden salió y nadie confirmó, se registra `uncertain`,
+se avisa («si no se abrió, marca tu PIN») y **no se bloquea la puerta**. El gestor de Inglaterra
+bloqueaba tras un incierto hasta una inspección física. Aquí eso dejaría sin apertura remota a todos
+los huéspedes por un timeout de red. Si hace falta ese bloqueo, lo pone el gateway, que es quien toca
+el relé.
+
+**Cerrar antes de tiempo.** Las barreras vehiculares bajan solas en torno a un minuto; mientras no
+pasa, se pueden bajar a mano (`POST /v1/devices/{id}/close`) para no esperar. Las peatonales no: se
+traban solas. **Un huésped solo baja la barrera que abrió él**, y solo dentro de ese minuto; el
+Supervisor CAV baja cualquiera. Así nadie baja la barrera sobre el auto de otro que acaba de
+abrirla. El minuto es `VEHICULAR_AUTO_CLOSE_MS` en `remote-open.rules.ts`: si el hardware cambia,
+se ajusta ahí.
 
 ---
 

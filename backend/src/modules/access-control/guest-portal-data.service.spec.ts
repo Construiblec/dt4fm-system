@@ -4,6 +4,7 @@ import { CredentialService } from './credential.service';
 import { AccessCredential } from './entities/access-credential.entity';
 import { GuestStay } from './entities/guest-stay.entity';
 import { GuestPortalDataService } from './guest-portal-data.service';
+import { RemoteOpenService } from './remote-open.service';
 
 const HOUR = 60 * 60 * 1000;
 const PIN = '4813';
@@ -51,6 +52,9 @@ const harness = (
       {} as unknown as Repository<GuestStay>,
       credentials,
       config,
+      {
+        guestOpenUntil: jest.fn().mockResolvedValue(null),
+      } as unknown as RemoteOpenService,
     ),
   };
 };
@@ -149,6 +153,33 @@ describe('GuestPortalDataService', () => {
       await expect(service.getPortalData(stayWith())).resolves.toMatchObject({
         credentialId: 'ambas',
       });
+    });
+
+    it('ofrece abrir la barrera solo con la apertura remota activada', async () => {
+      const apagada = harness([{ ...credencial, scope: 'both' }]);
+      const encendida = harness([{ ...credencial, scope: 'both' }], {
+        ACCESS_GUEST_LEAD_HOURS: '0',
+        ACCESS_REMOTE_OPEN_ENABLED: 'true',
+      });
+
+      await expect(
+        apagada.service.getPortalData(stayWith()),
+      ).resolves.toMatchObject({ canOpenVehicularGate: false });
+      await expect(
+        encendida.service.getPortalData(stayWith()),
+      ).resolves.toMatchObject({ canOpenVehicularGate: true });
+    });
+
+    it('no ofrece abrir la barrera antes de la ventana de acceso', async () => {
+      const { service } = harness([{ ...credencial, scope: 'both' }], {
+        ACCESS_REMOTE_OPEN_ENABLED: 'true',
+      });
+
+      await expect(
+        service.getPortalData(
+          stayWith({ accessValidFrom: new Date(Date.now() + HOUR) }),
+        ),
+      ).resolves.toMatchObject({ canOpenVehicularGate: false });
     });
   });
 

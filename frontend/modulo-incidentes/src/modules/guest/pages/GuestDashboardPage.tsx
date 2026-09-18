@@ -44,7 +44,14 @@ export const GuestDashboardPage = () => {
         <div className="flex flex-col gap-6">
           <StayCard data={data} />
           <PinCard data={data} />
-          {data.hasVehicularAccess ? <VehicularGateCard /> : null}
+          {data.hasVehicularAccess ? (
+            <VehicularGateCard
+              token={token}
+              canOpen={data.canOpenVehicularGate}
+              pinState={data.pinState}
+              openUntil={data.vehicularGateOpenUntil}
+            />
+          ) : null}
         </div>
 
         {address || data.canReportIncident ? (

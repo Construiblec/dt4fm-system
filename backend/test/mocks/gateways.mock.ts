@@ -198,6 +198,14 @@ export const createAccessIotGatewayMock = () => ({
   getDeviceInventory: jest
     .fn()
     .mockResolvedValue({ users: [], nextCursor: null }),
+  commandDevice: jest
+    .fn()
+    .mockImplementation((_deviceId: string, action: 'open' | 'close') =>
+      Promise.resolve({
+        outcome: action === 'open' ? 'opened' : 'closed',
+        at: new Date().toISOString(),
+      }),
+    ),
 });
 
 export type AccessIotGatewayMock = ReturnType<
