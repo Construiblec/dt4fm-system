@@ -183,6 +183,10 @@ export const VozSpikePage = () => {
   const [counters, setCounters] = useState({ results: 0, restarts: 0, nomatch: 0 });
   const [errors, setErrors] = useState<Record<string, number>>({});
   const [copied, setCopied] = useState(false);
+  /** Lectura en castellano de un fallo que se repite, para no tener que leer la bitácora. */
+  const [diagnosis, setDiagnosis] = useState<string | null>(null);
+  /** Volumen del micro, 0 a 1. `null` con el medidor apagado. */
+  const [micLevel, setMicLevel] = useState<number | null>(null);
 
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const runningRef = useRef(false);
@@ -192,6 +196,21 @@ export const VozSpikePage = () => {
   const listenStartedAtRef = useRef(0);
   const restartTimerRef = useRef<number | null>(null);
   const wakeLockRef = useRef<WakeLockSentinelLike | null>(null);
+  /**
+   * Fallos seguidos sin ningún resultado bueno en medio. Un error permanente
+   * —el micro sin servicio, por ejemplo— haría girar el rearme cada 300 ms:
+   * quema batería y llena la bitácora sin aportar un solo dato nuevo.
+   */
+  const consecutiveErrorsRef = useRef(0);
+  /** Último parcial escrito, para no repetir la misma línea en la bitácora. */
+  const lastInterimRef = useRef("");
+  const micStreamRef = useRef<MediaStream | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const meterFrameRef = useRef<number | null>(null);
+
+  /** 300 ms tras un ciclo sano; se duplica con cada fallo seguido, hasta 5 s. */
+  const restartDelay = () =>
+    Math.min(300 * 2 ** consecutiveErrorsRef.current, 5000);
 
   const addLog = (kind: string, text: string) => {
     setLog((entries) => [{ at: stamp(), kind, text }, ...entries].slice(0, MAX_LOG));
@@ -278,6 +297,9 @@ export const VozSpikePage = () => {
       // se llama a `start()`.
       listenStartedAtRef.current = Date.now();
       speechStartedAtRef.current = null;
+      // Por ciclo, no por sesión: decir lo mismo dos veces seguidas tiene que
+      // dejar dos líneas, porque son dos intentos distintos.
+      lastInterimRef.current = "";
       setStatus("escuchando");
       addLog("micro", "escuchando");
     };
@@ -293,6 +315,13 @@ export const VozSpikePage = () => {
       const transcript = result[0]?.transcript ?? "";
 
       if (!result.isFinal) {
+        // Los parciales van a la bitácora, no solo a la pantalla: son la única
+        // forma de distinguir "entendió algo y no lo cerró" de "no entendió
+        // nada", y en el celular esa diferencia se pierde si solo parpadea.
+        if (transcript && transcript !== lastInterimRef.current) {
+          lastInterimRef.current = transcript;
+          addLog("parcial", `"${transcript}"`);
+        }
         setInterim(transcript);
         return;
       }
@@ -304,6 +333,11 @@ export const VozSpikePage = () => {
       for (let index = 0; index < result.length; index += 1) {
         options.push(`${result[index].transcript} (${result[index].confidence.toFixed(2)})`);
       }
+
+      // Un resultado bueno prueba que la cadena entera funciona: se limpia el
+      // castigo del backoff y el diagnóstico que hubiera en pantalla.
+      consecutiveErrorsRef.current = 0;
+      setDiagnosis(null);
 
       setInterim("");
       setHeard(transcript);
@@ -328,9 +362,32 @@ export const VozSpikePage = () => {
       setErrors((current) => ({ ...current, [event.error]: (current[event.error] ?? 0) + 1 }));
       addLog("error", `${event.error}${event.message ? ` — ${event.message}` : ""}`);
 
+      // `no-speech` es el silencio normal entre frases, no un fallo: si contara
+      // para el backoff, quedarse callado un rato castigaría el rearme.
+      if (event.error !== "no-speech") {
+        consecutiveErrorsRef.current += 1;
+      }
+
+      // El reconocimiento no corre en el teléfono: manda el audio a un servicio
+      // remoto. Repetido, `network` significa que no se llega a ese servicio, y
+      // sin eso no hay nada que probar acá.
+      if (event.error === "network" && consecutiveErrorsRef.current >= 3) {
+        setDiagnosis(
+          "El navegador no puede llegar al servicio de voz. El reconocimiento no " +
+            "corre en el teléfono: manda el audio a los servidores de Google. " +
+            "Si estás en Brave, probá en Chrome — Brave no trae la clave de esa " +
+            "API y falla siempre así. Si ya estás en Chrome, revisá la conexión.",
+        );
+      }
+
       // Sin permiso de micrófono no hay nada que reintentar: el bucle solo
       // generaría ruido en la bitácora.
       if (event.error === "not-allowed" || event.error === "service-not-allowed") {
+        setDiagnosis(
+          "El navegador bloqueó el micrófono. Revisá el permiso del sitio, y que " +
+            "la página se esté sirviendo por HTTPS: sobre http:// el micrófono " +
+            "no se habilita nunca (salvo en localhost).",
+        );
         stopSession("permiso de micrófono denegado");
       }
     };
@@ -340,9 +397,10 @@ export const VozSpikePage = () => {
       // Si está hablando, el rearme lo hace el final del TTS: arrancar ahora haría
       // que el teléfono se escuche a sí mismo.
       if (runningRef.current && modeRef.current === "listening") {
+        const delay = restartDelay();
         setCounters((current) => ({ ...current, restarts: current.restarts + 1 }));
-        setStatus("rearmando");
-        scheduleRestart(300);
+        setStatus(delay > 300 ? `rearmando en ${delay} ms` : "rearmando");
+        scheduleRestart(delay);
       }
     };
 
@@ -356,6 +414,8 @@ export const VozSpikePage = () => {
     if (!recognitionRef.current) return;
 
     runningRef.current = true;
+    consecutiveErrorsRef.current = 0;
+    setDiagnosis(null);
     setRunning(true);
     setStatus("iniciando");
     addLog("sesión", `iniciada — online: ${navigator.onLine ? "sí" : "no"}`);
@@ -380,6 +440,64 @@ export const VozSpikePage = () => {
     }
     if (ttsSupported) window.speechSynthesis.cancel();
   }
+
+  /**
+   * Medidor de volumen del micrófono. Va APAGADO por defecto y aparte del
+   * reconocimiento: abre su propio stream, así que encenderlo durante la prueba
+   * de campo mete una variable más (en algunos Android, dos consumidores del
+   * mismo micro se estorban). Sirve para responder la pregunta previa a todo:
+   * ¿el micrófono capta algo? Si al hablar la barra no se mueve, no hay nada
+   * que diagnosticar del lado del reconocimiento.
+   */
+  const stopMeter = () => {
+    if (meterFrameRef.current !== null) {
+      cancelAnimationFrame(meterFrameRef.current);
+      meterFrameRef.current = null;
+    }
+    micStreamRef.current?.getTracks().forEach((track) => track.stop());
+    micStreamRef.current = null;
+    void audioContextRef.current?.close().catch(() => undefined);
+    audioContextRef.current = null;
+    setMicLevel(null);
+  };
+
+  const toggleMeter = async () => {
+    if (micStreamRef.current) {
+      stopMeter();
+      addLog("nivel", "medidor apagado");
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const context = new AudioContext();
+      const analyser = context.createAnalyser();
+      analyser.fftSize = 512;
+      context.createMediaStreamSource(stream).connect(analyser);
+
+      micStreamRef.current = stream;
+      audioContextRef.current = context;
+
+      const samples = new Uint8Array(analyser.frequencyBinCount);
+      const tick = () => {
+        analyser.getByteTimeDomainData(samples);
+        let sum = 0;
+        for (let index = 0; index < samples.length; index += 1) {
+          const centered = (samples[index] - 128) / 128;
+          sum += centered * centered;
+        }
+        // RMS por 4 para que una voz normal llene buena parte de la barra.
+        setMicLevel(Math.min(1, Math.sqrt(sum / samples.length) * 4));
+        meterFrameRef.current = requestAnimationFrame(tick);
+      };
+      tick();
+
+      const device = stream.getAudioTracks()[0]?.label || "sin nombre";
+      addLog("nivel", `medidor encendido — entrada: ${device}`);
+    } catch (error) {
+      addLog("error", `no se pudo abrir el micro para medir: ${(error as Error).name}`);
+    }
+  };
 
   const toggleWakeLock = async () => {
     if (wakeLockRef.current) {
@@ -463,6 +581,12 @@ export const VozSpikePage = () => {
       }
       window.speechSynthesis?.cancel();
       void wakeLockRef.current?.release().catch(() => undefined);
+
+      // El medidor abre su propio stream: sin esto el navegador sigue marcando
+      // la pestaña como grabando después de salir de la pantalla.
+      if (meterFrameRef.current !== null) cancelAnimationFrame(meterFrameRef.current);
+      micStreamRef.current?.getTracks().forEach((track) => track.stop());
+      void audioContextRef.current?.close().catch(() => undefined);
     },
     [],
   );
@@ -489,6 +613,14 @@ export const VozSpikePage = () => {
           <p className="rounded-2xl border border-red-500/40 bg-red-500/10 p-4 text-sm text-red-200">
             Este navegador no tiene reconocimiento de voz. El diseño manos libres no
             funciona acá: hay que probar en otro navegador o replantear la solución.
+          </p>
+        ) : null}
+
+        {/* Un fallo que se repite necesita leerse sin abrir la bitácora: en la
+            unidad, con guantes, nadie va a ponerse a interpretar códigos. */}
+        {diagnosis ? (
+          <p className="rounded-2xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm leading-relaxed text-amber-200">
+            {diagnosis}
           </p>
         ) : null}
 
@@ -528,6 +660,32 @@ export const VozSpikePage = () => {
           ) : null}
         </section>
 
+        {/* La pregunta previa a cualquier diagnóstico: ¿entra volumen? */}
+        {micLevel !== null ? (
+          <section className="rounded-2xl bg-slate-800 p-4">
+            <div className="flex items-center justify-between">
+              <p className="text-xs uppercase tracking-wide text-slate-400">
+                Nivel del micrófono
+              </p>
+              <p className="text-sm font-bold tabular-nums text-slate-200">
+                {Math.round(micLevel * 100)}%
+              </p>
+            </div>
+            <div className="mt-2 h-3 overflow-hidden rounded-full bg-slate-700">
+              <div
+                className={`h-full rounded-full transition-[width] duration-75 ${
+                  micLevel > 0.08 ? "bg-emerald-400" : "bg-slate-500"
+                }`}
+                style={{ width: `${Math.round(micLevel * 100)}%` }}
+              />
+            </div>
+            <p className="mt-2 text-xs text-slate-400">
+              Hablá normal: si la barra no se mueve, el problema es la entrada de
+              audio y no el reconocimiento.
+            </p>
+          </section>
+        ) : null}
+
         <section className="grid grid-cols-3 gap-2 text-center">
           <Counter label="Resultados" value={counters.results} />
           <Counter label="Rearmes" value={counters.restarts} />
@@ -561,6 +719,14 @@ export const VozSpikePage = () => {
             }`}
           >
             {running ? "Detener" : "Empezar"}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => void toggleMeter()}
+            className="w-full rounded-2xl border border-slate-600 px-4 py-4 text-sm font-semibold text-slate-200"
+          >
+            {micLevel !== null ? "Apagar el medidor de micrófono" : "Medir el micrófono"}
           </button>
 
           <button
