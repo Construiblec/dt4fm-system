@@ -48,7 +48,42 @@ describe('AccessControlController (e2e)', () => {
   let catalog: BuildingCatalogService;
   let sweep: ReservationSweepService;
 
+  /**
+   * Los fixtures de esta suite fijan la estancia del 14 al 18 de septiembre de
+   * 2026, y `statusFromDates` la marca `completed` en cuanto el reloj pasa el
+   * `validTo`. Con ese estado la estancia desaparece de la lista de
+   * autorizaciones (filtra `pending`/`active`) y deja de entregarse el
+   * magiclink, así que el 19 de septiembre la suite empezó a fallar sola, sin
+   * que cambiara una línea de código.
+   *
+   * Congelar el reloj a mitad de la estancia la deja `active` y vuelve la suite
+   * determinista. Se hace acá y no con fechas relativas para no perder las
+   * aserciones de timestamp exacto, que son las que prueban la conversión de
+   * zona horaria de Guayaquil y dejarían de valer si el test recalculara la
+   * fecha esperada con la misma lógica que está probando.
+   */
+  const AHORA = new Date('2026-09-16T12:00:00-05:00');
+
   beforeAll(async () => {
+    // Solo se falsea `Date`. Los temporizadores siguen siendo reales porque el
+    // test de reintentos de envío depende de un `setTimeout` que corra de
+    // verdad (con la espera en 0 que pone setup-env.ts).
+    jest.useFakeTimers({
+      doNotFake: [
+        'setTimeout',
+        'clearTimeout',
+        'setInterval',
+        'clearInterval',
+        'setImmediate',
+        'clearImmediate',
+        'nextTick',
+        'queueMicrotask',
+        'performance',
+        'hrtime',
+      ],
+      now: AHORA,
+    });
+
     ({ app, mocks } = await createTestApp());
     dataSource = app.get(DataSource);
     credentialService = app.get(CredentialService);
@@ -59,6 +94,7 @@ describe('AccessControlController (e2e)', () => {
 
   afterAll(async () => {
     await app?.close();
+    jest.useRealTimers();
   });
 
   beforeEach(async () => {
