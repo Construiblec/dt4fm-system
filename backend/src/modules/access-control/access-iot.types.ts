@@ -1,7 +1,7 @@
 /**
- * Contrato con la VPS central de accesos. Refleja
- * `docs/accesos y huespedes/guia-servidor-vps-accesos.md` §4: si este archivo
- * y ese documento divergen, manda el documento.
+ * Contrato con la VPS central de accesos: `openapi.yaml` de la API central
+ * (repositorio del gateway), que concreta la guía
+ * `docs/accesos y huespedes/guia-servidor-vps-accesos.md` §4.
  */
 
 export type CredentialScopeWire = 'pedestrian' | 'vehicular' | 'both';
@@ -14,17 +14,24 @@ export type CredentialWriteState =
   | 'unreachable'
   | 'failed';
 
-export type DeviceWriteState = 'written' | 'unreachable' | 'failed';
+/** `deleted` solo aparece en la respuesta del `DELETE`. */
+export type DeviceWriteState = 'written' | 'unreachable' | 'failed' | 'deleted';
 
 /** Códigos tipados: distinguen «reintentar» de «regenerar» de «alertar». */
 export type AccessIotErrorCode =
   | 'gateway_unreachable'
+  | 'gateway_rejected'
   | 'device_unreachable'
+  | 'device_unauthorized'
+  | 'device_ambiguous'
+  | 'no_devices_in_scope'
   | 'pin_conflict'
   | 'device_full'
+  | 'not_found'
   | 'unauthorized'
   | 'invalid_request'
-  | 'remote_open_disabled';
+  | 'remote_open_disabled'
+  | 'internal_error';
 
 export interface AccessIotBuilding {
   buildingId: number;
@@ -32,7 +39,7 @@ export interface AccessIotBuilding {
   name: string;
   online: boolean;
   scopes: DeviceScope[];
-  lastSeenAt?: string;
+  lastSeenAt?: string | null;
 }
 
 export interface AccessIotDevice {
@@ -45,22 +52,31 @@ export interface AccessIotDevice {
   usersCapacity?: number;
   firmware?: string;
   clockSkewSeconds?: number;
-  lastSeenAt?: string;
+  lastSeenAt?: string | null;
+  /** Solo si el terminal no pudo leerse; aparece con `online: false`, no se omite. */
+  errorCode?:
+    | 'device_unreachable'
+    | 'device_unauthorized'
+    | 'device_credential_absent';
 }
 
 export interface CredentialDeviceResult {
   deviceId: string;
   state: DeviceWriteState;
+  /** Presente en toda entrada `written`: es con lo que concilia el backend. */
   employeeNo?: string;
-  error?: string | null;
-  at?: string;
+  /** Presente en toda entrada `failed` y `unreachable`. */
+  errorCode?: AccessIotErrorCode;
+  at?: string | null;
+  validFrom?: string | null;
+  validTo?: string | null;
 }
 
 export interface CredentialWriteResult {
   credentialId: string;
   state: CredentialWriteState;
   devices: CredentialDeviceResult[];
-  /** Presente cuando `state` es `failed`: dice qué hacer a continuación. */
+  /** Presente en `failed`, y en `partial` si un aparato falló: dice qué hacer a continuación. */
   errorCode?: AccessIotErrorCode;
 }
 
@@ -73,6 +89,7 @@ export interface PutCredentialRequest {
   /** ISO 8601 **con offset**: la hora ingenua no significa nada fuera de su proceso. */
   validFrom: string;
   validTo: string;
+  /** Hasta 128 caracteres; más es un `400`. */
   displayName: string;
   unitId?: number | null;
 }
@@ -83,16 +100,27 @@ export interface AccessIotHealthDevice {
   lastSeenAt?: string;
 }
 
-/** Separa los dos eslabones: túnel central ↔ gateway, y LAN gateway ↔ terminal. */
+/**
+ * Debería separar el túnel central ↔ gateway de la LAN gateway ↔ terminal, pero
+ * hoy la VPS solo informa el túnel: `devices` llega vacío y el estado por
+ * terminal está en `/v1/devices`.
+ */
 export interface AccessIotHealthBuilding {
   buildingId: number;
+  code?: string;
+  name?: string;
+  siteId?: string;
   gatewayOnline: boolean;
-  gatewayLastSeenAt?: string;
-  gatewayVersion?: string;
+  gatewayLastSeenAt?: string | null;
+  /** Versión del contrato del gateway, no la del agente. */
+  gatewayVersion?: string | null;
+  /** `false` mientras el gateway no cumpla los criterios de habilitación. */
+  operationsEnabled?: boolean;
   pendingJobs?: number;
   failedJobs?: number;
-  maxClockSkewSeconds?: number;
+  maxClockSkewSeconds?: number | null;
   devices?: AccessIotHealthDevice[];
+  errorCode?: 'gateway_unreachable' | 'gateway_invalid_response';
 }
 
 export interface AccessIotHealth {
@@ -121,11 +149,13 @@ export interface DoorCommandResult {
   at?: string;
 }
 
+/** Un registro no gestionado llega solo con `employeeNo` y `managed`. */
 export interface InventoryUser {
   employeeNo: string;
-  name?: string;
-  validFrom?: string;
-  validTo?: string;
+  name?: string | null;
+  /** `null` si el terminal devolvió la marca sin offset: se reemite el `PUT`. */
+  validFrom?: string | null;
+  validTo?: string | null;
   /** `true` si lleva el prefijo reservado. Lo que no lo lleva no se toca jamás. */
   managed: boolean;
 }

@@ -23,6 +23,9 @@ export const LIVE_STATUSES = ['pending', 'active'];
 
 const MAX_PIN_CONFLICT_RETRIES = 3;
 
+/** Tope de la VPS; el nombre completo se conserva aquí. */
+const DISPLAY_NAME_MAX = 128;
+
 export interface IssueCredentialInput {
   subjectType: SubjectType;
   subjectRef: string;
@@ -71,6 +74,9 @@ export class CredentialService {
         `El edificio ${input.buildingId} no tiene control de accesos instalado`,
       );
     }
+
+    // La VPS rechaza con 400 un ámbito sin puertas: mejor decirlo antes de crear la fila.
+    await this.assertScopeAvailable(input.buildingId, input.scope);
 
     if (input.validTo <= input.validFrom) {
       throw new BadRequestException(
@@ -389,7 +395,7 @@ export class CredentialService {
         pin: this.cipher.decrypt(current.pinCiphertext),
         validFrom: current.validFrom.toISOString(),
         validTo: current.validTo.toISOString(),
-        displayName: current.displayName,
+        displayName: current.displayName.slice(0, DISPLAY_NAME_MAX),
         unitId: current.openmaintUnitId,
       });
 
@@ -476,6 +482,13 @@ export class CredentialService {
       );
     } else {
       credential.syncState = 'pending';
+
+      // Un `partial` trae código si un aparato falló, y `device_full` no se arregla solo.
+      if (result.errorCode) {
+        this.logger.warn(
+          `Escritura ${result.state} de ${credential.id}: ${result.errorCode}`,
+        );
+      }
     }
 
     return this.credentials.save(credential);

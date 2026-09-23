@@ -100,6 +100,7 @@ describe('AccessIotMockGateway', () => {
 
     await expect(gateway.deleteCredential('cred-8')).resolves.toMatchObject({
       state: 'written',
+      devices: [{ deviceId: 'ING-PEATONAL-1', state: 'deleted' }],
     });
     await expect(gateway.deleteCredential('cred-8')).resolves.toMatchObject({
       state: 'written',
@@ -153,10 +154,10 @@ describe('AccessIotMockGateway', () => {
       });
     });
 
-    it('una puerta desconocida es una petición inválida', async () => {
+    it('una puerta desconocida es not_found', async () => {
       await expect(
         gateway.commandDevice('NO-EXISTE', 'open', orden('r-3')),
-      ).resolves.toEqual({ outcome: 'failed', errorCode: 'invalid_request' });
+      ).resolves.toEqual({ outcome: 'failed', errorCode: 'not_found' });
     });
 
     it('repetir el requestId devuelve la misma apertura, no un segundo pulso', async () => {
