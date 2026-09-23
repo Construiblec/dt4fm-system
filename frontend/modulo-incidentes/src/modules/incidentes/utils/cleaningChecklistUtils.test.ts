@@ -148,6 +148,35 @@ describe("parseCleaningChecklist — cabecera", () => {
     expect(countChecklistActivities(sections)).toBe(1);
   });
 
+  // Encabezado real de la primera plantilla subida a openMAINT. El plural
+  // "Actividades" no estaba contemplado y la fila se colaba como una sección.
+  it("descarta la cabecera en plural y con punto y coma", () => {
+    const sections = parseCleaningChecklist([
+      "Seccion;Actividades;tiempo",
+      "Seccion 1;el 1;23",
+      "seccion 1;el 2;12",
+    ]);
+
+    expect(countChecklistActivities(sections)).toBe(2);
+    expect(sections).toHaveLength(1);
+    expect(sections[0].title).toBe("Seccion 1");
+    // El parser capitaliza el texto visible de cada actividad.
+    expect(sections[0].items.map((item) => item.text)).toEqual(["El 1", "El 2"]);
+  });
+
+  it("acepta 'elementos' y 'tareas' como columna de actividad", () => {
+    expect(
+      countChecklistActivities(
+        parseCleaningChecklist(["Titulo,Elementos,Minutos", "Baño,Barrer,3"]),
+      ),
+    ).toBe(1);
+    expect(
+      countChecklistActivities(
+        parseCleaningChecklist(["Secciones,Tareas,Minutos", "Baño,Barrer,3"]),
+      ),
+    ).toBe(1);
+  });
+
   it("funciona igual sin cabecera", () => {
     const sections = parseCleaningChecklist(["Baño,Barrer,3"]);
 

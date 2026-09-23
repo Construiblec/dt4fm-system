@@ -56,8 +56,28 @@ const normalize = (value: string) =>
     .replace(/[̀-ͯ]/g, "")
     .trim();
 
-const HEADER_TITLE_CELLS = new Set(["titulo", "seccion", "title", "section"]);
-const HEADER_ACTIVITY_CELLS = new Set(["actividad", "activity", "tarea"]);
+// Se aceptan singular y plural porque quien escribe el encabezado es una
+// persona en Excel, no un exportador: la primera plantilla subida a openMAINT
+// decía "Seccion;Actividades;tiempo" y el plural la dejaba fuera, con lo que la
+// fila de encabezado aparecía como una sección más del checklist.
+const HEADER_TITLE_CELLS = new Set([
+  "titulo",
+  "titulos",
+  "seccion",
+  "secciones",
+  "title",
+  "section",
+]);
+const HEADER_ACTIVITY_CELLS = new Set([
+  "actividad",
+  "actividades",
+  "activity",
+  "activities",
+  "tarea",
+  "tareas",
+  "elemento",
+  "elementos",
+]);
 
 /**
  * La cabecera es opcional. Se prueba SOLO en la primera fila y exigiendo que
