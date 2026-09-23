@@ -30,6 +30,8 @@ import { GuestDashboardPage } from "@/modules/guest/pages/GuestDashboardPage";
 import { GuestIncidentPage } from "@/modules/guest/pages/GuestIncidentPage";
 import { GuestShortLinkPage } from "@/modules/guest/pages/GuestShortLinkPage";
 import { OwnerReservationDetailPage } from "@/modules/owners/pages/reservation/OwnerReservationDetailPage";
+// TEMPORAL: spike del asistente de voz. Se borra junto con su módulo.
+import { VozSpikePage } from "@/modules/voz-spike/VozSpikePage";
 
 export const router = createBrowserRouter([
   { path: "/", element: <LoginPage /> },
@@ -173,4 +175,10 @@ export const router = createBrowserRouter([
   { path: "/guest/dashboard", element: <GuestDashboardPage /> },
   { path: "/guest/incidencia", element: <GuestIncidentPage /> },
   { path: "/g/:code", element: <GuestShortLinkPage /> },
+  // ── TEMPORAL ──────────────────────────────────────────────────────────────
+  // Spike del asistente de voz. Va sin `RequireRole` a propósito: hay que poder
+  // abrirla en el teléfono del operario sin fricción, y no lee ni escribe ningún
+  // dato. Se borra esta línea y la carpeta `modules/voz-spike/` cuando termine
+  // la prueba.
+  { path: "/voz-spike", element: <VozSpikePage /> },
 ]);
