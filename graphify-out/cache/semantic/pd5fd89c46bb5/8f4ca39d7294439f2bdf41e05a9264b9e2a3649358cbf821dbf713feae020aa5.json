@@ -1,0 +1,831 @@
+{
+  "nodes": [
+    {
+      "id": "backend_docs_accesos_y_huespedes_portal_del_huesped_readme_guest_portal_module",
+      "label": "guest-portal module",
+      "file_type": "code",
+      "source_file": "backend/docs/accesos y huespedes/portal-del-huesped/README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "backend_docs_accesos_y_huespedes_portal_del_huesped_readme_guest_stay",
+      "label": "guest_stay (data structure)",
+      "file_type": "concept",
+      "source_file": "backend/docs/accesos y huespedes/portal-del-huesped/README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "backend_docs_accesos_y_huespedes_decisiones_arquitectura_y_seguridad_d_02",
+      "label": "Decision D-02: el portal del huésped es de DT4FM",
+      "file_type": "document",
+      "source_file": "backend/docs/accesos y huespedes/portal-del-huesped/README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "backend_docs_accesos_y_huespedes_readme_control_accesos_doc",
+      "label": "README general del control de accesos",
+      "file_type": "document",
+      "source_file": "backend/docs/accesos y huespedes/portal-del-huesped/README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "backend_docs_accesos_y_huespedes_portal_del_huesped_readme_token_puntero_no_copia",
+      "label": "Diseño: el token es un puntero, no una copia",
+      "file_type": "rationale",
+      "source_file": "backend/docs/accesos y huespedes/portal-del-huesped/README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "backend_docs_accesos_y_huespedes_portal_del_huesped_readme_guest_stay_service_upsertfromreservation",
+      "label": "GuestStayService.upsertFromReservation()",
+      "file_type": "code",
+      "source_file": "backend/docs/accesos y huespedes/portal-del-huesped/README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "backend_src_modules_access_control_reservations_controller_reservationscontroller",
+      "label": "ReservationsController",
+      "file_type": "code",
+      "source_file": "backend/docs/accesos y huespedes/portal-del-huesped/README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "backend_docs_accesos_y_huespedes_portal_del_huesped_readme_hostaway_webhook",
+      "label": "Hostaway webhook (reservation_created / reservation_updated)",
+      "file_type": "concept",
+      "source_file": "backend/docs/accesos y huespedes/portal-del-huesped/README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "backend_src_modules_access_control_guest_portal_data_service_guestportaldataservice",
+      "label": "GuestPortalDataService",
+      "file_type": "code",
+      "source_file": "backend/docs/accesos y huespedes/portal-del-huesped/README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "backend_docs_accesos_y_huespedes_portal_del_huesped_readme_credential_service",
+      "label": "CredentialService",
+      "file_type": "code",
+      "source_file": "backend/docs/accesos y huespedes/portal-del-huesped/README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "backend_docs_accesos_y_huespedes_portal_del_huesped_readme_credential_service_revealpin",
+      "label": "CredentialService.revealPin()",
+      "file_type": "code",
+      "source_file": "backend/docs/accesos y huespedes/portal-del-huesped/README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "backend_src_modules_guest_link_guest_token_service_guesttokenservice",
+      "label": "GuestTokenService (guest-token.service.ts)",
+      "file_type": "code",
+      "source_file": "backend/docs/accesos y huespedes/portal-del-huesped/README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "backend_src_modules_guest_portal_guest_portal_service_guestportalservice",
+      "label": "GuestPortalService (guest-portal.service.ts)",
+      "file_type": "code",
+      "source_file": "backend/docs/accesos y huespedes/portal-del-huesped/README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "backend_src_modules_guest_portal_guards_guest_token_guard_guesttokenguard",
+      "label": "GuestTokenGuard (guards/guest-token.guard.ts)",
+      "file_type": "code",
+      "source_file": "backend/docs/accesos y huespedes/portal-del-huesped/README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "backend_src_modules_guest_portal_guest_portal_controller_guestportalcontroller",
+      "label": "GuestPortalController (guest-portal.controller.ts)",
+      "file_type": "code",
+      "source_file": "backend/docs/accesos y huespedes/portal-del-huesped/README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "backend_docs_accesos_y_huespedes_portal_del_huesped_readme_guest_access_retired",
+      "label": "guest-access module (retirado)",
+      "file_type": "code",
+      "source_file": "backend/docs/accesos y huespedes/portal-del-huesped/README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "backend_src_modules_access_control_guest_stay_timing_guest_stay_timing",
+      "label": "guest-stay-timing.ts",
+      "file_type": "code",
+      "source_file": "backend/docs/accesos y huespedes/portal-del-huesped/README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "backend_docs_accesos_y_huespedes_portal_del_huesped_readme_guest_link_service_deliver",
+      "label": "GuestLinkService.deliver()",
+      "file_type": "code",
+      "source_file": "backend/docs/accesos y huespedes/portal-del-huesped/README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "backend_docs_accesos_y_huespedes_portal_del_huesped_readme_guest_link_channel_env",
+      "label": "GUEST_LINK_CHANNEL (env var)",
+      "file_type": "concept",
+      "source_file": "backend/docs/accesos y huespedes/portal-del-huesped/README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "backend_docs_accesos_y_huespedes_portal_del_huesped_readme_mailer_service",
+      "label": "MailerService",
+      "file_type": "code",
+      "source_file": "backend/docs/accesos y huespedes/portal-del-huesped/README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "backend_docs_accesos_y_huespedes_portal_del_huesped_readme_hostaway_conversations_api",
+      "label": "Hostaway Conversations API (POST /v1/conversations/{id}/messages)",
+      "file_type": "concept",
+      "source_file": "backend/docs/accesos y huespedes/portal-del-huesped/README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "backend_docs_accesos_y_huespedes_portal_del_huesped_readme_guest_link_delivery_table",
+      "label": "guest_link_delivery (tabla)",
+      "file_type": "concept",
+      "source_file": "backend/docs/accesos y huespedes/portal-del-huesped/README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "backend_docs_accesos_y_huespedes_portal_del_huesped_readme_guest_link_retry_cooldown_env",
+      "label": "GUEST_LINK_RETRY_COOLDOWN_MINUTES (env var)",
+      "file_type": "concept",
+      "source_file": "backend/docs/accesos y huespedes/portal-del-huesped/README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "backend_docs_accesos_y_huespedes_portal_del_huesped_readme_credential_service_reschedule",
+      "label": "CredentialService.reschedule()",
+      "file_type": "code",
+      "source_file": "backend/docs/accesos y huespedes/portal-del-huesped/README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "backend_docs_accesos_y_huespedes_portal_del_huesped_readme_supervisor_cav_regenerate_endpoint",
+      "label": "POST /access-authorizations/:id/regenerate (esperado por Supervisor CAV, sin backend)",
+      "file_type": "concept",
+      "source_file": "backend/docs/accesos y huespedes/portal-del-huesped/README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "backend_docs_accesos_y_huespedes_portal_del_huesped_readme_pin_conflict_automatism",
+      "label": "pin_conflict (automatismo de regeneración de PIN)",
+      "file_type": "concept",
+      "source_file": "backend/docs/accesos y huespedes/portal-del-huesped/README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "backend_docs_accesos_y_huespedes_portal_del_huesped_readme_guest_short_link_table",
+      "label": "guest_short_link (tabla)",
+      "file_type": "concept",
+      "source_file": "backend/docs/accesos y huespedes/portal-del-huesped/README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "backend_docs_accesos_y_huespedes_portal_del_huesped_readme_short_link_redeem_endpoint",
+      "label": "POST /guest/short-link/redeem",
+      "file_type": "code",
+      "source_file": "backend/docs/accesos y huespedes/portal-del-huesped/README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "backend_docs_accesos_y_huespedes_portal_del_huesped_readme_magic_link_endpoint",
+      "label": "POST /guest/magic-link",
+      "file_type": "code",
+      "source_file": "backend/docs/accesos y huespedes/portal-del-huesped/README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "backend_docs_accesos_y_huespedes_portal_del_huesped_readme_guest_me_endpoint",
+      "label": "GET /guest/me",
+      "file_type": "code",
+      "source_file": "backend/docs/accesos y huespedes/portal-del-huesped/README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "backend_docs_accesos_y_huespedes_portal_del_huesped_readme_guest_incidents_endpoint",
+      "label": "POST /guest/incidents",
+      "file_type": "code",
+      "source_file": "backend/docs/accesos y huespedes/portal-del-huesped/README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "backend_docs_accesos_y_huespedes_portal_del_huesped_readme_guest_location_service",
+      "label": "GuestLocationService",
+      "file_type": "code",
+      "source_file": "backend/docs/accesos y huespedes/portal-del-huesped/README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "backend_docs_accesos_y_huespedes_portal_del_huesped_readme_openmaint_guest_requester_id_env",
+      "label": "OPENMAINT_GUEST_REQUESTER_ID (env var)",
+      "file_type": "concept",
+      "source_file": "backend/docs/accesos y huespedes/portal-del-huesped/README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "backend_docs_accesos_y_huespedes_portal_del_huesped_readme_escapehtml",
+      "label": "escapeHtml()",
+      "file_type": "code",
+      "source_file": "backend/docs/accesos y huespedes/portal-del-huesped/README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "backend_docs_accesos_y_huespedes_portal_del_huesped_readme_pruebas_locales_doc",
+      "label": "pruebas-locales.md",
+      "file_type": "document",
+      "source_file": "backend/docs/accesos y huespedes/portal-del-huesped/README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "backend_docs_accesos_y_huespedes_portal_del_huesped_readme_route_g_code",
+      "label": "Ruta frontend /g/:code",
+      "file_type": "code",
+      "source_file": "backend/docs/accesos y huespedes/portal-del-huesped/README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "backend_docs_accesos_y_huespedes_portal_del_huesped_readme_route_guest_dashboard",
+      "label": "Ruta frontend /guest/dashboard",
+      "file_type": "code",
+      "source_file": "backend/docs/accesos y huespedes/portal-del-huesped/README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "backend_docs_accesos_y_huespedes_portal_del_huesped_readme_route_guest_incidencia",
+      "label": "Ruta frontend /guest/incidencia",
+      "file_type": "code",
+      "source_file": "backend/docs/accesos y huespedes/portal-del-huesped/README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "backend_docs_accesos_y_huespedes_portal_del_huesped_readme_session_storage_token",
+      "label": "sessionStorage dt4fm-guest-token",
+      "file_type": "concept",
+      "source_file": "backend/docs/accesos y huespedes/portal-del-huesped/README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "backend_docs_accesos_y_huespedes_portal_del_huesped_readme_google_maps_embed",
+      "label": "Google Maps embed sin API key",
+      "file_type": "rationale",
+      "source_file": "backend/docs/accesos y huespedes/portal-del-huesped/README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    }
+  ],
+  "edges": [
+    {
+      "source": "backend_docs_accesos_y_huespedes_portal_del_huesped_readme_guest_portal_module",
+      "target": "backend_docs_accesos_y_huespedes_portal_del_huesped_readme_guest_stay",
+      "relation": "shares_data_with",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "backend/docs/accesos y huespedes/portal-del-huesped/README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "backend_docs_accesos_y_huespedes_portal_del_huesped_readme_guest_portal_module",
+      "target": "backend_docs_accesos_y_huespedes_decisiones_arquitectura_y_seguridad_d_02",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "backend/docs/accesos y huespedes/portal-del-huesped/README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "backend_docs_accesos_y_huespedes_portal_del_huesped_readme_guest_portal_module",
+      "target": "backend_docs_accesos_y_huespedes_readme_control_accesos_doc",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "backend/docs/accesos y huespedes/portal-del-huesped/README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "backend_docs_accesos_y_huespedes_portal_del_huesped_readme_token_puntero_no_copia",
+      "target": "backend_src_modules_guest_link_guest_token_service_guesttokenservice",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "backend/docs/accesos y huespedes/portal-del-huesped/README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "backend_docs_accesos_y_huespedes_portal_del_huesped_readme_guest_stay_service_upsertfromreservation",
+      "target": "backend_docs_accesos_y_huespedes_portal_del_huesped_readme_guest_stay",
+      "relation": "shares_data_with",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "backend/docs/accesos y huespedes/portal-del-huesped/README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "backend_docs_accesos_y_huespedes_portal_del_huesped_readme_hostaway_webhook",
+      "target": "backend_src_modules_access_control_reservations_controller_reservationscontroller",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "backend/docs/accesos y huespedes/portal-del-huesped/README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "backend_src_modules_access_control_reservations_controller_reservationscontroller",
+      "target": "backend_docs_accesos_y_huespedes_portal_del_huesped_readme_guest_stay_service_upsertfromreservation",
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "backend/docs/accesos y huespedes/portal-del-huesped/README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "backend_src_modules_access_control_guest_portal_data_service_guestportaldataservice",
+      "target": "backend_docs_accesos_y_huespedes_portal_del_huesped_readme_credential_service",
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "backend/docs/accesos y huespedes/portal-del-huesped/README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "backend_docs_accesos_y_huespedes_portal_del_huesped_readme_credential_service",
+      "target": "backend_docs_accesos_y_huespedes_portal_del_huesped_readme_credential_service_revealpin",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "backend/docs/accesos y huespedes/portal-del-huesped/README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "backend_src_modules_guest_link_guest_token_service_guesttokenservice",
+      "target": "backend_docs_accesos_y_huespedes_portal_del_huesped_readme_guest_access_retired",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "backend/docs/accesos y huespedes/portal-del-huesped/README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "backend_src_modules_guest_portal_guest_portal_controller_guestportalcontroller",
+      "target": "backend_docs_accesos_y_huespedes_portal_del_huesped_readme_magic_link_endpoint",
+      "relation": "implements",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "backend/docs/accesos y huespedes/portal-del-huesped/README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "backend_src_modules_guest_portal_guest_portal_controller_guestportalcontroller",
+      "target": "backend_docs_accesos_y_huespedes_portal_del_huesped_readme_guest_me_endpoint",
+      "relation": "implements",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "backend/docs/accesos y huespedes/portal-del-huesped/README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "backend_src_modules_guest_portal_guest_portal_controller_guestportalcontroller",
+      "target": "backend_docs_accesos_y_huespedes_portal_del_huesped_readme_guest_incidents_endpoint",
+      "relation": "implements",
+      "confidence": "INFERRED",
+      "confidence_score": 0.85,
+      "source_file": "backend/docs/accesos y huespedes/portal-del-huesped/README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "backend_src_modules_guest_portal_guards_guest_token_guard_guesttokenguard",
+      "target": "backend_src_modules_guest_portal_guest_portal_controller_guestportalcontroller",
+      "relation": "conceptually_related_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.85,
+      "source_file": "backend/docs/accesos y huespedes/portal-del-huesped/README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "backend_src_modules_access_control_guest_stay_timing_guest_stay_timing",
+      "target": "backend_docs_accesos_y_huespedes_portal_del_huesped_readme_guest_me_endpoint",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "backend/docs/accesos y huespedes/portal-del-huesped/README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "backend_docs_accesos_y_huespedes_portal_del_huesped_readme_guest_stay_service_upsertfromreservation",
+      "target": "backend_docs_accesos_y_huespedes_portal_del_huesped_readme_guest_link_service_deliver",
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "backend/docs/accesos y huespedes/portal-del-huesped/README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "backend_docs_accesos_y_huespedes_portal_del_huesped_readme_guest_link_service_deliver",
+      "target": "backend_docs_accesos_y_huespedes_portal_del_huesped_readme_guest_link_channel_env",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "backend/docs/accesos y huespedes/portal-del-huesped/README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "backend_docs_accesos_y_huespedes_portal_del_huesped_readme_guest_link_service_deliver",
+      "target": "backend_docs_accesos_y_huespedes_portal_del_huesped_readme_mailer_service",
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "backend/docs/accesos y huespedes/portal-del-huesped/README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "backend_docs_accesos_y_huespedes_portal_del_huesped_readme_guest_link_service_deliver",
+      "target": "backend_docs_accesos_y_huespedes_portal_del_huesped_readme_hostaway_conversations_api",
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "backend/docs/accesos y huespedes/portal-del-huesped/README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "backend_docs_accesos_y_huespedes_portal_del_huesped_readme_guest_link_service_deliver",
+      "target": "backend_docs_accesos_y_huespedes_portal_del_huesped_readme_guest_link_delivery_table",
+      "relation": "shares_data_with",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "backend/docs/accesos y huespedes/portal-del-huesped/README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "backend_docs_accesos_y_huespedes_portal_del_huesped_readme_guest_link_service_deliver",
+      "target": "backend_docs_accesos_y_huespedes_portal_del_huesped_readme_guest_link_retry_cooldown_env",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "backend/docs/accesos y huespedes/portal-del-huesped/README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "backend_docs_accesos_y_huespedes_portal_del_huesped_readme_supervisor_cav_regenerate_endpoint",
+      "target": "backend_docs_accesos_y_huespedes_portal_del_huesped_readme_pin_conflict_automatism",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "backend/docs/accesos y huespedes/portal-del-huesped/README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "backend_docs_accesos_y_huespedes_portal_del_huesped_readme_credential_service_reschedule",
+      "target": "backend_docs_accesos_y_huespedes_portal_del_huesped_readme_hostaway_webhook",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "backend/docs/accesos y huespedes/portal-del-huesped/README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "backend_docs_accesos_y_huespedes_portal_del_huesped_readme_short_link_redeem_endpoint",
+      "target": "backend_docs_accesos_y_huespedes_portal_del_huesped_readme_guest_short_link_table",
+      "relation": "shares_data_with",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "backend/docs/accesos y huespedes/portal-del-huesped/README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "backend_docs_accesos_y_huespedes_portal_del_huesped_readme_route_g_code",
+      "target": "backend_docs_accesos_y_huespedes_portal_del_huesped_readme_short_link_redeem_endpoint",
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "backend/docs/accesos y huespedes/portal-del-huesped/README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "backend_docs_accesos_y_huespedes_portal_del_huesped_readme_route_g_code",
+      "target": "backend_docs_accesos_y_huespedes_portal_del_huesped_readme_session_storage_token",
+      "relation": "shares_data_with",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "backend/docs/accesos y huespedes/portal-del-huesped/README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "backend_docs_accesos_y_huespedes_portal_del_huesped_readme_guest_incidents_endpoint",
+      "target": "backend_docs_accesos_y_huespedes_portal_del_huesped_readme_openmaint_guest_requester_id_env",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "backend/docs/accesos y huespedes/portal-del-huesped/README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "backend_docs_accesos_y_huespedes_portal_del_huesped_readme_guest_me_endpoint",
+      "target": "backend_docs_accesos_y_huespedes_portal_del_huesped_readme_guest_location_service",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "backend/docs/accesos y huespedes/portal-del-huesped/README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "backend_docs_accesos_y_huespedes_portal_del_huesped_readme_guest_incidents_endpoint",
+      "target": "backend_docs_accesos_y_huespedes_portal_del_huesped_readme_escapehtml",
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "backend/docs/accesos y huespedes/portal-del-huesped/README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "backend_docs_accesos_y_huespedes_portal_del_huesped_readme_pruebas_locales_doc",
+      "target": "backend_docs_accesos_y_huespedes_portal_del_huesped_readme_guest_portal_module",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "backend/docs/accesos y huespedes/portal-del-huesped/README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "backend_docs_accesos_y_huespedes_portal_del_huesped_readme_route_guest_dashboard",
+      "target": "backend_docs_accesos_y_huespedes_portal_del_huesped_readme_guest_me_endpoint",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "confidence_score": 0.85,
+      "source_file": "backend/docs/accesos y huespedes/portal-del-huesped/README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "backend_docs_accesos_y_huespedes_portal_del_huesped_readme_route_guest_incidencia",
+      "target": "backend_docs_accesos_y_huespedes_portal_del_huesped_readme_guest_incidents_endpoint",
+      "relation": "calls",
+      "confidence": "INFERRED",
+      "confidence_score": 0.85,
+      "source_file": "backend/docs/accesos y huespedes/portal-del-huesped/README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "backend_docs_accesos_y_huespedes_portal_del_huesped_readme_google_maps_embed",
+      "target": "backend_docs_accesos_y_huespedes_portal_del_huesped_readme_route_guest_dashboard",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "backend/docs/accesos y huespedes/portal-del-huesped/README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "backend_docs_accesos_y_huespedes_portal_del_huesped_readme_guest_short_link_table",
+      "target": "backend_src_modules_guest_link_guest_token_service_guesttokenservice",
+      "relation": "semantically_similar_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.75,
+      "source_file": "backend/docs/accesos y huespedes/portal-del-huesped/README.md",
+      "source_location": null,
+      "weight": 1.0
+    }
+  ],
+  "hyperedges": [
+    {
+      "id": "guest_portal_magic_link_auth_flow",
+      "label": "Piezas del módulo guest-portal (autenticación por magic link)",
+      "nodes": [
+        "backend_src_modules_guest_link_guest_token_service_guesttokenservice",
+        "backend_src_modules_guest_portal_guest_portal_service_guestportalservice",
+        "backend_src_modules_guest_portal_guards_guest_token_guard_guesttokenguard",
+        "backend_src_modules_guest_portal_guest_portal_controller_guestportalcontroller"
+      ],
+      "relation": "participate_in",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "backend/docs/accesos y huespedes/portal-del-huesped/README.md"
+    },
+    {
+      "id": "guest_link_delivery_flow",
+      "label": "Flujo de entrega automática del enlace de huésped",
+      "nodes": [
+        "backend_docs_accesos_y_huespedes_portal_del_huesped_readme_guest_link_service_deliver",
+        "backend_docs_accesos_y_huespedes_portal_del_huesped_readme_guest_link_channel_env",
+        "backend_docs_accesos_y_huespedes_portal_del_huesped_readme_mailer_service",
+        "backend_docs_accesos_y_huespedes_portal_del_huesped_readme_hostaway_conversations_api",
+        "backend_docs_accesos_y_huespedes_portal_del_huesped_readme_guest_link_delivery_table"
+      ],
+      "relation": "form",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "backend/docs/accesos y huespedes/portal-del-huesped/README.md"
+    },
+    {
+      "id": "guest_incident_report_flow",
+      "label": "Flujo de reporte de incidencias como invitado",
+      "nodes": [
+        "backend_docs_accesos_y_huespedes_portal_del_huesped_readme_guest_incidents_endpoint",
+        "backend_docs_accesos_y_huespedes_portal_del_huesped_readme_openmaint_guest_requester_id_env",
+        "backend_docs_accesos_y_huespedes_portal_del_huesped_readme_escapehtml",
+        "backend_docs_accesos_y_huespedes_portal_del_huesped_readme_route_guest_incidencia"
+      ],
+      "relation": "participate_in",
+      "confidence": "INFERRED",
+      "confidence_score": 0.85,
+      "source_file": "backend/docs/accesos y huespedes/portal-del-huesped/README.md"
+    }
+  ]
+}

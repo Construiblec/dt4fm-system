@@ -26,6 +26,7 @@ import { ReopenTaskDto } from './dto/reopen-task.dto';
 import { ReviewTaskDto } from './dto/review-task.dto';
 import { UpdateCleaningTaskDto } from './dto/update-cleaning-task.dto';
 import { UploadAttachmentDto } from './dto/upload-attachment.dto';
+import { readCsvTemplate } from './utils/csv-template.util';
 
 /** Tipo mínimo del archivo subido por multer (evita dependencia de @types/multer) */
 type UploadedFile = {
@@ -689,14 +690,66 @@ export class CleaningTasksService {
         code: act.Code ?? null,
         description: act.Description ?? null,
         templateName: act.NombrePlantilla ?? null,
-        activities: act.Detalle
-          ? act.Detalle.split('\n')
-              .map((l) => l.trim())
-              .filter(Boolean)
-          : [],
+        activities: await this.resolveChecklistRows(activityId, act),
       };
     } catch {
       return null;
+    }
+  }
+
+  /**
+   * Las filas del checklist, con el archivo CSV como fuente preferida.
+   *
+   * Manda el adjunto del atributo `Plantilla` porque es lo que el supervisor
+   * edita en Excel; el campo de texto `Detalle` queda como respaldo, tanto para
+   * las plantillas que todavía no tienen archivo como para cuando el archivo no
+   * se puede leer.
+   *
+   * Ningún fallo del archivo corta la cadena: quedarse sin filas deja al
+   * operario con un checklist vacío y sin poder finalizar la tarea, así que
+   * siempre se cae al respaldo y el motivo queda en el log.
+   *
+   * Las dos fuentes devuelven la MISMA forma (una fila de CSV por elemento), así
+   * que de acá para abajo —respuesta, frontend, parser— nada distingue el origen.
+   */
+  private async resolveChecklistRows(
+    activityId: number,
+    act: { Detalle?: string; Plantilla?: string | null },
+  ): Promise<string[]> {
+    const fromDetalle = () =>
+      act.Detalle
+        ? act.Detalle.split('\n')
+            .map((line) => line.trim())
+            .filter(Boolean)
+        : [];
+
+    const attachmentId = act.Plantilla?.trim();
+    if (!attachmentId) return fromDetalle();
+
+    try {
+      const file = await this.openmaintService.downloadActivityTemplate(
+        activityId,
+        attachmentId,
+      );
+      const parsed = readCsvTemplate(file.data);
+
+      if (!parsed.ok) {
+        this.logger.warn(
+          `Plantilla de CleaningActivity ${activityId} ("${file.fileName}"): ${parsed.reason}. Se usa Detalle.`,
+        );
+        return fromDetalle();
+      }
+
+      this.logger.log(
+        `Plantilla de CleaningActivity ${activityId}: ${parsed.rows.length} filas leídas de "${file.fileName}" (${parsed.encoding}).`,
+      );
+      return parsed.rows;
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      this.logger.warn(
+        `Plantilla de CleaningActivity ${activityId}: no se pudo descargar el CSV (${reason}). Se usa Detalle.`,
+      );
+      return fromDetalle();
     }
   }
 

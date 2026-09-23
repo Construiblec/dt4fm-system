@@ -22,8 +22,8 @@ export const CleaningTaskExecutionPage = () => {
     taskDetail,
     isLoading,
     loadError,
-    totalActivities,
-    completedActivities,
+    totalSections,
+    completedSections,
     canComplete,
     validationMessage,
     isCompleting,
@@ -110,7 +110,7 @@ export const CleaningTaskExecutionPage = () => {
               <section className="rounded-3xl bg-white p-5 shadow-sm">
                 <div className="rounded-2xl bg-slate-50 p-4">
                   <p className="text-sm font-semibold text-slate-900">
-                    {completedActivities}/{totalActivities} actividades completadas
+                    {completedSections}/{totalSections} secciones completadas
                   </p>
                   <p className="mt-2 text-sm text-slate-500">
                     {validationMessage ??

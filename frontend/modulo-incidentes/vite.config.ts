@@ -1,4 +1,6 @@
-import { defineConfig } from 'vite'
+// `defineConfig` sale de vitest y no de vite para que el bloque `test` de abajo
+// tenga tipos: vitest reexporta el de vite tal cual.
+import { defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 import path from 'path'
@@ -77,6 +79,12 @@ export default defineConfig(({ mode }) => ({
     alias: {
       '@': path.resolve(__dirname, './src'),
     },
+  },
+  // Sin jsdom a propósito: lo que se testea son funciones puras (el parseo del
+  // checklist), que no tocan el DOM.
+  test: {
+    environment: 'node',
+    include: ['src/**/*.test.ts'],
   },
 }))
 
