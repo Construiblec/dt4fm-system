@@ -3,6 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { AppLayout } from "@/app/layout/AppLayout";
 import { CleaningTaskChecklist } from "@/modules/incidentes/components/CleaningTaskChecklist";
 import { CleaningTaskHeader } from "@/modules/incidentes/components/CleaningTaskHeader";
+import { CleaningTaskPreStart } from "@/modules/incidentes/components/CleaningTaskPreStart";
 import { CleaningTaskObservations } from "@/modules/incidentes/components/CleaningTaskObservations";
 import { CleaningTaskPhotoUpload } from "@/modules/incidentes/components/CleaningTaskPhotoUpload";
 import { CleaningTaskTimer } from "@/modules/incidentes/components/CleaningTaskTimer";
@@ -20,6 +21,11 @@ export const CleaningTaskExecutionPage = () => {
   const taskId = Number(id);
   const {
     taskDetail,
+    hasStarted,
+    startTask,
+    isStarting,
+    startError,
+    clearStartError,
     isLoading,
     loadError,
     totalSections,
@@ -67,7 +73,26 @@ export const CleaningTaskExecutionPage = () => {
             </section>
           ) : null}
 
-          {taskDetail ? (
+          {/* Sin arrancar y en fase de arranque: la pantalla previa. Una tarea
+              completada o cancelada también llega acá sin arrancar (por URL
+              directa), y ahí ofrecer "Iniciar tarea" sería mentir: el backend
+              rechazaría la transición. */}
+          {taskDetail && !hasStarted && taskDetail.phase === "Assigned" ? (
+            <CleaningTaskPreStart
+              activities={taskDetail.checklistDetail?.activities ?? []}
+              isPaused={taskDetail.isPaused}
+              isStarting={isStarting}
+              onStart={() => startTask()}
+            />
+          ) : null}
+
+          {taskDetail && !hasStarted && taskDetail.phase !== "Assigned" ? (
+            <section className="rounded-3xl bg-white p-5 text-sm text-slate-500 shadow-sm">
+              Esta tarea ya no admite acciones.
+            </section>
+          ) : null}
+
+          {taskDetail && hasStarted ? (
             <>
               {(taskDetail.taskObservations || taskDetail.supervisionObserv || taskDetail.teamObservations) && (
                 <section className="rounded-3xl bg-white p-5 shadow-sm space-y-4">
@@ -155,13 +180,17 @@ export const CleaningTaskExecutionPage = () => {
           onCancel={() => setPauseModalOpen(false)}
         />
         <LoadingModal
-          open={isLoading || isCompleting || isPausing}
+          open={isLoading || isCompleting || isPausing || isStarting}
           message={
             isCompleting
               ? "Finalizando tarea..."
               : isPausing
                 ? "Pausando tarea..."
-                : "Cargando tarea..."
+                : isStarting
+                  ? taskDetail?.isPaused
+                    ? "Reanudando tarea..."
+                    : "Iniciando tarea..."
+                  : "Cargando tarea..."
           }
         />
         <SuccessModal
@@ -187,10 +216,19 @@ export const CleaningTaskExecutionPage = () => {
           }}
         />
         <ErrorModal
-          open={errorMessage !== null}
-          title="No se pudo continuar con la tarea"
-          message={errorMessage ?? "No se pudo continuar con la tarea"}
-          onClose={() => setErrorMessage(null)}
+          open={errorMessage !== null || startError !== null}
+          title={
+            startError !== null
+              ? "No se pudo iniciar la tarea"
+              : "No se pudo continuar con la tarea"
+          }
+          message={
+            startError ?? errorMessage ?? "No se pudo continuar con la tarea"
+          }
+          onClose={() => {
+            clearStartError();
+            setErrorMessage(null);
+          }}
         />
       </main>
     </AppLayout>
