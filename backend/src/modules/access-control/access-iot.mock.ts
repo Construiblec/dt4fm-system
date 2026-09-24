@@ -119,6 +119,7 @@ export class AccessIotMockGateway extends AccessIotGateway {
   ): Promise<CredentialWriteResult> {
     const targets = this.devicesFor(request.buildingId, request.scope);
 
+    // La API responde 400 `invalid_request`; el cliente HTTP lo traduce a esto.
     if (targets.length === 0) {
       return Promise.resolve({
         credentialId,
@@ -158,7 +159,7 @@ export class AccessIotMockGateway extends AccessIotGateway {
         : {
             deviceId: device.deviceId,
             state: 'unreachable',
-            error: 'link down',
+            errorCode: 'device_unreachable',
           },
     );
 
@@ -177,7 +178,7 @@ export class AccessIotMockGateway extends AccessIotGateway {
 
     // Idempotente: borrar algo ya borrado es éxito, no 404.
     const devices: CredentialDeviceResult[] = (stored?.devices ?? []).map(
-      (device) => ({ deviceId: device.deviceId, state: 'written' }),
+      (device) => ({ deviceId: device.deviceId, state: 'deleted' }),
     );
 
     return Promise.resolve({ credentialId, state: 'written', devices });
@@ -201,9 +202,13 @@ export class AccessIotMockGateway extends AccessIotGateway {
     return Promise.resolve({
       buildings: BUILDINGS.map((building) => ({
         buildingId: building.buildingId,
+        code: building.code,
+        name: building.name,
+        siteId: building.code.toLowerCase(),
         gatewayOnline: true,
         gatewayLastSeenAt: new Date().toISOString(),
-        gatewayVersion: '0.0.0-mock',
+        gatewayVersion: 'v1',
+        operationsEnabled: true,
         pendingJobs: 0,
         failedJobs: 0,
         maxClockSkewSeconds: 1,
@@ -256,7 +261,7 @@ export class AccessIotMockGateway extends AccessIotGateway {
 
     const device = DEVICES.find((candidate) => candidate.deviceId === deviceId);
     const result: DoorCommandResult = !device
-      ? { outcome: 'failed', errorCode: 'invalid_request' }
+      ? { outcome: 'failed', errorCode: 'not_found' }
       : !device.online
         ? { outcome: 'failed', errorCode: 'device_unreachable' }
         : { outcome: DONE_OUTCOME[action], at: new Date().toISOString() };

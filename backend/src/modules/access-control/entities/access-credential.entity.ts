@@ -6,6 +6,7 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
+import type { CredentialDeviceResult } from '../access-iot.types';
 
 export type SubjectType = 'guest' | 'tenant' | 'employee';
 export type CredentialScope = 'pedestrian' | 'vehicular' | 'both';
@@ -13,13 +14,7 @@ export type CredentialStatus = 'pending' | 'active' | 'revoked' | 'expired';
 export type SyncState = 'pending' | 'synced' | 'failed';
 
 /** Resultado por dispositivo de la última escritura, tal como lo devuelve la VPS. */
-export interface SyncDetailDevice {
-  deviceId: string;
-  state: 'written' | 'unreachable' | 'failed';
-  employeeNo?: string;
-  error?: string | null;
-  at?: string;
-}
+export type SyncDetailDevice = CredentialDeviceResult;
 
 /**
  * Un permiso de acceso: un PIN, para un sujeto, en un edificio, con una ventana

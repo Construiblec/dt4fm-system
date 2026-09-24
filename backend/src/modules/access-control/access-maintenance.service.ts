@@ -12,6 +12,11 @@ import { AccessCredential } from './entities/access-credential.entity';
 /** Tope defensivo de páginas, para no iterar sin fin ante un cursor anómalo. */
 const MAX_INVENTORY_PAGES = 50;
 
+/** El terminal guarda la vigencia al segundo; los milisegundos de Postgres no cuentan. */
+const sameSecond = (wire: string | null | undefined, date: Date): boolean =>
+  wire != null &&
+  Math.floor(Date.parse(wire) / 1000) === Math.floor(date.getTime() / 1000);
+
 @Injectable()
 export class AccessMaintenanceService {
   private readonly logger = new Logger(AccessMaintenanceService.name);
@@ -109,7 +114,9 @@ export class AccessMaintenanceService {
       );
     }
 
-    const enAparato = new Set(gestionados.map((user) => user.employeeNo));
+    const enAparato = new Map(
+      gestionados.map((user) => [user.employeeNo, user]),
+    );
 
     const vivas = await this.credentials.find({
       where: { status: In(LIVE_STATUSES), syncState: 'synced' },
@@ -117,22 +124,27 @@ export class AccessMaintenanceService {
     });
 
     for (const credential of vivas) {
-      const escritaAqui = (credential.syncDetail ?? []).some(
+      const employeeNo = (credential.syncDetail ?? []).find(
         (entry) => entry.deviceId === deviceId && entry.state === 'written',
-      );
+      )?.employeeNo;
 
-      if (!escritaAqui) {
+      if (!employeeNo) {
         continue;
       }
 
-      const employeeNo = (credential.syncDetail ?? []).find(
-        (entry) => entry.deviceId === deviceId,
-      )?.employeeNo;
+      const user = enAparato.get(employeeNo);
+      // Ausente: la escritura se perdió o alguien la borró a mano. Vigencia
+      // distinta o sin offset (`null`): el PUT, idempotente, la corrige.
+      const motivo = !user
+        ? 'ausente de'
+        : !sameSecond(user.validFrom, credential.validFrom) ||
+            !sameSecond(user.validTo, credential.validTo)
+          ? 'con otra vigencia en'
+          : null;
 
-      if (employeeNo && !enAparato.has(employeeNo)) {
-        // La escritura se perdió, o alguien la borró a mano: se reescribe sola.
+      if (motivo) {
         this.logger.warn(
-          `Credencial ${credential.id} ausente de ${deviceId}: se reprograma su escritura`,
+          `Credencial ${credential.id} ${motivo} ${deviceId}: se reprograma su escritura`,
         );
         credential.syncState = 'pending';
         credential.syncAttempts = 0;

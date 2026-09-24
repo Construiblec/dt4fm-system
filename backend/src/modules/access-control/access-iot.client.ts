@@ -1,5 +1,6 @@
 import {
   BadGatewayException,
+  HttpException,
   Injectable,
   Logger,
   ServiceUnavailableException,
@@ -42,15 +43,26 @@ interface ErrorBody {
 
 interface DoorCommandResponse {
   state?: 'opened' | 'closed' | 'uncertain';
-  at?: string;
+  at?: string | null;
 }
 
-/** Un código tipado o un 4xx es un no seguro; un 5xx sin código o un corte a medias, incierto. */
+const isCredentialResult = (data: CredentialWriteResult): boolean =>
+  typeof data?.state === 'string' && Array.isArray(data?.devices);
+
+/**
+ * Un código tipado o un 4xx es un no seguro; un 5xx sin código o un corte a
+ * medias, incierto. `internal_error` tampoco garantiza que la orden no saliera.
+ */
 export const classifyCommandError = (error: unknown): DoorCommandResult => {
   const axiosError = error as AxiosError<ErrorBody> | undefined;
   const code = axiosError?.response?.data?.code;
 
-  if (code) return { outcome: 'failed', errorCode: code };
+  if (code) {
+    return {
+      outcome: code === 'internal_error' ? 'uncertain' : 'failed',
+      errorCode: code,
+    };
+  }
 
   const status = axiosError?.response?.status;
 
@@ -80,21 +92,23 @@ export class AccessIotClient extends AccessIotGateway {
   }
 
   async listBuildings(): Promise<AccessIotBuilding[]> {
-    const response = await this.request<AccessIotBuilding[]>(
-      'GET /v1/buildings',
-      { method: 'GET', url: '/v1/buildings' },
-    );
+    const operation = 'GET /v1/buildings';
+    const { data } = await this.request<AccessIotBuilding[]>(operation, {
+      method: 'GET',
+      url: '/v1/buildings',
+    });
 
-    return response.data ?? [];
+    return this.ensure(operation, data, (body) => Array.isArray(body));
   }
 
   async listDevices(): Promise<AccessIotDevice[]> {
-    const response = await this.request<AccessIotDevice[]>('GET /v1/devices', {
+    const operation = 'GET /v1/devices';
+    const { data } = await this.request<AccessIotDevice[]>(operation, {
       method: 'GET',
       url: '/v1/devices',
     });
 
-    return response.data ?? [];
+    return this.ensure(operation, data, (body) => Array.isArray(body));
   }
 
   async putCredential(
@@ -118,48 +132,53 @@ export class AccessIotClient extends AccessIotGateway {
   async getCredential(
     credentialId: string,
   ): Promise<CredentialWriteResult | null> {
+    const operation = `GET /v1/credentials/${credentialId}`;
+
     try {
-      const response = await this.request<CredentialWriteResult>(
-        `GET /v1/credentials/${credentialId}`,
+      const { data } = await this.withRetries<CredentialWriteResult>(
+        operation,
         {
           method: 'GET',
           url: `/v1/credentials/${encodeURIComponent(credentialId)}`,
         },
       );
 
-      return response.data ?? null;
+      return this.ensure(operation, data, isCredentialResult);
     } catch (error) {
-      if (this.statusOf(error) === 404) {
+      // Si algún gateway no respondió llega un 200 `unreachable`, nunca un 404.
+      if (this.errorCodeOf(error) === 'not_found') {
         return null;
       }
 
-      throw error;
+      throw this.translate(error);
     }
   }
 
   async getHealth(): Promise<AccessIotHealth> {
-    const response = await this.request<AccessIotHealth>('GET /v1/health', {
+    const operation = 'GET /v1/health';
+    const { data } = await this.request<AccessIotHealth>(operation, {
       method: 'GET',
       url: '/v1/health',
     });
 
-    return response.data ?? { buildings: [] };
+    return this.ensure(operation, data, (body) =>
+      Array.isArray(body?.buildings),
+    );
   }
 
+  /** Nunca una página corta: la conciliación la leería como credenciales ausentes. */
   async getDeviceInventory(
     deviceId: string,
     cursor?: string,
   ): Promise<InventoryPage> {
+    const operation = `GET /v1/devices/${deviceId}/inventory`;
     const query = cursor ? `?cursor=${encodeURIComponent(cursor)}` : '';
-    const response = await this.request<InventoryPage>(
-      `GET /v1/devices/${deviceId}/inventory`,
-      {
-        method: 'GET',
-        url: `/v1/devices/${encodeURIComponent(deviceId)}/inventory${query}`,
-      },
-    );
+    const { data } = await this.request<InventoryPage>(operation, {
+      method: 'GET',
+      url: `/v1/devices/${encodeURIComponent(deviceId)}/inventory${query}`,
+    });
 
-    return response.data ?? { users: [], nextCursor: null };
+    return this.ensure(operation, data, (body) => Array.isArray(body?.users));
   }
 
   async commandDevice(
@@ -181,11 +200,14 @@ export class AccessIotClient extends AccessIotGateway {
       const { state, at } = response.data ?? {};
       const done = DONE_OUTCOME[action];
 
-      return { outcome: state === done ? done : 'uncertain', at };
+      return {
+        outcome: state === done ? done : 'uncertain',
+        at: at ?? undefined,
+      };
     } catch (error) {
       const result = classifyCommandError(error);
       const detail =
-        this.buildSafeErrorMessage(error as Error) || (error as Error).message;
+        this.buildSafeErrorMessage(error) || (error as Error).message;
 
       this.logger.warn(`${operation} -> ${result.outcome} (${detail})`);
 
@@ -194,26 +216,32 @@ export class AccessIotClient extends AccessIotGateway {
   }
 
   /**
-   * Una escritura devuelve su desenlace en el cuerpo. Solo `pin_conflict` y
-   * `device_full` llegan como resultado; lo demás sube como excepción, porque
-   * es configuración o red y no algo que el flujo de negocio pueda resolver.
+   * Una escritura devuelve su desenlace en el cuerpo. `pin_conflict` y
+   * `device_full` también pueden llegar como error HTTP, e `invalid_request`
+   * no se arregla reintentando: los tres vuelven como `failed`. Lo demás sube
+   * como excepción, porque es configuración o red.
    */
   private async writeCredential(
     operation: string,
     config: AxiosRequestConfig,
   ): Promise<CredentialWriteResult> {
     try {
-      const response = await this.request<CredentialWriteResult>(
+      const { data } = await this.withRetries<CredentialWriteResult>(
         operation,
         config,
       );
 
-      return response.data;
+      return this.ensure(operation, data, isCredentialResult);
     } catch (error) {
       const code = this.errorCodeOf(error);
 
-      if (code && BUSINESS_ERROR_CODES.includes(code)) {
-        this.logger.warn(`${operation} devolvió ${code}`);
+      if (
+        code &&
+        (BUSINESS_ERROR_CODES.includes(code) || code === 'invalid_request')
+      ) {
+        this.logger.warn(
+          `${operation} devolvió ${code} (${this.buildSafeErrorMessage(error)})`,
+        );
 
         return {
           credentialId: '',
@@ -223,7 +251,7 @@ export class AccessIotClient extends AccessIotGateway {
         };
       }
 
-      throw error;
+      throw this.translate(error);
     }
   }
 
@@ -238,6 +266,9 @@ export class AccessIotClient extends AccessIotGateway {
         ...config,
         baseURL: this.baseUrl(),
         timeout: timeoutMs,
+        // Con el token inválido, Cloudflare responde un 302 a su login: seguirlo
+        // devolvería un 200 con HTML en lugar del error.
+        maxRedirects: 0,
         headers: {
           ...(config.headers ?? {}),
           // Service token de Cloudflare Access: no hay lista blanca de IP
@@ -253,20 +284,32 @@ export class AccessIotClient extends AccessIotGateway {
     operation: string,
     config: AxiosRequestConfig,
   ): Promise<AxiosResponse<T>> {
+    try {
+      return await this.withRetries<T>(operation, config);
+    } catch (error) {
+      throw this.translate(error);
+    }
+  }
+
+  /** Lanza el error de axios sin traducir, para que el llamante lea su `code`. */
+  private async withRetries<T>(
+    operation: string,
+    config: AxiosRequestConfig,
+  ): Promise<AxiosResponse<T>> {
     // Se validan antes del bucle: una configuración ausente no se reintenta.
     this.baseUrl();
     this.token();
 
-    let lastError: AxiosError | Error | null = null;
+    let lastError: unknown = null;
 
     for (let attempt = 1; attempt <= this.maxRetries + 1; attempt += 1) {
       try {
         return await this.send<T>(config, this.requestTimeoutMs);
       } catch (error) {
-        lastError = error as AxiosError | Error;
-        const safeMessage = this.buildSafeErrorMessage(lastError);
+        lastError = error;
+        const safeMessage = this.buildSafeErrorMessage(error);
         const shouldRetry =
-          attempt <= this.maxRetries && this.isRetryableError(lastError);
+          attempt <= this.maxRetries && this.isRetryableError(error);
 
         this.logger.warn(
           `${operation} falló en intento ${attempt}/${this.maxRetries + 1}` +
@@ -279,15 +322,37 @@ export class AccessIotClient extends AccessIotGateway {
       }
     }
 
-    throw this.translate(lastError);
+    throw lastError;
   }
 
-  private translate(error: AxiosError | Error | null): Error {
+  /** Un 200 fuera de contrato no puede leerse como una lista vacía. */
+  private ensure<T>(
+    operation: string,
+    data: T,
+    valid: (data: T) => boolean,
+  ): T {
+    if (!valid(data)) {
+      throw new BadGatewayException(
+        `${operation}: la VPS de accesos respondió fuera de contrato`,
+      );
+    }
+
+    return data;
+  }
+
+  private translate(error: unknown): Error {
+    if (error instanceof HttpException) return error;
+
     const safeMessage = this.buildSafeErrorMessage(error);
     const code = this.errorCodeOf(error);
     const status = this.statusOf(error);
 
-    if (code === 'unauthorized' || status === 401 || status === 403) {
+    if (
+      code === 'unauthorized' ||
+      status === 401 ||
+      status === 403 ||
+      (status != null && status >= 300 && status < 400)
+    ) {
       return new ServiceUnavailableException(
         `La VPS de accesos rechazó el service token (${safeMessage})`,
       );
@@ -305,7 +370,7 @@ export class AccessIotClient extends AccessIotGateway {
     );
   }
 
-  private isRetryableError(error: AxiosError | Error): boolean {
+  private isRetryableError(error: unknown): boolean {
     const axiosError = error as AxiosError;
     const status = axiosError.response?.status;
     const code = this.errorCodeOf(error);
@@ -327,8 +392,10 @@ export class AccessIotClient extends AccessIotGateway {
     ].includes(axiosError.code ?? '');
   }
 
-  private buildSafeErrorMessage(error: AxiosError | Error | null): string {
-    const axiosError = error as AxiosError<ErrorBody>;
+  /** El `rid` es el X-Request-ID de la VPS: con él se busca la petición en sus logs. */
+  private buildSafeErrorMessage(error: unknown): string {
+    const axiosError = error as AxiosError<ErrorBody> | null;
+    const requestId: unknown = axiosError?.response?.headers?.['x-request-id'];
 
     return [
       axiosError?.response?.status
@@ -338,6 +405,7 @@ export class AccessIotClient extends AccessIotGateway {
       axiosError?.response?.data?.code
         ? `iot=${axiosError.response.data.code}`
         : null,
+      typeof requestId === 'string' ? `rid=${requestId}` : null,
       axiosError?.response?.data?.message,
     ]
       .filter(Boolean)
