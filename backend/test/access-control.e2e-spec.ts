@@ -37,6 +37,14 @@ const nuevaCredencial = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
+const DIA_MS = 24 * 60 * 60 * 1000;
+
+/** Fecha local de Quito (UTC−5) a `dias` de hoy, para lo que se compara con el reloj real. */
+const fechaLocal = (dias: number) =>
+  new Date(Date.now() + dias * DIA_MS - 5 * 60 * 60 * 1000)
+    .toISOString()
+    .slice(0, 10);
+
 /**
  * Persistencia real contra Postgres, VPS de accesos doblada. Lo que se prueba
  * aquí es el ciclo de vida y, sobre todo, que el PIN no se escape por ninguna
@@ -1002,14 +1010,15 @@ describe('AccessControlController (e2e)', () => {
 
     let authorizations: AuthorizationsService;
 
+    // Relativas a hoy: el listado solo muestra estancias pendientes o en curso.
     const crearEstancia = (overrides: Record<string, unknown> = {}) =>
       guestStayService.upsertFromReservation({
         hostawayReservationId: '44712233',
         listingId: '288172',
         guestName: 'Ana Pérez',
         guestEmail: 'ana@example.com',
-        arrivalDate: '2026-09-14',
-        departureDate: '2026-09-18',
+        arrivalDate: fechaLocal(-1),
+        departureDate: fechaLocal(3),
         status: 'confirmed',
         issuedBy: 'test',
         ...overrides,
@@ -1076,7 +1085,9 @@ describe('AccessControlController (e2e)', () => {
         await crearEstancia();
 
         const res = await request(app.getHttpServer())
-          .get('/access-authorizations?from=2026-09-01&to=2026-09-30')
+          .get(
+            `/access-authorizations?from=${fechaLocal(-7)}&to=${fechaLocal(7)}`,
+          )
           .set(CAV_SESSION)
           .expect(200);
 
@@ -1111,7 +1122,9 @@ describe('AccessControlController (e2e)', () => {
         await crearEstancia();
 
         const res = await request(app.getHttpServer())
-          .get('/access-authorizations?from=2026-10-01&to=2026-10-31')
+          .get(
+            `/access-authorizations?from=${fechaLocal(60)}&to=${fechaLocal(90)}`,
+          )
           .set(CAV_SESSION)
           .expect(200);
 
@@ -1217,7 +1230,6 @@ describe('AccessControlController (e2e)', () => {
    * acceso se compara con el reloj real.
    */
   describe('Apertura remota', () => {
-    const DIA_MS = 24 * 60 * 60 * 1000;
     const CAV_SESSION = { authorization: MOCK_SESSION_ID };
     const PUERTAS = [
       {
@@ -1235,12 +1247,6 @@ describe('AccessControlController (e2e)', () => {
         online: true,
       },
     ];
-
-    /** Fecha local de Quito (UTC−5) a `dias` de hoy. */
-    const fechaLocal = (dias: number) =>
-      new Date(Date.now() + dias * DIA_MS - 5 * 60 * 60 * 1000)
-        .toISOString()
-        .slice(0, 10);
 
     const estanciaConToken = async (
       opciones: { vehicular?: boolean; llegadaEnDias?: number } = {},
@@ -1634,8 +1640,9 @@ describe('AccessControlController (e2e)', () => {
       listingId: '288172',
       guestName: 'Pamela Pérez',
       guestEmail: 'ana@example.com',
-      arrivalDate: '2026-09-14',
-      departureDate: '2026-09-18',
+      // Relativas a hoy: una estancia terminada no recibe ni canjea enlaces.
+      arrivalDate: fechaLocal(-1),
+      departureDate: fechaLocal(3),
       status: 'confirmed',
       issuedBy: 'hostaway-webhook',
       ...overrides,
@@ -1694,7 +1701,7 @@ describe('AccessControlController (e2e)', () => {
     it('una modificación de la reserva NO reenvía el enlace', async () => {
       await guestStayService.upsertFromReservation(reserva());
       const estancia = await guestStayService.upsertFromReservation(
-        reserva({ departureDate: '2026-09-20', status: 'modified' }),
+        reserva({ departureDate: fechaLocal(5), status: 'modified' }),
       );
 
       // El enlace ya entregado no lleva fechas: sigue valiendo con la nueva.
