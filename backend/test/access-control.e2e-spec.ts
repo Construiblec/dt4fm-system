@@ -59,6 +59,55 @@ describe('AccessControlController (e2e)', () => {
   let catalog: BuildingCatalogService;
   let sweep: ReservationSweepService;
 
+  /** A mitad de la estancia que fijan los fixtures (14 al 18 de septiembre). */
+  const AHORA = new Date('2026-09-16T12:00:00-05:00');
+
+  /**
+   * Congela el reloj de Node en `AHORA` para el bloque que la invoque.
+   *
+   * Hace falta porque los fixtures fijan la estancia del 14 al 18 de septiembre
+   * de 2026 y `statusFromDates` la marca `completed` en cuanto el reloj pasa el
+   * `validTo`. Con ese estado la estancia desaparece de la lista de
+   * autorizaciones (filtra `pending`/`active`) y deja de entregarse el
+   * magiclink: el 19 de septiembre estos bloques empezaron a fallar solos, sin
+   * que cambiara una línea de código. Se congela en vez de pasar a fechas
+   * relativas para no perder las aserciones de timestamp exacto, que son las
+   * que prueban la conversión de zona horaria de Guayaquil y dejarían de valer
+   * si el test recalculara la fecha esperada con la misma lógica que prueba.
+   *
+   * OJO — no aplicarlo a toda la suite, y menos a un bloque que envejezca filas
+   * con `now()` de Postgres: el reloj de la base NO se congela, así que mezclar
+   * los dos abre un desfase de días y la fila recién escrita parece del futuro.
+   * Por eso esto se invoca bloque por bloque y no en el `beforeAll` de arriba.
+   *
+   * Solo se falsea `Date`. Los temporizadores quedan reales porque el test de
+   * reintentos de envío depende de un `setTimeout` que corra de verdad (con la
+   * espera en 0 que pone setup-env.ts).
+   */
+  const conRelojCongelado = () => {
+    beforeAll(() => {
+      jest.useFakeTimers({
+        doNotFake: [
+          'setTimeout',
+          'clearTimeout',
+          'setInterval',
+          'clearInterval',
+          'setImmediate',
+          'clearImmediate',
+          'nextTick',
+          'queueMicrotask',
+          'performance',
+          'hrtime',
+        ],
+        now: AHORA,
+      });
+    });
+
+    afterAll(() => {
+      jest.useRealTimers();
+    });
+  };
+
   beforeAll(async () => {
     ({ app, mocks } = await createTestApp());
     dataSource = app.get(DataSource);
@@ -1004,6 +1053,10 @@ describe('AccessControlController (e2e)', () => {
    * por archivo, así que dos suites sobre las mismas tablas se pisan entre sí.
    */
   describe('Autorizaciones (Supervisor CAV)', () => {
+    // La lista filtra por estancias `pending`/`active`, así que sin congelar el
+    // reloj las del fixture salen `completed` y no devuelve nada.
+    conRelojCongelado();
+
     /** El frontend de CAV manda la sesión en `Authorization`, sin esquema. */
     const CAV_SESSION = { authorization: MOCK_SESSION_ID };
     const UNIDAD_ING = 1187;
@@ -1635,6 +1688,10 @@ describe('AccessControlController (e2e)', () => {
    * nada que esperar de forma determinista.
    */
   describe('entrega del enlace del portal', () => {
+    // La entrega exige que la estancia no esté `completed`; con el reloj real,
+    // las fechas del fixture ya pasaron y no se entrega nada.
+    conRelojCongelado();
+
     const reserva = (overrides: Record<string, unknown> = {}) => ({
       hostawayReservationId: '44712233',
       listingId: '288172',

@@ -14,7 +14,12 @@ import {
   isActiveCleaningTaskPhase,
   useCleaningTaskExecutionStore,
 } from "@/store/cleaningTaskExecutionStore";
-import { getCheckableActivitiesCount } from "@/modules/incidentes/utils/cleaningChecklistUtils";
+import {
+  countChecklistActivities,
+  countCompletedSections,
+  getChecklistSignature,
+  parseCleaningChecklist,
+} from "@/modules/incidentes/utils/cleaningChecklistUtils";
 
 const toActiveTask = (task: CleaningTaskExecutionDetail): ActiveCleaningTask => ({
   id: task.id,
@@ -50,9 +55,6 @@ export const useCleaningTaskExecution = (taskId: number) => {
   const clearActiveTask = useCleaningTaskExecutionStore((state) => state.clearActiveTask);
   const releaseActiveTask = useCleaningTaskExecutionStore((state) => state.releaseActiveTask);
   const canCompleteStore = useCleaningTaskExecutionStore((state) => state.canComplete);
-  const completedChecklistCountStore = useCleaningTaskExecutionStore(
-    (state) => state.completedChecklistCount,
-  );
   const isChecklistCompleteStore = useCleaningTaskExecutionStore(
     (state) => state.isChecklistComplete,
   );
@@ -63,6 +65,24 @@ export const useCleaningTaskExecution = (taskId: number) => {
     staleTime: 5 * 60 * 1000,
     enabled: Number.isFinite(taskId) && taskId > 0,
   });
+
+  // Se parsea una sola vez por cambio de datos, no dos veces por render: lo
+  // consumen tanto el efecto de inicialización como los contadores de abajo.
+  const checklistSections = useMemo(
+    () => parseCleaningChecklist(detailQuery.data?.checklistDetail?.activities ?? []),
+    [detailQuery.data],
+  );
+  const checklistSignature = getChecklistSignature(checklistSections);
+  /**
+   * OJO: este conteo es por ACTIVIDAD y existe solo para sembrar el store, que
+   * está indexado por `checkableIndex` de actividad. Si se lo reemplaza por el
+   * número de secciones, el mapa queda corto y las actividades sin clave no se
+   * pueden marcar nunca. No se muestra en ninguna pantalla.
+   */
+  const totalActivities = countChecklistActivities(checklistSections);
+  // Lo que sí ve el operario: bloques.
+  const totalSections = checklistSections.length;
+  const completedSections = countCompletedSections(checklistSections, checklistProgress);
 
   useEffect(() => {
     if (successOpen || pauseSuccessOpen) {
@@ -103,10 +123,7 @@ export const useCleaningTaskExecution = (taskId: number) => {
         : nextActiveTask,
     );
 
-    const totalActivities = taskDetail.checklistDetail
-      ? getCheckableActivitiesCount(taskDetail.checklistDetail.activities)
-      : 0;
-    initializeChecklist(totalActivities);
+    initializeChecklist(totalActivities, checklistSignature);
 
     // Borrador que quedó guardado al pausar: vuelve al campo de escritura. Solo
     // se recupera si no hay ya texto local, para no pisar lo que el empleado
@@ -122,6 +139,7 @@ export const useCleaningTaskExecution = (taskId: number) => {
     activeTask?.actualStartTime,
     activeTask?.executionStartedAt,
     activeTask?.id,
+    checklistSignature,
     clearActiveTask,
     detailQuery.data,
     detailQuery.dataUpdatedAt,
@@ -131,6 +149,7 @@ export const useCleaningTaskExecution = (taskId: number) => {
     setObservations,
     successOpen,
     syncActiveTask,
+    totalActivities,
   ]);
 
   /**
@@ -158,10 +177,6 @@ export const useCleaningTaskExecution = (taskId: number) => {
     return accumulated + elapsedMinutes;
   };
 
-  const totalActivities = detailQuery.data?.checklistDetail
-    ? getCheckableActivitiesCount(detailQuery.data.checklistDetail.activities)
-    : 0;
-  const completedActivities = completedChecklistCountStore();
   const isChecklistComplete = isChecklistCompleteStore();
   const canComplete = canCompleteStore();
 
@@ -232,11 +247,11 @@ export const useCleaningTaskExecution = (taskId: number) => {
 
   const validationMessage = useMemo(() => {
     if (!isChecklistComplete) {
-      return `Completa todas las actividades del checklist (${completedActivities}/${totalActivities} completadas)`;
+      return `Completa todas las secciones del checklist (${completedSections}/${totalSections} completadas)`;
     }
 
     return null;
-  }, [completedActivities, isChecklistComplete, totalActivities]);
+  }, [completedSections, isChecklistComplete, totalSections]);
 
   return {
     taskDetail: detailQuery.data,
@@ -251,8 +266,8 @@ export const useCleaningTaskExecution = (taskId: number) => {
     checklistProgress,
     observations,
     attachments: detailQuery.data?.attachments ?? [],
-    totalActivities,
-    completedActivities,
+    totalSections,
+    completedSections,
     isChecklistComplete,
     canComplete,
     validationMessage,

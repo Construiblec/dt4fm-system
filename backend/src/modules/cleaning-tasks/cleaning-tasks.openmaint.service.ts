@@ -46,6 +46,16 @@ type CleaningActivityCard = {
   Description?: string;
   NombrePlantilla?: string;
   Detalle?: string;
+  /**
+   * Atributo de tipo `file`. CMDBuild guarda estos atributos como un adjunto
+   * más de la tarjeta y deja acá el id del nodo en el DMS (Alfresco), así que
+   * este valor ES el `{attachmentId}` de la URL de descarga. Viene vacío o nulo
+   * mientras nadie suba un archivo.
+   */
+  Plantilla?: string | null;
+  /** Metadatos aplanados del adjunto. Solo se usan para el log. */
+  _Plantilla_FileName?: string | null;
+  _Plantilla_Size?: number | null;
 };
 
 type CleaningActivityResponse = {
@@ -288,6 +298,33 @@ export class CleaningTasksOpenmaintService {
         `Error al obtener CleaningActivity ${activityId} de OpenMAINT`,
       );
     });
+  }
+
+  /**
+   * Bytes del CSV colgado del atributo `Plantilla` de una CleaningActivity.
+   *
+   * Un atributo de tipo `file` no tiene endpoint propio: CMDBuild lo materializa
+   * como un adjunto de la tarjeta, y el valor del atributo es el id de ese
+   * adjunto. Por eso se descarga por la misma ruta que cualquier otro adjunto,
+   * la misma que ya usan los manuales de equipos.
+   *
+   * Usa la sesión interna por el mismo motivo que `getCleaningActivity`: la
+   * plantilla es dato de referencia, no dato del usuario.
+   */
+  async downloadActivityTemplate(
+    activityId: number,
+    attachmentId: string,
+  ): Promise<{ data: Buffer; contentType: string; fileName: string }> {
+    return this.executeWithRetry(
+      (sessionId) =>
+        this.client.getBuffer(
+          `/classes/CleaningActivity/cards/${activityId}/attachments/${encodeURIComponent(
+            attachmentId,
+          )}/download`,
+          sessionId,
+        ),
+      'downloadActivityTemplate',
+    );
   }
 
   /**
