@@ -7,8 +7,11 @@ import {
   getSectionIndices,
   isSectionComplete,
   parseCleaningChecklist,
+  type ChecklistSection,
 } from "@/modules/incidentes/utils/cleaningChecklistUtils";
-import { useMemo } from "react";
+import { useVoiceChecklist } from "@/modules/incidentes/hooks/useVoiceChecklist";
+import { VoiceChecklistControl } from "@/modules/incidentes/components/VoiceChecklistControl";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 
 type CleaningTaskChecklistProps = {
   activities: string[];
@@ -44,6 +47,38 @@ export const CleaningTaskChecklist = ({ activities }: CleaningTaskChecklistProps
   const progressPercentage =
     sections.length > 0 ? Math.round((completedSections / sections.length) * 100) : 0;
 
+  /**
+   * La voz marca por el MISMO camino que el toque. Por eso la barra, el contador
+   * de bloques y la habilitación de "Finalizar tarea" se actualizan solos: no hay
+   * un segundo camino que mantener en sincronía.
+   */
+  const completeSectionByVoice = useCallback(
+    (section: ChecklistSection) => {
+      setChecklistItems(getSectionIndices(section), true);
+    },
+    [setChecklistItems],
+  );
+
+  const voice = useVoiceChecklist({
+    sections,
+    progress: checklistProgress,
+    onSectionComplete: completeSectionByVoice,
+  });
+
+  // Esta tarjeta solo existe mientras la tarea está corriendo, así que montarla
+  // equivale a "hay que escuchar". Cubre los dos caminos de entrada: el que
+  // viene de "Iniciar tarea" (con gesto del usuario, que es lo que el navegador
+  // exige para el micrófono) y el de reanudar, donde se intenta igual y si el
+  // navegador lo bloquea queda el botón de encender.
+  const autoStartedRef = useRef(false);
+  const { supported: voiceSupported, start: startVoice } = voice;
+
+  useEffect(() => {
+    if (autoStartedRef.current || !voiceSupported || sections.length === 0) return;
+    autoStartedRef.current = true;
+    startVoice();
+  }, [sections.length, startVoice, voiceSupported]);
+
   return (
     <section className="rounded-3xl bg-white p-5 shadow-sm">
       <div className="flex items-center justify-between gap-3">
@@ -62,6 +97,24 @@ export const CleaningTaskChecklist = ({ activities }: CleaningTaskChecklistProps
           style={{ width: `${progressPercentage}%` }}
         />
       </div>
+
+      {/* El asistente va arriba de los bloques: es la otra forma de marcarlos, y
+          conviene que el operario vea de un vistazo si lo está escuchando. */}
+      {sections.length > 0 ? (
+        <div className="mt-5">
+          <VoiceChecklistControl
+            active={voice.active}
+            phase={voice.phase}
+            saying={voice.saying}
+            lastHeard={voice.lastHeard}
+            awake={voice.awake}
+            waitingFor={voice.waitingFor}
+            failure={voice.failure}
+            onStart={voice.start}
+            onStop={voice.stop}
+          />
+        </div>
+      ) : null}
 
       {/* El operario acaba de migrar de la versión con check por sección: sus
           marcas viejas no se podían traducir a las actividades nuevas. Sin este

@@ -83,6 +83,8 @@ export const CleaningTaskExecutionPage = () => {
               isPaused={taskDetail.isPaused}
               isStarting={isStarting}
               onStart={() => startTask()}
+              // Ya existe el asistente, así que el aviso deja de ser una promesa.
+              showVoiceNotice
             />
           ) : null}
 
