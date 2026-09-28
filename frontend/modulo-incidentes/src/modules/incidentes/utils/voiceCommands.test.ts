@@ -221,3 +221,29 @@ describe("'listo' está del lado seguro", () => {
     ).toBeNull();
   });
 });
+
+describe("recognizeCommand — el comando de repetir", () => {
+  const SOLO_REPETIR: VoiceIntent[] = ["REPETIR"];
+  const CON_ACTIVACION = { requireWake: true };
+
+  it.each(["repite", "repetir", "repíteme", "otra vez", "de nuevo"])(
+    "entiende %s",
+    (dicho) => {
+      expect(recognizeCommand(dicho, SOLO_REPETIR)).toBe("REPETIR");
+    },
+  );
+
+  // Convive con FIN durante todo el trabajo del bloque, así que lleva la misma
+  // barrera: un "de nuevo" de una charla no puede poner a hablar al teléfono.
+  it("exige la palabra de activación", () => {
+    expect(recognizeCommand("repite", SOLO_REPETIR, CON_ACTIVACION)).toBeNull();
+    expect(
+      recognizeCommand("asistente, repite", SOLO_REPETIR, CON_ACTIVACION),
+    ).toBe("REPETIR");
+  });
+
+  it("no se confunde con terminar la actividad", () => {
+    expect(recognizeCommand("repite", ["FIN"])).toBeNull();
+    expect(recognizeCommand("acabado", SOLO_REPETIR)).toBeNull();
+  });
+});

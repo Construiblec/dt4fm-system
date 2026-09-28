@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  isSectionComplete,
-  type ChecklistSection,
+import type {
+  ChecklistActivity,
+  ChecklistSection,
 } from "@/modules/incidentes/utils/cleaningChecklistUtils";
 import { reminderDelayMs } from "@/modules/incidentes/utils/voiceReminder";
 import {
@@ -51,37 +51,66 @@ export type VoicePhase = "apagado" | "hablando" | "escuchando" | "listo";
 
 export type VoiceFailure = "sin-soporte" | "sin-microfono";
 
+/**
+ * Con qué granularidad se trabaja el bloque en curso. Lo fija la respuesta a
+ * "¿te acuerdas de los elementos?" y se reinicia en cada bloque.
+ */
+type BlockMode = "bloque" | "actividad";
+
 type Params = {
   sections: ChecklistSection[];
   progress: Record<number, boolean>;
-  /** Marca el bloque entero. Es el mismo camino que usa el toque. */
+  /** Marca el bloque entero. Mismo camino que el toque en pantalla. */
   onSectionComplete: (section: ChecklistSection) => void;
+  /** Marca una sola actividad, que es para lo que existe el estado oculto. */
+  onActivityComplete: (activity: ChecklistActivity) => void;
 };
 
-/**
- * El ticket pide "No olvides decir acabado". Se dice la fórmula completa a
- * propósito: un recordatorio que enseña mal lo que hay que decir deja al
- * operario repitiendo una palabra que no tiene efecto.
- */
-const REMINDER_TEXT =
-  "No olvides decir: asistente, acabado, si ya terminaste la actividad.";
+/** La fórmula, repetida en cada anuncio: a los tres bloques ya nadie la recuerda. */
+const COMMAND_HINT = "Di: asistente, acabado cuando finalices.";
 /** Silencio entre actividad y actividad al leerlas: de corrido no se siguen. */
 const ITEM_PAUSE_MS = 450;
 /**
  * Cuánto dura la activación. Si el operario dice "asistente" y hace una pausa
  * antes de "acabado", el reconocedor parte las dos palabras en segmentos
- * distintos y ninguno coincide por separado: la ventana es lo que hace que el
- * segundo paso siga contando.
+ * distintos: la ventana es lo que hace que el segundo paso siga contando.
  */
 const WAKE_WINDOW_MS = 8000;
 /** Si el navegador no avisa que terminó de hablar, se sigue igual. */
 const SPEECH_FALLBACK_MS = 10_000;
 const REARM_DELAY_MS = 300;
 
+/** Lo que se espera oír mientras el operario trabaja. */
+const WORKING_INTENTS: VoiceIntent[] = ["FIN", "REPETIR"];
+const ANSWER_INTENTS: VoiceIntent[] = ["AFIRMACION", "NEGACION"];
+
+/**
+ * Primera actividad sin completar, y el bloque al que pertenece.
+ *
+ * Todo el asistente se orienta por acá, derivándolo del progreso en vez de
+ * llevar un índice propio: si el operario marca con el dedo, lo pendiente cambia
+ * solo y la conversación avanza sin nada que sincronizar.
+ */
+const findPending = (
+  sections: ChecklistSection[],
+  progress: Record<number, boolean>,
+): { sectionIndex: number; itemIndex: number } => {
+  for (let s = 0; s < sections.length; s += 1) {
+    const items = sections[s].items;
+    for (let i = 0; i < items.length; i += 1) {
+      if (!progress[items[i].checkableIndex]) {
+        return { sectionIndex: s, itemIndex: i };
+      }
+    }
+  }
+  return { sectionIndex: -1, itemIndex: -1 };
+};
+
 export const useVoiceChecklist = ({
   sections,
   progress,
   onSectionComplete,
+  onActivityComplete,
 }: Params) => {
   const [supported] = useState(
     () =>
@@ -92,9 +121,8 @@ export const useVoiceChecklist = ({
   const [phase, setPhase] = useState<VoicePhase>("apagado");
   const [saying, setSaying] = useState("");
   const [lastHeard, setLastHeard] = useState("");
-  /** Solo para que el control lo muestre: la decisión la toma `wakeUntilRef`. */
+  /** Solo para pintar: la decisión la toma `wakeUntilRef`. */
   const [awake, setAwake] = useState(false);
-  /** Qué está esperando oír, para que el control muestre la fórmula correcta. */
   const [waitingFor, setWaitingFor] = useState<"si-no" | "fin" | null>(null);
   const [failure, setFailure] = useState<VoiceFailure | null>(
     getRecognitionCtor() === null ? "sin-soporte" : null,
@@ -105,35 +133,22 @@ export const useVoiceChecklist = ({
   const speakingRef = useRef(false);
   /** Qué intenciones tienen efecto ahora. Fuera de esta lista, todo se ignora. */
   const expectedRef = useRef<VoiceIntent[]>([]);
-  /** El bloque por el que ya se preguntó, para no repetir el anuncio. */
-  const announcedRef = useRef<number | null>(null);
+  const modeRef = useRef<BlockMode | null>(null);
+  const announcedSectionRef = useRef<number | null>(null);
+  const announcedItemRef = useRef<number | null>(null);
   const rearmTimerRef = useRef<number | null>(null);
   /** Hasta cuándo vale la activación. 0 = hay que volver a decir "asistente". */
   const wakeUntilRef = useRef(0);
   const wakeTimerRef = useRef<number | null>(null);
   const reminderTimerRef = useRef<number | null>(null);
-  /** Cuántas veces ya se avisó en ESTE bloque: decide si toca el primero o la insistencia. */
+  /** Cuántas veces ya se avisó de lo mismo: decide primero o insistencia. */
   const reminderCountRef = useRef(0);
   const handleTranscriptRef = useRef<(text: string) => void>(() => {});
 
-  /**
-   * El bloque en curso es SIEMPRE el primero sin completar, no un índice que
-   * lleve el asistente por su cuenta. Gracias a eso, si el operario marca un
-   * bloque con el dedo la conversación avanza sola y nunca le vuelve a
-   * preguntar por algo que ya dio por hecho: voz y toque son dos entradas al
-   * mismo estado, sin nada que sincronizar entre ellas.
-   */
-  const pendingIndex = sections.findIndex(
-    (section) => !isSectionComplete(section, progress),
-  );
-  const currentSection = pendingIndex >= 0 ? sections[pendingIndex] : null;
-
-  const clearRearm = useCallback(() => {
-    if (rearmTimerRef.current !== null) {
-      window.clearTimeout(rearmTimerRef.current);
-      rearmTimerRef.current = null;
-    }
-  }, []);
+  const { sectionIndex, itemIndex } = findPending(sections, progress);
+  const currentSection = sectionIndex >= 0 ? sections[sectionIndex] : null;
+  const currentActivity =
+    currentSection && itemIndex >= 0 ? currentSection.items[itemIndex] : null;
 
   /**
    * La ref es la que decide (los callbacks del reconocedor la leen sin pasar por
@@ -144,6 +159,13 @@ export const useVoiceChecklist = ({
     setWaitingFor(
       intents.includes("FIN") ? "fin" : intents.length > 0 ? "si-no" : null,
     );
+  }, []);
+
+  const clearRearm = useCallback(() => {
+    if (rearmTimerRef.current !== null) {
+      window.clearTimeout(rearmTimerRef.current);
+      rearmTimerRef.current = null;
+    }
   }, []);
 
   const clearReminder = useCallback(() => {
@@ -164,9 +186,11 @@ export const useVoiceChecklist = ({
   }, []);
 
   /**
-   * Abre la ventana tras oír "asistente". El temporizador existe solo para que
-   * el control deje de decir "te escucho" cuando ya no es cierto: quien decide
-   * si un comando vale es `wakeUntilRef`, comparando contra el reloj.
+   * Abre la ventana tras oír "asistente". EN SILENCIO y sin parar el micrófono.
+   *
+   * Contestar acá era un bug: "asistente, acabado" llega en dos entregas
+   * —primero "asistente", después la frase entera—, así que responder a la
+   * primera apagaba el micrófono para hablar y se comía el resto del comando.
    */
   const openWakeWindow = useCallback(() => {
     wakeUntilRef.current = Date.now() + WAKE_WINDOW_MS;
@@ -208,8 +232,7 @@ export const useVoiceChecklist = ({
     clearRearm();
     rearmTimerRef.current = window.setTimeout(() => {
       rearmTimerRef.current = null;
-      // Un solo reintento: si tampoco ahora, lo levanta el `onend` del
-      // reconocedor, que siempre acaba disparándose.
+      // Un solo reintento: si tampoco ahora, lo levanta el `onend`.
       attempt();
     }, REARM_DELAY_MS * 2);
   }, [clearRearm]);
@@ -218,9 +241,9 @@ export const useVoiceChecklist = ({
    * Dice una o varias frases, con una pausa entre ellas, y recién al terminar
    * vuelve a escuchar.
    *
-   * El micrófono se apaga mientras habla y eso no es una optimización: varias
-   * frases del propio asistente contienen la palabra "acabado", y si el
-   * teléfono se oyera a sí mismo daría el bloque por terminado solo.
+   * El micrófono se apaga mientras habla y eso no es una optimización: casi
+   * todas las frases del asistente contienen la palabra "acabado", y si el
+   * teléfono se oyera a sí mismo se daría el trabajo por hecho solo.
    */
   const say = useCallback(
     (texts: string[], onDone?: () => void) => {
@@ -276,22 +299,19 @@ export const useVoiceChecklist = ({
   );
 
   /**
-   * Arranca el reloj del bloque: avisa al pasarse de sus minutos y después
-   * insiste cada dos, hasta que el bloque se marque.
+   * Arranca el reloj de lo que el operario tiene entre manos: el bloque entero
+   * si dijo que se lo acuerda, o la actividad en curso si no.
    *
-   * Se llama cuando el asistente le pasa el control al operario, no cuando
-   * anuncia el bloque: así los minutos de la plantilla significan lo que dicen.
+   * `subject` es lo que el aviso nombra, y es lo que hace viable el silencio del
+   * camino "sí": quien se distrajo se reorienta ahí sin mirar el teléfono.
    */
   const scheduleReminder = useCallback(
-    (section: ChecklistSection) => {
+    (minutes: number | null, subject: string) => {
       clearReminder();
 
       function schedule() {
-        const delay = reminderDelayMs(
-          section.totalMinutes,
-          reminderCountRef.current,
-        );
-        // Un bloque sin minutos no avisa nunca: no hay contra qué comparar.
+        const delay = reminderDelayMs(minutes, reminderCountRef.current);
+        // Sin minutos en la plantilla no hay contra qué comparar: no se avisa.
         if (delay === null) return;
 
         reminderTimerRef.current = window.setTimeout(() => {
@@ -299,7 +319,7 @@ export const useVoiceChecklist = ({
           reminderCountRef.current += 1;
 
           // Si alguna guarda lo bloquea, este turno se salta y se espera al
-          // siguiente. No se encola: un recordatorio atrasado ya no sirve.
+          // siguiente. No se encola: un aviso atrasado ya no sirve.
           const puedeHablar =
             activeRef.current &&
             // Cortaría la lectura de actividades por la mitad.
@@ -308,7 +328,9 @@ export const useVoiceChecklist = ({
             // comando: hablar apaga el micrófono y se lo comería.
             Date.now() >= wakeUntilRef.current;
 
-          if (puedeHablar) say([REMINDER_TEXT]);
+          if (puedeHablar) {
+            say([`¿Acabaste? ${subject}. Recuerda decir: asistente, acabado.`]);
+          }
 
           schedule();
         }, delay);
@@ -319,11 +341,29 @@ export const useVoiceChecklist = ({
     [clearReminder, say],
   );
 
+  /** Pasa el control al operario sobre UNA actividad y arranca su reloj. */
+  const handOverActivity = useCallback(
+    (activity: ChecklistActivity, lead?: string) => {
+      setExpected([]);
+      const frase = lead
+        ? `${lead} ${activity.text}. ${COMMAND_HINT}`
+        : `${activity.text}. ${COMMAND_HINT}`;
+
+      say([frase], () => {
+        setExpected(WORKING_INTENTS);
+        scheduleReminder(activity.minutes, `Actividad: ${activity.text}`);
+      });
+    },
+    [say, scheduleReminder, setExpected],
+  );
+
   const stop = useCallback(() => {
     activeRef.current = false;
     speakingRef.current = false;
+    modeRef.current = null;
+    announcedSectionRef.current = null;
+    announcedItemRef.current = null;
     setExpected([]);
-    announcedRef.current = null;
     setActive(false);
     setPhase("apagado");
     setSaying("");
@@ -344,28 +384,23 @@ export const useVoiceChecklist = ({
     handleTranscriptRef.current = (text: string) => {
       if (speakingRef.current || !activeRef.current) return;
 
-      const esperandoFin = expectedRef.current.includes("FIN");
+      const esperando = expectedRef.current;
+      const necesitaActivacion =
+        esperando.includes("FIN") || esperando.includes("REPETIR");
       const ventanaAbierta = Date.now() < wakeUntilRef.current;
 
-      // Solo terminar una actividad exige activación: es lo único irreversible.
-      // El sí/no vive unos segundos tras una pregunta directa y equivocarse ahí
-      // no da trabajo por hecho.
-      const intent = recognizeCommand(text, expectedRef.current, {
-        requireWake: esperandoFin && !ventanaAbierta,
+      const intent = recognizeCommand(text, esperando, {
+        // Terminar y repetir exigen activación porque conviven con el trabajo.
+        // El sí/no no: vive unos segundos tras una pregunta directa, y
+        // equivocarse ahí no da trabajo por hecho.
+        requireWake: necesitaActivacion && !ventanaAbierta,
       });
 
       if (!intent) {
-        // "asistente" a secas: se confirma en voz alta y se abre la ventana, que
-        // es lo que permite decir la segunda palabra después de una pausa.
-        if (esperandoFin && !ventanaAbierta && hasWakeWord(text)) {
-          setLastHeard(text.trim());
-          setExpected([]);
-          say(["Dime."], () => {
-            // La ventana arranca al TERMINAR de hablar: si se abriera antes, el
-            // propio "Dime" se comería un segundo de los ocho.
-            openWakeWindow();
-            setExpected(["FIN"]);
-          });
+        // "asistente" a secas abre la ventana y NO contesta nada: contestar
+        // apagaría el micrófono y se comería la segunda mitad del comando.
+        if (necesitaActivacion && !ventanaAbierta && hasWakeWord(text)) {
+          openWakeWindow();
         }
         return;
       }
@@ -374,35 +409,52 @@ export const useVoiceChecklist = ({
       // Mientras se procesa lo que se acaba de oír no se escucha nada más: sin
       // esto, un segundo parcial del mismo dictado vuelve a entrar.
       setExpected([]);
+      closeWakeWindow();
+
+      if (!currentSection || !currentActivity) return;
 
       if (intent === "AFIRMACION") {
-        say(["Adelante. Cuando termines, di: asistente, acabado."], () => {
-          setExpected(["FIN"]);
-          if (currentSection) scheduleReminder(currentSection);
+        // Se las acuerda: se trabaja el bloque entero y el teléfono se calla.
+        modeRef.current = "bloque";
+        say([COMMAND_HINT], () => {
+          setExpected(WORKING_INTENTS);
+          scheduleReminder(
+            currentSection.totalMinutes,
+            currentSection.title ?? "este bloque",
+          );
         });
         return;
       }
 
-      if (intent === "NEGACION" && currentSection) {
+      if (intent === "NEGACION") {
+        // No se las acuerda: se le leen y se lo guía de a una.
+        modeRef.current = "actividad";
+        announcedItemRef.current = itemIndex;
         say(
-          [
-            ...currentSection.items.map((item) => item.text),
-            "Bien. Cuando termines, di: asistente, acabado.",
-          ],
-          () => {
-            setExpected(["FIN"]);
-            scheduleReminder(currentSection);
-          },
+          currentSection.items.map((item) => item.text),
+          () => handOverActivity(currentActivity, "Empezamos con:"),
         );
         return;
       }
 
-      if (intent === "FIN" && currentSection) {
-        closeWakeWindow();
-        // El siguiente bloque NO se anuncia desde acá: al marcarlo cambia el
-        // progreso, y de eso se encarga el efecto de abajo. Así da igual si el
-        // bloque se completó hablando o con el dedo.
-        onSectionComplete(currentSection);
+      if (intent === "REPETIR") {
+        // No cambia la granularidad ya elegida: es un recordatorio de qué hay
+        // que hacer, no un cambio de modo.
+        say(
+          currentSection.items.map((item) => item.text),
+          () => handOverActivity(currentActivity, "Vas en:"),
+        );
+        return;
+      }
+
+      if (intent === "FIN") {
+        clearReminder();
+        if (modeRef.current === "bloque") {
+          onSectionComplete(currentSection);
+        } else {
+          onActivityComplete(currentActivity);
+        }
+        // Lo que viene lo anuncia el efecto de abajo, al cambiar lo pendiente.
       }
     };
   });
@@ -451,50 +503,82 @@ export const useVoiceChecklist = ({
     }
 
     activeRef.current = true;
-    announcedRef.current = null;
+    modeRef.current = null;
+    announcedSectionRef.current = null;
+    announcedItemRef.current = null;
     setActive(true);
     setFailure(null);
   }, [clearRearm, startRecognition, stop, supported]);
 
   /**
-   * El motor de la conversación: cada vez que cambia cuál es el primer bloque
-   * sin completar, se anuncia ese. Vale igual si el cambio vino de un "acabado"
-   * o de un toque en pantalla.
+   * El motor de la conversación. Reacciona a que cambie lo pendiente, sin
+   * importar si cambió por voz o porque el operario marcó con el dedo.
    */
   useEffect(() => {
     if (!active) return;
-    if (announcedRef.current === pendingIndex) return;
+
+    const bloqueNuevo = announcedSectionRef.current !== sectionIndex;
+    const actividadNueva = announcedItemRef.current !== itemIndex;
+    if (!bloqueNuevo && !actividadNueva) return;
 
     // Se difiere un tick: hablar es una acción sobre un sistema externo, no una
     // sincronización de estado, y lanzarla dentro del commit encadena renders.
-    // `announcedRef` se marca acá adentro y no afuera para que, si el efecto se
-    // vuelve a disparar antes de que corra, el anuncio no se pierda.
     const timer = window.setTimeout(() => {
       if (!activeRef.current) return;
 
-      announcedRef.current = pendingIndex;
-      setExpected([]);
-      // El bloque anterior ya no corre: sus avisos no tienen a quién recordarle.
-      clearReminder();
+      const anterior = announcedSectionRef.current;
+      announcedSectionRef.current = sectionIndex;
+      announcedItemRef.current = itemIndex;
 
-      if (pendingIndex === -1) {
+      if (sectionIndex === -1) {
+        modeRef.current = null;
+        setExpected([]);
+        clearReminder();
         say(["Acabaste todo. Si no tienes novedades, finaliza la tarea."], () =>
           setPhase("listo"),
         );
         return;
       }
 
-      const section = sections[pendingIndex];
-      say(
-        [`¿Te acuerdas de los elementos de: ${section.title ?? "esta sección"}?`],
-        () => {
-          setExpected(["AFIRMACION", "NEGACION"]);
-        },
-      );
+      const section = sections[sectionIndex];
+
+      if (bloqueNuevo) {
+        // Bloque nuevo: vuelve a preguntar, y la respuesta fija la granularidad.
+        modeRef.current = null;
+        setExpected([]);
+        clearReminder();
+
+        const frases: string[] = [];
+        if (anterior !== null && anterior >= 0 && anterior !== sectionIndex) {
+          frases.push(`${sections[anterior].title ?? "Bloque"} listo.`);
+        }
+        frases.push(
+          `${section.title ?? "Esta sección"}. ¿Te acuerdas de los elementos?`,
+        );
+
+        say(frases, () => setExpected(ANSWER_INTENTS));
+        return;
+      }
+
+      // Mismo bloque, actividad siguiente. Solo se anuncia si el operario pidió
+      // que lo guíen: si dijo que se las acuerda, el teléfono se calla.
+      if (modeRef.current === "actividad") {
+        const activity = section.items[itemIndex];
+        if (activity) handOverActivity(activity);
+      }
     }, 0);
 
     return () => window.clearTimeout(timer);
-  }, [active, clearReminder, pendingIndex, say, sections, setExpected]);
+  }, [
+    active,
+    clearReminder,
+    handOverActivity,
+    itemIndex,
+    say,
+    sectionIndex,
+    sections,
+    setExpected,
+  ]);
 
   // Al salir de la pantalla hay que soltar el micrófono: si no, el navegador
   // sigue mostrando el indicador de grabación sobre una pantalla que ya no está.
@@ -509,7 +593,8 @@ export const useVoiceChecklist = ({
     awake,
     waitingFor,
     failure,
-    currentTitle: currentSection?.title ?? null,
+    currentBlockTitle: currentSection?.title ?? null,
+    currentActivityText: currentActivity?.text ?? null,
     start,
     stop,
   };

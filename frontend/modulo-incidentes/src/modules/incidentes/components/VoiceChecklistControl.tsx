@@ -14,6 +14,9 @@ type Props = {
   awake: boolean;
   /** Qué espera oír ahora, para no enseñar la fórmula equivocada. */
   waitingFor: "si-no" | "fin" | null;
+  /** Dónde está parado, para quien se distrajo o no oyó por el ruido. */
+  blockTitle: string | null;
+  activityText: string | null;
   failure: VoiceFailure | null;
   onStart: () => void;
   onStop: () => void;
@@ -36,6 +39,8 @@ export const VoiceChecklistControl = ({
   lastHeard,
   awake,
   waitingFor,
+  blockTitle,
+  activityText,
   failure,
   onStart,
   onStop,
@@ -112,6 +117,16 @@ export const VoiceChecklistControl = ({
             {active && !saying && lastHeard ? (
               <p className="mt-1 break-words text-xs text-cyan-700">
                 Te entendí: "{lastHeard}"
+              </p>
+            ) : null}
+
+            {/* Dónde está parado. Es la red para cuando no oyó el anuncio por
+                el ruido: mira el teléfono un segundo y sigue, sin tener que
+                pedir "repite". */}
+            {active && activityText ? (
+              <p className="mt-1 text-xs text-cyan-700">
+                {blockTitle ? `${blockTitle} · ` : ""}
+                {activityText}
               </p>
             ) : null}
 

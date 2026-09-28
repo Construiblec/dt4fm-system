@@ -7,6 +7,7 @@ import {
   getSectionIndices,
   isSectionComplete,
   parseCleaningChecklist,
+  type ChecklistActivity,
   type ChecklistSection,
 } from "@/modules/incidentes/utils/cleaningChecklistUtils";
 import { useVoiceChecklist } from "@/modules/incidentes/hooks/useVoiceChecklist";
@@ -38,6 +39,9 @@ export const CleaningTaskChecklist = ({ activities }: CleaningTaskChecklistProps
   const setChecklistItems = useCleaningTaskExecutionStore(
     (state) => state.setChecklistItems,
   );
+  const updateChecklistItem = useCleaningTaskExecutionStore(
+    (state) => state.updateChecklistItem,
+  );
   const progressResetByFormatChange = useCleaningTaskExecutionStore(
     (state) => state.progressResetByFormatChange,
   );
@@ -48,9 +52,13 @@ export const CleaningTaskChecklist = ({ activities }: CleaningTaskChecklistProps
     sections.length > 0 ? Math.round((completedSections / sections.length) * 100) : 0;
 
   /**
-   * La voz marca por el MISMO camino que el toque. Por eso la barra, el contador
-   * de bloques y la habilitación de "Finalizar tarea" se actualizan solos: no hay
-   * un segundo camino que mantener en sincronía.
+   * Las dos granularidades con que la voz puede marcar, y las dos usan caminos
+   * que ya existían en el store. Por eso la barra, el contador de bloques y la
+   * habilitación de "Finalizar tarea" se actualizan solos: no hay un segundo
+   * camino que mantener en sincronía.
+   *
+   * Cuál se usa lo decide la respuesta del operario a "¿te acuerdas de los
+   * elementos?": si se las sabe marca el bloque entero, y si no, de a una.
    */
   const completeSectionByVoice = useCallback(
     (section: ChecklistSection) => {
@@ -59,10 +67,18 @@ export const CleaningTaskChecklist = ({ activities }: CleaningTaskChecklistProps
     [setChecklistItems],
   );
 
+  const completeActivityByVoice = useCallback(
+    (activity: ChecklistActivity) => {
+      updateChecklistItem(activity.checkableIndex, true);
+    },
+    [updateChecklistItem],
+  );
+
   const voice = useVoiceChecklist({
     sections,
     progress: checklistProgress,
     onSectionComplete: completeSectionByVoice,
+    onActivityComplete: completeActivityByVoice,
   });
 
   // Esta tarjeta solo existe mientras la tarea está corriendo, así que montarla
@@ -109,6 +125,8 @@ export const CleaningTaskChecklist = ({ activities }: CleaningTaskChecklistProps
             lastHeard={voice.lastHeard}
             awake={voice.awake}
             waitingFor={voice.waitingFor}
+            blockTitle={voice.currentBlockTitle}
+            activityText={voice.currentActivityText}
             failure={voice.failure}
             onStart={voice.start}
             onStop={voice.stop}
