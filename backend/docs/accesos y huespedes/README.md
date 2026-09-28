@@ -8,6 +8,7 @@ de Hostaway sobre las que se apoyará el portal del huésped.
 | Este | Qué hace el módulo y cómo está construido |
 | [decisiones-arquitectura-y-seguridad.md](decisiones-arquitectura-y-seguridad.md) | Por qué está construido así. D-01 a D-17, cerradas |
 | [guia-servidor-vps-accesos.md](guia-servidor-vps-accesos.md) | Contrato para Ingeniería IoT: qué debe implementar la VPS |
+| [nota-cambio-employeeno.md](nota-cambio-employeeno.md) | Enmienda al contrato: `employeeNo` sin guiones (28-09-2026) |
 
 ---
 
@@ -185,7 +186,8 @@ nada.
 | `30 3 * * *` | Concilia contra el inventario real de cada dispositivo |
 | `0 5 * * *` | Repasa 14 días de llegadas en Hostaway. Red de seguridad del webhook |
 
-**La conciliación nunca borra lo que no lleva prefijo `DT4-`**: lo reporta y lo deja. Un barrido
+**La conciliación nunca borra lo que no cumple el formato `DT4[GTE]<8 HEX>`** (p. ej.
+`DT4G688B2FCB`; sin guiones, que Hikvision no admite): lo reporta y lo deja. Un barrido
 «limpiador» dejaría a residentes fuera de su casa. Y el inventario **se pagina siempre**; un tope
 fijo trunca en silencio en terminales llenos.
 

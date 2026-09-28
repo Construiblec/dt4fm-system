@@ -68,8 +68,9 @@ Se invierte el sentido: el gateway **informa** lo que hay en el terminal, el bac
 Además así la corrección es un `PUT` idempotente normal, sin camino de escritura especial ni
 necesidad de que la VPS conserve el PIN.
 
-**La regla que protege a la gente:** lo que no lleva prefijo `DT4-` se reporta y **no se toca**. Un
-barrido que borre lo desconocido deja a residentes fuera de su casa.
+**La regla que protege a la gente:** lo que no cumple entero el formato reservado `DT4[GTE]<8 HEX>`
+(D-06) se reporta y **no se toca**. Un barrido que borre lo desconocido deja a residentes fuera de su
+casa.
 
 ## D-05 · El tramo VPS ↔ gateway es síncrono
 
@@ -86,12 +87,19 @@ backend. Es peor.
 
 ## D-06 · Identidad y espacio de nombres
 
-El `credentialId` lo propone el backend (uuid) y viaja en la URL. El `employeeNo` se **deriva** de él
-con prefijo reservado: `DT4-G-` huésped, `DT4-T-` residente, `DT4-E-` personal. **Nunca se reutiliza**
-un `employeeNo`, y **nunca se borra** un usuario sin ese prefijo.
+El `credentialId` lo propone el backend (uuid) y viaja en la URL. El `employeeNo` se **deriva** de él:
+`DT4` + `G` huésped / `T` residente / `E` personal + los 8 primeros hex del SHA-256 del
+`credentialId` en mayúsculas, p. ej. `DT4G688B2FCB`. **Nunca se reutiliza** un `employeeNo`, y
+**nunca se borra** un usuario que no cumpla entero `^DT4[GTE][0-9A-F]{8}$`.
 
 **Por qué.** Tres cosas a la vez: hace la escritura idempotente, la revocación precisa, y separa lo
 que creó el sistema de lo que cargó una persona.
+
+**Revisado el 28-09-2026.** El formato original era `DT4-G-<8 hex>`, pero los terminales Hikvision
+solo admiten letras y números en `employeeNo`. Se quitan los separadores y se fija la caja en
+mayúsculas, porque la conciliación compara por igualdad exacta. Sin separador, «empieza por `DT4`» ya
+no basta para distinguir lo propio: `managed` exige el formato completo. Comunicado a IoT en la
+[nota de cambio](nota-cambio-employeeno.md).
 
 **Qué corrige.** `next_available_employee_no()` devuelve el entero libre más bajo y el borrado elimina
 la fila, así que el número de un huésped que se fue **se reasigna al siguiente**, y cualquier evento
@@ -159,7 +167,7 @@ PINes al mes, un 3 % del espacio. El riesgo del PIN corto es la fuerza bruta, no
 ## D-12 · La consola local se queda
 
 El frontend del gateway y sus rutas `/api/` no se retiran: son la salida de emergencia cuando el
-backend o el túnel no estén disponibles. Lo creado a mano no lleva prefijo `DT4-`, escrituras y
+backend o el túnel no estén disponibles. Lo creado a mano no puede empezar por `DT4`, escrituras y
 control físico siguen apagados por defecto, y cada uso queda en el historial.
 
 **Por qué.** Una puerta que no abre a las once de la noche no espera a que Render despierte. Un camino

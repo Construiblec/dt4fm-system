@@ -91,8 +91,8 @@ describe('AccessIotMockGateway', () => {
       peticion({ subjectType: 'employee', pin: '7412' }),
     );
 
-    expect(huesped.devices[0].employeeNo).toMatch(/^DT4-G-[0-9a-f]{8}$/);
-    expect(personal.devices[0].employeeNo).toMatch(/^DT4-E-[0-9a-f]{8}$/);
+    expect(huesped.devices[0].employeeNo).toMatch(/^DT4G[0-9A-F]{8}$/);
+    expect(personal.devices[0].employeeNo).toMatch(/^DT4E[0-9A-F]{8}$/);
   });
 
   it('borrar algo ya borrado es éxito, no un fallo', async () => {
@@ -112,11 +112,11 @@ describe('AccessIotMockGateway', () => {
     await gateway.putCredential('cred-9', peticion());
 
     const { users } = await gateway.getDeviceInventory('ING-PEATONAL-1');
-    const manual = users.find((user) => user.employeeNo === 'LOCAL-77');
+    const manual = users.find((user) => user.employeeNo === '77');
     const gestionado = users.find((user) => user.managed);
 
     expect(manual?.managed).toBe(false);
-    expect(gestionado?.employeeNo).toMatch(/^DT4-/);
+    expect(gestionado?.employeeNo).toMatch(/^DT4[GTE][0-9A-F]{8}$/);
   });
 
   it('el inventario nunca expone PINes', async () => {

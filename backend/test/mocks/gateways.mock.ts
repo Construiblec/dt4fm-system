@@ -183,7 +183,7 @@ export const createAccessIotGatewayMock = () => ({
         {
           deviceId: 'ING-PEATONAL-1',
           state: 'written',
-          employeeNo: 'DT4-T-abcdef01',
+          employeeNo: 'DT4TABCDEF01',
         },
       ],
     }),

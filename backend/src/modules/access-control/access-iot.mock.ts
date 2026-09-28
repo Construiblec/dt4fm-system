@@ -84,7 +84,7 @@ const DEVICES: AccessIotDevice[] = [
  * `pin_conflict` sea alcanzable sin trucar nada.
  */
 const MANUAL_USERS: Record<string, { employeeNo: string; pin: string }[]> = {
-  'ING-PEATONAL-1': [{ employeeNo: 'LOCAL-77', pin: '4821' }],
+  'ING-PEATONAL-1': [{ employeeNo: '77', pin: '4821' }],
 };
 
 const PREFIX_BY_SUBJECT = { guest: 'G', tenant: 'T', employee: 'E' } as const;
@@ -298,7 +298,10 @@ export class AccessIotMockGateway extends AccessIotGateway {
     return 'partial';
   }
 
-  /** Deriva el identificador del terminal igual que hará la VPS: `DT4-<X>-<8 hex>`. */
+  /**
+   * Deriva el identificador como hará la VPS: `DT4<X><8 HEX>`. Sin separadores
+   * porque Hikvision solo admite letras y números.
+   */
   private employeeNo(
     credentialId: string,
     subjectType: PutCredentialRequest['subjectType'],
@@ -306,8 +309,9 @@ export class AccessIotMockGateway extends AccessIotGateway {
     const digest = createHash('sha256')
       .update(credentialId)
       .digest('hex')
-      .slice(0, 8);
+      .slice(0, 8)
+      .toUpperCase();
 
-    return `DT4-${PREFIX_BY_SUBJECT[subjectType]}-${digest}`;
+    return `DT4${PREFIX_BY_SUBJECT[subjectType]}${digest}`;
   }
 }
