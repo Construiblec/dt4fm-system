@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useLocation } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { completeTaskSchema } from "@/modules/incidentes/schemas/cleaningTaskExecutionSchema";
 import {
@@ -14,6 +15,7 @@ import {
   isActiveCleaningTaskPhase,
   useCleaningTaskExecutionStore,
 } from "@/store/cleaningTaskExecutionStore";
+import { useStartCleaningTask } from "@/modules/incidentes/hooks/useStartCleaningTask";
 import {
   countChecklistActivities,
   countCompletedSections,
@@ -39,6 +41,7 @@ const toActiveTask = (task: CleaningTaskExecutionDetail): ActiveCleaningTask => 
 
 export const useCleaningTaskExecution = (taskId: number) => {
   const queryClient = useQueryClient();
+  const location = useLocation();
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successOpen, setSuccessOpen] = useState(false);
   const [pauseModalOpen, setPauseModalOpen] = useState(false);
@@ -180,6 +183,51 @@ export const useCleaningTaskExecution = (taskId: number) => {
   const isChecklistComplete = isChecklistCompleteStore();
   const canComplete = canCompleteStore();
 
+  /**
+   * Se mira PRIMERO el store y después la fase del detalle: al pulsar "Iniciar
+   * tarea" el store queda escrito al instante, mientras que el detalle tarda en
+   * volver a leerse.
+   */
+  const isRunning =
+    activeTask?.id === taskId || isActiveCleaningTaskPhase(detailQuery.data?.phase);
+
+  /**
+   * Pestillo para el arranque hecho DESDE esta pantalla: una vez confirmado, no
+   * se vuelve a "por iniciar" aunque alguna de las señales de arriba parpadee.
+   *
+   * Se guarda el id y no un booleano para que no se herede si la pantalla se
+   * reutiliza para otra tarea.
+   */
+  const [startedTaskId, setStartedTaskId] = useState<number | null>(null);
+
+  /**
+   * Lo pone la tarjeta al reanudar, y es lo que cubre la carrera de verdad:
+   * escribir el store cambia `contextTaskId`, eso vuelve a disparar el efecto
+   * de reconciliación del dashboard, y ese efecto —leyendo la lista vieja,
+   * donde la tarea todavía figura pausada— suelta `activeTask` ANTES de que
+   * esta pantalla llegue a montarse. Sin esta bandera, `isRunning` nace en
+   * falso, el pestillo nunca se echa, y el operario ve reaparecer la vista
+   * previa con la tarea ya corriendo hasta que vuelve el detalle.
+   */
+  const justStarted = Boolean(
+    (location.state as { justStarted?: boolean } | null)?.justStarted,
+  );
+
+  const hasStarted = isRunning || startedTaskId === taskId || justStarted;
+
+  const startAction = useStartCleaningTask({
+    id: taskId,
+    taskNumber: detailQuery.data?.taskNumber ?? "",
+    description: detailQuery.data?.description ?? "",
+    unitDescription:
+      detailQuery.data?.unit?.description ?? detailQuery.data?.description ?? "",
+    plannedStartTime: detailQuery.data?.plannedStartTime ?? "",
+    plannedEndTime: detailQuery.data?.plannedEndTime ?? "",
+    actualStartTime: detailQuery.data?.actualStartTime,
+    accumulatedMinutes: detailQuery.data?.executionTime ?? 0,
+    isPaused: detailQuery.data?.isPaused,
+  });
+
   const completeMutation = useMutation({
     mutationFn: async () => {
       const parsed = completeTaskSchema.safeParse({
@@ -255,6 +303,14 @@ export const useCleaningTaskExecution = (taskId: number) => {
 
   return {
     taskDetail: detailQuery.data,
+    hasStarted,
+    // El pestillo se echa acá y no en un efecto: "esta pantalla arrancó la
+    // tarea" es un evento confirmado contra el backend, no un estado que se
+    // pueda derivar de otra cosa.
+    startTask: () => startAction.start(() => setStartedTaskId(taskId)),
+    isStarting: startAction.isStarting,
+    startError: startAction.error,
+    clearStartError: startAction.clearError,
     isLoading: detailQuery.isLoading,
     isFetching: detailQuery.isFetching,
     loadError:

@@ -7,8 +7,12 @@ import {
   getSectionIndices,
   isSectionComplete,
   parseCleaningChecklist,
+  type ChecklistActivity,
+  type ChecklistSection,
 } from "@/modules/incidentes/utils/cleaningChecklistUtils";
-import { useMemo } from "react";
+import { useVoiceChecklist } from "@/modules/incidentes/hooks/useVoiceChecklist";
+import { VoiceChecklistControl } from "@/modules/incidentes/components/VoiceChecklistControl";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 
 type CleaningTaskChecklistProps = {
   activities: string[];
@@ -35,6 +39,9 @@ export const CleaningTaskChecklist = ({ activities }: CleaningTaskChecklistProps
   const setChecklistItems = useCleaningTaskExecutionStore(
     (state) => state.setChecklistItems,
   );
+  const updateChecklistItem = useCleaningTaskExecutionStore(
+    (state) => state.updateChecklistItem,
+  );
   const progressResetByFormatChange = useCleaningTaskExecutionStore(
     (state) => state.progressResetByFormatChange,
   );
@@ -43,6 +50,50 @@ export const CleaningTaskChecklist = ({ activities }: CleaningTaskChecklistProps
   const completedSections = countCompletedSections(sections, checklistProgress);
   const progressPercentage =
     sections.length > 0 ? Math.round((completedSections / sections.length) * 100) : 0;
+
+  /**
+   * Las dos granularidades con que la voz puede marcar, y las dos usan caminos
+   * que ya existían en el store. Por eso la barra, el contador de bloques y la
+   * habilitación de "Finalizar tarea" se actualizan solos: no hay un segundo
+   * camino que mantener en sincronía.
+   *
+   * Cuál se usa lo decide la respuesta del operario a "¿te acuerdas de los
+   * elementos?": si se las sabe marca el bloque entero, y si no, de a una.
+   */
+  const completeSectionByVoice = useCallback(
+    (section: ChecklistSection) => {
+      setChecklistItems(getSectionIndices(section), true);
+    },
+    [setChecklistItems],
+  );
+
+  const completeActivityByVoice = useCallback(
+    (activity: ChecklistActivity) => {
+      updateChecklistItem(activity.checkableIndex, true);
+    },
+    [updateChecklistItem],
+  );
+
+  const voice = useVoiceChecklist({
+    sections,
+    progress: checklistProgress,
+    onSectionComplete: completeSectionByVoice,
+    onActivityComplete: completeActivityByVoice,
+  });
+
+  // Esta tarjeta solo existe mientras la tarea está corriendo, así que montarla
+  // equivale a "hay que escuchar". Cubre los dos caminos de entrada: el que
+  // viene de "Iniciar tarea" (con gesto del usuario, que es lo que el navegador
+  // exige para el micrófono) y el de reanudar, donde se intenta igual y si el
+  // navegador lo bloquea queda el botón de encender.
+  const autoStartedRef = useRef(false);
+  const { supported: voiceSupported, start: startVoice } = voice;
+
+  useEffect(() => {
+    if (autoStartedRef.current || !voiceSupported || sections.length === 0) return;
+    autoStartedRef.current = true;
+    startVoice();
+  }, [sections.length, startVoice, voiceSupported]);
 
   return (
     <section className="rounded-3xl bg-white p-5 shadow-sm">
@@ -62,6 +113,26 @@ export const CleaningTaskChecklist = ({ activities }: CleaningTaskChecklistProps
           style={{ width: `${progressPercentage}%` }}
         />
       </div>
+
+      {/* El asistente va arriba de los bloques: es la otra forma de marcarlos, y
+          conviene que el operario vea de un vistazo si lo está escuchando. */}
+      {sections.length > 0 ? (
+        <div className="mt-5">
+          <VoiceChecklistControl
+            active={voice.active}
+            phase={voice.phase}
+            saying={voice.saying}
+            lastHeard={voice.lastHeard}
+            awake={voice.awake}
+            waitingFor={voice.waitingFor}
+            blockTitle={voice.currentBlockTitle}
+            activityText={voice.currentActivityText}
+            failure={voice.failure}
+            onStart={voice.start}
+            onStop={voice.stop}
+          />
+        </div>
+      ) : null}
 
       {/* El operario acaba de migrar de la versión con check por sección: sus
           marcas viejas no se podían traducir a las actividades nuevas. Sin este

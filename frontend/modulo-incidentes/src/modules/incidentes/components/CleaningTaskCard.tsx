@@ -1,12 +1,11 @@
 import { useEffect, useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { MapPin, Clock, Timer, AlertTriangle, PauseCircle } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import {
   getCleaningPhaseBadge,
   getCleaningPhaseLabel,
 } from "@/modules/incidentes/constants/cleaningPhase";
-import { startCleaningTask } from "@/modules/incidentes/services/cleaningTaskExecutionService";
+import { useStartCleaningTask } from "@/modules/incidentes/hooks/useStartCleaningTask";
 import type { CleaningTask } from "@/modules/incidentes/types/CleaningTask";
 import { ErrorModal } from "@/shared/components/ErrorModal";
 import { LoadingModal } from "@/shared/components/LoadingModal";
@@ -115,9 +114,7 @@ export const CleaningTaskCard = ({
   sessionBaseMinutes,
 }: Props) => {
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
   const activeTask = useCleaningTaskExecutionStore((state) => state.activeTask);
-  const startTask = useCleaningTaskExecutionStore((state) => state.startTask);
   const syncActiveTask = useCleaningTaskExecutionStore((state) => state.syncActiveTask);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const duration = calcDuration(plannedStartTime, plannedEndTime);
@@ -173,45 +170,16 @@ export const CleaningTaskCard = ({
       ? formatOverdue(actualStartMs - plannedStartMs)
       : null;
 
-  const startMutation = useMutation({
-    mutationFn: async () => {
-      // Cero del cronómetro: el instante del toque, antes de esperar a la API.
-      const executionStartedAt = new Date().toISOString();
-      const taskDetail = await startCleaningTask(id);
-      return { taskDetail, executionStartedAt };
-    },
-    onSuccess: ({ taskDetail, executionStartedAt }) => {
-      // El detalle guardado en caché quedó en la fase (y con el tiempo) previos al
-      // arranque; sin esto la pantalla de ejecución los leería como vigentes.
-      void queryClient.invalidateQueries({
-        queryKey: ["cleaning-task-detail", id],
-      });
-      startTask({
-        id,
-        taskNumber,
-        description,
-        phase: taskDetail.phase ?? "InExecution",
-        actualStartTime: taskDetail.actualStartTime ?? actualStartTime ?? executionStartedAt,
-        executionStartedAt,
-        // Ancla que acaba de registrar el backend: es la que hace que el conteo se
-        // vea igual en cualquier ventana.
-        sessionStartedAt: taskDetail.sessionStartedAt ?? null,
-        // Reanudar continúa desde el tiempo guardado; reabrir arranca en cero. Lo
-        // resuelve el backend al iniciar.
-        sessionBaseMinutes: taskDetail.sessionBaseMinutes ?? (isPaused ? accumulatedMinutes : 0),
-        // Base del total que se registrará, al margen de lo que marque el reloj.
-        accumulatedMinutes: taskDetail.executionTime ?? accumulatedMinutes,
-        plannedStartTime,
-        plannedEndTime,
-        unitDescription: unit?.description ?? description,
-      });
-      navigate(`/cleaning-tasks/${id}/execute`);
-    },
-    onError: (error) => {
-      setErrorMessage(
-        error instanceof Error ? error.message : "No se pudo iniciar la tarea de limpieza",
-      );
-    },
+  const { start, isStarting, error: startError, clearError } = useStartCleaningTask({
+    id,
+    taskNumber,
+    description,
+    unitDescription: unit?.description ?? description,
+    plannedStartTime,
+    plannedEndTime,
+    actualStartTime,
+    accumulatedMinutes,
+    isPaused,
   });
 
   const handleStart = () => {
@@ -238,7 +206,26 @@ export const CleaningTaskCard = ({
       return;
     }
 
-    startMutation.mutate();
+    if (isPaused) {
+      // Reanudar entra directo: el operario ya sabe de qué va la tarea y el
+      // checklist conserva lo marcado. La pantalla previa sería un trámite.
+      //
+      // `justStarted` no es decorativo: al escribir el store cambia
+      // `contextTaskId`, eso vuelve a disparar el efecto de reconciliación del
+      // dashboard, y ese efecto —leyendo la lista vieja, donde la tarea sigue
+      // pausada— suelta `activeTask` antes de que lleguemos a navegar. Sin este
+      // aviso, la pantalla monta sin nada que le diga que la tarea ya arrancó y
+      // muestra la vista previa hasta que vuelve el detalle.
+      start(() =>
+        navigate(`/cleaning-tasks/${id}/execute`, { state: { justStarted: true } }),
+      );
+      return;
+    }
+
+    // Una tarea que nunca arrancó solo se ABRE: nada de backend, nada de
+    // cronómetro. El arranque lo decide el operario en la pantalla previa,
+    // después de ver a qué se enfrenta.
+    navigate(`/cleaning-tasks/${id}/execute`);
   };
 
   return (
@@ -371,31 +358,35 @@ export const CleaningTaskCard = ({
                   : "bg-slate-200 text-slate-400 cursor-not-allowed"
                   }`}
               >
+                {/* "Abrir" y no "Iniciar": tocarlo ya no arranca nada, lleva a
+                    la pantalla previa. Mismo criterio que en correctivos. */}
                 {isPaused
                   ? "Reanudar"
                   : isSameActiveTask || isTaskAlreadyInExecution
                     ? "Continuar"
-                    : "Iniciar"}
+                    : "Abrir"}
               </button>
             </div>
           )}
 
         </article>
       </div>
-      <LoadingModal
-        open={startMutation.isPending}
-        message={isPaused ? "Reanudando tarea..." : "Iniciando tarea..."}
-      />
+      {/* Solo la rama de reanudar espera al backend; abrir ya no llama a nadie. */}
+      <LoadingModal open={isStarting} message="Reanudando tarea..." />
       <ErrorModal
-        open={errorMessage !== null}
+        open={startError !== null || errorMessage !== null}
         title={isPaused ? "No se pudo reanudar la tarea" : "No se pudo iniciar la tarea"}
         message={
+          startError ??
           errorMessage ??
           (isAnotherTaskActive
             ? `Ya tienes una tarea activa: ${activeTask?.taskNumber}`
             : "No se pudo iniciar la tarea")
         }
-        onClose={() => setErrorMessage(null)}
+        onClose={() => {
+          clearError();
+          setErrorMessage(null);
+        }}
       />
     </div>
   );

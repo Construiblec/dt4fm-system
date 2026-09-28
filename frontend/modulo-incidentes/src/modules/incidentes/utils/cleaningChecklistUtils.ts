@@ -325,6 +325,38 @@ export const getSectionIndices = (section: ChecklistSection): number[] =>
   section.items.map((item) => item.checkableIndex);
 
 /**
+ * Minutos estimados de toda la tarea, para el resumen previo al arranque.
+ *
+ * `isPartial` marca que el número se quedó corto: o alguna sección no trae
+ * minutos, o los trae solo en parte de sus actividades. Se expone aparte para
+ * poder anteponer el `~` y no presentar como exacto un total al que le faltan
+ * sumandos — en una plantilla a medio llenar, decir "55 min" sin más sería
+ * afirmar algo que el dato no sostiene.
+ *
+ * Devuelve `minutes: null` cuando NINGUNA sección tiene minutos: ahí no hay
+ * estimación que mostrar, que es distinto de una estimación incompleta.
+ */
+export const getChecklistTotalMinutes = (
+  sections: ChecklistSection[],
+): { minutes: number | null; isPartial: boolean } => {
+  const withMinutes = sections.filter((section) => section.totalMinutes !== null);
+
+  if (withMinutes.length === 0) {
+    return { minutes: null, isPartial: sections.length > 0 };
+  }
+
+  return {
+    minutes: withMinutes.reduce(
+      (total, section) => total + (section.totalMinutes ?? 0),
+      0,
+    ),
+    isPartial:
+      withMinutes.length < sections.length ||
+      withMinutes.some((section) => section.hasPartialMinutes),
+  };
+};
+
+/**
  * Huella de la plantilla. No es criptográfica: solo sirve para que el store note
  * que el checklist en pantalla no es el mismo cuyos checks tiene guardados.
  */
