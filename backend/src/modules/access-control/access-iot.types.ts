@@ -83,7 +83,7 @@ export interface CredentialWriteResult {
 export interface PutCredentialRequest {
   buildingId: number;
   scope: CredentialScopeWire;
-  /** La VPS lo necesita para derivar el prefijo reservado `DT4-G/T/E-`. */
+  /** La VPS lo necesita para derivar el prefijo reservado `DT4G`/`DT4T`/`DT4E`. */
   subjectType: 'guest' | 'tenant' | 'employee';
   pin: string;
   /** ISO 8601 **con offset**: la hora ingenua no significa nada fuera de su proceso. */
@@ -156,7 +156,7 @@ export interface InventoryUser {
   /** `null` si el terminal devolvió la marca sin offset: se reemite el `PUT`. */
   validFrom?: string | null;
   validTo?: string | null;
-  /** `true` si lleva el prefijo reservado. Lo que no lo lleva no se toca jamás. */
+  /** `true` si cumple entero el formato `DT4[GTE]<8 HEX>`. Lo demás no se toca jamás. */
   managed: boolean;
 }
 

@@ -8,6 +8,10 @@ El backend **ya está implementado y probado** contra una simulación de este co
 responda como se describe aquí, se cambia una variable de entorno y funciona. **Si el mock y este
 documento divergen, manda este documento.**
 
+> **Cambio del 28-09-2026:** el `employeeNo` pasa a `DT4G688B2FCB`, sin guiones, porque los
+> terminales Hikvision solo admiten letras y números. Detalle en la
+> [nota de cambio](nota-cambio-employeeno.md) y en [§2](#el-employeeno-que-se-escribe-en-el-terminal).
+
 ---
 
 ## 1. El reparto, en una frase
@@ -55,7 +59,7 @@ Bloquean todo lo demás.
 |---|---|
 | **`buildingId` = `Building._id` de openMAINT**, entero | Es la clave con la que el backend decide dónde colocar una credencial. Si la VPS usa nombres propios (`torre-a`) hace falta una tabla de mapeo. Reales: Inglaterra `3025058`, Pradera `3019998`, Republica `564939` |
 | **`credentialId` lo propone el backend** (uuid) y viaja en la URL | De él derivas el `employeeNo`. Es lo que hace idempotente reenviar una escritura y precisa una revocación |
-| **Prefijo `DT4-` en `employeeNo`** | Marca lo creado por este sistema. **Nunca borrar un usuario sin ese prefijo** |
+| **Formato reservado `DT4[GTE]<8 HEX>` en `employeeNo`** | Marca lo creado por este sistema. **Nunca borrar un usuario que no lo cumpla** |
 | **`unitId` = `Unit._id`**, opcional | Solo contexto. El acceso no puede depender de que el mapeo exista |
 | **`deviceId`** lo eliges tú, estable | El backend lo guarda en `sync_detail` y lo usa para conciliar. Si cambia, pierde la traza |
 
@@ -68,24 +72,34 @@ con el entero y se lee con el código, por eso `GET /v1/buildings` devuelve los 
 Se **deriva** del `credentialId`, con prefijo reservado según el tipo de sujeto:
 
 ```
-DT4-G-<8 hex>   huésped
-DT4-T-<8 hex>   residente
-DT4-E-<8 hex>   personal
+DT4G<8 HEX>   huésped
+DT4T<8 HEX>   residente
+DT4E<8 HEX>   personal
 ```
 
-Los 8 hex son los primeros 8 caracteres del SHA-256 del `credentialId`. El `subjectType` viaja en el
-cuerpo del `PUT` justo para que puedas derivar el prefijo.
+Los 8 HEX son los primeros 8 caracteres del SHA-256 del `credentialId`, **en mayúsculas**. El
+resultado tiene 12 caracteres: `3f9a2b11-7c4e-4d2a-9b61-5e8f0a1c2d34` → `DT4G688B2FCB`. El
+`subjectType` viaja en el cuerpo del `PUT` justo para que puedas derivar el prefijo.
 
-**Tres reglas, y las tres importan:**
+**Sin separadores:** los terminales Hikvision solo admiten letras y números en `employeeNo`, y
+rechazan un `DT4-G-…`. **Todo en mayúsculas** para que ningún tramo cambie la caja: el backend
+concilia comparando el `employeeNo` por igualdad exacta.
+
+**Cuatro reglas, y las cuatro importan:**
 
 1. **Nunca reutilices un `employeeNo`**, aunque su credencial se haya borrado. Hoy
    `next_available_employee_no()` devuelve el hueco más bajo, así que el número de un huésped que se
    fue se reasigna al siguiente: cualquier evento histórico quedaría atribuido a la persona
    equivocada.
-2. **Nunca borres un usuario sin prefijo `DT4-`.** Un `employeeNo` `"7"` puede ser un residente
-   cargado a mano por iVMS-4200. Un barrido «limpiador» deja gente fuera de su casa.
+2. **Nunca borres un usuario que no cumpla entero `^DT4[GTE][0-9A-F]{8}$`.** No basta con que
+   empiece por `DT4`: sin separador, un `DT4FM01` cargado a mano pasaría por propio. Un `employeeNo`
+   `"7"` puede ser un residente cargado por iVMS-4200, y un barrido «limpiador» deja gente fuera de
+   su casa.
 3. Derivar en vez de autonumerar hace la escritura **idempotente**: reenviar el mismo `PUT` apunta al
    mismo registro, no crea un segundo.
+4. **Devuelve el `employeeNo` idéntico** en el `PUT`, en `GET /v1/credentials/{id}` y en el
+   inventario. Si el terminal lo devolviera con otra caja, la conciliación lo daría por ausente y lo
+   reescribiría cada noche.
 
 ---
 
@@ -197,11 +211,11 @@ Respuesta, **con detalle por dispositivo**:
 
 ```json
 {
-  "credentialId": "3f9a2b11-...",
+  "credentialId": "3f9a2b11-7c4e-4d2a-9b61-5e8f0a1c2d34",
   "state": "partial",
   "devices": [
     { "deviceId": "ING-PEATONAL-1", "state": "written",
-      "employeeNo": "DT4-G-3f9a2b11", "at": "2026-09-08T09:41:13-05:00" },
+      "employeeNo": "DT4G688B2FCB", "at": "2026-09-08T09:41:13-05:00" },
     { "deviceId": "ING-VEHICULAR-1", "state": "unreachable", "error": "link down" }
   ]
 }
@@ -265,16 +279,16 @@ Lo consume la conciliación nocturna del backend.
 
 ```json
 { "users": [
-    { "employeeNo": "DT4-G-3f9a2b11", "name": "Ana Perez",
+    { "employeeNo": "DT4G688B2FCB", "name": "Ana Perez",
       "validFrom": "2026-09-14T12:00:00-05:00", "validTo": "2026-09-18T15:00:00-05:00",
       "managed": true },
-    { "employeeNo": "LOCAL-77", "managed": false }
+    { "employeeNo": "77", "managed": false }
   ],
   "nextCursor": "eyJwb3MiOjIwMH0" }
 ```
 
-- `managed` — `true` si el `employeeNo` lleva el prefijo reservado. Es lo que protege a los
-  residentes cargados a mano.
+- `managed` — `true` solo si el `employeeNo` cumple entero `^DT4[GTE][0-9A-F]{8}$`. Es lo que
+  protege a los residentes cargados a mano.
 - `nextCursor` — `null` o ausente cuando se acabó. El backend pagina hasta agotar, con un tope
   defensivo de 50 páginas.
 - **Nunca el PIN.** `UserInfo/Search` de ISAPI devuelve `password`: descártalo en memoria.
@@ -488,8 +502,8 @@ Lo que hace el backend cada noche, por dispositivo:
 | Situación | Acción |
 |---|---|
 | En Postgres como escrita, ausente del aparato | Reemite el `PUT`. Se reescribe sola |
-| Con prefijo `DT4-` y sin credencial viva detrás | `DELETE`. Es basura de una revocación fallida |
-| **Sin** prefijo `DT4-` | **Reporta y no toca.** Es un residente cargado a mano |
+| Con formato `DT4[GTE]<8 HEX>` y sin credencial viva detrás | `DELETE`. Es basura de una revocación fallida |
+| **Sin** ese formato | **Reporta y no toca.** Es un residente cargado a mano |
 | En ambos con vigencia distinta | Reemite el `PUT` con el valor de Postgres |
 
 La parte de IoT es que `GET /v1/devices/{id}/inventory` sea **completo** y que `managed` sea fiable.
@@ -504,8 +518,8 @@ que Render despierte, y ese camino manual ya está construido, probado y endurec
 
 Tres reglas:
 
-- Lo que se cree a mano **no lleva prefijo `DT4-`**, y por tanto la conciliación lo reporta y no lo
-  toca.
+- Lo que se cree a mano **no puede empezar por `DT4`**, y por tanto la conciliación lo reporta y no
+  lo toca. La consola debe rechazar ese prefijo al dar de alta.
 - Escrituras y control físico siguen **apagados por defecto**, con sus flags separados.
 - Cada uso queda en el historial, y la operación posterior se reconcilia con el backend.
 
@@ -536,7 +550,7 @@ Forma acordada, para no renegociar el contrato después:
 ```json
 { "events": [
   { "eventId": "ING-PEATONAL-1:88123", "deviceId": "ING-PEATONAL-1",
-    "buildingId": 3025058, "credentialId": "3f9a…", "employeeNo": "DT4-G-3f9a2b11",
+    "buildingId": 3025058, "credentialId": "3f9a2b11-…", "employeeNo": "DT4G688B2FCB",
     "eventType": "access_granted", "reason": null,
     "occurredAt": "2026-09-14T13:05:22-05:00" } ] }
 ```
@@ -553,8 +567,9 @@ error. El webhook `POST /iot/alarms` que ya existe sigue igual y nada de esto lo
 - [ ] `DELETE` sobre algo ya borrado devuelve éxito, no `404`
 - [ ] `GET /v1/credentials/{id}` devuelve `404` cuando no existe
 - [ ] Toda marca de tiempo sale con offset, y el gateway **acepta** offset en la entrada
-- [ ] Los `employeeNo` llevan prefijo `DT4-` y **jamás** se reutilizan
-- [ ] Un usuario sin prefijo `DT4-` nunca se borra, en ningún camino de código
+- [ ] Los `employeeNo` siguen `DT4[GTE]<8 HEX>`, solo letras y números, y **jamás** se reutilizan
+- [ ] El `employeeNo` vuelve idéntico, en mayúsculas, en el `PUT`, el `GET` y el inventario
+- [ ] Un usuario que no cumpla entero el formato nunca se borra, en ningún camino de código
 - [ ] El inventario pagina hasta agotar; probado con un terminal de más de 50 usuarios
 - [ ] `managed` distingue correctamente lo propio de lo cargado a mano
 - [ ] El PIN no aparece en la base, ni en logs, ni en ninguna respuesta. **Con una prueba que lo fije**
