@@ -4,6 +4,7 @@ import {
   countCompletedSections,
   formatMinutes,
   getChecklistSignature,
+  getChecklistTotalMinutes,
   getSectionIndices,
   isSectionComplete,
   parseCleaningChecklist,
@@ -458,5 +459,73 @@ describe("formatMinutes", () => {
     [0, "1 min"],
   ])("formatea %s como %s", (minutes, expected) => {
     expect(formatMinutes(minutes)).toBe(expected);
+  });
+});
+
+describe("getChecklistTotalMinutes", () => {
+  it("suma los minutos de todos los bloques", () => {
+    const sections = parseCleaningChecklist([
+      "Frente a la unidad,Mascarilla,1",
+      "Frente a la unidad,Notificar,1",
+      "Dormitorio,Tender,5",
+    ]);
+
+    expect(getChecklistTotalMinutes(sections)).toEqual({
+      minutes: 7,
+      isPartial: false,
+    });
+  });
+
+  // Un total al que le faltan sumandos no se puede presentar como exacto: la
+  // pantalla previa antepone "~" leyendo este booleano.
+  it("marca parcial si un bloque entero no tiene minutos", () => {
+    const sections = parseCleaningChecklist([
+      "Baño,Barrer,3",
+      "Cocina,Lavar",
+    ]);
+
+    expect(getChecklistTotalMinutes(sections)).toEqual({
+      minutes: 3,
+      isPartial: true,
+    });
+  });
+
+  it("marca parcial si dentro de un bloque solo algunas actividades traen minutos", () => {
+    const sections = parseCleaningChecklist([
+      "Baño,Barrer,3",
+      "Baño,Trapear",
+    ]);
+
+    expect(getChecklistTotalMinutes(sections)).toEqual({
+      minutes: 3,
+      isPartial: true,
+    });
+  });
+
+  // "No hay estimación" y "la estimación está incompleta" son cosas distintas:
+  // con null la pantalla no muestra ningún número.
+  it("devuelve null cuando ningun bloque trae minutos", () => {
+    const sections = parseCleaningChecklist(["Baño,Barrer", "Cocina,Lavar"]);
+
+    expect(getChecklistTotalMinutes(sections)).toEqual({
+      minutes: null,
+      isPartial: true,
+    });
+  });
+
+  it("un checklist vacio no es una estimacion parcial", () => {
+    expect(getChecklistTotalMinutes([])).toEqual({
+      minutes: null,
+      isPartial: false,
+    });
+  });
+
+  it("suma los decimales del checklist real", () => {
+    const sections = parseCleaningChecklist([
+      'Baño,Barrer,"2,5"',
+      'Baño,Trapear,"1,5"',
+    ]);
+
+    expect(getChecklistTotalMinutes(sections).minutes).toBe(4);
   });
 });

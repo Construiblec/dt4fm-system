@@ -128,17 +128,41 @@ const MATCHERS: { intent: Intent; phrase: string; words: number }[] = (
   )
   .sort((a, b) => b.words - a.words);
 
-const classify = (text: string): Intent | null => {
+/**
+ * Un comando es una frase CORTA. Nadie confirma una actividad con una oración
+ * de veinticinco palabras.
+ *
+ * Sin este tope, buscar la palabra clave en cualquier parte del texto convierte
+ * cualquier charla en un comando: en la prueba de campo, "...pero es así es lo
+ * que" dentro de una frase larguísima de una conversación ajena se clasificó
+ * como SÍ. En una unidad real eso significa dar por hecha una actividad que
+ * nadie hizo, sin que el operario toque nada ni se entere.
+ */
+const MAX_COMMAND_WORDS = 4;
+
+type Classification =
+  | { intent: Intent; words: number }
+  | { intent: null; rejectedIntent: Intent; words: number }
+  | { intent: null; rejectedIntent: null; words: number };
+
+const classify = (text: string): Classification => {
   const normalized = normalize(text);
-  if (!normalized) return null;
+  const words = normalized ? normalized.split(" ").length : 0;
+
+  if (!normalized) return { intent: null, rejectedIntent: null, words };
 
   for (const matcher of MATCHERS) {
     if (new RegExp(`(^| )${matcher.phrase}( |$)`).test(normalized)) {
-      return matcher.intent;
+      // Se distingue "no había comando" de "había pero venía sepultado en una
+      // charla": lo segundo es justo lo que hay que contar para saber si esto
+      // es seguro de usar con gente hablando alrededor.
+      return words <= MAX_COMMAND_WORDS
+        ? { intent: matcher.intent, words }
+        : { intent: null, rejectedIntent: matcher.intent, words };
     }
   }
 
-  return null;
+  return { intent: null, rejectedIntent: null, words };
 };
 
 const INTENT_LABEL: Record<Intent, string> = {
@@ -180,7 +204,13 @@ export const VozSpikePage = () => {
   const [online, setOnline] = useState(navigator.onLine);
   const [wakeLockOn, setWakeLockOn] = useState(false);
   const [log, setLog] = useState<LogEntry[]>([]);
-  const [counters, setCounters] = useState({ results: 0, restarts: 0, nomatch: 0 });
+  /** `buried`: el comando estaba, pero sepultado en una frase larga (falso positivo evitado). */
+  const [counters, setCounters] = useState({
+    results: 0,
+    restarts: 0,
+    nomatch: 0,
+    buried: 0,
+  });
   const [errors, setErrors] = useState<Record<string, number>>({});
   const [copied, setCopied] = useState(false);
   /** Lectura en castellano de un fallo que se repite, para no tener que leer la bitácora. */
@@ -328,7 +358,8 @@ export const VozSpikePage = () => {
 
       const since = speechStartedAtRef.current ?? listenStartedAtRef.current;
       const elapsed = Date.now() - since;
-      const matched = classify(transcript);
+      const verdict = classify(transcript);
+      const matched = verdict.intent;
       const options: string[] = [];
       for (let index = 0; index < result.length; index += 1) {
         options.push(`${result[index].transcript} (${result[index].confidence.toFixed(2)})`);
@@ -344,10 +375,19 @@ export const VozSpikePage = () => {
       setAlternatives(options);
       setIntent(matched);
       setLatency(elapsed);
-      setCounters((current) => ({ ...current, results: current.results + 1 }));
+      const buried = verdict.intent ? null : verdict.rejectedIntent;
+
+      setCounters((current) => ({
+        ...current,
+        results: current.results + 1,
+        buried: buried ? current.buried + 1 : current.buried,
+      }));
+
       addLog(
-        "oyó",
-        `"${transcript}" → ${matched ? INTENT_LABEL[matched] : "sin clasificar"} · ${elapsed}ms`,
+        buried ? "descartado" : "oyó",
+        buried
+          ? `"${transcript}" contenía ${INTENT_LABEL[buried]} pero son ${verdict.words} palabras: es charla, no un comando`
+          : `"${transcript}" → ${matched ? INTENT_LABEL[matched] : "sin clasificar"} · ${verdict.words} palabras · ${elapsed}ms`,
       );
 
       if (matched) speak(INTENT_ACK[matched]);
@@ -530,7 +570,7 @@ export const VozSpikePage = () => {
       `Reconocimiento: ${supported ? "sí" : "NO"} · Síntesis: ${ttsSupported ? "sí" : "NO"} · Voces es-*: ${spanishVoices}`,
       `PWA instalada: ${window.matchMedia("(display-mode: standalone)").matches ? "sí" : "no"}`,
       `Online: ${online ? "sí" : "no"} · Wake lock: ${wakeLockOn ? "sí" : "no"}`,
-      `Resultados: ${counters.results} · Rearmes: ${counters.restarts} · Nomatch: ${counters.nomatch}`,
+      `Resultados: ${counters.results} · Rearmes: ${counters.restarts} · Nomatch: ${counters.nomatch} · Comandos sepultados en charla: ${counters.buried}`,
       `Errores: ${Object.entries(errors).map(([key, value]) => `${key}=${value}`).join(", ") || "ninguno"}`,
       "",
       "== BITÁCORA (más reciente primero) ==",
@@ -686,10 +726,11 @@ export const VozSpikePage = () => {
           </section>
         ) : null}
 
-        <section className="grid grid-cols-3 gap-2 text-center">
+        <section className="grid grid-cols-4 gap-2 text-center">
           <Counter label="Resultados" value={counters.results} />
           <Counter label="Rearmes" value={counters.restarts} />
           <Counter label="Nomatch" value={counters.nomatch} />
+          <Counter label="Sepultados" value={counters.buried} />
         </section>
 
         {Object.keys(errors).length > 0 ? (
