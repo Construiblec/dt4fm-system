@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { AppLayout } from "@/app/layout/AppLayout";
 import { ListStateMessage } from "@/modules/incidentes/components/ListStateMessage";
+import { BuildingSelect } from "@/modules/supervisor-cav/components/BuildingSelect";
 import {
   useRemoteDoors,
   type DoorActionResult,
@@ -138,14 +139,15 @@ const DoorRow = ({
         </div>
 
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold text-slate-900">
-            {DOOR_SCOPE_LABELS[door.scope]}
+          <p className="truncate text-sm font-semibold text-slate-900">
+            {door.deviceId}
           </p>
           <p className="flex items-center gap-1.5 truncate text-xs text-slate-500">
             <span
               className={`h-2 w-2 shrink-0 rounded-full ${door.online ? "bg-emerald-500" : "bg-slate-300"}`}
             />
-            {door.online ? "En línea" : "Sin conexión"} · {door.deviceId}
+            {door.online ? "En línea" : "Sin conexión"} ·{" "}
+            {DOOR_SCOPE_LABELS[door.scope]}
           </p>
         </div>
 
@@ -186,6 +188,11 @@ export const RemoteDoorsPage = () => {
   const { overview, loading, error, pending, results, command, reload } =
     useRemoteDoors();
   const buildings = overview?.buildings ?? [];
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+  // Si al recargar el elegido ya no viene, se muestra el primero.
+  const selected =
+    buildings.find((building) => building.buildingId === selectedId) ??
+    buildings[0];
   const anyOpen = buildings.some((building) =>
     building.doors.some((door) => door.openUntil),
   );
@@ -245,24 +252,24 @@ export const RemoteDoorsPage = () => {
               emptyMessage="No hay puertas con control de acceso"
             />
 
-            {buildings.map((building) => (
-              <article
-                key={building.buildingId}
-                className="rounded-xl bg-white p-4 shadow-sm"
-              >
-                <div className="mb-3 flex items-baseline justify-between gap-3">
-                  <h2 className="text-base font-semibold text-slate-900">
-                    {building.name}
-                  </h2>
-                  {!building.online ? (
-                    <span className="text-xs font-medium text-amber-700">
-                      Edificio sin conexión
-                    </span>
-                  ) : null}
-                </div>
+            {selected ? (
+              <BuildingSelect
+                buildings={buildings}
+                value={selected.buildingId}
+                onChange={setSelectedId}
+              />
+            ) : null}
+
+            {selected ? (
+              <article className="rounded-xl bg-white p-4 shadow-sm">
+                {!selected.online ? (
+                  <p className="mb-3 text-xs font-medium text-amber-700">
+                    Edificio sin conexión
+                  </p>
+                ) : null}
 
                 <ul className="divide-y divide-slate-100">
-                  {building.doors.map((door) => (
+                  {selected.doors.map((door) => (
                     <DoorRow
                       key={door.deviceId}
                       door={door}
@@ -280,7 +287,7 @@ export const RemoteDoorsPage = () => {
                   ))}
                 </ul>
               </article>
-            ))}
+            ) : null}
           </div>
         </section>
       </main>
