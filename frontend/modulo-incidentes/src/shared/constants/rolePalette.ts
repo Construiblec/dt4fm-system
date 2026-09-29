@@ -24,13 +24,9 @@ import {
  * MaintOffice, SupervisorLimpieza, SupervisorMantenimiento, AsistenteSL,
  * AdminOffice, TPM.
  *
- * `SupervisorCAV` es la excepción: el grupo **todavía no existe en
- * openMAINT**. Se declara aquí por adelantado para que la app ya sepa qué
- * pantalla y qué color le corresponden en cuanto el grupo se cree del lado de
- * openMAINT — hasta entonces, ninguna cuenta real lo trae en `availableRoles`
- * y el selector de rol no lo va a mostrar. El cian es provisional: pendiente
- * de que producto confirme el color (no choca con los otros tres, pero no está
- * validado con nadie más).
+ * `SupervisorCAV` se creó en openMAINT después que su pantalla: una cuenta
+ * que no lo trae en `availableRoles` es que aún no lo tiene asignado. El cian
+ * es provisional, pendiente de que producto confirme el color.
  */
 
 export type RoleView = {
@@ -124,14 +120,11 @@ export const ROLE_VIEWS: Record<string, RoleView> = {
     solid: "bg-amber-600",
     homeRoute: "/owner/dashboard",
   },
-  /**
-   * Solo la subsección Autorizaciones está implementada; Disuasión, Acceso
-   * remoto y Eventos quedan para cuando se decida el resto del alcance.
-   */
+  /** Autorizaciones y Puertas (apertura remota); faltan Disuasión y Eventos. */
   SupervisorCAV: {
     name: "Supervisor CAV",
     short: "Accesos",
-    desc: "Autorizaciones de acceso",
+    desc: "Autorizaciones y puertas",
     icon: KeyRound,
     dot: "bg-cyan-600",
     text: "text-cyan-700",

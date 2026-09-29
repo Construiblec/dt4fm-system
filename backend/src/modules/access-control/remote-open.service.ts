@@ -193,9 +193,12 @@ export class RemoteOpenService {
     const replay = await this.replay(actor, action, requestId);
     if (replay) return replay;
 
-    const device = (await this.catalog.devices()).find(
-      (candidate) => candidate.deviceId === deviceId,
-    );
+    const find = (devices: AccessIotDevice[]) =>
+      devices.find((candidate) => candidate.deviceId === deviceId);
+    // Una puerta recién dada de alta en la VPS aún no está en la caché.
+    const device =
+      find(await this.catalog.devices()) ??
+      find(await this.catalog.devices(true));
 
     if (!device) {
       throw new NotFoundException(`La puerta ${deviceId} no existe`);
@@ -233,11 +236,14 @@ export class RemoteOpenService {
     return last?.guestStayId === stayId ? openUntil(last, now) : null;
   }
 
-  /** El `online` sale fresco de la VPS, no de la caché: es lo que el supervisor mira. */
+  /**
+   * El `online` sale fresco de la VPS, no de la caché: es lo que el supervisor
+   * mira. Releer también deja en caché las puertas que luego puede abrir.
+   */
   async listDoors(): Promise<DoorsOverview> {
     const [buildings, devices, lastCommands, openWindows] = await Promise.all([
       this.catalog.list(),
-      this.iot.listDevices(),
+      this.catalog.devices(true),
       this.lastCommandByDevice(),
       this.openUntilByDevice(),
     ]);

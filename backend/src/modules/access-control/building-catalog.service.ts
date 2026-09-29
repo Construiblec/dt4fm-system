@@ -63,9 +63,16 @@ export class BuildingCatalogService implements OnModuleInit {
     this.devicesCachedAt = 0;
   }
 
-  /** Para resolver qué puerta es cuál; su `online` puede tener 10 minutos. */
-  async devices(): Promise<AccessIotDevice[]> {
-    if (this.devicesCache && Date.now() - this.devicesCachedAt < CACHE_TTL_MS) {
+  /**
+   * Para resolver qué puerta es cuál; su `online` puede tener 10 minutos.
+   * `refresh` relee de la VPS y, si falla, lanza en vez de servir la caché.
+   */
+  async devices(refresh = false): Promise<AccessIotDevice[]> {
+    if (
+      !refresh &&
+      this.devicesCache &&
+      Date.now() - this.devicesCachedAt < CACHE_TTL_MS
+    ) {
       return this.devicesCache;
     }
 
@@ -74,7 +81,7 @@ export class BuildingCatalogService implements OnModuleInit {
       this.devicesCachedAt = Date.now();
       return this.devicesCache;
     } catch (error) {
-      if (this.devicesCache) {
+      if (this.devicesCache && !refresh) {
         this.logger.warn(
           `Inventario de puertas no disponible; se sirve el cacheado: ${this.describe(error)}`,
         );
