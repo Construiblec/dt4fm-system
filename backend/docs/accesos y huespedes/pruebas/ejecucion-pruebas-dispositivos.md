@@ -99,8 +99,8 @@ P-08. Se puede lanzar entera con *Run folder*. Todo en verde es el criterio de e
 |---|---|
 | P-01 | Staging caído, o sin el commit `2186d13`: revisar el despliegue |
 | P-02 a P-04 | Credenciales o rol no asignado a la cuenta |
-| P-05 | El test del mock falla: `ACCESS_IOT_USE_MOCK` sigue en `true`. Gateway sin `operationsEnabled`: avisar a IoT |
-| P-06 | `301`: falta `https://` en `iotUrl`. `302`: token de Cloudflare rechazado |
+| P-05, P-06 | `gatewayOnline: false`: el gateway o su túnel no responde (la consola muestra el `errorCode`). `operationsEnabled: false`: el gateway aún no acepta operaciones. En los dos casos el edificio **no puede probarse**: avisar a IoT y pasar a otro edificio |
+| P-06 | `301`: falta `https://` en `iotUrl`. `302`: token de Cloudflare rechazado. "El backend ve la misma VPS" en rojo: `ACCESS_IOT_USE_MOCK` sigue en `true` en staging |
 | P-07, P-08 | Edificio fuera del catálogo o puertas fuera de línea: avisar a IoT |
 
 El observador confirma en sitio qué puerta física corresponde a `deviceIdPeatonal` y cuál a
