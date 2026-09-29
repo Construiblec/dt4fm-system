@@ -9,6 +9,7 @@ de Hostaway sobre las que se apoyará el portal del huésped.
 | [decisiones-arquitectura-y-seguridad.md](decisiones-arquitectura-y-seguridad.md) | Por qué está construido así. D-01 a D-17, cerradas |
 | [guia-servidor-vps-accesos.md](guia-servidor-vps-accesos.md) | Contrato para Ingeniería IoT: qué debe implementar la VPS |
 | [nota-cambio-employeeno.md](nota-cambio-employeeno.md) | Enmienda al contrato: `employeeNo` sin guiones (28-09-2026) |
+| [pruebas/](pruebas/) | Pruebas sobre las puertas reales, por edificio: definición formal, guía de ejecución y colección de Postman |
 
 ---
 
