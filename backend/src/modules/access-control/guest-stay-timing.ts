@@ -15,6 +15,24 @@ export const DEFAULT_GRACE_HOURS = 3;
 
 const HOUR_MS = 60 * 60 * 1000;
 
+const LOCAL_OFFSET_MS = ((): number => {
+  const [, sign, hours, minutes] = /^([+-])(\d{2}):(\d{2})$/.exec(
+    LOCAL_UTC_OFFSET,
+  )!;
+
+  return (
+    (sign === '-' ? -1 : 1) * (Number(hours) * 60 + Number(minutes)) * 60_000
+  );
+})();
+
+/**
+ * Instante en el formato del cable hacia la VPS: hora local, offset numérico y
+ * sin milisegundos (`2026-09-14T12:00:00-05:00`). La VPS rechaza la `Z`.
+ */
+export const toWireTimestamp = (instant: Date): string =>
+  new Date(instant.getTime() + LOCAL_OFFSET_MS).toISOString().slice(0, 19) +
+  LOCAL_UTC_OFFSET;
+
 /** Hora 0–23 de una variable de entorno, o el respaldo si falta o no es válida. */
 export const configHour = (
   config: ConfigService,

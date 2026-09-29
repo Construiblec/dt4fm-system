@@ -5,6 +5,7 @@ import {
   checkOutInstant,
   incidentEligibility,
   leadHours,
+  toWireTimestamp,
 } from './guest-stay-timing';
 
 const HOUR = 60 * 60 * 1000;
@@ -36,6 +37,28 @@ describe('guest-stay-timing', () => {
     expect(checkOutInstant(to, 3).toISOString()).toBe(
       '2026-09-18T16:00:00.000Z',
     );
+  });
+
+  describe('toWireTimestamp', () => {
+    it('usa el offset local y ningún milisegundo, como pide la VPS', () => {
+      expect(toWireTimestamp(new Date('2026-09-14T17:00:00.000Z'))).toBe(
+        '2026-09-14T12:00:00-05:00',
+      );
+    });
+
+    it('cambia de día cuando en Quito aún es el anterior', () => {
+      expect(toWireTimestamp(new Date('2026-09-15T02:30:45.678Z'))).toBe(
+        '2026-09-14T21:30:45-05:00',
+      );
+    });
+
+    it('representa el mismo instante', () => {
+      const instant = atLocalHour('2026-09-18', 11, 3);
+
+      expect(new Date(toWireTimestamp(instant)).getTime()).toBe(
+        instant.getTime(),
+      );
+    });
   });
 
   describe('incidentEligibility', () => {
