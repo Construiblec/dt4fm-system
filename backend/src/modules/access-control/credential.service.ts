@@ -15,6 +15,7 @@ import {
   CredentialStatus,
   SubjectType,
 } from './entities/access-credential.entity';
+import { toWireTimestamp } from './guest-stay-timing';
 import { PinCipherService } from './pin-cipher.service';
 import { PinGeneratorService } from './pin-generator.service';
 
@@ -393,8 +394,8 @@ export class CredentialService {
         scope: current.scope,
         subjectType: current.subjectType,
         pin: this.cipher.decrypt(current.pinCiphertext),
-        validFrom: current.validFrom.toISOString(),
-        validTo: current.validTo.toISOString(),
+        validFrom: toWireTimestamp(current.validFrom),
+        validTo: toWireTimestamp(current.validTo),
         displayName: current.displayName.slice(0, DISPLAY_NAME_MAX),
         unitId: current.openmaintUnitId,
       });

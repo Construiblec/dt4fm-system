@@ -172,6 +172,11 @@ describe('AccessControlController (e2e)', () => {
       expect(res.body.syncState).toBe('synced');
       expect(res.body.issuedBy).toBe('manual:admin.mock');
       expect(res.body.pinConfigured).toBe(true);
+
+      // La VPS rechaza `…Z` y los milisegundos: exige el offset numérico.
+      const [, peticion] = mocks.accessIot.putCredential.mock.calls[0];
+      expect(peticion.validFrom).toBe('2026-09-14T12:00:00-05:00');
+      expect(peticion.validTo).toBe('2026-09-18T15:00:00-05:00');
     });
 
     it('deja la credencial en pending si solo se escribió en algunas puertas', async () => {
