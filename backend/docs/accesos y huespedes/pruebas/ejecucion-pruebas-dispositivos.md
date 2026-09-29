@@ -336,7 +336,9 @@ La colección no cambia: no contiene ningún dato de edificio.
 | V-01 en `failed` | `invalid_request`, `gateway_rejected`, `device_full`, `no_devices_in_scope` | Hallazgo. Ver el código en los logs de staging |
 | V-02 con puertas de más o de menos | Registro que no se retiró, o puerta ausente | Hallazgo para IoT, con la salida de la consola |
 | VPS dice `written` pero el teclado rechaza el PIN | Reloj del terminal, vigencia o modo del teclado | Ver `clockSkewSeconds` en P-08 y la vigencia en V-02 |
-| Apertura `503` | `ACCESS_REMOTE_OPEN_ENABLED` apagado en staging, o `remote_open_disabled` en el gateway | Revisar Render; si es el gateway, avisar a IoT |
+| Apertura `503` | `ACCESS_REMOTE_OPEN_ENABLED` apagado en staging | Revisar Render |
+| Apertura `failed` con `remote_open_disabled` | El gateway tiene apagado el control físico. El panel dice «El edificio tiene apagado el control remoto de puertas» | Avisar a IoT |
+| Apertura `failed` con `not_found` | El gateway aún no gestiona esa puerta. El panel dice «Esta puerta aún no admite apertura remota» | Hallazgo para IoT, con el `deviceId` |
 | Apertura `uncertain` | La orden salió y el terminal no confirmó | Hallazgo, con hora y `requestId`. No repetir sin el observador |
 | `429` inesperado | Menos de 10 s desde la orden anterior sobre la misma puerta | Esperar y repetir |
 | V-04 / V-05 `401` inesperado | Enlace de otra reserva | Ejecutar V-01 y V-03 de nuevo |

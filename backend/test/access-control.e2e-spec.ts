@@ -12,6 +12,7 @@ import {
   BAT_BUILDING_ID,
   DEFAULT_ACCESS_BUILDINGS,
   ING_BUILDING_ID,
+  PRA_BUILDING_ID,
 } from './mocks/gateways.mock';
 import { AuthorizationsService } from '../src/modules/access-control/authorizations.service';
 import { BuildingCatalogService } from '../src/modules/access-control/building-catalog.service';
@@ -1649,6 +1650,68 @@ describe('AccessControlController (e2e)', () => {
             ],
           }),
         ]);
+      });
+
+      it('abre puertas de cualquier edificio', async () => {
+        mocks.accessIot.listDevices.mockResolvedValue([
+          ...PUERTAS,
+          {
+            deviceId: 'PRA-PEATONAL-1',
+            buildingId: PRA_BUILDING_ID,
+            kind: 'terminal',
+            scope: 'pedestrian',
+            online: true,
+          },
+        ]);
+
+        const res = await abrirComoCav('PRA-PEATONAL-1').expect(200);
+        const lista = await request(app.getHttpServer())
+          .get('/access-doors')
+          .set(CAV_SESSION)
+          .expect(200);
+
+        expect(res.body.data).toMatchObject({
+          deviceId: 'PRA-PEATONAL-1',
+          outcome: 'opened',
+        });
+        expect(mocks.accessIot.commandDevice).toHaveBeenCalledWith(
+          'PRA-PEATONAL-1',
+          'open',
+          expect.any(Object),
+        );
+        expect(
+          lista.body.data.buildings.map((b: { name: string }) => b.name),
+        ).toEqual(['Inglaterra', 'Pradera']);
+      });
+
+      it('abre una puerta recién dada de alta sin esperar a la caché', async () => {
+        await abrirComoCav('ING-PEATONAL-1').expect(200);
+        mocks.accessIot.listDevices.mockResolvedValue([
+          ...PUERTAS,
+          {
+            deviceId: 'ING-PEATONAL-2',
+            buildingId: ING_BUILDING_ID,
+            kind: 'terminal',
+            scope: 'pedestrian',
+            online: true,
+          },
+        ]);
+
+        await abrirComoCav('ING-PEATONAL-2').expect(200);
+      });
+
+      it('devuelve por qué no se abrió', async () => {
+        mocks.accessIot.commandDevice.mockResolvedValueOnce({
+          outcome: 'failed',
+          errorCode: 'remote_open_disabled',
+        });
+
+        const res = await abrirComoCav('ING-PEATONAL-1').expect(200);
+
+        expect(res.body.data).toMatchObject({
+          outcome: 'failed',
+          errorCode: 'remote_open_disabled',
+        });
       });
 
       it('404 con una puerta que no existe', async () => {

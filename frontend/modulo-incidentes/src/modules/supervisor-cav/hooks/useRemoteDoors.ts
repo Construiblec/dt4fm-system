@@ -12,7 +12,7 @@ import type {
 } from "@/modules/supervisor-cav/types/Door";
 
 export type DoorActionResult =
-  | { outcome: DoorCommandOutcome }
+  | { outcome: DoorCommandOutcome; errorCode?: string }
   | { outcome: "error"; message: string };
 
 export type PendingCommand = { deviceId: string; action: DoorAction };
@@ -63,7 +63,7 @@ export const useRemoteDoors = () => {
         delete requestIds.current[key];
         setResults((prev) => ({
           ...prev,
-          [deviceId]: { outcome: result.outcome },
+          [deviceId]: { outcome: result.outcome, errorCode: result.errorCode },
         }));
         void load(true);
       } catch (err) {

@@ -39,6 +39,14 @@ const lastCommandText = (last: DoorLastCommand) =>
   `${last.actorType === "guest" ? "huésped" : (last.actorUsername ?? "staff")} · ` +
   OUTCOME_LABELS[last.outcome];
 
+/** Motivo del `failed` según el código de la VPS; lo demás cae en el genérico. */
+const FAILURE_MESSAGES: Record<string, string> = {
+  device_unreachable: "La puerta no está en línea.",
+  gateway_unreachable: "El edificio no responde.",
+  remote_open_disabled: "El edificio tiene apagado el control remoto de puertas.",
+  not_found: "Esta puerta aún no admite apertura remota.",
+};
+
 const noticeFor = (result: DoorActionResult) => {
   switch (result.outcome) {
     case "opened":
@@ -63,7 +71,8 @@ const noticeFor = (result: DoorActionResult) => {
       return {
         tone: "text-red-700 bg-red-50",
         Icon: CircleAlert,
-        text: "La puerta no respondió.",
+        text:
+          FAILURE_MESSAGES[result.errorCode ?? ""] ?? "La puerta no respondió.",
       };
     case "error":
       return {
