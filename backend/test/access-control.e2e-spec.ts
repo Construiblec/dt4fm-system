@@ -124,7 +124,7 @@ describe('AccessControlController (e2e)', () => {
 
   beforeEach(async () => {
     await dataSource.query(
-      'TRUNCATE TABLE "remote_open_request", "access_credential", "guest_stay" CASCADE',
+      'TRUNCATE TABLE "vehicular_gate_phase", "remote_open_request", "access_credential", "guest_stay" CASCADE',
     );
     // El rol por defecto del mock es MaintOffice, que no administra accesos.
     mocks.openmaint.getSession.mockResolvedValue(
@@ -1284,9 +1284,10 @@ describe('AccessControlController (e2e)', () => {
   });
 
   /**
-   * Apertura remota: el huésped abre la barrera de su edificio y el Supervisor
-   * CAV cualquier puerta. Las fechas van relativas a hoy porque la ventana de
-   * acceso se compara con el reloj real.
+   * Apertura remota por `trigger`: un pulso único a la barrera vehicular, con
+   * «Abrir» y «Cerrar» como fases por barrera guardadas en la base. Tiempos de
+   * `setup-env.ts`: ventana de cierre 40 s y cierre automático 90 s. Las fechas
+   * van relativas a hoy porque la ventana de acceso se compara con el reloj real.
    */
   describe('Apertura remota', () => {
     const CAV_SESSION = { authorization: MOCK_SESSION_ID };
@@ -1308,11 +1309,19 @@ describe('AccessControlController (e2e)', () => {
     ];
 
     const estanciaConToken = async (
-      opciones: { vehicular?: boolean; llegadaEnDias?: number } = {},
+      opciones: {
+        vehicular?: boolean;
+        llegadaEnDias?: number;
+        reserva?: string;
+      } = {},
     ) => {
-      const { vehicular = true, llegadaEnDias = -1 } = opciones;
+      const {
+        vehicular = true,
+        llegadaEnDias = -1,
+        reserva = '55120001',
+      } = opciones;
       const estancia = await guestStayService.upsertFromReservation({
-        hostawayReservationId: '55120001',
+        hostawayReservationId: reserva,
         listingId: '288172',
         guestName: 'Lucía Mora',
         guestEmail: 'lucia@example.com',
@@ -1343,19 +1352,6 @@ describe('AccessControlController (e2e)', () => {
         .set('Authorization', auth)
         .send({ requestId });
 
-    const historial = () => dataSource.getRepository(RemoteOpenRequest).find();
-
-    beforeEach(() => {
-      mocks.accessIot.listDevices.mockResolvedValue(PUERTAS);
-      mocks.accessIot.commandDevice.mockImplementation(
-        (_deviceId: string, action: 'open' | 'close') =>
-          Promise.resolve({
-            outcome: action === 'open' ? 'opened' : 'closed',
-            at: new Date().toISOString(),
-          }),
-      );
-    });
-
     const cerrarComoHuesped = (
       auth: string,
       requestId: string = randomUUID(),
@@ -1365,138 +1361,86 @@ describe('AccessControlController (e2e)', () => {
         .set('Authorization', auth)
         .send({ requestId });
 
-    describe('cierre de la barrera', () => {
-      it('quien la abrió la baja antes de tiempo, y el portal lo sabe', async () => {
-        const { auth } = await estanciaConToken();
+    const portal = (auth: string) =>
+      request(app.getHttpServer())
+        .get('/guest/me')
+        .set('Authorization', auth)
+        .expect(200);
 
-        const apertura = await abrirComoHuesped(auth).expect(200);
-        const portal = await request(app.getHttpServer())
-          .get('/guest/me')
-          .set('Authorization', auth)
-          .expect(200);
+    const historial = () => dataSource.getRepository(RemoteOpenRequest).find();
 
-        expect(apertura.body.openUntil).toEqual(expect.any(String));
-        expect(portal.body.vehicularGateOpenUntil).toBe(
-          apertura.body.openUntil,
-        );
+    /** Mueve hacia atrás el historial y la fase: simula que pasó el tiempo. */
+    const envejecer = async (segundos: number) => {
+      await dataSource.query(
+        `UPDATE "remote_open_request" SET "requested_at" = "requested_at" - make_interval(secs => $1::float8), "finished_at" = "finished_at" - make_interval(secs => $1::float8)`,
+        [segundos],
+      );
+      await dataSource.query(
+        `UPDATE "vehicular_gate_phase" SET "pulsed_at" = "pulsed_at" - make_interval(secs => $1::float8), "updated_at" = "updated_at" - make_interval(secs => $1::float8)`,
+        [segundos],
+      );
+    };
 
-        const cierre = await cerrarComoHuesped(auth).expect(200);
-
-        expect(cierre.body).toMatchObject({
-          outcome: 'closed',
-          openUntil: null,
-        });
-        expect(mocks.accessIot.commandDevice).toHaveBeenLastCalledWith(
-          'ING-VEHICULAR-1',
-          'close',
-          expect.any(Object),
-        );
-
-        const despues = await request(app.getHttpServer())
-          .get('/guest/me')
-          .set('Authorization', auth)
-          .expect(200);
-        expect(despues.body.vehicularGateOpenUntil).toBeNull();
-      });
-
-      it('409 si no la abrió él', async () => {
-        const { auth } = await estanciaConToken();
-
-        await cerrarComoHuesped(auth).expect(409);
-        expect(mocks.accessIot.commandDevice).not.toHaveBeenCalled();
-      });
-
-      it('409 si ya se cerró sola', async () => {
-        const { stayId, auth } = await estanciaConToken();
-        await abrirComoHuesped(auth).expect(200);
-        // Se envejece la apertura más allá del cierre automático.
-        await dataSource.query(
-          `UPDATE "remote_open_request" SET "requested_at" = now() - interval '2 minutes' WHERE "guest_stay_id" = $1`,
-          [stayId],
-        );
-
-        await cerrarComoHuesped(auth).expect(409);
-      });
-
-      it('el Supervisor CAV baja una barrera vehicular', async () => {
-        mocks.openmaint.getSession.mockResolvedValue(
-          mockSession({ role: 'SupervisorCAV', username: 'cav.mock' }),
-        );
-
-        const res = await request(app.getHttpServer())
-          .post('/access-doors/ING-VEHICULAR-1/close')
-          .set(CAV_SESSION)
-          .send({ requestId: randomUUID() })
-          .expect(200);
-
-        expect(res.body.data).toMatchObject({
-          deviceId: 'ING-VEHICULAR-1',
-          outcome: 'closed',
-        });
-      });
-
-      it('422 al intentar cerrar una puerta peatonal', async () => {
-        mocks.openmaint.getSession.mockResolvedValue(
-          mockSession({ role: 'SupervisorCAV', username: 'cav.mock' }),
-        );
-
-        await request(app.getHttpServer())
-          .post('/access-doors/ING-PEATONAL-1/close')
-          .set(CAV_SESSION)
-          .send({ requestId: randomUUID() })
-          .expect(422);
-      });
-
-      it('el panel muestra hasta cuándo sigue abierta', async () => {
-        mocks.openmaint.getSession.mockResolvedValue(
-          mockSession({ role: 'SupervisorCAV', username: 'cav.mock' }),
-        );
-        const { auth } = await estanciaConToken();
-        await abrirComoHuesped(auth).expect(200);
-
-        const res = await request(app.getHttpServer())
-          .get('/access-doors')
-          .set(CAV_SESSION)
-          .expect(200);
-        const [peatonal, vehicular] = res.body.data.buildings[0].doors;
-
-        expect(peatonal.openUntil).toBeNull();
-        expect(vehicular.openUntil).toEqual(expect.any(String));
-      });
+    beforeEach(() => {
+      mocks.accessIot.listDevices.mockResolvedValue(PUERTAS);
+      mocks.accessIot.triggerDevice.mockResolvedValue({ outcome: 'triggered' });
     });
 
     describe('huésped', () => {
-      it('abre la barrera de su edificio y deja constancia', async () => {
+      it('pulsa la barrera de su edificio con solo el requestId y deja constancia', async () => {
         const { stayId, auth } = await estanciaConToken();
         const requestId = randomUUID();
 
         const res = await abrirComoHuesped(auth, requestId).expect(200);
 
-        expect(res.body).toMatchObject({ requestId, outcome: 'opened' });
-        expect(mocks.accessIot.commandDevice).toHaveBeenCalledWith(
+        expect(res.body).toMatchObject({ requestId, outcome: 'triggered' });
+        expect(
+          new Date(res.body.openUntil).getTime() -
+            new Date(res.body.at).getTime(),
+        ).toBe(40_000);
+        expect(mocks.accessIot.triggerDevice).toHaveBeenCalledWith(
           'ING-VEHICULAR-1',
-          'open',
-          { requestId, actor: { type: 'guest', ref: stayId } },
+          { requestId },
         );
         expect(await historial()).toEqual([
           expect.objectContaining({
             deviceId: 'ING-VEHICULAR-1',
+            action: 'open',
             actorType: 'guest',
             guestStayId: stayId,
-            status: 'opened',
+            status: 'triggered',
           }),
         ]);
       });
 
-      it('el portal anuncia que puede abrir', async () => {
+      it('el UUID viaja en minúsculas', async () => {
+        const { auth } = await estanciaConToken();
+        const requestId = randomUUID();
+
+        await abrirComoHuesped(auth, requestId.toUpperCase()).expect(200);
+
+        expect(mocks.accessIot.triggerDevice).toHaveBeenCalledWith(
+          'ING-VEHICULAR-1',
+          { requestId },
+        );
+        expect((await historial())[0].requestId).toBe(requestId);
+      });
+
+      it('el portal anuncia el botón y, tras abrir, la ventana de cierre', async () => {
         const { auth } = await estanciaConToken();
 
-        const res = await request(app.getHttpServer())
-          .get('/guest/me')
-          .set('Authorization', auth)
-          .expect(200);
+        expect((await portal(auth)).body).toMatchObject({
+          vehicularGateAvailable: true,
+          canOpenVehicularGate: true,
+          vehicularGateOpenUntil: null,
+        });
 
-        expect(res.body.canOpenVehicularGate).toBe(true);
+        const apertura = await abrirComoHuesped(auth).expect(200);
+
+        expect((await portal(auth)).body).toMatchObject({
+          canOpenVehicularGate: false,
+          vehicularGateOpenUntil: apertura.body.openUntil,
+        });
       });
 
       it('repetir el mismo requestId no manda un segundo pulso', async () => {
@@ -1506,61 +1450,149 @@ describe('AccessControlController (e2e)', () => {
         await abrirComoHuesped(auth, requestId).expect(200);
         const res = await abrirComoHuesped(auth, requestId).expect(200);
 
-        expect(res.body.outcome).toBe('opened');
-        expect(mocks.accessIot.commandDevice).toHaveBeenCalledTimes(1);
+        expect(res.body.outcome).toBe('triggered');
+        expect(mocks.accessIot.triggerDevice).toHaveBeenCalledTimes(1);
       });
 
-      it('429 si la barrera se acaba de abrir', async () => {
+      it('409 y sin llamar a la VPS si otro huésped acaba de abrirla', async () => {
+        const primero = await estanciaConToken();
+        const segundo = await estanciaConToken({ reserva: '55120002' });
+        await abrirComoHuesped(primero.auth).expect(200);
+        await envejecer(15);
+
+        await abrirComoHuesped(segundo.auth).expect(409);
+        await cerrarComoHuesped(segundo.auth).expect(409);
+
+        expect(mocks.accessIot.triggerDevice).toHaveBeenCalledTimes(1);
+        expect((await portal(segundo.auth)).body).toMatchObject({
+          vehicularGateAvailable: true,
+          canOpenVehicularGate: false,
+          vehicularGateOpenUntil: null,
+        });
+      });
+
+      it('quien la abrió pulsa «Cerrar» dentro de la ventana, con otro UUID', async () => {
+        const { auth } = await estanciaConToken();
+        const apertura = await abrirComoHuesped(auth).expect(200);
+        await envejecer(15);
+
+        const cierre = await cerrarComoHuesped(auth).expect(200);
+
+        expect(cierre.body).toMatchObject({
+          outcome: 'triggered',
+          openUntil: null,
+        });
+        expect(cierre.body.requestId).not.toBe(apertura.body.requestId);
+        expect(mocks.accessIot.triggerDevice).toHaveBeenLastCalledWith(
+          'ING-VEHICULAR-1',
+          { requestId: cierre.body.requestId },
+        );
+        expect((await portal(auth)).body.vehicularGateOpenUntil).toBeNull();
+      });
+
+      it('409 al cerrar sin haberla abierto', async () => {
         const { auth } = await estanciaConToken();
 
+        await cerrarComoHuesped(auth).expect(409);
+        expect(mocks.accessIot.triggerDevice).not.toHaveBeenCalled();
+      });
+
+      it('entre la ventana de cierre y el cierre automático nadie pulsa', async () => {
+        const primero = await estanciaConToken();
+        const segundo = await estanciaConToken({ reserva: '55120002' });
+        await abrirComoHuesped(primero.auth).expect(200);
+        await envejecer(50);
+
+        await cerrarComoHuesped(primero.auth).expect(409);
+        await abrirComoHuesped(primero.auth).expect(409);
+        await abrirComoHuesped(segundo.auth).expect(409);
+        expect(mocks.accessIot.triggerDevice).toHaveBeenCalledTimes(1);
+
+        await envejecer(45);
+
+        await abrirComoHuesped(segundo.auth).expect(200);
+        expect(mocks.accessIot.triggerDevice).toHaveBeenCalledTimes(2);
+      });
+
+      it('enfriamiento de 10 s por barrera para cualquier pulso', async () => {
+        const { auth } = await estanciaConToken();
         await abrirComoHuesped(auth).expect(200);
+        await envejecer(15);
+        await cerrarComoHuesped(auth).expect(200);
+
         const res = await abrirComoHuesped(auth).expect(429);
 
         expect(res.body.retryAfterSeconds).toBeGreaterThan(0);
-        expect(mocks.accessIot.commandDevice).toHaveBeenCalledTimes(1);
+        expect(mocks.accessIot.triggerDevice).toHaveBeenCalledTimes(2);
       });
 
-      it('un fallo no activa el enfriamiento: se puede volver a intentar', async () => {
-        mocks.accessIot.commandDevice.mockResolvedValueOnce({
+      it('un fallo no mueve la fase ni activa el enfriamiento', async () => {
+        mocks.accessIot.triggerDevice.mockResolvedValueOnce({
           outcome: 'failed',
           errorCode: 'device_unreachable',
         });
         const { auth } = await estanciaConToken();
 
         const fallo = await abrirComoHuesped(auth).expect(200);
+        expect((await portal(auth)).body.canOpenVehicularGate).toBe(true);
         const reintento = await abrirComoHuesped(auth).expect(200);
 
         expect(fallo.body).toMatchObject({
           outcome: 'failed',
           errorCode: 'device_unreachable',
+          openUntil: null,
         });
-        expect(reintento.body.outcome).toBe('opened');
+        expect(reintento.body.outcome).toBe('triggered');
       });
 
-      it('informa el resultado incierto tal cual', async () => {
-        mocks.accessIot.commandDevice.mockResolvedValueOnce({
+      it('un pulso incierto deja la barrera en uncertain, sin segundo pulso', async () => {
+        mocks.accessIot.triggerDevice.mockResolvedValueOnce({
           outcome: 'uncertain',
         });
         const { auth } = await estanciaConToken();
 
         const res = await abrirComoHuesped(auth).expect(200);
+        await envejecer(120);
 
-        expect(res.body.outcome).toBe('uncertain');
+        expect(res.body).toMatchObject({
+          outcome: 'uncertain',
+          openUntil: null,
+        });
         expect((await historial())[0].status).toBe('uncertain');
+        expect((await portal(auth)).body.canOpenVehicularGate).toBe(false);
+        await abrirComoHuesped(auth).expect(409);
+        expect(mocks.accessIot.triggerDevice).toHaveBeenCalledTimes(1);
+      });
+
+      it('sin tiempos medidos el edificio no ofrece el botón', async () => {
+        const { auth } = await estanciaConToken();
+        const tiempos = process.env.ACCESS_VEHICULAR_GATE_TIMINGS;
+        delete process.env.ACCESS_VEHICULAR_GATE_TIMINGS;
+
+        try {
+          expect((await portal(auth)).body).toMatchObject({
+            vehicularGateAvailable: false,
+            canOpenVehicularGate: false,
+          });
+          await abrirComoHuesped(auth).expect(422);
+          expect(mocks.accessIot.triggerDevice).not.toHaveBeenCalled();
+        } finally {
+          process.env.ACCESS_VEHICULAR_GATE_TIMINGS = tiempos;
+        }
       });
 
       it('403 con una reserva solo peatonal', async () => {
         const { auth } = await estanciaConToken({ vehicular: false });
 
         await abrirComoHuesped(auth).expect(403);
-        expect(mocks.accessIot.commandDevice).not.toHaveBeenCalled();
+        expect(mocks.accessIot.triggerDevice).not.toHaveBeenCalled();
       });
 
       it('403 antes de que empiece la ventana de acceso', async () => {
         const { auth } = await estanciaConToken({ llegadaEnDias: 3 });
 
         await abrirComoHuesped(auth).expect(403);
-        expect(mocks.accessIot.commandDevice).not.toHaveBeenCalled();
+        expect(mocks.accessIot.triggerDevice).not.toHaveBeenCalled();
       });
 
       it('422 si el edificio no tiene barrera', async () => {
@@ -1602,136 +1634,181 @@ describe('AccessControlController (e2e)', () => {
         );
       });
 
-      const abrirComoCav = (deviceId: string, requestId = randomUUID()) =>
+      const comoCav = (
+        deviceId: string,
+        accion: 'open' | 'close',
+        requestId = randomUUID(),
+      ) =>
         request(app.getHttpServer())
-          .post(`/access-doors/${deviceId}/open`)
+          .post(`/access-doors/${deviceId}/${accion}`)
           .set(CAV_SESSION)
           .send({ requestId });
 
-      it('abre una puerta peatonal', async () => {
+      const liberar = (deviceId: string) =>
+        request(app.getHttpServer())
+          .post(`/access-doors/${deviceId}/resolve`)
+          .set(CAV_SESSION);
+
+      const puertas = async () =>
+        (
+          await request(app.getHttpServer())
+            .get('/access-doors')
+            .set(CAV_SESSION)
+            .expect(200)
+        ).body.data;
+
+      it('pulsa una barrera vehicular sin mandar quién fue', async () => {
         const requestId = randomUUID();
 
-        const res = await abrirComoCav('ING-PEATONAL-1', requestId).expect(200);
+        const res = await comoCav('ING-VEHICULAR-1', 'open', requestId).expect(
+          200,
+        );
 
         expect(res.body.data).toMatchObject({
           requestId,
-          deviceId: 'ING-PEATONAL-1',
-          outcome: 'opened',
+          deviceId: 'ING-VEHICULAR-1',
+          outcome: 'triggered',
         });
-        expect(mocks.accessIot.commandDevice).toHaveBeenCalledWith(
-          'ING-PEATONAL-1',
-          'open',
-          { requestId, actor: { type: 'staff', ref: 'cav.mock' } },
+        expect(mocks.accessIot.triggerDevice).toHaveBeenCalledWith(
+          'ING-VEHICULAR-1',
+          { requestId },
         );
+        expect((await historial())[0]).toMatchObject({
+          actorType: 'staff',
+          actorUsername: 'cav.mock',
+        });
       });
 
-      it('lista las puertas por edificio con la última apertura', async () => {
-        await abrirComoCav('ING-VEHICULAR-1').expect(200);
+      it('422 con una puerta peatonal: ya no se abre a distancia', async () => {
+        await comoCav('ING-PEATONAL-1', 'open').expect(422);
+        expect(mocks.accessIot.triggerDevice).not.toHaveBeenCalled();
+      });
 
-        const res = await request(app.getHttpServer())
-          .get('/access-doors')
-          .set(CAV_SESSION)
-          .expect(200);
+      it('baja la barrera que abrió un huésped, dentro de la ventana', async () => {
+        const { auth } = await estanciaConToken();
+        await abrirComoHuesped(auth).expect(200);
+        await envejecer(15);
 
-        expect(res.body.data.enabled).toBe(true);
-        expect(res.body.data.buildings).toEqual([
+        const res = await comoCav('ING-VEHICULAR-1', 'close').expect(200);
+
+        expect(res.body.data.outcome).toBe('triggered');
+        expect((await portal(auth)).body.vehicularGateOpenUntil).toBeNull();
+      });
+
+      it('409 al abrir una barrera en su ventana de cierre', async () => {
+        await comoCav('ING-VEHICULAR-1', 'open').expect(200);
+        await envejecer(15);
+
+        await comoCav('ING-VEHICULAR-1', 'open').expect(409);
+        expect(mocks.accessIot.triggerDevice).toHaveBeenCalledTimes(1);
+      });
+
+      it('lista la fase de cada barrera; las peatonales sin control remoto', async () => {
+        const antes = await puertas();
+        await comoCav('ING-VEHICULAR-1', 'open').expect(200);
+        const despues = await puertas();
+
+        expect(antes.enabled).toBe(true);
+        expect(antes.buildings[0].doors).toEqual([
           expect.objectContaining({
-            buildingId: ING_BUILDING_ID,
-            name: 'Inglaterra',
-            doors: [
-              expect.objectContaining({
-                deviceId: 'ING-PEATONAL-1',
-                lastCommand: null,
-              }),
-              expect.objectContaining({
-                deviceId: 'ING-VEHICULAR-1',
-                lastCommand: expect.objectContaining({
-                  action: 'open',
-                  outcome: 'opened',
-                  actorType: 'staff',
-                  actorUsername: 'cav.mock',
-                }),
-              }),
-            ],
+            deviceId: 'ING-PEATONAL-1',
+            remoteControl: false,
+            phase: null,
+            openUntil: null,
+          }),
+          expect.objectContaining({
+            deviceId: 'ING-VEHICULAR-1',
+            remoteControl: true,
+            phase: 'ready',
+            lastCommand: null,
           }),
         ]);
+        expect(despues.buildings[0].doors[1]).toMatchObject({
+          phase: 'closable',
+          openUntil: expect.any(String),
+          settlesAt: expect.any(String),
+          lastCommand: expect.objectContaining({
+            action: 'open',
+            outcome: 'triggered',
+            actorType: 'staff',
+            actorUsername: 'cav.mock',
+          }),
+        });
       });
 
-      it('abre puertas de cualquier edificio', async () => {
+      it('una barrera sin confirmar solo se libera a mano', async () => {
+        mocks.accessIot.triggerDevice.mockResolvedValueOnce({
+          outcome: 'uncertain',
+        });
+        await comoCav('ING-VEHICULAR-1', 'open').expect(200);
+        await envejecer(120);
+
+        expect((await puertas()).buildings[0].doors[1].phase).toBe('uncertain');
+        await comoCav('ING-VEHICULAR-1', 'open').expect(409);
+
+        await liberar('ING-VEHICULAR-1').expect(200);
+
+        expect((await puertas()).buildings[0].doors[1].phase).toBe('ready');
+        await comoCav('ING-VEHICULAR-1', 'open').expect(200);
+        expect(mocks.accessIot.triggerDevice).toHaveBeenCalledTimes(2);
+      });
+
+      it('409 al liberar una barrera que no está sin confirmar', async () => {
+        await liberar('ING-VEHICULAR-1').expect(409);
+      });
+
+      it('pulsa barreras de cualquier edificio', async () => {
         mocks.accessIot.listDevices.mockResolvedValue([
           ...PUERTAS,
           {
-            deviceId: 'PRA-PEATONAL-1',
+            deviceId: 'PRA-VEHICULAR-1',
             buildingId: PRA_BUILDING_ID,
-            kind: 'terminal',
-            scope: 'pedestrian',
+            kind: 'barrier',
+            scope: 'vehicular',
             online: true,
           },
         ]);
 
-        const res = await abrirComoCav('PRA-PEATONAL-1').expect(200);
-        const lista = await request(app.getHttpServer())
-          .get('/access-doors')
-          .set(CAV_SESSION)
-          .expect(200);
+        const res = await comoCav('PRA-VEHICULAR-1', 'open').expect(200);
+        const lista = await puertas();
 
         expect(res.body.data).toMatchObject({
-          deviceId: 'PRA-PEATONAL-1',
-          outcome: 'opened',
+          deviceId: 'PRA-VEHICULAR-1',
+          outcome: 'triggered',
         });
-        expect(mocks.accessIot.commandDevice).toHaveBeenCalledWith(
-          'PRA-PEATONAL-1',
-          'open',
-          expect.any(Object),
-        );
-        expect(
-          lista.body.data.buildings.map((b: { name: string }) => b.name),
-        ).toEqual(['Inglaterra', 'Pradera']);
-      });
-
-      it('abre una puerta recién dada de alta sin esperar a la caché', async () => {
-        await abrirComoCav('ING-PEATONAL-1').expect(200);
-        mocks.accessIot.listDevices.mockResolvedValue([
-          ...PUERTAS,
-          {
-            deviceId: 'ING-PEATONAL-2',
-            buildingId: ING_BUILDING_ID,
-            kind: 'terminal',
-            scope: 'pedestrian',
-            online: true,
-          },
+        expect(lista.buildings.map((b: { name: string }) => b.name)).toEqual([
+          'Inglaterra',
+          'Pradera',
         ]);
-
-        await abrirComoCav('ING-PEATONAL-2').expect(200);
       });
 
-      it('devuelve por qué no se abrió', async () => {
-        mocks.accessIot.commandDevice.mockResolvedValueOnce({
+      it('devuelve por qué no salió el pulso', async () => {
+        mocks.accessIot.triggerDevice.mockResolvedValueOnce({
           outcome: 'failed',
-          errorCode: 'remote_open_disabled',
+          errorCode: 'operations_disabled',
         });
 
-        const res = await abrirComoCav('ING-PEATONAL-1').expect(200);
+        const res = await comoCav('ING-VEHICULAR-1', 'open').expect(200);
 
         expect(res.body.data).toMatchObject({
           outcome: 'failed',
-          errorCode: 'remote_open_disabled',
+          errorCode: 'operations_disabled',
         });
       });
 
       it('404 con una puerta que no existe', async () => {
-        await abrirComoCav('NO-EXISTE').expect(404);
+        await comoCav('NO-EXISTE', 'open').expect(404);
       });
 
       it('409 si el requestId ya lo usó otra persona', async () => {
         const requestId = randomUUID();
-        await abrirComoCav('ING-PEATONAL-1', requestId).expect(200);
+        await comoCav('ING-VEHICULAR-1', 'open', requestId).expect(200);
 
         mocks.openmaint.getSession.mockResolvedValue(
           mockSession({ role: 'SupervisorCAV', username: 'otra.persona' }),
         );
 
-        await abrirComoCav('ING-PEATONAL-1', requestId).expect(409);
+        await comoCav('ING-VEHICULAR-1', 'open', requestId).expect(409);
       });
 
       it('403 sin rol de CAV', async () => {
@@ -1739,7 +1816,8 @@ describe('AccessControlController (e2e)', () => {
           mockSession({ role: 'MaintOffice' }),
         );
 
-        await abrirComoCav('ING-PEATONAL-1').expect(403);
+        await comoCav('ING-VEHICULAR-1', 'open').expect(403);
+        await liberar('ING-VEHICULAR-1').expect(403);
         await request(app.getHttpServer())
           .get('/access-doors')
           .set(CAV_SESSION)

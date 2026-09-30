@@ -226,35 +226,42 @@ fallo peligroso del módulo.
 
 ## D-18 · Apertura remota de un toque
 
-Decidido el 2026-09-18. El huésped abre la barrera **vehicular** de su edificio desde el portal; el
-Supervisor CAV abre **cualquier puerta**, peatonal o vehicular, desde el panel. En los dos casos es un
-solo toque, sin confirmación. Hay una puerta vehicular por edificio, así que el huésped ve un único
-botón.
+Decidido el 2026-09-18; enmendado el 2026-09-30 por la [nota de `trigger`](nota-cambio-trigger.md).
+El huésped pulsa la barrera **vehicular** de su edificio desde el portal y el Supervisor CAV
+**cualquier barrera vehicular** desde el panel. Las puertas peatonales ya no se abren a distancia:
+la API central las rechaza. En los dos casos es un solo toque, sin confirmación.
 
-El backend autoriza y la VPS ejecuta (`POST /v1/devices/{id}/open`). Las salvaguardas:
+El backend autoriza y la VPS ejecuta `POST /v1/devices/{id}/trigger`, **un pulso único**: la
+barrera no tiene sensor y el hardware solo admite eso. «Abrir» y «Cerrar» son fases de interfaz.
+Las salvaguardas:
 
 - **`ACCESS_REMOTE_OPEN_ENABLED`, apagado por defecto.** Es control físico, igual que en D-12.
-- **`requestId` por toque, deduplicado.** Repetir la petición no repite el pulso.
-- **Historial en `remote_open_request`**, escrito **antes** de llamar a la VPS.
-- **Enfriamiento de 10 s por puerta y por orden**, bajo candado, y **tope de 30 aperturas por
-  estancia al día**. Los dos se cuentan en la base, no en memoria. Por orden y no por puerta: cerrar
-  justo después de abrir es precisamente el caso de uso.
-- **El huésped solo dentro de su ventana de acceso** y con credencial `vehicular` o `both`. Es la
-  misma regla que muestra el botón en el portal.
+- **`requestId` por clic, deduplicado.** Repetir la petición no repite el pulso; un UUID nuevo, sí.
+- **Historial en `remote_open_request`**, escrito **antes** de llamar a la VPS. Es el único registro
+  de quién pulsó: `actor` ya no viaja.
+- **Enfriamiento de 10 s por barrera, para cualquier pulso**, y **tope de 30 aperturas por estancia
+  al día**. Los dos se cuentan en la base, bajo candado.
+- **El huésped solo dentro de su ventana de acceso** y con credencial `vehicular` o `both`.
 - **Ningún reintento automático.**
 
-**Qué pasa con un resultado incierto.** Si la orden salió y nadie confirmó, se registra `uncertain`,
-se avisa («si no se abrió, marca tu PIN») y **no se bloquea la puerta**. El gestor de Inglaterra
-bloqueaba tras un incierto hasta una inspección física. Aquí eso dejaría sin apertura remota a todos
-los huéspedes por un timeout de red. Si hace falta ese bloqueo, lo pone el gateway, que es quien toca
-el relé.
+**La fase, por barrera y en la base** (`vehicular_gate_phase`), compartida por huéspedes y
+Supervisor CAV. Tras un pulso desde `ready`:
 
-**Cerrar antes de tiempo.** Las barreras vehiculares bajan solas en torno a un minuto; mientras no
-pasa, se pueden bajar a mano (`POST /v1/devices/{id}/close`) para no esperar. Las peatonales no: se
-traban solas. **Un huésped solo baja la barrera que abrió él**, y solo dentro de ese minuto; el
-Supervisor CAV baja cualquiera. Así nadie baja la barrera sobre el auto de otro que acaba de
-abrirla. El minuto es `VEHICULAR_AUTO_CLOSE_MS` en `remote-open.rules.ts`: si el hardware cambia,
-se ajusta ahí.
+| Desde el pulso | Quién puede pulsar |
+|---|---|
+| Hasta la ventana de cierre | Quien la abrió o el Supervisor CAV («Cerrar») |
+| De ahí al cierre automático | Nadie: puede estar bajando |
+| Después | Cualquiera con acceso («Abrir») |
+
+Los dos tiempos se miden en sitio por edificio (`ACCESS_VEHICULAR_GATE_TIMINGS`). **Un edificio sin
+tiempos medidos no ofrece el botón.** Un «Abrir» sobre una barrera que no está en `ready` es un `409`
+y no llega a la VPS: con un pulso único, sería un «Cerrar» sobre el coche de otro.
+
+**Qué pasa con un resultado incierto.** Si el pulso pudo salir y nadie lo confirmó, se registra
+`uncertain`, se avisa al huésped («si no se abrió, marca tu PIN») y la barrera pasa a la fase
+`uncertain`. Nunca se deduce la fase de un incierto: el Supervisor CAV la revisa y la libera desde el
+panel. Queda pendiente con IoT si pasa sola a `ready` al vencer el cierre automático medido
+([nota](nota-cambio-trigger.md#pendiente-de-acordar)).
 
 ---
 

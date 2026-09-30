@@ -4,10 +4,9 @@ import {
   AccessIotHealth,
   CredentialWriteResult,
   InventoryPage,
-  DoorAction,
-  DoorCommandRequest,
-  DoorCommandResult,
   PutCredentialRequest,
+  TriggerRequest,
+  TriggerResult,
 } from './access-iot.types';
 
 /**
@@ -44,10 +43,12 @@ export abstract class AccessIotGateway {
     cursor?: string,
   ): Promise<InventoryPage>;
 
-  /** Un solo intento y nunca lanza: el desenlace, incluso el incierto, va en el resultado. */
-  abstract commandDevice(
+  /**
+   * Un pulso a la barrera vehicular. Un solo intento y nunca lanza: el
+   * desenlace, incluso el incierto, va en el resultado.
+   */
+  abstract triggerDevice(
     deviceId: string,
-    action: DoorAction,
-    request: DoorCommandRequest,
-  ): Promise<DoorCommandResult>;
+    request: TriggerRequest,
+  ): Promise<TriggerResult>;
 }

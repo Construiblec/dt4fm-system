@@ -33,7 +33,8 @@ export class DoorsController {
   @Get()
   @ApiHeader({ name: 'authorization', description: 'Sesión de openMAINT' })
   @ApiOperation({
-    summary: 'Puertas por edificio, con su estado y la última apertura remota',
+    summary:
+      'Puertas por edificio, con la fase de cada barrera y su último pulso',
   })
   @ApiResponse({ status: 200, description: 'Listado de puertas.' })
   @ApiResponse({ status: 403, description: 'Se requiere rol de CAV.' })
@@ -55,20 +56,26 @@ export class DoorsController {
   @HttpCode(HttpStatus.OK)
   @ApiHeader({ name: 'authorization', description: 'Sesión de openMAINT' })
   @ApiOperation({
-    summary: 'Abrir una puerta a distancia',
+    summary: 'Pulsar la barrera vehicular desde la fase «Abrir»',
     description:
-      'Peatonal o vehicular. `outcome` puede ser `opened`, `failed` o `uncertain`: este último significa que la orden salió pero nadie confirmó si se abrió.',
+      'Solo barreras vehiculares con tiempos medidos. Manda un pulso: `triggered` dice que salió, nada sobre la posición de la barrera. `uncertain`: pudo salir.',
   })
-  @ApiResponse({ status: 200, description: 'Resultado de la apertura.' })
+  @ApiResponse({ status: 200, description: 'Resultado del pulso.' })
   @ApiResponse({ status: 403, description: 'Se requiere rol de CAV.' })
   @ApiResponse({ status: 404, description: 'La puerta no existe.' })
   @ApiResponse({
     status: 409,
-    description: 'Ese requestId ya está en curso o es de otra persona.',
+    description:
+      'La fase de la barrera no admite «Abrir», o ese requestId ya está en curso o es de otra persona.',
+  })
+  @ApiResponse({
+    status: 422,
+    description:
+      'No es una barrera vehicular o su edificio no tiene tiempos medidos.',
   })
   @ApiResponse({
     status: 429,
-    description: 'La puerta se acaba de abrir; hay que esperar unos segundos.',
+    description: 'La barrera recibió un pulso hace menos de 10 s.',
   })
   @ApiResponse({ status: 503, description: 'Apertura remota desactivada.' })
   open(
@@ -84,15 +91,20 @@ export class DoorsController {
   @HttpCode(HttpStatus.OK)
   @ApiHeader({ name: 'authorization', description: 'Sesión de openMAINT' })
   @ApiOperation({
-    summary: 'Bajar una barrera vehicular antes de que se cierre sola',
+    summary: 'Pulsar la barrera vehicular desde la fase «Cerrar»',
     description:
-      'Solo puertas vehiculares: las peatonales se traban solas. `outcome` puede ser `closed`, `failed` o `uncertain`.',
+      'El mismo pulso que «Abrir», solo dentro de la ventana de cierre. `outcome`: `triggered`, `failed` o `uncertain`.',
   })
-  @ApiResponse({ status: 200, description: 'Resultado del cierre.' })
+  @ApiResponse({ status: 200, description: 'Resultado del pulso.' })
   @ApiResponse({ status: 403, description: 'Se requiere rol de CAV.' })
   @ApiResponse({ status: 404, description: 'La puerta no existe.' })
-  @ApiResponse({ status: 422, description: 'La puerta es peatonal.' })
-  @ApiResponse({ status: 429, description: 'Se acaba de cerrar.' })
+  @ApiResponse({ status: 409, description: 'Fuera de la ventana de cierre.' })
+  @ApiResponse({
+    status: 422,
+    description:
+      'No es una barrera vehicular o su edificio no tiene tiempos medidos.',
+  })
+  @ApiResponse({ status: 429, description: 'Pulso hace menos de 10 s.' })
   @ApiResponse({ status: 503, description: 'Apertura remota desactivada.' })
   close(
     @Param('deviceId') deviceId: string,
@@ -101,6 +113,35 @@ export class DoorsController {
     @Headers('x-session-token') sessionToken: string,
   ) {
     return this.command(deviceId, 'close', dto, authorization, sessionToken);
+  }
+
+  @Post(':deviceId/resolve')
+  @HttpCode(HttpStatus.OK)
+  @ApiHeader({ name: 'authorization', description: 'Sesión de openMAINT' })
+  @ApiOperation({
+    summary: 'Liberar una barrera con un pulso sin confirmar',
+    description:
+      'Tras revisar la barrera, la devuelve a la fase «Abrir». Nunca se deduce la fase de un pulso incierto.',
+  })
+  @ApiResponse({ status: 200, description: 'Barrera liberada.' })
+  @ApiResponse({ status: 403, description: 'Se requiere rol de CAV.' })
+  @ApiResponse({ status: 404, description: 'La puerta no existe.' })
+  @ApiResponse({
+    status: 409,
+    description: 'La barrera no tiene un pulso sin confirmar.',
+  })
+  async resolve(
+    @Param('deviceId') deviceId: string,
+    @Headers('authorization') authorization: string,
+    @Headers('x-session-token') sessionToken: string,
+  ) {
+    const { username } = await requireCavIdentity(
+      this.sessionRoleService,
+      authorization,
+      sessionToken,
+    );
+
+    return { data: await this.remoteOpen.resolveUncertain(deviceId, username) };
   }
 
   private async command(

@@ -30,7 +30,8 @@ export type AccessIotErrorCode =
   | 'not_found'
   | 'unauthorized'
   | 'invalid_request'
-  | 'remote_open_disabled'
+  | 'device_not_compatible'
+  | 'operations_disabled'
   | 'internal_error';
 
 export interface AccessIotBuilding {
@@ -127,26 +128,20 @@ export interface AccessIotHealth {
   buildings: AccessIotHealthBuilding[];
 }
 
+/** Fase de interfaz: la VPS solo conoce `trigger`, un pulso a la barrera. */
 export type DoorAction = 'open' | 'close';
 
-/** `uncertain`: la orden salió pero nadie confirmó si el relé se activó. */
-export type DoorCommandOutcome = 'opened' | 'closed' | 'failed' | 'uncertain';
+/** `triggered` confirma que el pulso salió, nada sobre la posición; `uncertain`, que pudo salir. */
+export type TriggerOutcome = 'triggered' | 'failed' | 'uncertain';
 
-export const DONE_OUTCOME: Record<DoorAction, DoorCommandOutcome> = {
-  open: 'opened',
-  close: 'closed',
-};
-
-export interface DoorCommandRequest {
+/** Solo `requestId`: cualquier otro campo es un `400 invalid_request`. */
+export interface TriggerRequest {
   requestId: string;
-  /** Solo para el historial de la VPS; nunca autoriza. */
-  actor: { type: 'guest' | 'staff'; ref: string };
 }
 
-export interface DoorCommandResult {
-  outcome: DoorCommandOutcome;
+export interface TriggerResult {
+  outcome: TriggerOutcome;
   errorCode?: AccessIotErrorCode;
-  at?: string;
 }
 
 /** Un registro no gestionado llega solo con `employeeNo` y `managed`. */

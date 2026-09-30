@@ -3,15 +3,21 @@ import type {
   AccessIotErrorCode,
   DeviceScope,
   DoorAction,
-  DoorCommandOutcome,
+  TriggerOutcome,
 } from '../access-iot.types';
 
 export type RemoteOpenActorType = 'guest' | 'staff';
-export type RemoteOpenStatus = 'attempted' | DoorCommandOutcome;
+/** `opened` y `closed` solo aparecen en filas anteriores a `trigger`: son historial. */
+export type RemoteOpenStatus =
+  | 'attempted'
+  | TriggerOutcome
+  | 'opened'
+  | 'closed';
 
 /**
- * Una orden remota (abrir o cerrar) por puerta. Se escribe `attempted` antes de
- * llamar a la VPS: si el proceso muere a medias, la fila queda como rastro.
+ * Un pulso remoto por barrera; `action` es la fase de interfaz (Abrir o
+ * Cerrar). Se escribe `attempted` antes de llamar a la VPS: si el proceso
+ * muere a medias, la fila queda como rastro. Es el único registro de quién pulsó.
  */
 @Entity('remote_open_request')
 @Index(['requestId', 'deviceId'], { unique: true })

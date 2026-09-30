@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   ArrowDownToLine,
   Car,
@@ -12,17 +13,23 @@ import {
 import { useVehicularGate } from "../hooks/useVehicularGate";
 import {
   getGuestApiErrorMessage,
+  type GateAction,
+  type GateCommandResult,
   type GuestPinState,
 } from "../services/guestPortalService";
 import { GuestCard, GuestSection } from "./GuestSection";
 
 const RESET_AFTER_MS = 5_000;
+/** Mientras otro la usa, se relee el portal para devolver el botón cuando se libere. */
+const BUSY_POLL_MS = 10_000;
 
 type VehicularGateCardProps = {
   token: string;
+  /** El edificio tiene apertura remota para esta estancia. */
+  available: boolean;
   canOpen: boolean;
   pinState: GuestPinState;
-  /** Del portal: hasta cuándo sigue arriba la barrera que abrió este huésped. */
+  /** Del portal: fin de la ventana para cerrar la barrera que abrió este huésped. */
   openUntil: string | null;
 };
 
@@ -72,41 +79,57 @@ const DisabledButton = ({ label, badge }: { label: string; badge: string }) => (
 const secondsUntil = (iso: string | null, now: number) =>
   iso ? Math.max(0, Math.ceil((new Date(iso).getTime() - now) / 1000)) : 0;
 
-const NOTICES: Record<string, { tone: Tone; icon: typeof CircleCheck; text: string }> = {
-  opened: { tone: "success", icon: CircleCheck, text: "Puerta abierta. Adelante." },
-  closed: { tone: "success", icon: CircleCheck, text: "Puerta cerrada." },
-  uncertain: {
-    tone: "warning",
-    icon: TriangleAlert,
-    text: "No pudimos confirmar la orden. Revisa la barrera; si no se abrió, marca tu PIN en el teclado.",
-  },
-  failed: {
-    tone: "danger",
-    icon: CircleAlert,
-    text: "La barrera no respondió en este momento. Marca tu PIN en el teclado.",
-  },
+// La barrera no tiene sensor: ningún texto afirma que se abrió o se cerró.
+const noticeFor = (result: GateCommandResult, action: GateAction | undefined) => {
+  switch (result.outcome) {
+    case "triggered":
+      return {
+        tone: "success" as const,
+        icon: CircleCheck,
+        text:
+          action === "close"
+            ? "Orden de cierre enviada a la barrera."
+            : "Orden enviada a la barrera. Adelante.",
+      };
+    case "uncertain":
+      return {
+        tone: "warning" as const,
+        icon: TriangleAlert,
+        text: "No pudimos confirmar la orden. Revisa la barrera; si no se abrió, marca tu PIN en el teclado.",
+      };
+    case "failed":
+      return {
+        tone: "danger" as const,
+        icon: CircleAlert,
+        text: "La barrera no respondió en este momento. Marca tu PIN en el teclado.",
+      };
+  }
 };
 
 export const VehicularGateCard = ({
   token,
+  available,
   canOpen,
   pinState,
   openUntil: portalOpenUntil,
 }: VehicularGateCardProps) => {
   const gate = useVehicularGate(token);
+  const queryClient = useQueryClient();
   const { reset, isSuccess, isError } = gate;
   const [now, setNow] = useState(() => Date.now());
 
   // El resultado recién llegado manda hasta que el portal se relee.
   const openUntil =
-    gate.data?.outcome === "opened"
-      ? gate.data.openUntil
-      : gate.data?.outcome === "closed"
-        ? null
-        : portalOpenUntil;
+    gate.data?.outcome === "triggered"
+      ? gate.variables === "open"
+        ? gate.data.openUntil
+        : null
+      : portalOpenUntil;
   const remaining = secondsUntil(openUntil, now);
+  const canClose = remaining > 0;
+  const busy = available && !canOpen && !canClose;
 
-  // Cuenta regresiva hasta que la barrera baja sola.
+  // Cuenta regresiva de la ventana de cierre.
   useEffect(() => {
     if (!openUntil) return;
 
@@ -120,25 +143,35 @@ export const VehicularGateCard = ({
   }, [openUntil]);
 
   useEffect(() => {
+    if (!busy) return;
+
+    const timer = window.setInterval(
+      () =>
+        void queryClient.invalidateQueries({ queryKey: ["guest", "me", token] }),
+      BUSY_POLL_MS,
+    );
+    return () => window.clearInterval(timer);
+  }, [busy, queryClient, token]);
+
+  useEffect(() => {
     if (!isSuccess && !isError) return;
 
     const timer = window.setTimeout(reset, RESET_AFTER_MS);
     return () => window.clearTimeout(timer);
   }, [isSuccess, isError, reset]);
 
-  const isOpen = canOpen && remaining > 0;
-  const notice = gate.data ? NOTICES[gate.data.outcome] : null;
+  const notice = gate.data ? noticeFor(gate.data, gate.variables) : null;
 
   return (
     <GuestSection icon={Car} title="Puerta vehicular">
       <GuestCard className="flex flex-col gap-3">
         <p className="text-sm text-slate-600">
-          {canOpen
+          {available
             ? "Ábrela desde aquí sin bajarte del auto, o marca tu PIN en el teclado de la barrera."
             : "Tu PIN también abre la entrada vehicular: márcalo en el teclado de la barrera."}
         </p>
 
-        {isOpen ? (
+        {canClose ? (
           <>
             <button
               type="button"
@@ -149,7 +182,7 @@ export const VehicularGateCard = ({
               {gate.isPending ? (
                 <>
                   <Loader2 className="h-5 w-5 animate-spin" />
-                  Cerrando…
+                  Enviando…
                 </>
               ) : (
                 <>
@@ -160,7 +193,7 @@ export const VehicularGateCard = ({
             </button>
             <p className="flex items-center justify-center gap-1.5 text-center text-xs text-slate-500">
               <Clock className="h-3.5 w-3.5" />
-              Se cierra sola en {remaining} s. Ciérrala antes si ya pasaste.
+              Puedes cerrarla desde aquí durante {remaining} s. Si no, baja sola.
             </p>
           </>
         ) : canOpen ? (
@@ -173,7 +206,7 @@ export const VehicularGateCard = ({
             {gate.isPending ? (
               <>
                 <Loader2 className="h-5 w-5 animate-spin" />
-                Abriendo…
+                Enviando…
               </>
             ) : (
               <>
@@ -182,6 +215,8 @@ export const VehicularGateCard = ({
               </>
             )}
           </button>
+        ) : busy ? (
+          <DisabledButton label="Abrir puerta vehicular" badge="En uso" />
         ) : pinState === "antes-del-checkin" ? (
           <DisabledButton label="Abrir puerta vehicular" badge="Desde tu check-in" />
         ) : pinState === "disponible" ? (
@@ -199,6 +234,11 @@ export const VehicularGateCard = ({
               "No pudimos contactar con la barrera. Marca tu PIN en el teclado.",
             )}
           </Notice>
+        ) : busy ? (
+          <p className="flex items-center justify-center gap-1.5 text-center text-xs text-slate-400">
+            <Clock className="h-3.5 w-3.5" />
+            Alguien acaba de usar la barrera. Espera un momento o marca tu PIN.
+          </p>
         ) : pinState === "antes-del-checkin" ? (
           <p className="flex items-center justify-center gap-1.5 text-center text-xs text-slate-400">
             <Clock className="h-3.5 w-3.5" />

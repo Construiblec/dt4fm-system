@@ -4,6 +4,7 @@ import { getApiErrorMessage } from "@/modules/supervisor-cav/services/cavApi";
 import {
   commandDoor,
   listDoors,
+  resolveDoor,
 } from "@/modules/supervisor-cav/services/doorsService";
 import type {
   DoorAction,
@@ -12,15 +13,16 @@ import type {
 } from "@/modules/supervisor-cav/types/Door";
 
 export type DoorActionResult =
-  | { outcome: DoorCommandOutcome; errorCode?: string }
+  | { outcome: DoorCommandOutcome; action: DoorAction; errorCode?: string }
+  | { outcome: "resolved" }
   | { outcome: "error"; message: string };
 
-export type PendingCommand = { deviceId: string; action: DoorAction };
-
-const ERROR_FALLBACK: Record<DoorAction, string> = {
-  open: "No se pudo abrir la puerta",
-  close: "No se pudo cerrar la puerta",
+export type PendingCommand = {
+  deviceId: string;
+  action: DoorAction | "resolve";
 };
+
+const ERROR_FALLBACK = "No se pudo enviar la orden a la barrera";
 
 export const useRemoteDoors = () => {
   const [overview, setOverview] = useState<DoorsOverview | null>(null);
@@ -63,7 +65,11 @@ export const useRemoteDoors = () => {
         delete requestIds.current[key];
         setResults((prev) => ({
           ...prev,
-          [deviceId]: { outcome: result.outcome, errorCode: result.errorCode },
+          [deviceId]: {
+            outcome: result.outcome,
+            action,
+            errorCode: result.errorCode,
+          },
         }));
         void load(true);
       } catch (err) {
@@ -76,7 +82,30 @@ export const useRemoteDoors = () => {
           ...prev,
           [deviceId]: {
             outcome: "error",
-            message: getApiErrorMessage(err, ERROR_FALLBACK[action]),
+            message: getApiErrorMessage(err, ERROR_FALLBACK),
+          },
+        }));
+      } finally {
+        setPending(null);
+      }
+    },
+    [load],
+  );
+
+  const resolve = useCallback(
+    async (deviceId: string) => {
+      setPending({ deviceId, action: "resolve" });
+
+      try {
+        await resolveDoor(deviceId);
+        setResults((prev) => ({ ...prev, [deviceId]: { outcome: "resolved" } }));
+        void load(true);
+      } catch (err) {
+        setResults((prev) => ({
+          ...prev,
+          [deviceId]: {
+            outcome: "error",
+            message: getApiErrorMessage(err, "No se pudo liberar la barrera"),
           },
         }));
       } finally {
@@ -93,6 +122,7 @@ export const useRemoteDoors = () => {
     pending,
     results,
     command,
+    resolve,
     reload: load,
   };
 };

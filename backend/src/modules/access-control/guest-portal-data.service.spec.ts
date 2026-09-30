@@ -38,6 +38,7 @@ type Harness = {
 const harness = (
   live: Partial<AccessCredential>[],
   env: Record<string, string> = { ACCESS_GUEST_LEAD_HOURS: '0' },
+  gate = { available: true, canOpen: true, openUntil: null as Date | null },
 ): Harness => {
   const revealPin = jest.fn().mockReturnValue(PIN);
   const credentials = {
@@ -53,7 +54,7 @@ const harness = (
       credentials,
       config,
       {
-        guestOpenUntil: jest.fn().mockResolvedValue(null),
+        guestGate: jest.fn().mockResolvedValue(gate),
       } as unknown as RemoteOpenService,
     ),
   };
@@ -168,6 +169,33 @@ describe('GuestPortalDataService', () => {
       await expect(
         encendida.service.getPortalData(stayWith()),
       ).resolves.toMatchObject({ canOpenVehicularGate: true });
+    });
+
+    it('con la barrera en uso por otro, la muestra pero no deja abrir', async () => {
+      const { service } = harness(
+        [{ ...credencial, scope: 'both' }],
+        { ACCESS_GUEST_LEAD_HOURS: '0', ACCESS_REMOTE_OPEN_ENABLED: 'true' },
+        { available: true, canOpen: false, openUntil: null },
+      );
+
+      await expect(service.getPortalData(stayWith())).resolves.toMatchObject({
+        vehicularGateAvailable: true,
+        canOpenVehicularGate: false,
+        vehicularGateOpenUntil: null,
+      });
+    });
+
+    it('sin tiempos medidos en el edificio no ofrece el botón', async () => {
+      const { service } = harness(
+        [{ ...credencial, scope: 'both' }],
+        { ACCESS_GUEST_LEAD_HOURS: '0', ACCESS_REMOTE_OPEN_ENABLED: 'true' },
+        { available: false, canOpen: false, openUntil: null },
+      );
+
+      await expect(service.getPortalData(stayWith())).resolves.toMatchObject({
+        vehicularGateAvailable: false,
+        canOpenVehicularGate: false,
+      });
     });
 
     it('no ofrece abrir la barrera antes de la ventana de acceso', async () => {

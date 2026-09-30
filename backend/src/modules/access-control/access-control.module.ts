@@ -22,6 +22,7 @@ import { ReservationsController } from './reservations.controller';
 import { AccessCredential } from './entities/access-credential.entity';
 import { GuestStay } from './entities/guest-stay.entity';
 import { RemoteOpenRequest } from './entities/remote-open-request.entity';
+import { VehicularGatePhase } from './entities/vehicular-gate-phase.entity';
 import { PinCipherService } from './pin-cipher.service';
 import { PinGeneratorService } from './pin-generator.service';
 import { RemoteOpenService } from './remote-open.service';
@@ -29,7 +30,12 @@ import { SyncRetryService } from './sync-retry.service';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([AccessCredential, GuestStay, RemoteOpenRequest]),
+    TypeOrmModule.forFeature([
+      AccessCredential,
+      GuestStay,
+      RemoteOpenRequest,
+      VehicularGatePhase,
+    ]),
     HttpModule,
     OpenmaintModule,
     HostawayModule,

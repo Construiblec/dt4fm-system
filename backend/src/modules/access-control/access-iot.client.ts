@@ -17,11 +17,9 @@ import {
   AccessIotHealth,
   CredentialWriteResult,
   InventoryPage,
-  DONE_OUTCOME,
-  DoorAction,
-  DoorCommandRequest,
-  DoorCommandResult,
   PutCredentialRequest,
+  TriggerRequest,
+  TriggerResult,
 } from './access-iot.types';
 
 /**
@@ -33,48 +31,75 @@ const BUSINESS_ERROR_CODES: AccessIotErrorCode[] = [
   'device_full',
 ];
 
-// La petición pudo llegar y mover el relé antes de cortarse: no se sabe qué pasó.
-const UNCERTAIN_NETWORK_CODES = ['ECONNABORTED', 'ETIMEDOUT', 'ECONNRESET'];
+/**
+ * Lista blanca de la nota de cambio de `trigger`: solo estas parejas de estado
+ * y código garantizan que no salió ningún pulso. Cualquier otra es incierta.
+ */
+const NO_PULSE_CODES: Record<number, AccessIotErrorCode[]> = {
+  400: ['invalid_request', 'device_not_compatible'],
+  401: ['unauthorized'],
+  403: ['unauthorized'],
+  404: ['not_found'],
+  500: ['device_ambiguous'],
+  502: ['gateway_rejected'],
+  503: ['operations_disabled', 'device_unreachable', 'gateway_unreachable'],
+};
+
+// Sin conexión establecida la petición no salió de aquí: no pudo haber pulso.
+const NEVER_SENT_NETWORK_CODES = ['ECONNREFUSED', 'ENOTFOUND', 'EAI_AGAIN'];
 
 interface ErrorBody {
   code?: AccessIotErrorCode;
   message?: string;
 }
 
-interface DoorCommandResponse {
-  state?: 'opened' | 'closed' | 'uncertain';
-  at?: string | null;
+interface TriggerResponse {
+  requestId?: string;
+  deviceId?: string;
+  state?: 'triggered' | 'ambiguous';
 }
 
 const isCredentialResult = (data: CredentialWriteResult): boolean =>
   typeof data?.state === 'string' && Array.isArray(data?.devices);
 
-/**
- * Un código tipado o un 4xx es un no seguro; un 5xx sin código o un corte a
- * medias, incierto. `internal_error` tampoco garantiza que la orden no saliera.
- */
-export const classifyCommandError = (error: unknown): DoorCommandResult => {
+/** Un `200` solo es `triggered` si repite nuestro `requestId` y `deviceId`. */
+export const classifyTriggerResponse = (
+  body: TriggerResponse | undefined,
+  deviceId: string,
+  requestId: string,
+): TriggerResult =>
+  body?.state === 'triggered' &&
+  body.requestId === requestId &&
+  body.deviceId === deviceId
+    ? { outcome: 'triggered' }
+    : { outcome: 'uncertain' };
+
+/** Fuera de la lista blanca, todo es incierto: `internal_error`, un 5xx sin código, un corte. */
+export const classifyTriggerError = (error: unknown): TriggerResult => {
   const axiosError = error as AxiosError<ErrorBody> | undefined;
+  const status = axiosError?.response?.status;
   const code = axiosError?.response?.data?.code;
 
-  if (code) {
-    return {
-      outcome: code === 'internal_error' ? 'uncertain' : 'failed',
-      errorCode: code,
-    };
-  }
-
-  const status = axiosError?.response?.status;
-
   if (status != null) {
-    return { outcome: status >= 500 ? 'uncertain' : 'failed' };
+    // El 302 de Cloudflare a su login o un 401/403 sin cuerpo: el token no pasó.
+    if ((status >= 300 && status < 400) || status === 401 || status === 403) {
+      return { outcome: 'failed', errorCode: 'unauthorized' };
+    }
+
+    if (code && NO_PULSE_CODES[status]?.includes(code)) {
+      return { outcome: 'failed', errorCode: code };
+    }
+
+    return code
+      ? { outcome: 'uncertain', errorCode: code }
+      : { outcome: 'uncertain' };
   }
 
-  return {
-    outcome: UNCERTAIN_NETWORK_CODES.includes(axiosError?.code ?? '')
-      ? 'uncertain'
-      : 'failed',
-  };
+  if (!axiosError?.isAxiosError) return { outcome: 'failed' };
+
+  return NEVER_SENT_NETWORK_CODES.includes(axiosError.code ?? '')
+    ? { outcome: 'failed' }
+    : { outcome: 'uncertain' };
 };
 
 @Injectable()
@@ -181,35 +206,44 @@ export class AccessIotClient extends AccessIotGateway {
     return this.ensure(operation, data, (body) => Array.isArray(body?.users));
   }
 
-  async commandDevice(
+  async triggerDevice(
     deviceId: string,
-    action: DoorAction,
-    request: DoorCommandRequest,
-  ): Promise<DoorCommandResult> {
-    const operation = `POST /v1/devices/${deviceId}/${action}`;
+    request: TriggerRequest,
+  ): Promise<TriggerResult> {
+    const operation = `POST /v1/devices/${deviceId}/trigger`;
+    // Solo `requestId`: la API central rechaza cualquier otro campo.
+    const requestId = request.requestId.toLowerCase();
 
     try {
-      const response = await this.send<DoorCommandResponse>(
+      const response = await this.send<TriggerResponse>(
         {
           method: 'POST',
-          url: `/v1/devices/${encodeURIComponent(deviceId)}/${action}`,
-          data: request,
+          url: `/v1/devices/${encodeURIComponent(deviceId)}/trigger`,
+          data: { requestId },
         },
         this.commandTimeoutMs,
       );
-      const { state, at } = response.data ?? {};
-      const done = DONE_OUTCOME[action];
+      const result = classifyTriggerResponse(
+        response.data,
+        deviceId,
+        requestId,
+      );
 
-      return {
-        outcome: state === done ? done : 'uncertain',
-        at: at ?? undefined,
-      };
+      if (result.outcome !== 'triggered') {
+        this.logger.warn(
+          `${operation} -> ${result.outcome} (state=${response.data?.state ?? '?'} request=${requestId})`,
+        );
+      }
+
+      return result;
     } catch (error) {
-      const result = classifyCommandError(error);
+      const result = classifyTriggerError(error);
       const detail =
         this.buildSafeErrorMessage(error) || (error as Error).message;
 
-      this.logger.warn(`${operation} -> ${result.outcome} (${detail})`);
+      this.logger.warn(
+        `${operation} -> ${result.outcome} (${detail}) request=${requestId}`,
+      );
 
       return result;
     }

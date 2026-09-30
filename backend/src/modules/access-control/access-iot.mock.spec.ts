@@ -127,27 +127,28 @@ describe('AccessIotMockGateway', () => {
     expect(JSON.stringify(users)).not.toContain('5073');
   });
 
-  describe('commandDevice', () => {
-    const orden = (requestId: string) => ({
-      requestId,
-      actor: { type: 'staff' as const, ref: 'cav.mock' },
+  describe('triggerDevice', () => {
+    const id = (n: number) =>
+      `6f1c9a5e-3b2d-4c8e-9a71-0d4e2f5b8c${String(n).padStart(2, '0')}`;
+
+    it('pulsa una barrera vehicular en línea', async () => {
+      await expect(
+        gateway.triggerDevice('ING-VEHICULAR-1', { requestId: id(1) }),
+      ).resolves.toEqual({ outcome: 'triggered' });
     });
 
-    it('abre una puerta en línea', async () => {
+    it('una puerta peatonal es device_not_compatible', async () => {
       await expect(
-        gateway.commandDevice('ING-VEHICULAR-1', 'open', orden('r-1')),
-      ).resolves.toMatchObject({ outcome: 'opened' });
+        gateway.triggerDevice('ING-PEATONAL-1', { requestId: id(2) }),
+      ).resolves.toEqual({
+        outcome: 'failed',
+        errorCode: 'device_not_compatible',
+      });
     });
 
-    it('cierra una puerta en línea', async () => {
+    it('una barrera caída falla con device_unreachable', async () => {
       await expect(
-        gateway.commandDevice('ING-VEHICULAR-1', 'close', orden('r-5')),
-      ).resolves.toMatchObject({ outcome: 'closed' });
-    });
-
-    it('una puerta caída falla con device_unreachable', async () => {
-      await expect(
-        gateway.commandDevice('PRA-VEHICULAR-1', 'open', orden('r-2')),
+        gateway.triggerDevice('PRA-VEHICULAR-1', { requestId: id(3) }),
       ).resolves.toEqual({
         outcome: 'failed',
         errorCode: 'device_unreachable',
@@ -156,23 +157,40 @@ describe('AccessIotMockGateway', () => {
 
     it('una puerta desconocida es not_found', async () => {
       await expect(
-        gateway.commandDevice('NO-EXISTE', 'open', orden('r-3')),
+        gateway.triggerDevice('NO-EXISTE', { requestId: id(4) }),
       ).resolves.toEqual({ outcome: 'failed', errorCode: 'not_found' });
     });
 
-    it('repetir el requestId devuelve la misma apertura, no un segundo pulso', async () => {
-      const primera = await gateway.commandDevice(
-        'ING-PEATONAL-1',
-        'open',
-        orden('r-4'),
-      );
-      const segunda = await gateway.commandDevice(
-        'ING-PEATONAL-1',
-        'open',
-        orden('r-4'),
-      );
+    it('rechaza actor u otro campo, como la API central', async () => {
+      await expect(
+        gateway.triggerDevice('ING-VEHICULAR-1', {
+          requestId: id(5),
+          actor: { type: 'staff', ref: 'cav.mock' },
+        } as never),
+      ).resolves.toEqual({ outcome: 'failed', errorCode: 'invalid_request' });
+    });
+
+    it('rechaza un requestId en mayúsculas o con llaves', async () => {
+      for (const requestId of [id(6).toUpperCase(), `{${id(6)}}`]) {
+        await expect(
+          gateway.triggerDevice('ING-VEHICULAR-1', { requestId }),
+        ).resolves.toEqual({ outcome: 'failed', errorCode: 'invalid_request' });
+      }
+    });
+
+    it('repetir el requestId devuelve el mismo pulso, no un segundo', async () => {
+      const primera = await gateway.triggerDevice('ING-VEHICULAR-1', {
+        requestId: id(7),
+      });
+      const segunda = await gateway.triggerDevice('ING-VEHICULAR-1', {
+        requestId: id(7),
+      });
 
       expect(segunda).toBe(primera);
+    });
+
+    it('ya no expone open ni close', () => {
+      expect('commandDevice' in gateway).toBe(false);
     });
   });
 

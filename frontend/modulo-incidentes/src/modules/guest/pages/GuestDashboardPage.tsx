@@ -47,6 +47,7 @@ export const GuestDashboardPage = () => {
           {data.hasVehicularAccess ? (
             <VehicularGateCard
               token={token}
+              available={data.vehicularGateAvailable}
               canOpen={data.canOpenVehicularGate}
               pinState={data.pinState}
               openUntil={data.vehicularGateOpenUntil}

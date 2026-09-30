@@ -6,7 +6,11 @@ import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { AxiosRequestConfig } from 'axios';
 import { of, throwError } from 'rxjs';
-import { AccessIotClient, classifyCommandError } from './access-iot.client';
+import {
+  AccessIotClient,
+  classifyTriggerError,
+  classifyTriggerResponse,
+} from './access-iot.client';
 
 const conRespuesta = (status: number, data: unknown = {}) => ({
   isAxiosError: true,
@@ -15,64 +19,128 @@ const conRespuesta = (status: number, data: unknown = {}) => ({
 
 const sinRespuesta = (code: string) => ({ isAxiosError: true, code });
 
-/** Una orden de puerta no se reintenta: la clasificación decide qué le decimos a quien tocó el botón. */
-describe('classifyCommandError', () => {
-  it('un código tipado es un fallo seguro, aunque venga con 5xx', () => {
-    expect(
-      classifyCommandError(conRespuesta(503, { code: 'gateway_unreachable' })),
-    ).toEqual({ outcome: 'failed', errorCode: 'gateway_unreachable' });
+const REQUEST_ID = '6f1c9a5e-3b2d-4c8e-9a71-0d4e2f5b8c13';
+
+/** Lista blanca: solo las respuestas de la nota de `trigger` son «no salió ningún pulso». */
+describe('classifyTriggerError', () => {
+  it.each([
+    [400, 'invalid_request'],
+    [400, 'device_not_compatible'],
+    [401, 'unauthorized'],
+    [403, 'unauthorized'],
+    [404, 'not_found'],
+    [500, 'device_ambiguous'],
+    [502, 'gateway_rejected'],
+    [503, 'operations_disabled'],
+    [503, 'device_unreachable'],
+    [503, 'gateway_unreachable'],
+  ])('%i %s es un no seguro', (status, code) => {
+    expect(classifyTriggerError(conRespuesta(status, { code }))).toEqual({
+      outcome: 'failed',
+      errorCode: code,
+    });
   });
 
-  it('internal_error es incierto: la orden pudo salir', () => {
+  it('el 302 de Cloudflare y un 401/403 sin cuerpo son token rechazado', () => {
+    for (const status of [302, 401, 403]) {
+      expect(classifyTriggerError(conRespuesta(status, '<html>'))).toEqual({
+        outcome: 'failed',
+        errorCode: 'unauthorized',
+      });
+    }
+  });
+
+  it('internal_error es incierto aunque traiga código', () => {
     expect(
-      classifyCommandError(conRespuesta(500, { code: 'internal_error' })),
+      classifyTriggerError(conRespuesta(500, { code: 'internal_error' })),
     ).toEqual({ outcome: 'uncertain', errorCode: 'internal_error' });
   });
 
-  it('un 4xx sin código no llegó a la puerta', () => {
-    expect(classifyCommandError(conRespuesta(404))).toEqual({
-      outcome: 'failed',
-    });
-    expect(classifyCommandError(conRespuesta(429))).toEqual({
-      outcome: 'failed',
-    });
-  });
-
-  it('el 302 de Cloudflare a su login no llegó a la puerta', () => {
-    expect(classifyCommandError(conRespuesta(302, '<html>'))).toEqual({
-      outcome: 'failed',
-    });
-  });
-
   it('un 5xx sin código es incierto (incluido el 524 de Cloudflare)', () => {
-    expect(classifyCommandError(conRespuesta(500))).toEqual({
-      outcome: 'uncertain',
-    });
-    expect(classifyCommandError(conRespuesta(524))).toEqual({
-      outcome: 'uncertain',
-    });
-  });
-
-  it('un corte a medias es incierto', () => {
-    for (const code of ['ECONNABORTED', 'ETIMEDOUT', 'ECONNRESET']) {
-      expect(classifyCommandError(sinRespuesta(code))).toEqual({
+    for (const status of [500, 502, 503, 524]) {
+      expect(classifyTriggerError(conRespuesta(status))).toEqual({
         outcome: 'uncertain',
       });
     }
   });
 
-  it('no poder conectar es un fallo seguro', () => {
+  it('un código conocido con otro estado se sale de la lista: incierto', () => {
+    expect(
+      classifyTriggerError(conRespuesta(500, { code: 'device_unreachable' })),
+    ).toEqual({ outcome: 'uncertain', errorCode: 'device_unreachable' });
+  });
+
+  it('un 4xx sin código de la lista es incierto', () => {
+    expect(classifyTriggerError(conRespuesta(404))).toEqual({
+      outcome: 'uncertain',
+    });
+    expect(classifyTriggerError(conRespuesta(429))).toEqual({
+      outcome: 'uncertain',
+    });
+  });
+
+  it('un timeout o un corte a medias es incierto', () => {
+    for (const code of ['ECONNABORTED', 'ETIMEDOUT', 'ECONNRESET']) {
+      expect(classifyTriggerError(sinRespuesta(code))).toEqual({
+        outcome: 'uncertain',
+      });
+    }
+  });
+
+  it('sin conexión establecida la petición no salió: no hubo pulso', () => {
     for (const code of ['ECONNREFUSED', 'ENOTFOUND', 'EAI_AGAIN']) {
-      expect(classifyCommandError(sinRespuesta(code))).toEqual({
+      expect(classifyTriggerError(sinRespuesta(code))).toEqual({
         outcome: 'failed',
       });
     }
   });
 
-  it('la configuración ausente es un fallo seguro', () => {
+  it('la configuración ausente es un no seguro', () => {
     expect(
-      classifyCommandError(new Error('ACCESS_IOT_URL no está configurada')),
+      classifyTriggerError(new Error('ACCESS_IOT_URL no está configurada')),
     ).toEqual({ outcome: 'failed' });
+  });
+});
+
+describe('classifyTriggerResponse', () => {
+  const ok = { requestId: REQUEST_ID, deviceId: 'ING-VEHICULAR-1' };
+
+  it('triggered con el mismo requestId y deviceId es el pulso', () => {
+    expect(
+      classifyTriggerResponse(
+        { ...ok, state: 'triggered' },
+        'ING-VEHICULAR-1',
+        REQUEST_ID,
+      ),
+    ).toEqual({ outcome: 'triggered' });
+  });
+
+  it('ambiguous es incierto', () => {
+    expect(
+      classifyTriggerResponse(
+        { ...ok, state: 'ambiguous' },
+        'ING-VEHICULAR-1',
+        REQUEST_ID,
+      ),
+    ).toEqual({ outcome: 'uncertain' });
+  });
+
+  it('un 200 con otro requestId, otro deviceId o ilegible es incierto', () => {
+    const casos = [
+      { ...ok, requestId: '00000000-0000-4000-8000-000000000000' },
+      { ...ok, deviceId: 'PRA-VEHICULAR-1' },
+      undefined,
+    ];
+
+    for (const cuerpo of casos) {
+      expect(
+        classifyTriggerResponse(
+          cuerpo && { ...cuerpo, state: 'triggered' },
+          'ING-VEHICULAR-1',
+          REQUEST_ID,
+        ),
+      ).toEqual({ outcome: 'uncertain' });
+    }
   });
 });
 
@@ -174,14 +242,43 @@ describe('AccessIotClient', () => {
     ).resolves.toBeNull();
   });
 
-  it('una apertura uncertain llega sin marca de tiempo', async () => {
-    const { client } = cliente({ state: 'uncertain', at: null });
+  it('trigger manda solo el requestId, en minúsculas', async () => {
+    const { request, client } = cliente({
+      requestId: REQUEST_ID,
+      deviceId: 'ING-VEHICULAR-1',
+      state: 'triggered',
+    });
 
     await expect(
-      client.commandDevice('ING-VEHICULAR-1', 'open', {
-        requestId: '6f1c9a5e-3b2d-4c8e-9a71-0d4e2f5b8c13',
-        actor: { type: 'staff', ref: 'cav.mock' },
+      client.triggerDevice('ING-VEHICULAR-1', {
+        requestId: REQUEST_ID.toUpperCase(),
       }),
-    ).resolves.toEqual({ outcome: 'uncertain', at: undefined });
+    ).resolves.toEqual({ outcome: 'triggered' });
+
+    const [[enviado]] = request.mock.calls as [[AxiosRequestConfig]];
+
+    expect(enviado).toMatchObject({
+      method: 'POST',
+      url: '/v1/devices/ING-VEHICULAR-1/trigger',
+      timeout: 8_000,
+    });
+    expect(enviado.data).toEqual({ requestId: REQUEST_ID });
+  });
+
+  it('trigger no reintenta: un timeout es un solo intento e incierto', async () => {
+    const { request, client } = cliente(sinRespuesta('ECONNABORTED'));
+
+    await expect(
+      client.triggerDevice('ING-VEHICULAR-1', { requestId: REQUEST_ID }),
+    ).resolves.toEqual({ outcome: 'uncertain' });
+    expect(request).toHaveBeenCalledTimes(1);
+  });
+
+  it('trigger con 500 internal_error queda incierto', async () => {
+    const { client } = cliente(conRespuesta(500, { code: 'internal_error' }));
+
+    await expect(
+      client.triggerDevice('ING-VEHICULAR-1', { requestId: REQUEST_ID }),
+    ).resolves.toMatchObject({ outcome: 'uncertain' });
   });
 });

@@ -11,6 +11,10 @@ documento divergen, manda este documento.**
 > **Cambio del 28-09-2026:** el `employeeNo` pasa a `DT4G688B2FCB`, sin guiones, porque los
 > terminales Hikvision solo admiten letras y números. Detalle en la
 > [nota de cambio](nota-cambio-employeeno.md) y en [§2](#el-employeeno-que-se-escribe-en-el-terminal).
+>
+> **Cambio del 30-09-2026:** `open` y `close` desaparecen; queda
+> [`POST /v1/devices/{deviceId}/trigger`](#post-v1devicesdeviceidtrigger--pulso-a-la-barrera-vehicular),
+> un pulso a la barrera vehicular. Detalle en la [nota de cambio](nota-cambio-trigger.md).
 
 ---
 
@@ -300,53 +304,38 @@ pero el inventario deja de ser fiable sin que nada falle. Y la conciliación del
 que el inventario esté completo: con paginación parcial, reescribiría credenciales por creerlas
 ausentes. **Es prerrequisito, no una mejora paralela.**
 
-### `POST /v1/devices/{deviceId}/open` — apertura remota
+### `POST /v1/devices/{deviceId}/trigger` — pulso a la barrera vehicular
 
-Un pulso de apertura sobre una puerta: el huésped abre la barrera vehicular desde su portal y el
-Supervisor CAV cualquier puerta desde el panel. El gateway lo traduce a
-`PUT /ISAPI/AccessControl/RemoteControl/door/{doorID}` con `<cmd>open</cmd>`.
+La única orden física: un pulso de relé a la barrera vehicular de un edificio. La barrera no tiene
+sensor de posición, así que **Abrir** y **Cerrar** son fases de la interfaz que lleva el backend;
+las dos mandan este mismo pulso, cada una con su `requestId`. `open` y `close` responden `404`: no
+hay alias.
 
 ```json
-{ "requestId": "6f1c9a5e-3b2d-4c8e-9a71-0d4e2f5b8c13",
-  "actor": { "type": "guest", "ref": "c47ca6f1-f675-4653-a3a6-31487feb054b" } }
+{ "requestId": "6f1c9a5e-3b2d-4c8e-9a71-0d4e2f5b8c13" }
 ```
 
 ```json
-{ "requestId": "6f1c9a5e-…", "deviceId": "ING-VEHICULAR-1",
-  "state": "opened", "at": "2026-09-18T14:05:22-05:00" }
+{ "requestId": "6f1c9a5e-3b2d-4c8e-9a71-0d4e2f5b8c13", "deviceId": "ING-VEHICULAR-1",
+  "state": "triggered" }
 ```
 
-- **Deduplica por `(deviceId, requestId)`**: repetir la misma orden devuelve el resultado guardado
-  y **no manda un segundo pulso**. Guarda el `requestId` antes de tocar el relé.
-- `state` es `opened` si ISAPI confirmó, o `uncertain` si la orden salió y el terminal no contestó.
-  **No contestes `opened` sin confirmación**: el portal le dice al huésped que la puerta se abrió.
-- `actor` es solo para el historial de la consola local ([§10](#10-la-consola-local)). **No
-  autoriza nada**: quién puede abrir qué lo decide el backend antes de llamar.
-- Responde en **5 s como máximo**. El backend corta a los 8 s y lo registra como incierto.
-- Con el control físico apagado en el gateway, `remote_open_disabled`.
+- **Solo `requestId`**, UUID canónico en minúsculas, con guiones y sin llaves. Cualquier otro
+  campo da `400 invalid_request`. `actor` ya no viaja: quién pulsó queda en `remote_open_request`.
+- **Solo el service token** y **solo barreras vehiculares** (`kind: "barrier"`,
+  `scope: "vehicular"`). Una puerta peatonal da `400 device_not_compatible`.
+- `state` es `triggered` si el pulso salió o `ambiguous` si pudo salir. **Ninguno dice nada sobre la
+  posición de la barrera**, y no llega `at`: la hora del pulso la pone el backend.
+- **El gateway deduplica por `(deviceId, requestId)`**, en disco y durante al menos 24 h: repetir
+  la orden devuelve el resultado guardado sin un segundo pulso. Un UUID nuevo siempre es un pulso nuevo.
+- Responde en **7 s como máximo** (2 s para encontrar el gateway y 5 s para el pulso). El backend
+  corta a los 8 s y lo registra como incierto.
+- Con el control físico apagado en el gateway, `503 operations_disabled`.
 
-El backend **no reintenta esta operación**, a diferencia de las demás: un timeout pudo haber abierto
-la puerta. Tampoco bloquea la puerta tras un resultado incierto; si hace falta un bloqueo por
-seguridad física, lo aplica el gateway, que es quien toca el relé.
-
-### `POST /v1/devices/{deviceId}/close` — bajar la barrera antes de tiempo
-
-Las barreras vehiculares bajan solas **alrededor de un minuto** después de abrirse. Esta orden las
-baja antes, para no esperar. **Solo se envía a puertas vehiculares**: las peatonales se traban solas
-y el backend nunca las cierra. El gateway lo traduce a `<cmd>close</cmd>` sobre el mismo
-`RemoteControl/door/{doorID}`.
-
-Mismo cuerpo, mismas reglas de deduplicación, plazo y errores que la apertura; `state` es `closed` o
-`uncertain`. Dos requisitos propios:
-
-- **Idempotente sobre la barrera**: cerrar una barrera que ya bajó no hace nada. Si el controlador
-  de la barrera alterna con cada pulso (un pulso abre, el siguiente cierra), el gateway **no puede**
-  traducir `close` a otro pulso a ciegas, porque sobre una barrera ya cerrada la abriría.
-- **Nunca baja sobre un vehículo.** El cierre remoto tiene que respetar el detector de presencia
-  (lazo o fotocélula) igual que el cierre automático.
-
-El backend solo ofrece «cerrar» mientras no pasó el minuto de la última apertura confirmada. Un
-huésped únicamente puede cerrar la que abrió él; el Supervisor CAV, cualquier barrera.
+El backend **no reintenta esta operación**. Tampoco deduce la posición de la barrera: la fase por
+barrera (ventana de cierre, cierre automático medido y enfriamiento de 10 s) vive en su base y es
+solo una ayuda de interfaz. Qué respuestas cuentan como «no hubo pulso» está en la
+[lista blanca](nota-cambio-trigger.md#cómo-leer-la-respuesta) de la nota de cambio.
 
 ---
 
@@ -363,7 +352,8 @@ alertar**, y sin código no puede.
 | `device_full` | Tope de usuarios alcanzado | Alerta. **No reintenta** |
 | `unauthorized` | Service token inválido | Alerta. No reintenta |
 | `invalid_request` | Cuerpo mal formado | No reintenta |
-| `remote_open_disabled` | El gateway tiene apagado el control físico | Informa al usuario. No reintenta |
+| `operations_disabled` | El gateway tiene apagado el control físico | Informa al usuario. No reintenta |
+| `device_not_compatible` | `trigger` sobre algo que no es una barrera vehicular habilitada | Alerta de configuración |
 
 **Dos formas válidas de devolverlos**, y el backend acepta las dos:
 
@@ -389,9 +379,9 @@ Para que dimensiones: timeout de **15 s** por petición, **3 intentos** (uno má
 espera creciente de 1,5 s. Reintenta ante `5xx`, `429` y errores de red. **Nunca** reintenta ante
 `401`/`403`, `unauthorized`, `invalid_request`, `pin_conflict` ni `device_full`.
 
-**Abrir y cerrar puertas son la excepción: un solo intento, 8 s de timeout y ningún reintento.** Un código
-tipado o un `4xx` se da por «no se abrió»; un `5xx` sin código o un corte a mitad de respuesta, por
-«incierto».
+**`trigger` es la excepción: un solo intento, 8 s de timeout y ningún reintento.** Solo las
+respuestas de la [lista blanca](nota-cambio-trigger.md#cómo-leer-la-respuesta) se dan por «no hubo
+pulso»; cualquier otra, `internal_error` incluido, es incierta.
 
 ---
 
@@ -579,11 +569,11 @@ error. El webhook `POST /iot/alarms` que ya existe sigue igual y nada de esto lo
 - [ ] `/v1/health` distingue `gatewayOnline` de `online` por dispositivo, y hay alerta sobre el latido
 - [ ] El gateway corre bajo `systemd` con `Restart=on-failure`
 - [ ] Bloqueo por intentos fallidos activado y **verificado** en cada terminal
-- [ ] `POST /v1/devices/{id}/open` deduplica por `(deviceId, requestId)`: la misma orden dos veces da un solo pulso
-- [ ] La apertura devuelve `uncertain`, nunca `opened`, cuando ISAPI no confirma
-- [ ] El control físico del gateway sigue apagado por defecto y responde `remote_open_disabled`
-- [ ] Las barreras vehiculares **se cierran solas** en torno a un minuto, y `close` las baja antes
-- [ ] `close` sobre una barrera ya cerrada no la abre, y nunca baja sobre un vehículo
+- [ ] `POST /v1/devices/{id}/trigger` deduplica por `(deviceId, requestId)`, en disco y 24 h: la misma orden dos veces da un solo pulso
+- [ ] `trigger` acepta solo `{"requestId"}` y devuelve `triggered` o `ambiguous`, sin `at`; `open` y `close` dan `404`
+- [ ] Solo la barrera vehicular admite `trigger`; una peatonal da `400 device_not_compatible`
+- [ ] El control físico del gateway sigue apagado por defecto y responde `503 operations_disabled`
+- [ ] **En sitio:** se mide cuánto tarda cada barrera en bajar sola, un pulso con la barrera arriba la baja y nunca baja sobre un vehículo
 - [ ] Existe un entorno de staging que no toca puertas de edificios habitados
 
 ---
