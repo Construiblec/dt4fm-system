@@ -80,6 +80,14 @@ export default defineConfig(({ mode }) => ({
       '@': path.resolve(__dirname, './src'),
     },
   },
+  // Solo afecta a `vite dev`/`vite preview`, nunca al build de producción.
+  // Desde Vite 5.4 el dev server rechaza cualquier `Host` que no reconozca
+  // (protección contra DNS rebinding), y eso incluye el host público que pone
+  // un túnel de Cloudflare al probar en otros dispositivos. Se permite solo el
+  // sufijo de los túneles rápidos, no cualquier host.
+  server: {
+    allowedHosts: ['.trycloudflare.com'],
+  },
   // Sin jsdom a propósito: lo que se testea son funciones puras (el parseo del
   // checklist), que no tocan el DOM.
   test: {
