@@ -217,16 +217,17 @@ export class GuestPortalController {
     required: false,
   })
   @ApiOperation({
-    summary: 'Abrir la puerta vehicular del edificio de la estancia',
+    summary:
+      'Pulsar la barrera vehicular del edificio de la estancia («Abrir»)',
     description:
-      'Solo dentro de la ventana de acceso y con acceso vehicular. `outcome` ' +
-      'puede ser `opened`, `failed` o `uncertain`: este último significa que la ' +
-      'orden salió pero nadie confirmó si se abrió.',
+      'Solo dentro de la ventana de acceso, con acceso vehicular y con la ' +
+      'barrera en fase `ready`. Manda un pulso: `triggered` dice que salió, ' +
+      'nada sobre la posición de la barrera; `uncertain`, que pudo salir.',
   })
   @ApiResponse({
     status: 200,
     description:
-      'Resultado de la apertura. `openUntil` dice hasta cuándo se puede bajar a mano.',
+      'Resultado del pulso. `openUntil` es el fin de la ventana de cierre.',
   })
   @ApiResponse({ status: 401, description: 'Enlace inválido o vencido.' })
   @ApiResponse({
@@ -235,12 +236,17 @@ export class GuestPortalController {
       'Fuera de la estadía, o la reserva no incluye acceso vehicular.',
   })
   @ApiResponse({
+    status: 409,
+    description: 'Otra persona acaba de usar la barrera, o está sin confirmar.',
+  })
+  @ApiResponse({
     status: 422,
-    description: 'El edificio no tiene puerta vehicular.',
+    description:
+      'El edificio no tiene barrera vehicular o no tiene sus tiempos medidos.',
   })
   @ApiResponse({
     status: 429,
-    description: 'La puerta se acaba de abrir, o se agotó el tope diario.',
+    description: 'Pulso hace menos de 10 s, o se agotó el tope diario.',
   })
   @ApiResponse({ status: 503, description: 'Apertura remota desactivada.' })
   openVehicularGate(
@@ -263,12 +269,13 @@ export class GuestPortalController {
     required: false,
   })
   @ApiOperation({
-    summary: 'Bajar la barrera vehicular antes de que se cierre sola',
+    summary: 'Pulsar la barrera vehicular desde la fase «Cerrar»',
     description:
-      'Solo quien la abrió desde el portal, y solo mientras no haya pasado el ' +
-      'cierre automático. `outcome`: `closed`, `failed` o `uncertain`.',
+      'El mismo pulso que «Abrir». Solo quien la abrió desde el portal, y ' +
+      'solo dentro de la ventana de cierre. `outcome`: `triggered`, `failed` ' +
+      'o `uncertain`.',
   })
-  @ApiResponse({ status: 200, description: 'Resultado del cierre.' })
+  @ApiResponse({ status: 200, description: 'Resultado del pulso.' })
   @ApiResponse({ status: 401, description: 'Enlace inválido o vencido.' })
   @ApiResponse({
     status: 403,
@@ -277,9 +284,9 @@ export class GuestPortalController {
   })
   @ApiResponse({
     status: 409,
-    description: 'La barrera ya se cerró, o la abrió otra persona.',
+    description: 'Venció la ventana de cierre, o la abrió otra persona.',
   })
-  @ApiResponse({ status: 429, description: 'Se acaba de cerrar.' })
+  @ApiResponse({ status: 429, description: 'Pulso hace menos de 10 s.' })
   @ApiResponse({ status: 503, description: 'Apertura remota desactivada.' })
   closeVehicularGate(
     @Req() request: RequestWithGuest,

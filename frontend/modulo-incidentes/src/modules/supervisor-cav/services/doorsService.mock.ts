@@ -1,12 +1,14 @@
 import type {
   Door,
   DoorAction,
+  DoorCommandOutcome,
   DoorCommandResult,
   DoorsOverview,
 } from "@/modules/supervisor-cav/types/Door";
 
-/** Igual que el backend: la barrera vehicular baja sola al minuto. */
-const AUTO_CLOSE_MS = 60_000;
+/** Tiempos ficticios, como los de las pruebas del backend: en producción se miden en sitio. */
+const CLOSE_WINDOW_MS = 40_000;
+const AUTO_CLOSE_MS = 90_000;
 
 const door = (
   deviceId: string,
@@ -17,8 +19,11 @@ const door = (
   kind: scope === "vehicular" ? "barrier" : "terminal",
   scope,
   online,
+  remoteControl: scope === "vehicular",
+  phase: scope === "vehicular" ? "ready" : null,
   lastCommand: null,
   openUntil: null,
+  settlesAt: null,
 });
 
 /** Mismas puertas que `access-iot.mock.ts` del backend: `PRA-VEHICULAR-1` caída a propósito. */
@@ -58,8 +63,10 @@ export const mockListDoors = async (): Promise<DoorsOverview> => {
 
   const now = Date.now();
   for (const target of overview.buildings.flatMap((b) => b.doors)) {
-    if (target.openUntil && new Date(target.openUntil).getTime() <= now) {
-      target.openUntil = null;
+    if (target.settlesAt && new Date(target.settlesAt).getTime() <= now) {
+      Object.assign(target, { phase: "ready", openUntil: null, settlesAt: null });
+    } else if (target.openUntil && new Date(target.openUntil).getTime() <= now) {
+      Object.assign(target, { phase: "settling", openUntil: null });
     }
   }
 
@@ -75,15 +82,11 @@ export const mockCommandDoor = async (
 
   const target = findDoor(deviceId);
   const at = new Date().toISOString();
-  const outcome = !target?.online
-    ? "failed"
-    : action === "open"
-      ? "opened"
-      : "closed";
-  const openUntil =
-    outcome === "opened" && target?.scope === "vehicular"
-      ? new Date(Date.now() + AUTO_CLOSE_MS).toISOString()
-      : null;
+  const outcome: DoorCommandOutcome = target?.online ? "triggered" : "failed";
+  const opened = outcome === "triggered" && action === "open";
+  const openUntil = opened
+    ? new Date(Date.now() + CLOSE_WINDOW_MS).toISOString()
+    : null;
 
   if (target) {
     target.lastCommand = {
@@ -93,7 +96,15 @@ export const mockCommandDoor = async (
       actorType: "staff",
       actorUsername: "cav.mock",
     };
-    if (outcome !== "failed") target.openUntil = openUntil;
+    if (outcome === "triggered") {
+      Object.assign(target, {
+        phase: opened ? "closable" : "ready",
+        openUntil,
+        settlesAt: opened
+          ? new Date(Date.now() + AUTO_CLOSE_MS).toISOString()
+          : null,
+      });
+    }
   }
 
   return {
@@ -104,4 +115,11 @@ export const mockCommandDoor = async (
     at,
     openUntil,
   };
+};
+
+export const mockResolveDoor = async (deviceId: string): Promise<void> => {
+  await delay();
+
+  const target = findDoor(deviceId);
+  if (target) Object.assign(target, { phase: "ready", openUntil: null, settlesAt: null });
 };

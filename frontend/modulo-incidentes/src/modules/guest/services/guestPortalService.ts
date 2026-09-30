@@ -30,9 +30,11 @@ export type GuestPortalData = {
   credentialId: string | null;
   syncState: "pending" | "synced" | "failed" | null;
   hasVehicularAccess: boolean;
-  /** El backend ya cruzó ventana, ámbito y que la apertura remota esté activa. */
+  /** Hay apertura remota para esta estancia: barrera con tiempos medidos. */
+  vehicularGateAvailable: boolean;
+  /** El backend ya cruzó ventana, ámbito, que esté activa y que nadie la esté usando. */
   canOpenVehicularGate: boolean;
-  /** Mientras no sea nulo, el huésped puede bajar la barrera que abrió. */
+  /** Fin de la ventana para pulsar «Cerrar» sobre la barrera que abrió este huésped. */
   vehicularGateOpenUntil: string | null;
   canReportIncident: boolean;
   unitName: string | null;
@@ -42,13 +44,16 @@ export type GuestPortalData = {
 
 export type GateAction = "open" | "close";
 
-/** `uncertain`: la orden salió, pero nadie confirmó si la barrera se movió. */
+/**
+ * Abrir y Cerrar mandan el mismo pulso. `triggered`: salió hacia la barrera,
+ * nada sobre su posición; `uncertain`: pudo salir.
+ */
 export type GateCommandResult = {
   requestId: string;
-  outcome: "opened" | "closed" | "failed" | "uncertain";
+  outcome: "triggered" | "failed" | "uncertain";
   errorCode?: string;
   at?: string;
-  /** Hasta cuándo sigue arriba tras abrirla; nulo en lo demás. */
+  /** Fin de la ventana de cierre tras «Abrir»; nulo en lo demás. */
   openUntil: string | null;
 };
 

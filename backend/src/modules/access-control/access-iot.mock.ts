@@ -9,11 +9,9 @@ import {
   CredentialWriteResult,
   InventoryPage,
   InventoryUser,
-  DONE_OUTCOME,
-  DoorAction,
-  DoorCommandRequest,
-  DoorCommandResult,
   PutCredentialRequest,
+  TriggerRequest,
+  TriggerResult,
 } from './access-iot.types';
 
 /**
@@ -87,6 +85,10 @@ const MANUAL_USERS: Record<string, { employeeNo: string; pin: string }[]> = {
   'ING-PEATONAL-1': [{ employeeNo: '77', pin: '4821' }],
 };
 
+/** UUID canónico en minúsculas, con guiones y sin llaves, como exige `trigger`. */
+const CANONICAL_UUID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
 const PREFIX_BY_SUBJECT = { guest: 'G', tenant: 'T', employee: 'E' } as const;
 
 interface StoredCredential {
@@ -103,7 +105,7 @@ interface StoredCredential {
 export class AccessIotMockGateway extends AccessIotGateway {
   private readonly logger = new Logger(AccessIotMockGateway.name);
   private readonly store = new Map<string, StoredCredential>();
-  private readonly commands = new Map<string, DoorCommandResult>();
+  private readonly triggers = new Map<string, TriggerResult>();
 
   listBuildings(): Promise<AccessIotBuilding[]> {
     return Promise.resolve(BUILDINGS);
@@ -248,28 +250,39 @@ export class AccessIotMockGateway extends AccessIotGateway {
     });
   }
 
-  /** Deduplica por `(deviceId, requestId)`: repetir la orden no da un segundo pulso. */
-  commandDevice(
+  /**
+   * Como el gateway: solo la barrera vehicular, solo `{ requestId }`, y
+   * deduplica por `(deviceId, requestId)`, así que repetir no da un segundo pulso.
+   */
+  triggerDevice(
     deviceId: string,
-    action: DoorAction,
-    request: DoorCommandRequest,
-  ): Promise<DoorCommandResult> {
+    request: TriggerRequest,
+  ): Promise<TriggerResult> {
+    const extra = Object.keys(request).filter((key) => key !== 'requestId');
+
+    if (extra.length > 0 || !CANONICAL_UUID.test(request.requestId)) {
+      return Promise.resolve({
+        outcome: 'failed',
+        errorCode: 'invalid_request',
+      });
+    }
+
     const key = `${deviceId}:${request.requestId}`;
-    const previous = this.commands.get(key);
+    const previous = this.triggers.get(key);
 
     if (previous) return Promise.resolve(previous);
 
     const device = DEVICES.find((candidate) => candidate.deviceId === deviceId);
-    const result: DoorCommandResult = !device
+    const result: TriggerResult = !device
       ? { outcome: 'failed', errorCode: 'not_found' }
-      : !device.online
-        ? { outcome: 'failed', errorCode: 'device_unreachable' }
-        : { outcome: DONE_OUTCOME[action], at: new Date().toISOString() };
+      : device.kind !== 'barrier' || device.scope !== 'vehicular'
+        ? { outcome: 'failed', errorCode: 'device_not_compatible' }
+        : !device.online
+          ? { outcome: 'failed', errorCode: 'device_unreachable' }
+          : { outcome: 'triggered' };
 
-    this.commands.set(key, result);
-    this.logger.log(
-      `Orden simulada ${action} en ${deviceId} (${request.actor.type}): ${result.outcome}`,
-    );
+    this.triggers.set(key, result);
+    this.logger.log(`Pulso simulado en ${deviceId}: ${result.outcome}`);
 
     return Promise.resolve(result);
   }

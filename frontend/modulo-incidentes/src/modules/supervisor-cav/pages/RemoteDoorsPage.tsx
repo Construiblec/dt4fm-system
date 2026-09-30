@@ -16,64 +16,72 @@ import { BuildingSelect } from "@/modules/supervisor-cav/components/BuildingSele
 import {
   useRemoteDoors,
   type DoorActionResult,
+  type PendingCommand,
 } from "@/modules/supervisor-cav/hooks/useRemoteDoors";
 import {
   DOOR_SCOPE_LABELS,
   type Door,
   type DoorAction,
   type DoorLastCommand,
+  type DoorPhase,
 } from "@/modules/supervisor-cav/types/Door";
 import { AppHeader } from "@/shared/components/AppHeader";
 import { formatRelativeTime } from "@/shared/utils/dateUtils";
 
+// La barrera no tiene sensor: los textos hablan de pulsos, nunca de posición.
 const OUTCOME_LABELS: Record<DoorLastCommand["outcome"], string> = {
-  opened: "abierta",
-  closed: "cerrada",
-  failed: "falló",
+  triggered: "pulso enviado",
+  opened: "pulso enviado",
+  closed: "pulso enviado",
+  failed: "no salió",
   uncertain: "sin confirmar",
   attempted: "en curso",
 };
 
 const lastCommandText = (last: DoorLastCommand) =>
-  `Última orden remota (${last.action === "open" ? "abrir" : "cerrar"}) ` +
+  `Último pulso remoto (${last.action === "open" ? "abrir" : "cerrar"}) ` +
   `${formatRelativeTime(last.at)} · ` +
   `${last.actorType === "guest" ? "huésped" : (last.actorUsername ?? "staff")} · ` +
   OUTCOME_LABELS[last.outcome];
 
 /** Motivo del `failed` según el código de la VPS; lo demás cae en el genérico. */
 const FAILURE_MESSAGES: Record<string, string> = {
-  device_unreachable: "La puerta no está en línea.",
+  device_unreachable: "El gateway no alcanzó la barrera.",
   gateway_unreachable: "El edificio no responde.",
-  remote_open_disabled: "El edificio tiene apagado el control remoto de puertas.",
-  not_found: "Esta puerta aún no admite apertura remota.",
+  operations_disabled: "El edificio tiene apagado el control físico de la barrera.",
+  device_not_compatible: "Esta puerta no admite apertura remota.",
+  not_found: "Esta barrera aún no admite apertura remota.",
 };
 
 const noticeFor = (result: DoorActionResult) => {
   switch (result.outcome) {
-    case "opened":
+    case "triggered":
       return {
         tone: "text-emerald-700 bg-emerald-50",
         Icon: CircleCheck,
-        text: "Puerta abierta",
+        text:
+          result.action === "close"
+            ? "Orden de cierre enviada a la barrera"
+            : "Orden enviada a la barrera",
       };
-    case "closed":
+    case "resolved":
       return {
         tone: "text-emerald-700 bg-emerald-50",
         Icon: CircleCheck,
-        text: "Puerta cerrada",
+        text: "Barrera liberada: vuelve a admitir «Abrir»",
       };
     case "uncertain":
       return {
         tone: "text-amber-700 bg-amber-50",
         Icon: TriangleAlert,
-        text: "No se pudo confirmar la orden. Verifica la puerta.",
+        text: "No se pudo confirmar si el pulso salió. Revisa la barrera.",
       };
     case "failed":
       return {
         tone: "text-red-700 bg-red-50",
         Icon: CircleAlert,
         text:
-          FAILURE_MESSAGES[result.errorCode ?? ""] ?? "La puerta no respondió.",
+          FAILURE_MESSAGES[result.errorCode ?? ""] ?? "La barrera no respondió.",
       };
     case "error":
       return {
@@ -101,6 +109,15 @@ const ResultNotice = ({ result }: { result: DoorActionResult }) => {
 const secondsUntil = (iso: string | null, now: number) =>
   iso ? Math.max(0, Math.ceil((new Date(iso).getTime() - now) / 1000)) : 0;
 
+/** La fase llega al cargar la lista; los plazos la hacen avanzar sin volver a pedirla. */
+const livePhase = (door: Door, now: number): DoorPhase | null => {
+  if (door.phase !== "closable" && door.phase !== "settling") return door.phase;
+  if (secondsUntil(door.openUntil, now) > 0) return "closable";
+  if (secondsUntil(door.settlesAt, now) > 0) return "settling";
+
+  return "ready";
+};
+
 const DoorRow = ({
   door,
   enabled,
@@ -109,27 +126,27 @@ const DoorRow = ({
   now,
   result,
   onCommand,
+  onResolve,
 }: {
   door: Door;
   enabled: boolean;
   busy: boolean;
-  pendingAction: DoorAction | null;
+  pendingAction: PendingCommand["action"] | null;
   now: number;
   result?: DoorActionResult;
   onCommand: (action: DoorAction) => void;
+  onResolve: () => void;
 }) => {
   const Icon = door.scope === "vehicular" ? Car : DoorOpen;
-  const remaining = secondsUntil(door.openUntil, now);
-  // Solo la barrera vehicular sigue arriba un rato; ese es el único caso de «Cerrar».
-  const action: DoorAction = remaining > 0 ? "close" : "open";
-  const label =
-    pendingAction === "close"
-      ? "Cerrando…"
-      : pendingAction === "open"
-        ? "Abriendo…"
-        : action === "close"
-          ? "Cerrar"
-          : "Abrir";
+  const phase = livePhase(door, now);
+  const action: DoorAction = phase === "closable" ? "close" : "open";
+  const label = pendingAction
+    ? "Enviando…"
+    : phase === "uncertain"
+      ? "Marcar revisada"
+      : action === "close"
+        ? "Cerrar"
+        : "Abrir";
 
   return (
     <li className="py-3 first:pt-0 last:pb-0">
@@ -151,25 +168,47 @@ const DoorRow = ({
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={() => onCommand(action)}
-          disabled={!enabled || !door.online || busy}
-          className={`flex shrink-0 items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold text-white transition disabled:cursor-not-allowed disabled:bg-slate-300 ${
-            action === "close"
-              ? "bg-slate-800 hover:bg-slate-700"
-              : "bg-brand hover:bg-brand-hover"
-          }`}
-        >
-          {pendingAction ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-          {label}
-        </button>
+        {door.remoteControl ? (
+          <button
+            type="button"
+            onClick={() => (phase === "uncertain" ? onResolve() : onCommand(action))}
+            disabled={
+              busy ||
+              (phase !== "uncertain" &&
+                (!enabled || !door.online || phase === "settling"))
+            }
+            className={`flex shrink-0 items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold text-white transition disabled:cursor-not-allowed disabled:bg-slate-300 ${
+              phase === "uncertain"
+                ? "bg-amber-600 hover:bg-amber-700"
+                : action === "close"
+                  ? "bg-slate-800 hover:bg-slate-700"
+                  : "bg-brand hover:bg-brand-hover"
+            }`}
+          >
+            {pendingAction ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+            {label}
+          </button>
+        ) : null}
       </div>
 
-      {remaining > 0 ? (
+      {phase === "closable" ? (
         <p className="mt-2 flex items-center gap-1.5 text-xs font-medium text-amber-700">
           <Clock className="h-3.5 w-3.5" />
-          Abierta · se cierra sola en {remaining} s
+          Pulso enviado · se puede cerrar durante {secondsUntil(door.openUntil, now)} s
+        </p>
+      ) : phase === "settling" ? (
+        <p className="mt-2 flex items-center gap-1.5 text-xs font-medium text-slate-500">
+          <Clock className="h-3.5 w-3.5" />
+          Puede estar bajando · nadie pulsa durante {secondsUntil(door.settlesAt, now)} s
+        </p>
+      ) : phase === "uncertain" ? (
+        <p className="mt-2 flex items-start gap-1.5 text-xs font-medium text-amber-700">
+          <TriangleAlert className="mt-px h-3.5 w-3.5 shrink-0" />
+          Pulso sin confirmar. Revisa la barrera antes de liberarla para los huéspedes.
+        </p>
+      ) : door.scope === "vehicular" && !door.remoteControl ? (
+        <p className="mt-2 text-xs text-slate-400">
+          Sin apertura remota: faltan los tiempos medidos de la barrera.
         </p>
       ) : null}
 
@@ -185,7 +224,7 @@ const DoorRow = ({
 };
 
 export const RemoteDoorsPage = () => {
-  const { overview, loading, error, pending, results, command, reload } =
+  const { overview, loading, error, pending, results, command, resolve, reload } =
     useRemoteDoors();
   const buildings = overview?.buildings ?? [];
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -194,11 +233,11 @@ export const RemoteDoorsPage = () => {
     buildings.find((building) => building.buildingId === selectedId) ??
     buildings[0];
   const anyOpen = buildings.some((building) =>
-    building.doors.some((door) => door.openUntil),
+    building.doors.some((door) => door.settlesAt),
   );
   const [now, setNow] = useState(() => Date.now());
 
-  // Cuenta regresiva de las barreras abiertas, sin volver a pedir la lista.
+  // Cuenta regresiva de las barreras recién pulsadas, sin volver a pedir la lista.
   useEffect(() => {
     if (!anyOpen) return;
 
@@ -283,6 +322,7 @@ export const RemoteDoorsPage = () => {
                       now={now}
                       result={results[door.deviceId]}
                       onCommand={(action) => void command(door.deviceId, action)}
+                      onResolve={() => void resolve(door.deviceId)}
                     />
                   ))}
                 </ul>

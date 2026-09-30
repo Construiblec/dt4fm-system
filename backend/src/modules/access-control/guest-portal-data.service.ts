@@ -56,9 +56,11 @@ export interface GuestPortalData {
   credentialId: string | null;
   syncState: SyncState | null;
   hasVehicularAccess: boolean;
-  /** Misma regla que aplica `POST /guest/vehicular-gate/open`. */
+  /** Hay apertura remota para esta estancia: barrera y tiempos medidos. */
+  vehicularGateAvailable: boolean;
+  /** Misma regla que aplica `POST /guest/vehicular-gate/open`, fase `ready` incluida. */
   canOpenVehicularGate: boolean;
-  /** Mientras no sea nulo, este huésped puede bajar la barrera que abrió. */
+  /** Fin de la ventana de cierre de la barrera que abrió este huésped. */
   vehicularGateOpenUntil: Date | null;
   /** Misma regla que aplica `POST /guest/incidents`, calculada en un solo sitio. */
   canReportIncident: boolean;
@@ -153,6 +155,7 @@ export class GuestPortalDataService {
         credentialId: null,
         syncState: null,
         hasVehicularAccess: false,
+        vehicularGateAvailable: false,
         canOpenVehicularGate: false,
         vehicularGateOpenUntil: null,
       };
@@ -160,7 +163,7 @@ export class GuestPortalDataService {
 
     const pinState = this.pinStateFor(stay, now);
     const hasVehicularAccess = credential.scope !== 'pedestrian';
-    const canOpenVehicularGate =
+    const eligible =
       remoteOpenEnabled(this.configService) &&
       guestGateEligibility(
         {
@@ -171,6 +174,9 @@ export class GuestPortalDataService {
         },
         now,
       ) === 'ok';
+    const gate = eligible
+      ? await this.remoteOpen.guestGate(stay.id, stay.buildingId)
+      : null;
 
     return {
       ...base,
@@ -183,10 +189,9 @@ export class GuestPortalDataService {
       credentialId: credential.id,
       syncState: credential.syncState,
       hasVehicularAccess,
-      canOpenVehicularGate,
-      vehicularGateOpenUntil: canOpenVehicularGate
-        ? await this.remoteOpen.guestOpenUntil(stay.id, stay.buildingId)
-        : null,
+      vehicularGateAvailable: gate?.available ?? false,
+      canOpenVehicularGate: gate?.canOpen ?? false,
+      vehicularGateOpenUntil: gate?.openUntil ?? null,
     };
   }
 
