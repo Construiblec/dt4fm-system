@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { startCleaningTask } from "@/modules/incidentes/services/cleaningTaskExecutionService";
+import { unlockSpeechSynthesis } from "@/modules/incidentes/utils/speechUnlock";
 import { useCleaningTaskExecutionStore } from "@/store/cleaningTaskExecutionStore";
 
 /**
@@ -91,8 +92,16 @@ export const useStartCleaningTask = (task: StartableCleaningTask) => {
      * desde ahí ya encuentra la tarea activa, sin un render intermedio en el
      * que la pantalla todavía la cree sin arrancar.
      */
-    start: (onStarted?: () => void) =>
-      mutation.mutate(undefined, { onSuccess: () => onStarted?.() }),
+    start: (onStarted?: () => void) => {
+      // Tiene que ser lo primero, y síncrono: este `start()` corre dentro del
+      // propio handler del tap ("Iniciar tarea" / "Reanudar"), que es la única
+      // oportunidad real de destrabar la síntesis de voz en iOS. El asistente
+      // habla recién después de que esta mutación viaje por red y de un
+      // `setTimeout` interno — ya sin nada del gesto original —, así que
+      // hacerlo ahí llegaría tarde.
+      unlockSpeechSynthesis();
+      mutation.mutate(undefined, { onSuccess: () => onStarted?.() });
+    },
     isStarting: mutation.isPending,
     error,
     clearError: () => setError(null),
