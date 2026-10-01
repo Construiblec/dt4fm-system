@@ -62,6 +62,8 @@ export interface GuestPortalData {
   canOpenVehicularGate: boolean;
   /** Fin de la ventana de cierre de la barrera que abrió este huésped. */
   vehicularGateOpenUntil: Date | null;
+  /** Fin del enfriamiento de la barrera: hasta entonces el botón sale deshabilitado. */
+  vehicularGateCooldownUntil: Date | null;
   /** Misma regla que aplica `POST /guest/incidents`, calculada en un solo sitio. */
   canReportIncident: boolean;
 }
@@ -158,6 +160,7 @@ export class GuestPortalDataService {
         vehicularGateAvailable: false,
         canOpenVehicularGate: false,
         vehicularGateOpenUntil: null,
+        vehicularGateCooldownUntil: null,
       };
     }
 
@@ -192,6 +195,7 @@ export class GuestPortalDataService {
       vehicularGateAvailable: gate?.available ?? false,
       canOpenVehicularGate: gate?.canOpen ?? false,
       vehicularGateOpenUntil: gate?.openUntil ?? null,
+      vehicularGateCooldownUntil: gate?.cooldownUntil ?? null,
     };
   }
 

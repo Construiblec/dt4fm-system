@@ -10,6 +10,18 @@ export const STALE_ATTEMPT_MS = 30_000;
 /** Por barrera y para cualquier pulso: Abrir y Cerrar son la misma orden física. */
 export const PULSE_COOLDOWN_MS = 10_000;
 
+/** Fin del enfriamiento que abrió el último pulso; nulo si ya pasó. */
+export const cooldownEnd = (
+  lastPulseAt: Date | null,
+  now: Date,
+): Date | null => {
+  if (!lastPulseAt) return null;
+
+  const until = new Date(lastPulseAt.getTime() + PULSE_COOLDOWN_MS);
+
+  return until > now ? until : null;
+};
+
 /** Apagado salvo `"true"`: es control físico (guía de la VPS, §10). */
 export const remoteOpenEnabled = (config: ConfigService): boolean =>
   config.get<string>('ACCESS_REMOTE_OPEN_ENABLED') === 'true';

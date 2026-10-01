@@ -35,6 +35,7 @@ import {
 } from './entities/remote-open-request.entity';
 import { VehicularGatePhase } from './entities/vehicular-gate-phase.entity';
 import {
+  cooldownEnd,
   EffectivePhase,
   effectivePhase,
   effectiveStatus,
@@ -102,6 +103,8 @@ export interface RemoteOpenResult {
   at?: string;
   /** Fin de la ventana de cierre tras «Abrir»; nulo en lo demás. */
   openUntil: string | null;
+  /** Fin del enfriamiento de la barrera; nulo si el pulso no salió o ya pasó. */
+  cooldownUntil: string | null;
 }
 
 export interface GuestGate {
@@ -110,6 +113,8 @@ export interface GuestGate {
   canOpen: boolean;
   /** Fin de la ventana de cierre, solo si la abrió este huésped. */
   openUntil: Date | null;
+  /** Fin del enfriamiento: hasta entonces el botón sale deshabilitado. */
+  cooldownUntil: Date | null;
 }
 
 export interface DoorLastCommand {
@@ -139,6 +144,8 @@ export interface DoorsOverview {
       openUntil: Date | null;
       /** Fin del cierre automático: hasta entonces nadie pulsa. */
       settlesAt: Date | null;
+      /** Fin del enfriamiento tras el último pulso. */
+      cooldownUntil: Date | null;
     }[];
   }[];
 }
@@ -155,6 +162,7 @@ interface CommandRow {
 interface PhaseSnapshot {
   phase: EffectivePhase;
   state: VehicularGatePhase | null;
+  cooldownUntil: Date | null;
 }
 
 const isRetryAfter = (value: unknown): value is { retryAfterMs: number } =>
@@ -296,6 +304,7 @@ export class RemoteOpenService {
       available: false,
       canOpen: false,
       openUntil: null,
+      cooldownUntil: null,
     };
     const timings = this.timingsFor(buildingId);
 
@@ -317,7 +326,7 @@ export class RemoteOpenService {
     if (!gate) return unavailable;
 
     const now = new Date();
-    const { phase, state } = await this.snapshot(
+    const { phase, state, cooldownUntil } = await this.snapshot(
       this.requests.manager,
       gate.deviceId,
       timings,
@@ -331,6 +340,7 @@ export class RemoteOpenService {
         phase === 'closable' && state?.openedByStayId === stayId
           ? this.closeWindowEnd(state, timings)
           : null,
+      cooldownUntil,
     };
   }
 
@@ -389,6 +399,7 @@ export class RemoteOpenService {
                   moving && pulsedAt && timings
                     ? new Date(pulsedAt.getTime() + timings.autoCloseMs)
                     : null,
+                cooldownUntil: snapshot?.cooldownUntil ?? null,
               };
             }),
         };
@@ -514,6 +525,10 @@ export class RemoteOpenService {
       errorCode: row.errorCode ?? undefined,
       at: (row.finishedAt ?? row.requestedAt).toISOString(),
       openUntil: until && until > now ? until.toISOString() : null,
+      cooldownUntil:
+        (outcome === 'failed'
+          ? null
+          : cooldownEnd(row.requestedAt, now)?.toISOString()) ?? null,
     };
   }
 
@@ -557,6 +572,13 @@ export class RemoteOpenService {
         outcome === 'triggered' && action === 'open'
           ? new Date(at.getTime() + timings.closeWindowMs).toISOString()
           : null,
+      // Cuenta desde que se reservó la orden, igual que el `429`.
+      cooldownUntil:
+        outcome === 'failed'
+          ? null
+          : new Date(
+              reserved.requestedAt.getTime() + PULSE_COOLDOWN_MS,
+            ).toISOString(),
     };
   }
 
@@ -577,7 +599,7 @@ export class RemoteOpenService {
         await this.lock(manager, device.deviceId);
 
         const now = new Date();
-        const { phase, state } = await this.snapshot(
+        const { phase, state, cooldownUntil } = await this.snapshot(
           manager,
           device.deviceId,
           timings,
@@ -594,20 +616,8 @@ export class RemoteOpenService {
           throw new ConflictException(PHASE_REFUSALS[refusal]);
         }
 
-        const last = await manager.findOne(RemoteOpenRequest, {
-          where: {
-            deviceId: device.deviceId,
-            status: In(PULSE_STATUSES),
-            requestedAt: MoreThan(new Date(now.getTime() - PULSE_COOLDOWN_MS)),
-          },
-          order: { requestedAt: 'DESC' },
-        });
-
-        if (last) {
-          return {
-            retryAfterMs:
-              PULSE_COOLDOWN_MS - (now.getTime() - last.requestedAt.getTime()),
-          };
+        if (cooldownUntil) {
+          return { retryAfterMs: cooldownUntil.getTime() - now.getTime() };
         }
 
         return manager.save(
@@ -704,7 +714,7 @@ export class RemoteOpenService {
     timings: GateTimings,
     now: Date,
   ): Promise<PhaseSnapshot> {
-    const [state, stale] = await Promise.all([
+    const [state, stale, lastPulse] = await Promise.all([
       manager.findOne(VehicularGatePhase, { where: { deviceId } }),
       manager.findOne(RemoteOpenRequest, {
         where: {
@@ -714,11 +724,20 @@ export class RemoteOpenService {
         },
         order: { requestedAt: 'DESC' },
       }),
+      manager.findOne(RemoteOpenRequest, {
+        where: {
+          deviceId,
+          status: In(PULSE_STATUSES),
+          requestedAt: MoreThan(new Date(now.getTime() - PULSE_COOLDOWN_MS)),
+        },
+        order: { requestedAt: 'DESC' },
+      }),
     ]);
 
     return {
       phase: effectivePhase(state, stale?.requestedAt ?? null, timings, now),
       state,
+      cooldownUntil: cooldownEnd(lastPulse?.requestedAt ?? null, now),
     };
   }
 

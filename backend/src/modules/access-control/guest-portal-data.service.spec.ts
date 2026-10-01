@@ -38,7 +38,12 @@ type Harness = {
 const harness = (
   live: Partial<AccessCredential>[],
   env: Record<string, string> = { ACCESS_GUEST_LEAD_HOURS: '0' },
-  gate = { available: true, canOpen: true, openUntil: null as Date | null },
+  gate = {
+    available: true,
+    canOpen: true,
+    openUntil: null as Date | null,
+    cooldownUntil: null as Date | null,
+  },
 ): Harness => {
   const revealPin = jest.fn().mockReturnValue(PIN);
   const credentials = {
@@ -175,7 +180,12 @@ describe('GuestPortalDataService', () => {
       const { service } = harness(
         [{ ...credencial, scope: 'both' }],
         { ACCESS_GUEST_LEAD_HOURS: '0', ACCESS_REMOTE_OPEN_ENABLED: 'true' },
-        { available: true, canOpen: false, openUntil: null },
+        {
+          available: true,
+          canOpen: false,
+          openUntil: null,
+          cooldownUntil: null,
+        },
       );
 
       await expect(service.getPortalData(stayWith())).resolves.toMatchObject({
@@ -189,7 +199,12 @@ describe('GuestPortalDataService', () => {
       const { service } = harness(
         [{ ...credencial, scope: 'both' }],
         { ACCESS_GUEST_LEAD_HOURS: '0', ACCESS_REMOTE_OPEN_ENABLED: 'true' },
-        { available: false, canOpen: false, openUntil: null },
+        {
+          available: false,
+          canOpen: false,
+          openUntil: null,
+          cooldownUntil: null,
+        },
       );
 
       await expect(service.getPortalData(stayWith())).resolves.toMatchObject({

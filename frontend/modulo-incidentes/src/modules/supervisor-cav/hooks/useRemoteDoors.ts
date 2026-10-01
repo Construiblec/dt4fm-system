@@ -30,6 +30,8 @@ export const useRemoteDoors = () => {
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState<PendingCommand | null>(null);
   const [results, setResults] = useState<Record<string, DoorActionResult>>({});
+  // Fin del enfriamiento por barrera, hasta que la lista releída lo traiga.
+  const [cooldowns, setCooldowns] = useState<Record<string, string>>({});
   const requestIds = useRef<Record<string, string>>({});
 
   const load = useCallback(async (silent = false) => {
@@ -71,12 +73,25 @@ export const useRemoteDoors = () => {
             errorCode: result.errorCode,
           },
         }));
+        if (result.cooldownUntil) {
+          const until = result.cooldownUntil;
+          setCooldowns((prev) => ({ ...prev, [deviceId]: until }));
+        }
         void load(true);
       } catch (err) {
         // Sin respuesta no se sabe si la orden llegó: el reintento reusa el id
         // y el backend devuelve lo que pasó en vez de mandar otro pulso.
         if (axios.isAxiosError(err) && err.response) {
           delete requestIds.current[key];
+
+          // Otro pulsó antes: el `429` dice cuánto falta y la lista trae la fase nueva.
+          const retryAfter = (err.response.data as { retryAfterSeconds?: unknown })
+            ?.retryAfterSeconds;
+          if (err.response.status === 429 && typeof retryAfter === "number") {
+            const until = new Date(Date.now() + retryAfter * 1000).toISOString();
+            setCooldowns((prev) => ({ ...prev, [deviceId]: until }));
+          }
+          void load(true);
         }
         setResults((prev) => ({
           ...prev,
@@ -121,6 +136,7 @@ export const useRemoteDoors = () => {
     error,
     pending,
     results,
+    cooldowns,
     command,
     resolve,
     reload: load,
