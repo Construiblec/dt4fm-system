@@ -177,7 +177,10 @@ Asistente: "Sacar las almohadas de sus fundas. Di: asistente,
    … (se repite hasta cerrar el bloque)
 
 ── en cualquier momento ───────────────────────────────────
-Operario:  "asistente, repite"  → relee sin cambiar de modo
+Operario:  "asistente, repite"  → repite solo lo que tiene entre manos:
+                                  la actividad en curso ("no") o el
+                                  nombre del bloque ("sí"). No reinicia
+                                  el reloj ni cambia de modo.
 ```
 
 ### Apagar el micrófono mientras habla

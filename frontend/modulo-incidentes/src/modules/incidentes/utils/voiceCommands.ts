@@ -51,7 +51,7 @@ const normalize = (text: string) =>
  * y terminar.
  */
 const INTENT_PHRASES: Record<VoiceIntent, string[]> = {
-  // Pedir que vuelva a leer las actividades del bloque. Exige activación igual
+  // Pedir que repita lo que tiene entre manos. Exige activación igual
   // que FIN: convive con él durante todo el trabajo, así que un "de nuevo" de
   // una conversación no debe poner a hablar al teléfono.
   REPETIR: ["repiteme", "repite", "repetir", "otra vez", "de nuevo"],
