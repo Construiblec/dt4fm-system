@@ -1,4 +1,5 @@
 import {
+  cooldownEnd,
   effectivePhase,
   effectiveStatus,
   gateTimings,
@@ -105,6 +106,19 @@ describe('reglas de apertura remota', () => {
     expect(isRemoteGate({ kind: 'barrier', scope: 'vehicular' })).toBe(true);
     expect(isRemoteGate({ kind: 'terminal', scope: 'pedestrian' })).toBe(false);
     expect(isRemoteGate({ kind: 'terminal', scope: 'vehicular' })).toBe(false);
+  });
+
+  describe('cooldownEnd', () => {
+    it('dura 10 s desde el último pulso', () => {
+      expect(cooldownEnd(ago(3_000), now)).toEqual(
+        new Date(now.getTime() + 7_000),
+      );
+    });
+
+    it('sin pulso reciente no hay enfriamiento', () => {
+      expect(cooldownEnd(null, now)).toBeNull();
+      expect(cooldownEnd(ago(10_000), now)).toBeNull();
+    });
   });
 
   describe('effectivePhase', () => {

@@ -125,6 +125,7 @@ const DoorRow = ({
   pendingAction,
   now,
   result,
+  cooldownUntil,
   onCommand,
   onResolve,
 }: {
@@ -134,19 +135,31 @@ const DoorRow = ({
   pendingAction: PendingCommand["action"] | null;
   now: number;
   result?: DoorActionResult;
+  /** Del pulso recién mandado desde aquí; la lista trae el de los demás. */
+  cooldownUntil: string | null;
   onCommand: (action: DoorAction) => void;
   onResolve: () => void;
 }) => {
   const Icon = door.scope === "vehicular" ? Car : DoorOpen;
   const phase = livePhase(door, now);
   const action: DoorAction = phase === "closable" ? "close" : "open";
+  // Liberar una barrera no es un pulso: el enfriamiento no le aplica.
+  const cooldown =
+    phase === "uncertain"
+      ? 0
+      : Math.max(
+          secondsUntil(door.cooldownUntil, now),
+          secondsUntil(cooldownUntil, now),
+        );
   const label = pendingAction
     ? "Enviando…"
     : phase === "uncertain"
       ? "Marcar revisada"
-      : action === "close"
-        ? "Cerrar"
-        : "Abrir";
+      : cooldown > 0
+        ? `Espera ${cooldown} s`
+        : action === "close"
+          ? "Cerrar"
+          : "Abrir";
 
   return (
     <li className="py-3 first:pt-0 last:pb-0">
@@ -175,7 +188,7 @@ const DoorRow = ({
             disabled={
               busy ||
               (phase !== "uncertain" &&
-                (!enabled || !door.online || phase === "settling"))
+                (!enabled || !door.online || phase === "settling" || cooldown > 0))
             }
             className={`flex shrink-0 items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold text-white transition disabled:cursor-not-allowed disabled:bg-slate-300 ${
               phase === "uncertain"
@@ -185,7 +198,11 @@ const DoorRow = ({
                   : "bg-brand hover:bg-brand-hover"
             }`}
           >
-            {pendingAction ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+            {pendingAction ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : cooldown > 0 ? (
+              <Clock className="h-4 w-4" />
+            ) : null}
             {label}
           </button>
         ) : null}
@@ -224,18 +241,28 @@ const DoorRow = ({
 };
 
 export const RemoteDoorsPage = () => {
-  const { overview, loading, error, pending, results, command, resolve, reload } =
-    useRemoteDoors();
+  const {
+    overview,
+    loading,
+    error,
+    pending,
+    results,
+    cooldowns,
+    command,
+    resolve,
+    reload,
+  } = useRemoteDoors();
   const buildings = overview?.buildings ?? [];
   const [selectedId, setSelectedId] = useState<number | null>(null);
   // Si al recargar el elegido ya no viene, se muestra el primero.
   const selected =
     buildings.find((building) => building.buildingId === selectedId) ??
     buildings[0];
-  const anyOpen = buildings.some((building) =>
-    building.doors.some((door) => door.settlesAt),
-  );
   const [now, setNow] = useState(() => Date.now());
+  const anyOpen =
+    buildings.some((building) =>
+      building.doors.some((door) => door.settlesAt || door.cooldownUntil),
+    ) || Object.values(cooldowns).some((iso) => new Date(iso).getTime() > now);
 
   // Cuenta regresiva de las barreras recién pulsadas, sin volver a pedir la lista.
   useEffect(() => {
@@ -321,6 +348,7 @@ export const RemoteDoorsPage = () => {
                       }
                       now={now}
                       result={results[door.deviceId]}
+                      cooldownUntil={cooldowns[door.deviceId] ?? null}
                       onCommand={(action) => void command(door.deviceId, action)}
                       onResolve={() => void resolve(door.deviceId)}
                     />

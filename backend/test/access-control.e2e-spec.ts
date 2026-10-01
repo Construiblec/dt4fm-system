@@ -1402,6 +1402,10 @@ describe('AccessControlController (e2e)', () => {
           'ING-VEHICULAR-1',
           { requestId },
         );
+        const [fila] = await historial();
+        expect(new Date(res.body.cooldownUntil).getTime()).toBe(
+          fila.requestedAt.getTime() + 10_000,
+        );
         expect(await historial()).toEqual([
           expect.objectContaining({
             deviceId: 'ING-VEHICULAR-1',
@@ -1526,6 +1530,22 @@ describe('AccessControlController (e2e)', () => {
         expect(mocks.accessIot.triggerDevice).toHaveBeenCalledTimes(2);
       });
 
+      it('el portal dice hasta cuándo dura el enfriamiento', async () => {
+        const { auth } = await estanciaConToken();
+
+        expect((await portal(auth)).body.vehicularGateCooldownUntil).toBeNull();
+
+        const apertura = await abrirComoHuesped(auth).expect(200);
+
+        expect((await portal(auth)).body.vehicularGateCooldownUntil).toBe(
+          apertura.body.cooldownUntil,
+        );
+
+        await envejecer(15);
+
+        expect((await portal(auth)).body.vehicularGateCooldownUntil).toBeNull();
+      });
+
       it('un fallo no mueve la fase ni activa el enfriamiento', async () => {
         mocks.accessIot.triggerDevice.mockResolvedValueOnce({
           outcome: 'failed',
@@ -1541,6 +1561,7 @@ describe('AccessControlController (e2e)', () => {
           outcome: 'failed',
           errorCode: 'device_unreachable',
           openUntil: null,
+          cooldownUntil: null,
         });
         expect(reintento.body.outcome).toBe('triggered');
       });
@@ -1721,12 +1742,14 @@ describe('AccessControlController (e2e)', () => {
             remoteControl: true,
             phase: 'ready',
             lastCommand: null,
+            cooldownUntil: null,
           }),
         ]);
         expect(despues.buildings[0].doors[1]).toMatchObject({
           phase: 'closable',
           openUntil: expect.any(String),
           settlesAt: expect.any(String),
+          cooldownUntil: expect.any(String),
           lastCommand: expect.objectContaining({
             action: 'open',
             outcome: 'triggered',

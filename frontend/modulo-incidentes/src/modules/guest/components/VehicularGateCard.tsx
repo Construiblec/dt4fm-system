@@ -31,6 +31,8 @@ type VehicularGateCardProps = {
   pinState: GuestPinState;
   /** Del portal: fin de la ventana para cerrar la barrera que abrió este huésped. */
   openUntil: string | null;
+  /** Del portal: fin del enfriamiento tras el último pulso, de quien sea. */
+  cooldownUntil: string | null;
 };
 
 type Tone = "success" | "warning" | "danger";
@@ -112,6 +114,7 @@ export const VehicularGateCard = ({
   canOpen,
   pinState,
   openUntil: portalOpenUntil,
+  cooldownUntil: portalCooldownUntil,
 }: VehicularGateCardProps) => {
   const gate = useVehicularGate(token);
   const queryClient = useQueryClient();
@@ -128,10 +131,16 @@ export const VehicularGateCard = ({
   const remaining = secondsUntil(openUntil, now);
   const canClose = remaining > 0;
   const busy = available && !canOpen && !canClose;
+  // Enfriamiento de la barrera: el más tardío entre el del pulso propio y el del portal.
+  const cooldown = Math.max(
+    secondsUntil(gate.cooldownUntil, now),
+    secondsUntil(portalCooldownUntil, now),
+  );
+  const ticking = canClose || cooldown > 0;
 
-  // Cuenta regresiva de la ventana de cierre.
+  // Cuenta regresiva de la ventana de cierre y del enfriamiento.
   useEffect(() => {
-    if (!openUntil) return;
+    if (!ticking) return;
 
     const tick = () => setNow(Date.now());
     const first = window.setTimeout(tick, 0);
@@ -140,7 +149,7 @@ export const VehicularGateCard = ({
       window.clearTimeout(first);
       window.clearInterval(timer);
     };
-  }, [openUntil]);
+  }, [ticking]);
 
   useEffect(() => {
     if (!busy) return;
@@ -161,6 +170,17 @@ export const VehicularGateCard = ({
   }, [isSuccess, isError, reset]);
 
   const notice = gate.data ? noticeFor(gate.data, gate.variables) : null;
+  const waiting = gate.isPending ? (
+    <>
+      <Loader2 className="h-5 w-5 animate-spin" />
+      Enviando…
+    </>
+  ) : cooldown > 0 ? (
+    <>
+      <Clock className="h-5 w-5" />
+      Espera {cooldown} s
+    </>
+  ) : null;
 
   return (
     <GuestSection icon={Car} title="Puerta vehicular">
@@ -176,15 +196,10 @@ export const VehicularGateCard = ({
             <button
               type="button"
               onClick={() => gate.mutate("close")}
-              disabled={gate.isPending}
-              className="flex w-full items-center justify-center gap-2 rounded-xl bg-slate-800 py-4 text-base font-semibold text-white shadow-sm transition active:scale-[0.98] disabled:opacity-70"
+              disabled={waiting !== null}
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-slate-800 py-4 text-base font-semibold text-white shadow-sm transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-70"
             >
-              {gate.isPending ? (
-                <>
-                  <Loader2 className="h-5 w-5 animate-spin" />
-                  Enviando…
-                </>
-              ) : (
+              {waiting ?? (
                 <>
                   <ArrowDownToLine className="h-5 w-5" />
                   Cerrar puerta vehicular
@@ -200,15 +215,10 @@ export const VehicularGateCard = ({
           <button
             type="button"
             onClick={() => gate.mutate("open")}
-            disabled={gate.isPending}
-            className="flex w-full items-center justify-center gap-2 rounded-xl bg-brand py-4 text-base font-semibold text-white shadow-sm transition active:scale-[0.98] disabled:opacity-70"
+            disabled={waiting !== null}
+            className="flex w-full items-center justify-center gap-2 rounded-xl bg-brand py-4 text-base font-semibold text-white shadow-sm transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-70"
           >
-            {gate.isPending ? (
-              <>
-                <Loader2 className="h-5 w-5 animate-spin" />
-                Enviando…
-              </>
-            ) : (
+            {waiting ?? (
               <>
                 <Car className="h-5 w-5" />
                 Abrir puerta vehicular

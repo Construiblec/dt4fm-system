@@ -9,6 +9,7 @@ import type {
 /** Tiempos ficticios, como los de las pruebas del backend: en producción se miden en sitio. */
 const CLOSE_WINDOW_MS = 40_000;
 const AUTO_CLOSE_MS = 90_000;
+const COOLDOWN_MS = 10_000;
 
 const door = (
   deviceId: string,
@@ -24,6 +25,7 @@ const door = (
   lastCommand: null,
   openUntil: null,
   settlesAt: null,
+  cooldownUntil: null,
 });
 
 /** Mismas puertas que `access-iot.mock.ts` del backend: `PRA-VEHICULAR-1` caída a propósito. */
@@ -63,6 +65,9 @@ export const mockListDoors = async (): Promise<DoorsOverview> => {
 
   const now = Date.now();
   for (const target of overview.buildings.flatMap((b) => b.doors)) {
+    if (target.cooldownUntil && new Date(target.cooldownUntil).getTime() <= now) {
+      target.cooldownUntil = null;
+    }
     if (target.settlesAt && new Date(target.settlesAt).getTime() <= now) {
       Object.assign(target, { phase: "ready", openUntil: null, settlesAt: null });
     } else if (target.openUntil && new Date(target.openUntil).getTime() <= now) {
@@ -87,6 +92,10 @@ export const mockCommandDoor = async (
   const openUntil = opened
     ? new Date(Date.now() + CLOSE_WINDOW_MS).toISOString()
     : null;
+  const cooldownUntil =
+    outcome === "triggered"
+      ? new Date(Date.now() + COOLDOWN_MS).toISOString()
+      : null;
 
   if (target) {
     target.lastCommand = {
@@ -100,6 +109,7 @@ export const mockCommandDoor = async (
       Object.assign(target, {
         phase: opened ? "closable" : "ready",
         openUntil,
+        cooldownUntil,
         settlesAt: opened
           ? new Date(Date.now() + AUTO_CLOSE_MS).toISOString()
           : null,
@@ -114,6 +124,7 @@ export const mockCommandDoor = async (
     errorCode: outcome === "failed" ? "device_unreachable" : undefined,
     at,
     openUntil,
+    cooldownUntil,
   };
 };
 

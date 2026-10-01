@@ -36,6 +36,8 @@ export type GuestPortalData = {
   canOpenVehicularGate: boolean;
   /** Fin de la ventana para pulsar «Cerrar» sobre la barrera que abrió este huésped. */
   vehicularGateOpenUntil: string | null;
+  /** Fin del enfriamiento de la barrera: hasta entonces el botón sale deshabilitado. */
+  vehicularGateCooldownUntil: string | null;
   canReportIncident: boolean;
   unitName: string | null;
   buildingName: string | null;
@@ -55,6 +57,8 @@ export type GateCommandResult = {
   at?: string;
   /** Fin de la ventana de cierre tras «Abrir»; nulo en lo demás. */
   openUntil: string | null;
+  /** Fin del enfriamiento que abre este pulso; nulo si no salió. */
+  cooldownUntil: string | null;
 };
 
 export type GuestIncidentInput = {

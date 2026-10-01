@@ -51,6 +51,7 @@ export const GuestDashboardPage = () => {
               canOpen={data.canOpenVehicularGate}
               pinState={data.pinState}
               openUntil={data.vehicularGateOpenUntil}
+              cooldownUntil={data.vehicularGateCooldownUntil}
             />
           ) : null}
         </div>

@@ -40,6 +40,8 @@ export type Door = {
   openUntil: string | null;
   /** Fin del cierre automático: hasta entonces nadie pulsa. */
   settlesAt: string | null;
+  /** Fin del enfriamiento tras el último pulso, de quien sea. */
+  cooldownUntil: string | null;
 };
 
 export type DoorBuilding = {
@@ -62,4 +64,6 @@ export type DoorCommandResult = {
   errorCode?: string;
   at?: string;
   openUntil: string | null;
+  /** Fin del enfriamiento que abre este pulso; nulo si no salió. */
+  cooldownUntil: string | null;
 };

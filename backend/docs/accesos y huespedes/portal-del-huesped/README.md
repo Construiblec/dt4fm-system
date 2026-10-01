@@ -90,6 +90,7 @@ Campos que `GET /guest/me` añade para el portal diseñado:
 | `vehicularGateAvailable` | Hay apertura remota para esta estancia: activada, dentro de la ventana, con barrera y con sus tiempos medidos |
 | `canOpenVehicularGate` | Misma regla que aplica `POST /guest/vehicular-gate/open`: lo anterior y además la barrera en fase `ready` |
 | `vehicularGateOpenUntil` | Fin de la ventana de cierre de la barrera que abrió este huésped; mientras no sea nulo, el portal ofrece «Cerrar». No dice si la barrera sigue arriba |
+| `vehicularGateCooldownUntil` | Fin del enfriamiento de 10 s tras el último pulso a la barrera, lo mandara quien lo mandara. Hasta entonces el portal muestra el botón deshabilitado con una cuenta atrás; nulo si no hay enfriamiento |
 | `canReportIncident` | Misma regla que aplica `POST /guest/incidents`: estancia no cancelada, ya empezó el check-in, no terminó el acceso y la reserva está vinculada a un edificio |
 | `unitName`, `buildingName`, `buildingAddress` | Leídos de las tarjetas `Unit` y `Building` de openMAINT con la sesión de servicio, cacheados 12 h. Nulos si openMAINT no responde: el portal no falla por eso |
 
