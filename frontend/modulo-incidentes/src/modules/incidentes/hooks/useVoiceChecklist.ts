@@ -427,13 +427,13 @@ export const useVoiceChecklist = ({
       }
 
       if (intent === "NEGACION") {
-        // No se las acuerda: se le leen y se lo guía de a una.
+        // No se las acuerda: se lo guía de a una, empezando ya por la primera.
+        // No se le lee la lista entera antes: cada actividad se anuncia cuando
+        // le toca, con su propio reloj, y si quiere el bloque completo lo pide
+        // con "asistente, repite".
         modeRef.current = "actividad";
         announcedItemRef.current = itemIndex;
-        say(
-          currentSection.items.map((item) => item.text),
-          () => handOverActivity(currentActivity, "Empezamos con:"),
-        );
+        handOverActivity(currentActivity);
         return;
       }
 
