@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { IsBoolean, IsNotEmpty, IsOptional, IsString } from 'class-validator';
 
 export class LoginDto {
   @ApiProperty({
@@ -27,4 +27,14 @@ export class LoginDto {
   @IsString()
   @IsOptional()
   role?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Mantener la sesión iniciada en este dispositivo: el backend la mantiene ' +
+      'viva mientras se use, hasta 30 días sin abrir la app. Por defecto no.',
+    example: true,
+  })
+  @IsBoolean()
+  @IsOptional()
+  remember?: boolean;
 }

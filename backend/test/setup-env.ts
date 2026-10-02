@@ -30,6 +30,12 @@ process.env.MEETING_REMINDER_SCHEDULER_ENABLED = 'false';
 process.env.PAYMENTS_SCHEDULER_ENABLED = 'false';
 process.env.BILLING_SCHEDULER_ENABLED = 'false';
 process.env.PUSH_SCHEDULER_ENABLED = 'false';
+process.env.APP_SESSION_KEEPALIVE_ENABLED = 'false';
+
+// Sin clave el registro de sesiones queda apagado y el login no escribe en
+// `app_session`: las suites de auth no dependen de esa tabla. El registro se
+// cubre con tests unitarios (app-sessions.service.spec.ts).
+process.env.APP_SESSION_KEY = '';
 
 // Hostaway en modo mock — HostawayService también se sustituye por un mock
 // directo en cada suite, pero esto evita que onModuleInit u otro código que

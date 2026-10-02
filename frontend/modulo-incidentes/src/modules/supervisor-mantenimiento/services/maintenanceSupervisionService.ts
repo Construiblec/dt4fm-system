@@ -1,5 +1,6 @@
 import axios from "axios";
 import { env } from "@/config/env";
+import { attachSessionRenewal } from "@/shared/auth/sessionHttp";
 import type {
   AssigneesResponse,
   AssignPayload,
@@ -14,6 +15,8 @@ import { redirectToLogin } from "@/shared/auth/returnTo";
 const api = axios.create({
   baseURL: env.VITE_API_URL.replace(/\/api\/?$/, ""),
 });
+
+attachSessionRenewal(api, "authorization");
 
 /**
  * El backend gatea por `x-role`, pero la barrera real son los permisos de

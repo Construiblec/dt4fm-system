@@ -1,4 +1,12 @@
-import { Body, Controller, Headers, Post, Put } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Headers,
+  HttpCode,
+  Post,
+  Put,
+} from '@nestjs/common';
 import { ApiHeader, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
 import { ChangePasswordDto } from './dto/change-password.dto';
@@ -31,6 +39,47 @@ export class AuthController {
   @ApiResponse({ status: 401, description: 'Credenciales incorrectas.' })
   async login(@Body() dto: LoginDto) {
     return this.authService.login(dto);
+  }
+
+  @Get('session')
+  @ApiOperation({
+    summary: 'Comprobar si la sesión sigue viva',
+    description:
+      'La app lo llama al abrirse y al volver a primer plano para mandar al ' +
+      'login antes de pintar pantallas vacías. Es ligero: no resuelve los ' +
+      'identificadores que sí devuelve el login.',
+  })
+  @ApiHeader({ name: 'Authorization', description: 'Session ID de openMAINT' })
+  @ApiResponse({
+    status: 200,
+    description: 'Sesión válida: usuario, rol activo y roles disponibles.',
+  })
+  @ApiResponse({ status: 401, description: 'Sesión caducada o inexistente.' })
+  @ApiResponse({ status: 500, description: 'openMAINT no responde.' })
+  async checkSession(
+    @Headers('authorization') authorization?: string,
+    @Headers('x-session-token') sessionToken?: string,
+  ) {
+    return this.authService.checkSession(
+      readSessionId(authorization, sessionToken),
+    );
+  }
+
+  @Post('logout')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Cerrar sesión',
+    description:
+      'Cierra la sesión en openMAINT y deja de mantenerla viva. Es idempotente: ' +
+      'sin sesión, o con una ya cerrada, responde igual.',
+  })
+  @ApiHeader({ name: 'Authorization', description: 'Session ID de openMAINT' })
+  @ApiResponse({ status: 200, description: 'Sesión cerrada.' })
+  async logout(
+    @Headers('authorization') authorization?: string,
+    @Headers('x-session-token') sessionToken?: string,
+  ) {
+    return this.authService.logout(readSessionId(authorization, sessionToken));
   }
 
   @Post('role')

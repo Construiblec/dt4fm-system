@@ -29,7 +29,7 @@ El asistente es la primera pieza que la usa de verdad.
 Como los minutos de la plantilla vienen **por actividad** (columna `Minutos` del CSV), no por bloque, el asistente necesita saber con qué precisión confirmar para que un recordatorio de tiempo tenga sentido real. Eso lo decide la primera pregunta de cada bloque:
 
 - **"¿Te acuerdas de los elementos?" → sí:** se trabaja el **bloque entero**. El teléfono se calla, el reloj corre con la suma de los minutos del bloque, y un solo "acabado" marca todas las actividades de una vez (`setChecklistItems`, el mismo camino que usa el tap).
-- **→ no:** se trabaja **actividad por actividad**. El asistente lee la lista, guía de a una, el reloj corre con los minutos de cada actividad individual, y cada "acabado" marca solo esa (`updateChecklistItem`).
+- **→ no:** se trabaja **actividad por actividad**. El asistente no lee la lista entera: anuncia cada actividad cuando le toca, el reloj corre con los minutos de cada actividad individual, y cada "acabado" marca solo esa (`updateChecklistItem`).
 
 Los dos caminos convergen al mismo estado: el check visual del bloque aparece cuando todas sus actividades están en `true`, sin que a la interfaz le importe si llegaron de a una o de una sola vez.
 
@@ -166,8 +166,7 @@ Asistente: "Dormitorio listo. Baño. ¿Te acuerdas de los elementos?"
 
 ── "no" → se trabaja actividad por actividad ─────────────
 Operario:  "no"
-Asistente: lee las actividades del bloque, una por una
-           "Separar la cama del espaldar. Di: asistente,
+Asistente: "Separar la cama del espaldar. Di: asistente,
             acabado cuando finalices."
            (reloj = minutos de ESA actividad)
 
@@ -178,7 +177,10 @@ Asistente: "Sacar las almohadas de sus fundas. Di: asistente,
    … (se repite hasta cerrar el bloque)
 
 ── en cualquier momento ───────────────────────────────────
-Operario:  "asistente, repite"  → relee sin cambiar de modo
+Operario:  "asistente, repite"  → repite solo lo que tiene entre manos:
+                                  la actividad en curso ("no") o el
+                                  nombre del bloque ("sí"). No reinicia
+                                  el reloj ni cambia de modo.
 ```
 
 ### Apagar el micrófono mientras habla

@@ -343,13 +343,9 @@ export const useVoiceChecklist = ({
 
   /** Pasa el control al operario sobre UNA actividad y arranca su reloj. */
   const handOverActivity = useCallback(
-    (activity: ChecklistActivity, lead?: string) => {
+    (activity: ChecklistActivity) => {
       setExpected([]);
-      const frase = lead
-        ? `${lead} ${activity.text}. ${COMMAND_HINT}`
-        : `${activity.text}. ${COMMAND_HINT}`;
-
-      say([frase], () => {
+      say([`${activity.text}. ${COMMAND_HINT}`], () => {
         setExpected(WORKING_INTENTS);
         scheduleReminder(activity.minutes, `Actividad: ${activity.text}`);
       });
@@ -427,22 +423,26 @@ export const useVoiceChecklist = ({
       }
 
       if (intent === "NEGACION") {
-        // No se las acuerda: se le leen y se lo guía de a una.
+        // No se las acuerda: se lo guía de a una, empezando ya por la primera.
+        // No se le lee la lista entera antes: cada actividad se anuncia cuando
+        // le toca, con su propio reloj.
         modeRef.current = "actividad";
         announcedItemRef.current = itemIndex;
-        say(
-          currentSection.items.map((item) => item.text),
-          () => handOverActivity(currentActivity, "Empezamos con:"),
-        );
+        handOverActivity(currentActivity);
         return;
       }
 
       if (intent === "REPETIR") {
-        // No cambia la granularidad ya elegida: es un recordatorio de qué hay
-        // que hacer, no un cambio de modo.
-        say(
-          currentSection.items.map((item) => item.text),
-          () => handOverActivity(currentActivity, "Vas en:"),
+        // Repite solo lo que tiene entre manos: la actividad en curso, o el
+        // bloque si dijo que se lo sabía (ahí no hay una actividad en curso:
+        // trabaja el bloque entero). No reinicia el reloj ni cambia el modo —
+        // pedir que le repitan algo no es empezarlo de nuevo.
+        const subject =
+          modeRef.current === "bloque"
+            ? (currentSection.title ?? "Este bloque")
+            : currentActivity.text;
+        say([`${subject}. ${COMMAND_HINT}`], () =>
+          setExpected(WORKING_INTENTS),
         );
         return;
       }

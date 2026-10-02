@@ -72,11 +72,28 @@ export class OpenmaintAuthService {
    * Estado de una sesión viva: `username`, `userId`, `userDescription`, el rol
    * activo y `availableRoles`. Sirve para validar un cambio de rol contra los
    * grupos reales del usuario sin necesidad de sesión de servicio.
+   *
+   * Va contra `/sessions/current` y no `/sessions/{id}`: el cliente registra
+   * la URL de cada petición, y así el id solo viaja en la cabecera.
    */
   async getSession(sessionId: string): Promise<OpenmaintSessionResponse> {
     return (await this.client.get(
-      `/sessions/${sessionId}`,
+      '/sessions/current',
       sessionId,
     )) as OpenmaintSessionResponse;
+  }
+
+  /**
+   * Reinicia el contador de inactividad de la sesión (una hora en esta
+   * instancia). Es lo mismo que hace la interfaz web de openMAINT para no
+   * echar a quien la tiene abierta.
+   */
+  async keepAlive(sessionId: string): Promise<void> {
+    await this.client.post('/sessions/current/keepalive', {}, sessionId);
+  }
+
+  /** Cierra la sesión. Sobre una que ya no existe, openMAINT responde 401. */
+  async logout(sessionId: string): Promise<void> {
+    await this.client.delete('/sessions/current', sessionId);
   }
 }

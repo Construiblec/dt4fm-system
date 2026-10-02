@@ -1,5 +1,6 @@
 import axios from "axios";
 import { env } from "@/config/env";
+import { attachSessionRenewal } from "@/shared/auth/sessionHttp";
 import { getEmployeeId } from "@/shared/auth/session";
 import type { Incident } from "@/modules/incidentes/types/Incident";
 import { redirectToLogin } from "@/shared/auth/returnTo";
@@ -20,6 +21,8 @@ export class MissingEmployeeError extends Error {
 const incidentsApi = axios.create({
   baseURL: env.VITE_API_URL.replace(/\/api\/?$/, ""),
 });
+
+attachSessionRenewal(incidentsApi, "authorization");
 
 export type CreateIncidentPayload = {
   buildingId: string;
