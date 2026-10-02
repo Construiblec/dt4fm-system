@@ -107,6 +107,8 @@ export const createOpenmaintAuthServiceMock = () => ({
   login: jest.fn().mockResolvedValue({ data: mockSession() }),
   setSessionRole: jest.fn().mockResolvedValue({ data: mockSession() }),
   getSession: jest.fn().mockResolvedValue({ data: mockSession() }),
+  keepAlive: jest.fn().mockResolvedValue(undefined),
+  logout: jest.fn().mockResolvedValue(undefined),
 });
 
 export type OpenmaintAuthServiceMock = ReturnType<

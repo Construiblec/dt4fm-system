@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { AppSessionsService } from '../app-sessions/app-sessions.service';
 import { MailerService } from '../notifications/mail/mailer.service';
 import {
   PasswordRecoveryOpenmaintService,
@@ -27,6 +28,7 @@ export class PasswordRecoveryService {
     private readonly tokenService: ResetTokenService,
     private readonly mailerService: MailerService,
     private readonly configService: ConfigService,
+    private readonly appSessions: AppSessionsService,
   ) {}
 
   /**
@@ -173,6 +175,10 @@ export class PasswordRecoveryService {
     await this.openmaint.updatePassword(account, newPassword, sessionId);
 
     this.logger.log(`Contraseña restablecida para ${account.username}`);
+
+    // Sin excepción: quien restablece por correo puede estar huyendo de un
+    // móvil perdido o robado, y ninguna sesión es «la suya».
+    await this.appSessions.closeAllForUser(account.username);
 
     return { message: 'Tu contraseña se actualizó correctamente.' };
   }

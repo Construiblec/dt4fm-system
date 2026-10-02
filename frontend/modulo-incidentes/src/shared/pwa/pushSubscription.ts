@@ -1,9 +1,12 @@
 import axios from "axios";
 import { env } from "@/config/env";
+import { attachSessionRenewal } from "@/shared/auth/sessionHttp";
 
 const API_URL = env.VITE_API_URL.replace(/\/api\/?$/, "");
 
 const api = axios.create({ baseURL: API_URL });
+
+attachSessionRenewal(api, "authorization");
 
 const SW_READY_TIMEOUT_MS = 10_000;
 

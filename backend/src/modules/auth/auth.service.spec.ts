@@ -14,6 +14,7 @@ import {
   OpenmaintUsersService,
   type OpenmaintUserAccount,
 } from '../../integrations/openmaint/openmaint.users.service';
+import { AppSessionsService } from '../app-sessions/app-sessions.service';
 import { AuthService } from './auth.service';
 
 const SESSION_ID = 'sesion-del-usuario';
@@ -80,15 +81,31 @@ const buildHarness = (session: OpenmaintSession = multiRole()) => {
     }),
   } as unknown as jest.Mocked<OpenmaintRolesService>;
 
+  const appSessions = {
+    register: jest.fn().mockResolvedValue(undefined),
+    touch: jest.fn().mockResolvedValue(undefined),
+    close: jest.fn().mockResolvedValue(undefined),
+    closeAllForUser: jest.fn().mockResolvedValue(0),
+  } as unknown as jest.Mocked<AppSessionsService>;
+
   const service = new AuthService(
     auth,
     openmaint,
     serviceSession,
     users,
     roles,
+    appSessions,
   );
 
-  return { service, auth, openmaint, serviceSession, users, roles };
+  return {
+    service,
+    auth,
+    openmaint,
+    serviceSession,
+    users,
+    roles,
+    appSessions,
+  };
 };
 
 /** Error tal y como lo re-lanza OpenmaintClient: un AxiosError crudo. */
@@ -123,6 +140,58 @@ describe('AuthService', () => {
 
       // El Code `MaintOffice` es interno; en pantalla se lee "TPM Equipment".
       expect(session.roleLabels.MaintOffice).toBe('TPM Equipment');
+    });
+
+    it('registra la sesión, recordada solo si se pide', async () => {
+      const { service, appSessions } = buildHarness();
+
+      await service.login({
+        username: 'pamela.calo',
+        password: 'x',
+        remember: true,
+      });
+      await service.login({ username: 'pamela.calo', password: 'x' });
+
+      expect(appSessions.register).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({
+          sessionId: SESSION_ID,
+          username: 'pamela.calo',
+          userId: USER_ID,
+        }),
+        true,
+      );
+      // Sin pedirlo también se registra: hace falta para poder cerrarla si la
+      // contraseña cambia desde otro dispositivo.
+      expect(appSessions.register).toHaveBeenNthCalledWith(
+        2,
+        expect.anything(),
+        false,
+      );
+    });
+
+    it('un fallo del registro no deja a nadie sin entrar', async () => {
+      const { service, appSessions } = buildHarness();
+      appSessions.register.mockRejectedValueOnce(new Error('db caída'));
+
+      const session = await service.login({
+        username: 'pamela.calo',
+        password: 'x',
+        remember: true,
+      });
+
+      expect(session.sessionId).toBe(SESSION_ID);
+    });
+
+    it('con credenciales malas no registra nada', async () => {
+      const { service, auth, appSessions } = buildHarness();
+      auth.login.mockRejectedValueOnce(axiosError(401));
+
+      await expect(
+        service.login({ username: 'pamela.calo', password: 'mala' }),
+      ).rejects.toBeInstanceOf(UnauthorizedException);
+
+      expect(appSessions.register).not.toHaveBeenCalled();
     });
 
     it('no tumba el login si openMAINT no da las etiquetas', async () => {
@@ -284,7 +353,131 @@ describe('AuthService', () => {
     });
   });
 
+  describe('checkSession', () => {
+    it('devuelve el usuario y sus grupos sin resolver identificadores', async () => {
+      const { service, auth, openmaint, roles } = buildHarness();
+
+      const status = await service.checkSession(SESSION_ID);
+
+      expect(auth.getSession).toHaveBeenCalledWith(SESSION_ID);
+      expect(status).toEqual({
+        username: 'pamela.calo',
+        role: 'MaintOffice',
+        availableRoles: ['MaintOffice', 'SupervisorLimpieza', 'Propietarios'],
+      });
+      // Es lo que se pregunta cada vez que se abre la app: tiene que ser barato.
+      expect(openmaint.resolveEmployeeId).not.toHaveBeenCalled();
+      expect(roles.getLabels).not.toHaveBeenCalled();
+    });
+
+    it('rechaza una sesión vacía sin preguntar a openMAINT', async () => {
+      const { service, auth } = buildHarness();
+
+      await expect(service.checkSession('')).rejects.toBeInstanceOf(
+        UnauthorizedException,
+      );
+      expect(auth.getSession).not.toHaveBeenCalled();
+    });
+
+    it('abrir la app aplaza el cierre de la sesión recordada', async () => {
+      const { service, appSessions } = buildHarness();
+
+      await service.checkSession(SESSION_ID);
+
+      expect(appSessions.touch).toHaveBeenCalledWith(SESSION_ID);
+    });
+
+    it('no aplaza una sesión que openMAINT ya no reconoce', async () => {
+      const { service, auth, appSessions } = buildHarness();
+      auth.getSession.mockRejectedValueOnce(axiosError(401));
+
+      await expect(service.checkSession(SESSION_ID)).rejects.toBeInstanceOf(
+        UnauthorizedException,
+      );
+      expect(appSessions.touch).not.toHaveBeenCalled();
+    });
+
+    it('un fallo al aplazar no convierte una sesión viva en error', async () => {
+      const { service, appSessions } = buildHarness();
+      appSessions.touch.mockRejectedValueOnce(new Error('db caída'));
+
+      await expect(service.checkSession(SESSION_ID)).resolves.toMatchObject({
+        username: 'pamela.calo',
+      });
+    });
+
+    it.each([401, 403, 404])(
+      'trata el %s de openMAINT como sesión caducada',
+      async (status) => {
+        const { service, auth } = buildHarness();
+        auth.getSession.mockRejectedValueOnce(axiosError(status));
+
+        await expect(service.checkSession(SESSION_ID)).rejects.toBeInstanceOf(
+          UnauthorizedException,
+        );
+      },
+    );
+
+    it('rechaza una respuesta sin usuario', async () => {
+      const { service, auth } = buildHarness();
+      auth.getSession.mockResolvedValueOnce({ data: undefined });
+
+      await expect(service.checkSession(SESSION_ID)).rejects.toBeInstanceOf(
+        UnauthorizedException,
+      );
+    });
+
+    // Con un 401 aquí, una caída de openMAINT echaría al login a todo el que
+    // abra la app, y el login tampoco funcionaría.
+    it('no confunde openMAINT caído con una sesión caducada', async () => {
+      const { service, auth } = buildHarness();
+      auth.getSession.mockRejectedValueOnce(axiosError(502));
+
+      await expect(service.checkSession(SESSION_ID)).rejects.toBeInstanceOf(
+        InternalServerErrorException,
+      );
+    });
+  });
+
+  describe('logout', () => {
+    it('cierra la sesión en openMAINT y la saca del registro', async () => {
+      const { service, appSessions } = buildHarness();
+
+      await expect(service.logout(SESSION_ID)).resolves.toEqual({
+        success: true,
+      });
+      expect(appSessions.close).toHaveBeenCalledWith(SESSION_ID);
+    });
+  });
+
   describe('changePassword', () => {
+    it('cierra las sesiones de los demás dispositivos y conserva esta', async () => {
+      const { service, appSessions } = buildHarness();
+
+      await service.changePassword(SESSION_ID, {
+        currentPassword: 'vieja',
+        newPassword: 'nueva-larga',
+      });
+
+      expect(appSessions.closeAllForUser).toHaveBeenCalledWith(
+        'pamela.calo',
+        SESSION_ID,
+      );
+    });
+
+    it('si la contraseña no llega a cambiar, no cierra ninguna sesión', async () => {
+      const { service, users, appSessions } = buildHarness();
+      users.updatePassword.mockRejectedValueOnce(new Error('openMAINT caído'));
+
+      await expect(
+        service.changePassword(SESSION_ID, {
+          currentPassword: 'vieja',
+          newPassword: 'nueva-larga',
+        }),
+      ).rejects.toBeInstanceOf(InternalServerErrorException);
+      expect(appSessions.closeAllForUser).not.toHaveBeenCalled();
+    });
+
     it('conserva los grupos de una cuenta multi-rol', async () => {
       const { service, users } = buildHarness();
 

@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Injectable,
   InternalServerErrorException,
+  Logger,
   UnauthorizedException,
 } from '@nestjs/common';
 import {
@@ -13,6 +14,7 @@ import { OpenmaintRolesService } from '../../integrations/openmaint/openmaint.ro
 import { OpenmaintService } from '../../integrations/openmaint/openmaint.service';
 import { OpenmaintServiceSession } from '../../integrations/openmaint/openmaint.service-session';
 import { OpenmaintUsersService } from '../../integrations/openmaint/openmaint.users.service';
+import { AppSessionsService } from '../app-sessions/app-sessions.service';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { LoginDto } from './dto/login.dto';
 import { SwitchRoleDto } from './dto/switch-role.dto';
@@ -55,14 +57,23 @@ export type AuthSession = {
   tenantId: number | null;
 };
 
+/** Lo justo para saber si la sesión sigue viva y con qué grupo. */
+export type SessionStatus = Pick<
+  AuthSession,
+  'username' | 'role' | 'availableRoles'
+>;
+
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private readonly openmaintAuthService: OpenmaintAuthService,
     private readonly openmaintService: OpenmaintService,
     private readonly serviceSession: OpenmaintServiceSession,
     private readonly users: OpenmaintUsersService,
     private readonly roles: OpenmaintRolesService,
+    private readonly appSessions: AppSessionsService,
   ) {}
 
   /**
@@ -99,7 +110,30 @@ export class AuthService {
       throw new UnauthorizedException('Usuario o contraseña incorrectos');
     }
 
-    return this.buildSession(response.data);
+    const session = await this.buildSession(response.data);
+
+    // Un fallo del registro no puede dejar a nadie sin entrar: la sesión es
+    // válida igual, solo que no se recordará ni se podrá cerrar desde otro
+    // dispositivo.
+    try {
+      await this.appSessions.register(session, dto.remember === true);
+    } catch (error) {
+      this.logger.warn(
+        `No se pudo registrar la sesión de ${session.username}: ${(error as Error)?.message}`,
+      );
+    }
+
+    return session;
+  }
+
+  /**
+   * Cierra la sesión en openMAINT. Hasta ahora «Cerrar sesión» solo borraba el
+   * móvil y la sesión seguía viva una hora; con las sesiones recordadas seguiría
+   * viva indefinidamente.
+   */
+  async logout(sessionId: string): Promise<{ success: true }> {
+    await this.appSessions.close(sessionId);
+    return { success: true };
   }
 
   /**
@@ -133,6 +167,60 @@ export class AuthService {
     }
 
     return this.buildSession({ ...current, _id: sessionId, role: dto.role });
+  }
+
+  /**
+   * Comprueba que openMAINT sigue aceptando la sesión. La app lo pregunta al
+   * abrirse y al volver a primer plano: tener un `sessionId` guardado no dice
+   * si sigue vivo.
+   *
+   * No resuelve los identificadores como `buildSession`: serían cuatro
+   * llamadas más a openMAINT cada vez que alguien abre la app. Y, a diferencia
+   * de `readSession`, distingue una sesión caducada de openMAINT caído: si todo
+   * fallo fuera un 401, una caída mandaría al login a todos los que la abran.
+   */
+  async checkSession(sessionId: string): Promise<SessionStatus> {
+    if (!sessionId) {
+      throw new UnauthorizedException('Sesión no válida');
+    }
+
+    let response: OpenmaintSessionResponse;
+
+    try {
+      response = await this.openmaintAuthService.getSession(sessionId);
+    } catch (error) {
+      const status = (error as { response?: { status?: number } })?.response
+        ?.status;
+
+      if (status === 401 || status === 403 || status === 404) {
+        throw new UnauthorizedException('Sesión no válida');
+      }
+
+      throw new InternalServerErrorException(
+        'No se pudo contactar con OpenMAINT',
+      );
+    }
+
+    const data = response?.data;
+
+    if (!data?.userId) {
+      throw new UnauthorizedException('Sesión no válida');
+    }
+
+    // Abrir la app cuenta como uso: aplaza el cierre de la sesión recordada.
+    try {
+      await this.appSessions.touch(sessionId);
+    } catch (error) {
+      this.logger.warn(
+        `No se pudo aplazar la sesión de ${data.username}: ${(error as Error)?.message}`,
+      );
+    }
+
+    return {
+      username: data.username,
+      role: data.role ?? '',
+      availableRoles: data.availableRoles ?? [],
+    };
   }
 
   /**
@@ -170,6 +258,9 @@ export class AuthService {
         'No se pudo actualizar la contraseña',
       );
     }
+
+    // Los demás dispositivos vuelven al login; este sigue dentro.
+    await this.appSessions.closeAllForUser(current.username, sessionId);
 
     return { success: true, message: 'Contraseña actualizada correctamente' };
   }
