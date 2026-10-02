@@ -150,8 +150,13 @@ reglas que vienen del contrato de IoT:
 El frontend no necesita variables nuevas: `whepUrl` llega en cada sesión.
 
 **Cada origen desde el que se abra el panel tiene que estar dado de alta en IoT**, o la negociación
-recibe `403`. Los tres de hoy están en la [nota de orígenes](nota-origenes-video.md). Un dominio
-nuevo de producción o de pruebas es una petición a IoT antes del despliegue.
+recibe `403`. Los tres de hoy están en la [nota de orígenes](nota-origenes-video.md) y ya están
+dados de alta. Un dominio nuevo de producción o de pruebas es una petición a IoT antes del
+despliegue.
+
+**El video no se ve desde `construiblec.cloud`, `www.construiblec.cloud` ni `187.77.250.224:8091`**,
+aunque el CORS del backend sí los acepte para el resto de la aplicación. Es deliberado (V-10): no
+pedir su alta.
 
 ## 8. Pruebas
 
@@ -172,9 +177,9 @@ A mano: backend con `ACCESS_IOT_USE_MOCK=true` y `LIVE_VIDEO_ENABLED=true`, o so
 
 - **Video de los gateways.** IoT tiene que implementar su parte
   ([gateway-contract-live.md](gateway-contract-live.md)); hasta entonces no hay imagen real.
-- **`live.construiblec.cloud` responde `404`.** El hostname existe pero el túnel aún no lo enruta
-  ([live-video.md](live-video.md), «Estado de la verificación»). La pantalla lo muestra como
-  «Video no disponible».
+- **Una negociación completa por el túnel.** `live.construiblec.cloud` está enrutado desde el
+  02-10-2026 y ya responde a nuestros tres orígenes, pero nadie ha negociado todavía con un ticket
+  real y una cámara ([live-video.md](live-video.md), «Estado de la verificación»).
 - **Un navegador en modo `relay` contra el relay real.** IoT solo lo probó en local. Es la única
   ruta del video; si no conecta, el arreglo es del lado de la VPS (cortafuegos o TURN para el
   relay), no del frontend.

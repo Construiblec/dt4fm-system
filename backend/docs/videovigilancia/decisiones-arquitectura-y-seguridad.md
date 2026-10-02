@@ -124,6 +124,13 @@ tres, en la [nota de orígenes](nota-origenes-video.md):
 - `https://dt4fm-staging.vercel.app`
 - `https://dt4fm-system-f7cc.vercel.app`
 
-**Consecuencia.** Las *previews* de Vercel y los túneles `*.trycloudflare.com` cambian de URL y
-reciben `403`: el video no se prueba ahí. Un dominio nuevo es una petición a IoT antes del
-despliegue.
+**Fuera, a propósito:** `https://construiblec.cloud`, `https://www.construiblec.cloud` y
+`http://187.77.250.224:8091`. El CORS de producción del backend los acepta para el resto de la
+aplicación, pero las cámaras no se ven desde ellos. Decidido el 2026-10-02.
+
+**Consecuencia.** Desde esas direcciones, y desde las *previews* de Vercel y los túneles
+`*.trycloudflare.com`, la pantalla carga el catálogo pero **Ver** termina en «Este sitio no está
+autorizado para ver video». Un dominio nuevo es una petición a IoT antes del despliegue.
+
+**Comprobado el 2026-10-02** con un preflight a `/v1/live/ING-CAM-01/whep`: `204` para los tres
+orígenes y `403` para `https://construiblec.cloud`.

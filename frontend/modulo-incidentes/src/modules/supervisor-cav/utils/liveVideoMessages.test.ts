@@ -58,7 +58,7 @@ describe("whepFailure", () => {
     expect(whepFailure(404, "not_found").action).toBe("retry");
   });
 
-  it("un 404 sin cuerpo JSON (hostname sin enrutar) es video no disponible", () => {
+  it("una respuesta sin cuerpo JSON es video no disponible", () => {
     expect(whepFailure(404, "http_404").message).toBe("Video no disponible.");
   });
 });

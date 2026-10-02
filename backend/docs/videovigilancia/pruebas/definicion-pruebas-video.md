@@ -28,9 +28,9 @@ abierta.
 **Fuera.** Lo que la E2E ya cubre sin hardware: cada código de error de la VPS, el `requestId`
 repetido, el interruptor apagado. Y lo que no existe: grabaciones, audio, PTZ.
 
-**Bloqueo actual.** Los gateways aún no entregan video, `GET /v1/cameras` responde `[]` y
-`live.construiblec.cloud` responde `404` porque el túnel no lo enruta todavía. Hasta entonces solo
-se ejecutan VID-P1 y VID-01, que deben dar una lista vacía sin error.
+**Bloqueo actual.** Los gateways aún no entregan video y `GET /v1/cameras` responde `[]`. Hasta
+entonces solo se ejecutan VID-P1 y VID-01, que deben dar una lista vacía sin error, y VSG-03, que
+no necesita cámara. El hostname de video ya está enrutado (02-10-2026).
 
 ## 3. Entorno
 
@@ -130,8 +130,9 @@ anterior.
 
 | | |
 |---|---|
-| Acción | Abrir el panel desde una *preview* de Vercel o un túnel `*.trycloudflare.com` y pulsar **Ver** |
+| Acción | Abrir el panel desde `https://construiblec.cloud`, una *preview* de Vercel o un túnel `*.trycloudflare.com` y pulsar **Ver** |
 | Esperado | «Este sitio no está autorizado para ver video. Avisa a Sistemas.» sin botón de reintento |
+| Sin cámara | Un `OPTIONS` a `/v1/live/ING-CAM-01/whep` con ese `Origin` responde `403`; con uno de los tres dados de alta, `204` |
 
 ### VSG-04 · Los cupos se respetan
 

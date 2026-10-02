@@ -106,7 +106,7 @@ Dos orígenes, dos tablas en `liveVideoMessages.ts`:
 | `403` | Este sitio no está autorizado para ver video. Avisa a Sistemas. | — |
 | `camera_unreachable` | Cámara sin señal. | Reintentar |
 | `not_found` | La cámara dejó de estar disponible. | Reintentar |
-| `404` sin cuerpo JSON | Video no disponible. (El hostname de video aún no está enrutado) | Reintentar |
+| Cualquier otro, o sin cuerpo JSON | Video no disponible. | Reintentar |
 | `live_capacity_reached` | … o esta ya tiene dos espectadores. | Reintentar |
 | `timeout` / `network` | La cámara no respondió a tiempo / No se pudo conectar… | Reintentar |
 | `400` | El navegador no pudo negociar el video. Avisa a Sistemas. | — |
@@ -147,6 +147,9 @@ gateways lo entreguen; los casos de campaña están en
 - **Cada origen tiene que estar dado de alta en IoT.** Hoy: `http://localhost:5173`,
   `https://dt4fm-staging.vercel.app` y `https://dt4fm-system-f7cc.vercel.app`. Las *previews* de
   Vercel y los túneles `*.trycloudflare.com` reciben `403` en la negociación.
+- **`construiblec.cloud`, `www.construiblec.cloud` y `187.77.250.224:8091` quedan fuera a
+  propósito.** La aplicación carga desde ellos, pero las cámaras no se ven: **Ver** muestra «Este
+  sitio no está autorizado para ver video».
 - **No hay Content-Security-Policy.** Si se añade, debe incluir
   `connect-src https://live.construiblec.cloud` además del backend.
 - **El service worker no interfiere.** No tiene caché en tiempo de ejecución y solo intercepta
