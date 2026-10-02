@@ -203,4 +203,53 @@ describe('AccessIotMockGateway', () => {
       true,
     );
   });
+
+  describe('cámaras en vivo', () => {
+    const REQUEST_ID = '6f1c9a5e-3b2d-4c8e-9a71-0d4e2f5b8c13';
+
+    it('filtra el catálogo por edificio', async () => {
+      const camaras = await gateway.listCameras(ING);
+
+      expect(camaras.map((camara) => camara.cameraId)).toEqual([
+        'ING-CAM-01',
+        'ING-CAM-02',
+      ]);
+    });
+
+    it('emite una sesión solo por relay, con el eco de la petición', async () => {
+      const resultado = await gateway.createLiveSession('ING-CAM-01', {
+        requestId: REQUEST_ID,
+      });
+
+      expect(resultado).toMatchObject({
+        outcome: 'issued',
+        session: {
+          requestId: REQUEST_ID,
+          cameraId: 'ING-CAM-01',
+          buildingId: ING,
+          iceTransportPolicy: 'relay',
+        },
+      });
+    });
+
+    it('una cámara desconocida es not_found y un requestId en mayúsculas, invalid_request', async () => {
+      await expect(
+        gateway.createLiveSession('BAT-CAM-01', { requestId: REQUEST_ID }),
+      ).resolves.toEqual({ outcome: 'failed', errorCode: 'not_found' });
+      await expect(
+        gateway.createLiveSession('ING-CAM-01', {
+          requestId: REQUEST_ID.toUpperCase(),
+        }),
+      ).resolves.toEqual({ outcome: 'failed', errorCode: 'invalid_request' });
+    });
+
+    it('PRA-CAM-02 simula los cupos agotados', async () => {
+      await expect(
+        gateway.createLiveSession('PRA-CAM-02', { requestId: REQUEST_ID }),
+      ).resolves.toEqual({
+        outcome: 'failed',
+        errorCode: 'live_capacity_reached',
+      });
+    });
+  });
 });

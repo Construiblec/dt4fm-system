@@ -18,8 +18,11 @@ export const readSessionId = (
 ): string =>
   (sessionToken ?? authorization ?? '').replace(/^Bearer\s+/i, '').trim();
 
-export const requireCavIdentity = async (
+/** Rol de confianza: sale de la sesión de openMAINT, nunca de una cabecera del cliente. */
+export const requireIdentity = async (
   sessionRoles: SessionRoleService,
+  roles: string[],
+  forbiddenMessage: string,
   authorization: string | undefined,
   sessionToken: string | undefined,
 ): Promise<{ sessionId: string; username: string }> => {
@@ -31,11 +34,22 @@ export const requireCavIdentity = async (
 
   const { role, username } = await sessionRoles.resolveIdentity(sessionId);
 
-  if (!role || !CAV_ROLES.includes(role)) {
-    throw new ForbiddenException(
-      'Se requiere rol de Supervisor CAV para gestionar accesos',
-    );
+  if (!role || !roles.includes(role)) {
+    throw new ForbiddenException(forbiddenMessage);
   }
 
   return { sessionId, username };
 };
+
+export const requireCavIdentity = (
+  sessionRoles: SessionRoleService,
+  authorization: string | undefined,
+  sessionToken: string | undefined,
+): Promise<{ sessionId: string; username: string }> =>
+  requireIdentity(
+    sessionRoles,
+    CAV_ROLES,
+    'Se requiere rol de Supervisor CAV para gestionar accesos',
+    authorization,
+    sessionToken,
+  );

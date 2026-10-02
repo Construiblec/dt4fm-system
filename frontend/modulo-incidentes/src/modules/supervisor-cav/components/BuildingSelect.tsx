@@ -1,8 +1,14 @@
 import { Building2 } from "lucide-react";
-import type { DoorBuilding } from "@/modules/supervisor-cav/types/Door";
+
+/** Sirve a Puertas y a Cámaras: solo usa el id, el nombre y si responde. */
+export type BuildingOption = {
+  buildingId: number;
+  name: string;
+  online: boolean;
+};
 
 type Props = {
-  buildings: DoorBuilding[];
+  buildings: BuildingOption[];
   value: number;
   onChange: (buildingId: number) => void;
 };

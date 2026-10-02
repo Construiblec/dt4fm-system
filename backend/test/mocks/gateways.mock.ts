@@ -172,6 +172,34 @@ export const DEFAULT_ACCESS_BUILDINGS = [
   },
 ];
 
+export const DEFAULT_CAMERAS = [
+  {
+    cameraId: 'ING-CAM-01',
+    name: 'Acceso vehicular',
+    buildingId: ING_BUILDING_ID,
+  },
+  { cameraId: 'ING-CAM-02', name: 'Lobby', buildingId: ING_BUILDING_ID },
+];
+
+/** Los secretos llevan un marcador para comprobar que no acaban en la base. */
+export const mockLiveSession = (cameraId: string, requestId: string) => ({
+  requestId,
+  cameraId,
+  buildingId: ING_BUILDING_ID,
+  whepUrl: `https://live.construiblec.cloud/v1/live/${cameraId}/whep`,
+  ticket: 'TICKET-SECRETO',
+  ticketExpiresAt: '2026-10-01T20:05:32.629674+00:00',
+  maxDurationSeconds: 300,
+  iceServers: [
+    {
+      urls: ['turns:turn.cloudflare.com:443?transport=tcp'],
+      username: 'turn-user',
+      credential: 'TURN-SECRETO',
+    },
+  ],
+  iceTransportPolicy: 'relay',
+});
+
 export const createAccessIotGatewayMock = () => ({
   listBuildings: jest.fn().mockResolvedValue(DEFAULT_ACCESS_BUILDINGS),
   listDevices: jest.fn().mockResolvedValue([]),
@@ -199,6 +227,16 @@ export const createAccessIotGatewayMock = () => ({
     .fn()
     .mockResolvedValue({ users: [], nextCursor: null }),
   triggerDevice: jest.fn().mockResolvedValue({ outcome: 'triggered' }),
+  listCameras: jest.fn().mockResolvedValue(DEFAULT_CAMERAS),
+  createLiveSession: jest
+    .fn()
+    .mockImplementation(
+      (cameraId: string, { requestId }: { requestId: string }) =>
+        Promise.resolve({
+          outcome: 'issued',
+          session: mockLiveSession(cameraId, requestId),
+        }),
+    ),
 });
 
 export type AccessIotGatewayMock = ReturnType<

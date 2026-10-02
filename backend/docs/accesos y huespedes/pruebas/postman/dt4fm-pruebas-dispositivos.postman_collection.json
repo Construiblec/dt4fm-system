@@ -3088,6 +3088,359 @@
           "response": []
         }
       ]
+    },
+    {
+      "name": "06 Videovigilancia",
+      "description": "Equivalente en Postman de /supervisor-cav/camaras, hasta donde llega Postman: el video (WHEP) solo se prueba en un navegador. Casos en backend/docs/videovigilancia/pruebas/definicion-pruebas-video.md.",
+      "item": [
+        {
+          "name": "VID-P1 Catálogo de cámaras (VPS)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 JSON (un 301/302 es URL sin https o token rechazado)', () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.response.to.be.json;",
+                  "});",
+                  "const camaras = pm.response.json();",
+                  "pm.test('Es una lista (vacía es correcto mientras el gateway no entregue video)', () =>",
+                  "    pm.expect(camaras).to.be.an('array'));",
+                  "pm.environment.set('cameraId', camaras[0] ? camaras[0].cameraId : '');",
+                  "console.log('Cámaras del edificio según la VPS: ' + JSON.stringify(camaras, null, 2));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "CF-Access-Client-Id",
+                "value": "{{cfClientId}}"
+              },
+              {
+                "key": "CF-Access-Client-Secret",
+                "value": "{{cfClientSecret}}"
+              }
+            ],
+            "url": {
+              "raw": "{{iotUrl}}/v1/cameras?buildingId={{buildingId}}",
+              "host": [
+                "{{iotUrl}}"
+              ],
+              "path": [
+                "v1",
+                "cameras"
+              ],
+              "query": [
+                {
+                  "key": "buildingId",
+                  "value": "{{buildingId}}"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "VID-01 Cámaras del panel",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 con el video habilitado', () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    pm.expect(pm.response.json().data.enabled, 'LIVE_VIDEO_ENABLED').to.be.true;",
+                  "});",
+                  "const edificio = pm.response.json().data.buildings.find((b) => b.buildingId === Number(pm.environment.get('buildingId')));",
+                  "const camaraVps = pm.environment.get('cameraId');",
+                  "if (camaraVps) {",
+                  "    pm.test('El panel muestra las cámaras de la VPS', () =>",
+                  "        pm.expect(edificio.cameras.map((c) => c.cameraId)).to.include(camaraVps));",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "{{sessionCav}}"
+              }
+            ],
+            "url": {
+              "raw": "{{backendUrl}}/cameras",
+              "host": [
+                "{{backendUrl}}"
+              ],
+              "path": [
+                "cameras"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "VID-02 Pedir una sesión en vivo",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('cameraId')) {",
+                  "    console.log('N/A: el edificio aún no tiene cámaras en vivo.');",
+                  "    pm.execution.skipRequest();",
+                  "}",
+                  "pm.environment.set('requestId', pm.variables.replaceIn('{{$guid}}'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('201 sin caché, solo por relay y con nuestro requestId', () => {",
+                  "    pm.response.to.have.status(201);",
+                  "    pm.expect(pm.response.headers.get('Cache-Control')).to.eql('no-store');",
+                  "    const sesion = pm.response.json().data;",
+                  "    pm.expect(sesion.requestId).to.eql(pm.environment.get('requestId'));",
+                  "    pm.expect(sesion.iceTransportPolicy).to.eql('relay');",
+                  "    pm.expect(sesion.maxDurationSeconds).to.be.above(0);",
+                  "});",
+                  "// El ticket y la credencial TURN no se guardan en el entorno ni se imprimen."
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "{{sessionCav}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"requestId\": \"{{requestId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{backendUrl}}/cameras/{{cameraId}}/live-sessions",
+              "host": [
+                "{{backendUrl}}"
+              ],
+              "path": [
+                "cameras",
+                "{{cameraId}}",
+                "live-sessions"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "VID-02b Repetir el requestId",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('cameraId')) {",
+                  "    console.log('N/A: el edificio aún no tiene cámaras en vivo.');",
+                  "    pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('409 duplicate_request: no pide otra sesión', () => {",
+                  "    pm.response.to.have.status(409);",
+                  "    pm.expect(pm.response.json().code).to.eql('duplicate_request');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "{{sessionCav}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"requestId\": \"{{requestId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{backendUrl}}/cameras/{{cameraId}}/live-sessions",
+              "host": [
+                "{{backendUrl}}"
+              ],
+              "path": [
+                "cameras",
+                "{{cameraId}}",
+                "live-sessions"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "VID-03 Historial de visualizaciones (SuperUser)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('cameraId')) {",
+                  "    console.log('N/A: el edificio aún no tiene cámaras en vivo.');",
+                  "    pm.execution.skipRequest();",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('200 y la sesión de VID-02 registrada como issued', () => {",
+                  "    pm.response.to.have.status(200);",
+                  "    const fila = pm.response.json().data.items.find((i) => i.requestId === pm.environment.get('requestId'));",
+                  "    pm.expect(fila, 'fila de VID-02').to.exist;",
+                  "    pm.expect(fila.status).to.eql('issued');",
+                  "    pm.expect(fila.buildingId).to.eql(Number(pm.environment.get('buildingId')));",
+                  "});",
+                  "pm.test('El historial no lleva el ticket', () =>",
+                  "    pm.expect(pm.response.text()).not.to.include('ticket'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "{{sessionAdmin}}"
+              }
+            ],
+            "url": {
+              "raw": "{{backendUrl}}/cameras/views?cameraId={{cameraId}}&limit=20",
+              "host": [
+                "{{backendUrl}}"
+              ],
+              "path": [
+                "cameras",
+                "views"
+              ],
+              "query": [
+                {
+                  "key": "cameraId",
+                  "value": "{{cameraId}}"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "VSG-01 Pedir una sesión con rol sin permiso",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.environment.set('requestId', pm.variables.replaceIn('{{$guid}}'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('403: no pide sesión', () => pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "{{sessionOther}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"requestId\": \"{{requestId}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{backendUrl}}/cameras/ING-CAM-01/live-sessions",
+              "host": [
+                "{{backendUrl}}"
+              ],
+              "path": [
+                "cameras",
+                "ING-CAM-01",
+                "live-sessions"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
     }
   ]
 }

@@ -1,6 +1,7 @@
 import { useLocation, useNavigate } from "react-router-dom";
 import {
   CalendarDays,
+  Cctv,
   ClipboardList,
   CreditCard,
   DoorOpen,
@@ -72,6 +73,7 @@ const CAV_TABS: Tab[] = [
     section: "/supervisor-cav/autorizaciones",
   },
   { label: "Puertas", icon: DoorOpen, route: "/supervisor-cav/puertas" },
+  { label: "Cámaras", icon: Cctv, route: "/supervisor-cav/camaras" },
   { label: "Cuenta", icon: User, route: "/cuenta" },
 ];
 

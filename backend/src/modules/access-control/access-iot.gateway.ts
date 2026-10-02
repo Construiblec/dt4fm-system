@@ -1,9 +1,12 @@
 import {
   AccessIotBuilding,
+  AccessIotCamera,
   AccessIotDevice,
   AccessIotHealth,
   CredentialWriteResult,
   InventoryPage,
+  LiveSessionRequest,
+  LiveSessionResult,
   PutCredentialRequest,
   TriggerRequest,
   TriggerResult,
@@ -51,4 +54,16 @@ export abstract class AccessIotGateway {
     deviceId: string,
     request: TriggerRequest,
   ): Promise<TriggerResult>;
+
+  /** Una lista corta no significa que las cámaras ya no existan. */
+  abstract listCameras(buildingId?: number): Promise<AccessIotCamera[]>;
+
+  /**
+   * Un solo intento y nunca lanza por la VPS: cada sesión es una visualización
+   * registrada, así que reintentar exige otro `requestId`.
+   */
+  abstract createLiveSession(
+    cameraId: string,
+    request: LiveSessionRequest,
+  ): Promise<LiveSessionResult>;
 }

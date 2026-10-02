@@ -105,6 +105,7 @@ process.env.ACCESS_IOT_TOKEN ??= 'mock-client-id:mock-client-secret';
 process.env.ACCESS_SCHEDULER_ENABLED = 'false';
 process.env.ACCESS_ALLOW_PIN_REVEAL = 'false';
 process.env.ACCESS_REMOTE_OPEN_ENABLED = 'true';
+process.env.LIVE_VIDEO_ENABLED = 'true';
 // Tiempos de la barrera ficticios: en producción salen de medirlos en sitio.
 process.env.ACCESS_VEHICULAR_GATE_TIMINGS = JSON.stringify({
   3025058: { closeWindowSeconds: 40, autoCloseSeconds: 90 },

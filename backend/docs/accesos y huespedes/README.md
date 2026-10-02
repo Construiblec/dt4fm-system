@@ -10,6 +10,7 @@ de Hostaway sobre las que se apoyará el portal del huésped.
 | [guia-servidor-vps-accesos.md](guia-servidor-vps-accesos.md) | Contrato para Ingeniería IoT: qué debe implementar la VPS |
 | [nota-cambio-employeeno.md](nota-cambio-employeeno.md) | Enmienda al contrato: `employeeNo` sin guiones (28-09-2026) |
 | [pruebas/](pruebas/) | Pruebas sobre las puertas reales, por edificio: definición formal, guía de ejecución y colección de Postman |
+| [../videovigilancia/](../videovigilancia/README.md) | Video en vivo de las cámaras. Usa la misma VPS y el mismo `AccessIotGateway` (`listCameras`, `createLiveSession`) |
 
 ---
 

@@ -1,14 +1,17 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { createHash } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 import { AccessIotGateway } from './access-iot.gateway';
 import {
   AccessIotBuilding,
+  AccessIotCamera,
   AccessIotDevice,
   AccessIotHealth,
   CredentialDeviceResult,
   CredentialWriteResult,
   InventoryPage,
   InventoryUser,
+  LiveSessionRequest,
+  LiveSessionResult,
   PutCredentialRequest,
   TriggerRequest,
   TriggerResult,
@@ -75,6 +78,16 @@ const DEVICES: AccessIotDevice[] = [
     usersCapacity: 3000,
   },
 ];
+
+/** `PRA-CAM-02` responde siempre sin cupos: da el camino `live_capacity_reached`. */
+const CAMERAS: AccessIotCamera[] = [
+  { cameraId: 'ING-CAM-01', name: 'Acceso vehicular', buildingId: 3025058 },
+  { cameraId: 'ING-CAM-02', name: 'Lobby', buildingId: 3025058 },
+  { cameraId: 'PRA-CAM-01', name: 'Acceso vehicular', buildingId: 3019998 },
+  { cameraId: 'PRA-CAM-02', name: 'Parqueadero', buildingId: 3019998 },
+];
+
+const FULL_CAMERA_ID = 'PRA-CAM-02';
 
 /**
  * Usuario cargado a mano en el terminal, sin prefijo reservado. Existe para que
@@ -285,6 +298,64 @@ export class AccessIotMockGateway extends AccessIotGateway {
     this.logger.log(`Pulso simulado en ${deviceId}: ${result.outcome}`);
 
     return Promise.resolve(result);
+  }
+
+  listCameras(buildingId?: number): Promise<AccessIotCamera[]> {
+    return Promise.resolve(
+      CAMERAS.filter(
+        (camera) => buildingId == null || camera.buildingId === buildingId,
+      ),
+    );
+  }
+
+  /** La sesión es ficticia: el `ticket` no negocia contra el hostname de video real. */
+  createLiveSession(
+    cameraId: string,
+    request: LiveSessionRequest,
+  ): Promise<LiveSessionResult> {
+    const extra = Object.keys(request).filter((key) => key !== 'requestId');
+    const camera = CAMERAS.find((candidate) => candidate.cameraId === cameraId);
+
+    if (extra.length > 0 || !CANONICAL_UUID.test(request.requestId)) {
+      return Promise.resolve({
+        outcome: 'failed',
+        errorCode: 'invalid_request',
+      });
+    }
+
+    if (!camera) {
+      return Promise.resolve({ outcome: 'failed', errorCode: 'not_found' });
+    }
+
+    if (camera.cameraId === FULL_CAMERA_ID) {
+      return Promise.resolve({
+        outcome: 'failed',
+        errorCode: 'live_capacity_reached',
+      });
+    }
+
+    this.logger.log(`Sesión en vivo simulada en ${cameraId}`);
+
+    return Promise.resolve({
+      outcome: 'issued',
+      session: {
+        requestId: request.requestId,
+        cameraId,
+        buildingId: camera.buildingId,
+        whepUrl: `https://live.construiblec.cloud/v1/live/${cameraId}/whep`,
+        ticket: `mock-${randomUUID()}`,
+        ticketExpiresAt: new Date(Date.now() + 60_000).toISOString(),
+        maxDurationSeconds: 300,
+        iceServers: [
+          {
+            urls: ['turn:turn.cloudflare.com:3478?transport=udp'],
+            username: 'mock',
+            credential: 'mock',
+          },
+        ],
+        iceTransportPolicy: 'relay',
+      },
+    });
   }
 
   private devicesFor(
