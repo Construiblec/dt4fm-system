@@ -42,6 +42,11 @@ const WHEP_FAILURES: Record<string, LiveVideoFailure> = {
     action: "retry",
   },
   camera_unreachable: { message: "Cámara sin señal.", action: "retry" },
+  // La sesión o su edificio dejaron de existir entre el ticket y la oferta.
+  not_found: {
+    message: "La cámara dejó de estar disponible. Vuelve a intentarlo.",
+    action: "retry",
+  },
   live_capacity_reached: {
     message: "Hay demasiadas cámaras abiertas o esta ya tiene dos espectadores.",
     action: "retry",

@@ -204,7 +204,7 @@ producción:
 |---|---|
 | Emitir credenciales con el token real de Cloudflare TURN | El cliente se escribió contra su documentación |
 | Un navegador en modo `relay` contra el relay de la VPS | Es la única ruta del video. Depende de que el candidato del relay sea la IP pública de `eth0` y de que el cortafuegos deje volver las respuestas del TURN |
-| La negociación a través del túnel | Hoy `live.construiblec.cloud` responde 404: el hostname existe pero no está enrutado al origen |
+| La negociación a través del túnel | Enrutado desde el 2026-10-02: `/v1/live/` llega al origen y un ticket inventado recibe `401`. Falta una negociación completa, con un ticket real y una cámara |
 | La unidad `construiblec-live-relay.service` | No se ha instalado ni arrancado. `AF_NETLINK` y el filtro de red se eligieron por análisis |
 | Un NVR real, Hikvision y Dahua | El perfil H.264, el intervalo de I-frame y la latencia real por Tailscale |
 | La latencia de punta a punta | La medida local no incluye Tailscale ni TURN |

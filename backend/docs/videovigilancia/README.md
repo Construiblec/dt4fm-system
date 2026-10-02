@@ -7,14 +7,17 @@ El backend autoriza y registra; la VPS entrega el video al navegador.
 |---|---|
 | Este | Qué hace el módulo y cómo está construido |
 | [decisiones-arquitectura-y-seguridad.md](decisiones-arquitectura-y-seguridad.md) | Por qué está construido así. V-01 a V-10, cerradas |
-| [live-integration-dt4fm.md](live-integration-dt4fm.md) | Contrato que envió Ingeniería IoT. **Si diverge de este README, manda ese** |
+| [live-integration-dt4fm.md](live-integration-dt4fm.md) | De IoT, para DT4FM: qué hacen el backend y el frontend. **Si diverge de este README, manda ese** |
+| [openapi.yaml](openapi.yaml) | De IoT: el contrato exacto de la API central, campo por campo. Incluye accesos |
+| [live-video.md](live-video.md) | De IoT: el diseño completo, los límites y qué está verificado |
+| [gateway-contract-live.md](gateway-contract-live.md) | De IoT, para el gateway de cada edificio. Aquí solo como contexto |
 | [nota-origenes-video.md](nota-origenes-video.md) | Para IoT: los orígenes que deben dar de alta en `live.construiblec.cloud` |
 | [pruebas/](pruebas/) | Casos `VID-xx` y cómo ejecutarlos |
 | [Frontend](../../../frontend/modulo-incidentes/docs/videovigilancia-en-vivo.md) | La pantalla, el cliente WHEP y sus estados |
 
-`live-integration-dt4fm.md` es el documento de IoT tal como llegó. Enlaza a `openapi.yaml`,
-`live-video.md`, `gateway-contract-live.md` y `backend-integration-notes.md`, que viven en el
-repositorio de IoT y no en este.
+Los cuatro documentos de IoT están tal como llegaron (02-10-2026) y no se editan aquí. Enlazan a
+otros que siguen solo en su repositorio: `backend-integration-notes.md`,
+`gateway-contract-operations.md`, `approved-decisions-v1.md` y los diagramas de `docs/diagram/`.
 
 ---
 
@@ -36,8 +39,10 @@ Navegador ◀══5. video (WebRTC, solo por el TURN de Cloudflare)════
 visualización, no queda en ningún sitio. Por eso la fila se escribe **antes** de pedir la sesión
 (V-02). El `requestId` de esa fila aparece en el log de la VPS: une los dos registros.
 
-El video no pasa por el backend. El backend tampoco ve el resultado de la negociación: si la
-cámara no da señal, lo sabe la VPS, y se cruza por `requestId`.
+El video no pasa por el backend, ni por la API central: va del relay de la VPS (MediaMTX) al
+navegador por el TURN de Cloudflare, y el relay lo pide al gateway del edificio por Tailscale. El
+backend tampoco ve el resultado de la negociación: si la cámara no da señal, lo sabe la VPS, y se
+cruza por `requestId`.
 
 ## 2. Alcance
 
@@ -102,7 +107,7 @@ frontend decide por `code`, nunca por `message`.
 | VPS | Backend | `code` | Qué hace el backend |
 |---|---|---|---|
 | — | `503` | `live_disabled` | `LIVE_VIDEO_ENABLED` apagado. No registra |
-| — | `400` | `invalid_request` | `cameraId` fuera de `[A-Za-z0-9._-]{1,64}` o `requestId` no UUID. No registra |
+| — | `400` | `invalid_request` | `cameraId` fuera de `^[A-Z0-9][A-Z0-9-]{0,63}$` (el patrón de `openapi.yaml`) o `requestId` no UUID. No registra |
 | — | `409` | `duplicate_request` | `requestId` ya usado. No pide otra sesión |
 | `400 invalid_request` | `502` | `invalid_request` | `logger.error`: error de integración |
 | `404 not_found` | `404` | `not_found` | Retira la cámara del catálogo |
@@ -165,9 +170,16 @@ A mano: backend con `ACCESS_IOT_USE_MOCK=true` y `LIVE_VIDEO_ENABLED=true`, o so
 
 ## 9. Lo que aún no existe
 
-- **Video de los gateways.** IoT tiene que implementar su parte del contrato; hasta entonces no hay
-  imagen real que mirar.
-- **Prueba con Cloudflare TURN real y un navegador real.** Pendiente de IoT y de lo anterior.
+- **Video de los gateways.** IoT tiene que implementar su parte
+  ([gateway-contract-live.md](gateway-contract-live.md)); hasta entonces no hay imagen real.
+- **`live.construiblec.cloud` responde `404`.** El hostname existe pero el túnel aún no lo enruta
+  ([live-video.md](live-video.md), «Estado de la verificación»). La pantalla lo muestra como
+  «Video no disponible».
+- **Un navegador en modo `relay` contra el relay real.** IoT solo lo probó en local. Es la única
+  ruta del video; si no conecta, el arreglo es del lado de la VPS (cortafuegos o TURN para el
+  relay), no del frontend.
+- **Un NVR real.** El perfil H.264, el intervalo de I-frame y la latencia por Tailscale están sin
+  medir. Un sub-stream en H.265 o con B-frames no se vería: es un ajuste del grabador.
 - **Límite de peticiones en `live.construiblec.cloud`.** Pendiente de IoT. El backend no limita la
   frecuencia por operador; si un cliente en bucle agota los 5 cupos, es el primer sitio donde
   ponerlo.

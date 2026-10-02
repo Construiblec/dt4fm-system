@@ -53,4 +53,12 @@ describe("whepFailure", () => {
   it("un 400 es un error del cliente que hay que corregir", () => {
     expect(whepFailure(400, "invalid_request").action).toBe("none");
   });
+
+  it("un 404 al negociar pide otra sesión, no releer el catálogo", () => {
+    expect(whepFailure(404, "not_found").action).toBe("retry");
+  });
+
+  it("un 404 sin cuerpo JSON (hostname sin enrutar) es video no disponible", () => {
+    expect(whepFailure(404, "http_404").message).toBe("Video no disponible.");
+  });
 });

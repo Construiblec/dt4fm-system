@@ -24,8 +24,11 @@ URL en cada despliegue; no les pedimos un comodín.
 
 1. **Desarrollo local va por `http`, no por `https`.** Su documento dice `https://…`. ¿Lo aceptan
    tal cual? Si no, nos dicen qué esperan.
-2. **¿Pueden compartirnos `openapi.yaml`, `live-video.md` y `gateway-contract-live.md`?** Su
-   documento los enlaza y no los tenemos.
+2. **¿Cuándo se enruta `live.construiblec.cloud`?** `live-video.md` dice que hoy responde `404`.
+   Avísennos al desplegar para ejecutar la prueba en navegador.
+
+Recibidos `openapi.yaml`, `live-video.md` y `gateway-contract-live.md`: gracias. Lo implementado se
+contrastó con ellos.
 
 ## Lo que ya está de nuestro lado
 
@@ -36,5 +39,6 @@ Para que la prueba de punta a punta solo dependa de lo que falta en IoT:
 - El frontend sigue su cliente de referencia: WHEP sin *trickle*, `iceTransportPolicy` tal como
   llega, `<video autoplay muted playsinline>`, una oferta por ticket, `DELETE` con `keepalive` al
   cerrar y sin reconexión automática.
+- `cameraId` se valida con el patrón de `openapi.yaml` antes de llamarlos.
 - No hay Content-Security-Policy en la aplicación. Si se añade, llevará
   `connect-src https://live.construiblec.cloud`.

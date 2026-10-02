@@ -28,8 +28,9 @@ abierta.
 **Fuera.** Lo que la E2E ya cubre sin hardware: cada código de error de la VPS, el `requestId`
 repetido, el interruptor apagado. Y lo que no existe: grabaciones, audio, PTZ.
 
-**Bloqueo actual.** Los gateways aún no entregan video y `GET /v1/cameras` responde `[]`. Hasta
-entonces solo se ejecutan VID-P1 y VID-01, que deben dar una lista vacía sin error.
+**Bloqueo actual.** Los gateways aún no entregan video, `GET /v1/cameras` responde `[]` y
+`live.construiblec.cloud` responde `404` porque el túnel no lo enruta todavía. Hasta entonces solo
+se ejecutan VID-P1 y VID-01, que deben dar una lista vacía sin error.
 
 ## 3. Entorno
 

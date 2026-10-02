@@ -105,6 +105,8 @@ Dos orígenes, dos tablas en `liveVideoMessages.ts`:
 | `401` | La sesión de video caducó. | Reintentar |
 | `403` | Este sitio no está autorizado para ver video. Avisa a Sistemas. | — |
 | `camera_unreachable` | Cámara sin señal. | Reintentar |
+| `not_found` | La cámara dejó de estar disponible. | Reintentar |
+| `404` sin cuerpo JSON | Video no disponible. (El hostname de video aún no está enrutado) | Reintentar |
 | `live_capacity_reached` | … o esta ya tiene dos espectadores. | Reintentar |
 | `timeout` / `network` | La cámara no respondió a tiempo / No se pudo conectar… | Reintentar |
 | `400` | El navegador no pudo negociar el video. Avisa a Sistemas. | — |

@@ -14,7 +14,8 @@ import {
   LiveViewStatus,
 } from './entities/live-view-request.entity';
 
-const CAMERA_ID = /^[A-Za-z0-9._-]{1,64}$/;
+// El de `openapi.yaml`: fuera de él la VPS respondería `400 invalid_request`.
+const CAMERA_ID = /^[A-Z0-9][A-Z0-9-]{0,63}$/;
 
 interface Refusal {
   status: HttpStatus;

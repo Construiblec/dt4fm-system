@@ -174,8 +174,10 @@ describe('CamerasController (e2e)', () => {
       expect(await registros()).toHaveLength(0);
     });
 
-    it('un cameraId inválido es 400 sin tocar la VPS', async () => {
+    it('un cameraId fuera del patrón del contrato es 400 sin tocar la VPS', async () => {
       await pedirSesion('ING CAM 01').expect(400);
+      await pedirSesion('ing-cam-01').expect(400);
+      await pedirSesion('-ING-CAM-01').expect(400);
 
       expect(mocks.accessIot.createLiveSession).not.toHaveBeenCalled();
     });
