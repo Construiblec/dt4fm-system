@@ -12,11 +12,16 @@ import { firstValueFrom } from 'rxjs';
 import { AccessIotGateway } from './access-iot.gateway';
 import {
   AccessIotBuilding,
+  AccessIotCamera,
   AccessIotDevice,
   AccessIotErrorCode,
   AccessIotHealth,
   CredentialWriteResult,
   InventoryPage,
+  LiveSession,
+  LiveSessionErrorCode,
+  LiveSessionRequest,
+  LiveSessionResult,
   PutCredentialRequest,
   TriggerRequest,
   TriggerResult,
@@ -48,6 +53,16 @@ const NO_PULSE_CODES: Record<number, AccessIotErrorCode[]> = {
 // Sin conexión establecida la petición no salió de aquí: no pudo haber pulso.
 const NEVER_SENT_NETWORK_CODES = ['ECONNREFUSED', 'ENOTFOUND', 'EAI_AGAIN'];
 
+/** Errores tipados de `live-sessions` según `live-integration-dt4fm.md`. */
+const LIVE_SESSION_CODES: LiveSessionErrorCode[] = [
+  'invalid_request',
+  'not_found',
+  'device_ambiguous',
+  'gateway_unreachable',
+  'live_capacity_reached',
+  'live_unavailable',
+];
+
 interface ErrorBody {
   code?: AccessIotErrorCode;
   message?: string;
@@ -73,6 +88,42 @@ export const classifyTriggerResponse = (
   body.deviceId === deviceId
     ? { outcome: 'triggered' }
     : { outcome: 'uncertain' };
+
+/** Un `201` solo vale si repite nuestro `requestId` y `cameraId` y trae con qué negociar. */
+export const isLiveSession = (
+  body: LiveSession | undefined,
+  cameraId: string,
+  requestId: string,
+): boolean =>
+  body?.requestId === requestId &&
+  body.cameraId === cameraId &&
+  typeof body.buildingId === 'number' &&
+  typeof body.whepUrl === 'string' &&
+  typeof body.ticket === 'string' &&
+  Array.isArray(body.iceServers);
+
+/** Un 404 sin `code` es una ruta que no existe, no una cámara retirada. */
+export const classifyLiveSessionError = (
+  error: unknown,
+): LiveSessionErrorCode => {
+  const axiosError = error as AxiosError<ErrorBody> | undefined;
+  const status = axiosError?.response?.status;
+  const code = axiosError?.response?.data?.code as LiveSessionErrorCode;
+
+  if (status != null) {
+    if ((status >= 300 && status < 400) || status === 401 || status === 403) {
+      return 'unauthorized';
+    }
+
+    if (LIVE_SESSION_CODES.includes(code)) return code;
+
+    return status === 400 ? 'invalid_request' : 'live_unavailable';
+  }
+
+  return ['ECONNABORTED', 'ETIMEDOUT'].includes(axiosError?.code ?? '')
+    ? 'timeout'
+    : 'network';
+};
 
 /** Fuera de la lista blanca, todo es incierto: `internal_error`, un 5xx sin código, un corte. */
 export const classifyTriggerError = (error: unknown): TriggerResult => {
@@ -107,6 +158,8 @@ export class AccessIotClient extends AccessIotGateway {
   private readonly logger = new Logger(AccessIotClient.name);
   private readonly requestTimeoutMs = 15_000;
   private readonly commandTimeoutMs = 8_000;
+  // La VPS consulta a los gateways (2 s) y a Cloudflare (5 s); el contrato pide cortar a los 10 s.
+  private readonly liveSessionTimeoutMs = 10_000;
   private readonly maxRetries = 2;
 
   constructor(
@@ -246,6 +299,60 @@ export class AccessIotClient extends AccessIotGateway {
       );
 
       return result;
+    }
+  }
+
+  async listCameras(buildingId?: number): Promise<AccessIotCamera[]> {
+    const operation = 'GET /v1/cameras';
+    const { data } = await this.request<AccessIotCamera[]>(operation, {
+      method: 'GET',
+      url: '/v1/cameras',
+      params: buildingId != null ? { buildingId } : undefined,
+    });
+
+    return this.ensure(operation, data, (body) => Array.isArray(body));
+  }
+
+  /** El cuerpo de éxito no se registra: lleva el `ticket` y la credencial TURN. */
+  async createLiveSession(
+    cameraId: string,
+    request: LiveSessionRequest,
+  ): Promise<LiveSessionResult> {
+    const operation = `POST /v1/cameras/${cameraId}/live-sessions`;
+    const requestId = request.requestId.toLowerCase();
+
+    try {
+      const { data } = await this.send<LiveSession>(
+        {
+          method: 'POST',
+          url: `/v1/cameras/${encodeURIComponent(cameraId)}/live-sessions`,
+          data: { requestId },
+        },
+        this.liveSessionTimeoutMs,
+      );
+
+      if (!isLiveSession(data, cameraId, requestId)) {
+        this.logger.warn(
+          `${operation} -> respuesta fuera de contrato request=${requestId}`,
+        );
+
+        return { outcome: 'failed', errorCode: 'invalid_response' };
+      }
+
+      return { outcome: 'issued', session: data };
+    } catch (error) {
+      // Configuración ausente: no es un desenlace de la VPS.
+      if (error instanceof HttpException) throw error;
+
+      const errorCode = classifyLiveSessionError(error);
+      const detail =
+        this.buildSafeErrorMessage(error) || (error as Error).message;
+
+      this.logger.warn(
+        `${operation} -> ${errorCode} (${detail}) request=${requestId}`,
+      );
+
+      return { outcome: 'failed', errorCode };
     }
   }
 

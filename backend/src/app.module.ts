@@ -21,6 +21,7 @@ import { PasswordRecoveryModule } from './modules/password-recovery/password-rec
 import { AccessControlModule } from './modules/access-control/access-control.module';
 import { PushNotificationsModule } from './modules/push-notifications/push-notifications.module';
 import { GuestPortalModule } from './modules/guest-portal/guest-portal.module';
+import { VideoSurveillanceModule } from './modules/video-surveillance/video-surveillance.module';
 
 @Module({
   imports: [
@@ -50,6 +51,7 @@ import { GuestPortalModule } from './modules/guest-portal/guest-portal.module';
     PushNotificationsModule,
     AccessControlModule,
     GuestPortalModule,
+    VideoSurveillanceModule,
   ],
 })
 export class AppModule {}

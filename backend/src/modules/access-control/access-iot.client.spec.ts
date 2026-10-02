@@ -8,8 +8,10 @@ import { AxiosRequestConfig } from 'axios';
 import { of, throwError } from 'rxjs';
 import {
   AccessIotClient,
+  classifyLiveSessionError,
   classifyTriggerError,
   classifyTriggerResponse,
+  isLiveSession,
 } from './access-iot.client';
 
 const conRespuesta = (status: number, data: unknown = {}) => ({
@@ -141,6 +143,67 @@ describe('classifyTriggerResponse', () => {
         ),
       ).toEqual({ outcome: 'uncertain' });
     }
+  });
+});
+
+const SESION = {
+  requestId: REQUEST_ID,
+  cameraId: 'ING-CAM-01',
+  buildingId: 3025058,
+  whepUrl: 'https://live.construiblec.cloud/v1/live/ING-CAM-01/whep',
+  ticket: 'eyJhbGciOi',
+  ticketExpiresAt: '2026-10-01T20:05:32.629674+00:00',
+  maxDurationSeconds: 300,
+  iceServers: [{ urls: ['turns:turn.cloudflare.com:443?transport=tcp'] }],
+  iceTransportPolicy: 'relay' as const,
+};
+
+describe('classifyLiveSessionError', () => {
+  it.each([
+    [400, 'invalid_request'],
+    [404, 'not_found'],
+    [500, 'device_ambiguous'],
+    [503, 'gateway_unreachable'],
+    [503, 'live_capacity_reached'],
+    [503, 'live_unavailable'],
+  ])('%i %s se conserva', (status, code) => {
+    expect(classifyLiveSessionError(conRespuesta(status, { code }))).toBe(code);
+  });
+
+  it.each([302, 401, 403])('%i es el service token rechazado', (status) => {
+    expect(classifyLiveSessionError(conRespuesta(status, '<html>'))).toBe(
+      'unauthorized',
+    );
+  });
+
+  it('un 404 sin código es una ruta ausente, no una cámara retirada', () => {
+    expect(
+      classifyLiveSessionError(conRespuesta(404, { detail: 'Not Found' })),
+    ).toBe('live_unavailable');
+  });
+
+  it('distingue el plazo vencido de la red caída', () => {
+    expect(classifyLiveSessionError(sinRespuesta('ECONNABORTED'))).toBe(
+      'timeout',
+    );
+    expect(classifyLiveSessionError(sinRespuesta('ECONNREFUSED'))).toBe(
+      'network',
+    );
+  });
+});
+
+describe('isLiveSession', () => {
+  it('exige el eco de requestId y cameraId y con qué negociar', () => {
+    expect(isLiveSession(SESION, 'ING-CAM-01', REQUEST_ID)).toBe(true);
+    expect(isLiveSession(SESION, 'ING-CAM-02', REQUEST_ID)).toBe(false);
+    expect(
+      isLiveSession(
+        { ...SESION, ticket: undefined as unknown as string },
+        'ING-CAM-01',
+        REQUEST_ID,
+      ),
+    ).toBe(false);
+    expect(isLiveSession(undefined, 'ING-CAM-01', REQUEST_ID)).toBe(false);
   });
 });
 
@@ -280,5 +343,61 @@ describe('AccessIotClient', () => {
     await expect(
       client.triggerDevice('ING-VEHICULAR-1', { requestId: REQUEST_ID }),
     ).resolves.toMatchObject({ outcome: 'uncertain' });
+  });
+
+  it('el catálogo de cámaras filtra por edificio', async () => {
+    const { request, client } = cliente([]);
+
+    await expect(client.listCameras(3025058)).resolves.toEqual([]);
+
+    const [[enviado]] = request.mock.calls as [[AxiosRequestConfig]];
+
+    expect(enviado).toMatchObject({
+      method: 'GET',
+      url: '/v1/cameras',
+      params: { buildingId: 3025058 },
+    });
+  });
+
+  it('live-sessions devuelve la sesión, con requestId en minúsculas y plazo de 10 s', async () => {
+    const { request, client } = cliente(SESION);
+
+    await expect(
+      client.createLiveSession('ING-CAM-01', {
+        requestId: REQUEST_ID.toUpperCase(),
+      }),
+    ).resolves.toEqual({ outcome: 'issued', session: SESION });
+
+    const [[enviado]] = request.mock.calls as [[AxiosRequestConfig]];
+
+    expect(enviado).toMatchObject({
+      method: 'POST',
+      url: '/v1/cameras/ING-CAM-01/live-sessions',
+      timeout: 10_000,
+      maxRedirects: 0,
+    });
+    expect(enviado.data).toEqual({ requestId: REQUEST_ID });
+  });
+
+  it('live-sessions no reintenta: cada intento es otra visualización', async () => {
+    const { request, client } = cliente(
+      conRespuesta(503, { code: 'live_capacity_reached' }),
+    );
+
+    await expect(
+      client.createLiveSession('ING-CAM-01', { requestId: REQUEST_ID }),
+    ).resolves.toEqual({
+      outcome: 'failed',
+      errorCode: 'live_capacity_reached',
+    });
+    expect(request).toHaveBeenCalledTimes(1);
+  });
+
+  it('live-sessions fuera de contrato no se entrega', async () => {
+    const { client } = cliente({ ...SESION, cameraId: 'ING-CAM-02' });
+
+    await expect(
+      client.createLiveSession('ING-CAM-01', { requestId: REQUEST_ID }),
+    ).resolves.toEqual({ outcome: 'failed', errorCode: 'invalid_response' });
   });
 });

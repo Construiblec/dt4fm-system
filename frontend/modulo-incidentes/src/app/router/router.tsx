@@ -22,6 +22,7 @@ import { MaintenanceSupervisorDetailPage } from "@/modules/supervisor-mantenimie
 import { AuthorizationsListPage } from "@/modules/supervisor-cav/pages/AuthorizationsListPage";
 import { AuthorizationDetailPage } from "@/modules/supervisor-cav/pages/AuthorizationDetailPage";
 import { RemoteDoorsPage } from "@/modules/supervisor-cav/pages/RemoteDoorsPage";
+import { LiveCamerasPage } from "@/modules/supervisor-cav/pages/LiveCamerasPage";
 import { OwnerRegisterPage } from "@/modules/owners/pages/OwnerRegisterPage";
 import { OwnerDashboardPage } from "@/modules/owners/pages/OwnerDashboardPage";
 import { OwnerPaymentsPage } from "@/modules/owners/pages/OwnerPaymentsPage";
@@ -106,8 +107,8 @@ export const router = createBrowserRouter([
     ),
   },
   // ── Supervisor CAV (Accesos) ────────────────────────────────────────────────
-  // Autorizaciones y Puertas (apertura remota); Disuasión y Eventos quedan
-  // fuera de este alcance.
+  // Autorizaciones, Puertas (apertura remota) y Cámaras (video en vivo);
+  // Disuasión y Eventos quedan fuera de este alcance.
   {
     path: "/supervisor-cav/autorizaciones",
     element: (
@@ -129,6 +130,14 @@ export const router = createBrowserRouter([
     element: (
       <RequireRole roles={["SupervisorCAV", "SuperUser"]}>
         <RemoteDoorsPage />
+      </RequireRole>
+    ),
+  },
+  {
+    path: "/supervisor-cav/camaras",
+    element: (
+      <RequireRole roles={["SupervisorCAV", "SuperUser"]}>
+        <LiveCamerasPage />
       </RequireRole>
     ),
   },

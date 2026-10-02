@@ -181,6 +181,10 @@ Una suscripción push pertenece al **origen** que la creó. Los *preview deploys
 
 Para probar notificaciones de verdad hace falta una URL fija —el dominio asignado a la rama `develop`, no la URL efímera del preview— y en iOS, además, la PWA instalada en la pantalla de inicio desde esa misma URL.
 
+### El video en vivo necesita un origen dado de alta
+
+La pestaña Cámaras negocia el video directamente con `live.construiblec.cloud`, que solo acepta los orígenes que Ingeniería IoT tiene en su lista: hoy `http://localhost:5173`, `https://dt4fm-staging.vercel.app` y `https://dt4fm-system-f7cc.vercel.app`. **Un dominio nuevo de producción o de pruebas hay que pedirlo a IoT antes de desplegar**; los *previews* y los túneles `*.trycloudflare.com` reciben `403`. `construiblec.cloud`, `www.construiblec.cloud` y `187.77.250.224:8091` quedan fuera a propósito: las cámaras no se ven desde ahí. La aplicación no tiene Content-Security-Policy; si se añade, debe incluir `connect-src https://live.construiblec.cloud`. Ver [videovigilancia-en-vivo.md](videovigilancia-en-vivo.md).
+
 Las variables de entorno **no se aplican de forma retroactiva**: si se cambia un valor, un deploy o preview ya existente no se actualiza solo. Hay que volver a desplegar (nuevo commit, o `Redeploy` manual desde el dashboard).
 
 ## 7.3. Rewrites para el enrutamiento SPA

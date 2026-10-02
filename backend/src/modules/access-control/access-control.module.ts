@@ -74,6 +74,13 @@ import { SyncRetryService } from './sync-retry.service';
   ],
   // `GuestPortalDataService` es lo único que consume el portal del huésped:
   // así `CredentialService` —y con él `revealPin()`— no llega a ese módulo.
-  exports: [CredentialService, GuestStayService, GuestPortalDataService],
+  // El gateway y el catálogo van a videovigilancia: una VPS, una URL, un token.
+  exports: [
+    CredentialService,
+    GuestStayService,
+    GuestPortalDataService,
+    AccessIotGateway,
+    BuildingCatalogService,
+  ],
 })
 export class AccessControlModule {}

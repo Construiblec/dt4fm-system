@@ -32,6 +32,8 @@ export type AccessIotErrorCode =
   | 'invalid_request'
   | 'device_not_compatible'
   | 'operations_disabled'
+  | 'live_capacity_reached'
+  | 'live_unavailable'
   | 'internal_error';
 
 export interface AccessIotBuilding {
@@ -159,3 +161,50 @@ export interface InventoryPage {
   users: InventoryUser[];
   nextCursor?: string | null;
 }
+
+/** Catálogo de video: un edificio cuyo gateway no responde no aporta cámaras. */
+export interface AccessIotCamera {
+  cameraId: string;
+  name: string;
+  buildingId: number;
+}
+
+export interface LiveSessionRequest {
+  requestId: string;
+}
+
+export interface LiveIceServer {
+  urls: string | string[];
+  username?: string;
+  credential?: string;
+}
+
+/** `ticket` y `credential` son secretos de corta vida: nunca a la base ni a los logs. */
+export interface LiveSession {
+  requestId: string;
+  cameraId: string;
+  buildingId: number;
+  whepUrl: string;
+  ticket: string;
+  ticketExpiresAt: string;
+  maxDurationSeconds: number;
+  iceServers: LiveIceServer[];
+  iceTransportPolicy: 'relay';
+}
+
+/** `unauthorized` es el service token; `timeout`, `network` e `invalid_response` no llegan de la VPS. */
+export type LiveSessionErrorCode =
+  | 'invalid_request'
+  | 'not_found'
+  | 'device_ambiguous'
+  | 'gateway_unreachable'
+  | 'live_capacity_reached'
+  | 'live_unavailable'
+  | 'unauthorized'
+  | 'timeout'
+  | 'network'
+  | 'invalid_response';
+
+export type LiveSessionResult =
+  | { outcome: 'issued'; session: LiveSession }
+  | { outcome: 'failed'; errorCode: LiveSessionErrorCode };
