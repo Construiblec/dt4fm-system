@@ -23,7 +23,7 @@
     unit: "Hoy el backend nunca escribe Unit. Al sincronizar, la tarjeta llevará HostawayListingID y openMAINT la vincula si el listing tiene unidad. La unidad no es obligatoria.",
     schedule: "El PUT ya escribe PlannedStartTime y PlannedEndTime. La hora de checkout no se guarda: el horario lo pone el coordinador.",
     employee: "El PUT ya escribe Employee (hoy como texto: hay que pasarlo a número) y avisa al empleado (push cleaning.assigned). El listado de empleados de limpieza, sin proveedores, es propuesta.",
-    checklist: "Hoy el PUT no escribe CleaningChecklist y no existe un listado de checklists. Si el checklist no tiene minutos, no hay recordatorios ni se sugiere duración.",
+    checklist: "Hoy el PUT no escribe CleaningChecklist y no existe un listado de checklists. Si el checklist no tiene minutos, el empleado no tiene recordatorios.",
     observations: "El PUT ya escribe Observations.",
   };
 
@@ -55,7 +55,6 @@
     const endIso = date && end ? D.isoAt(date, end) : null;
     const chosenChecklist = (checklists || []).find((c) => c.id === checklistId) || null;
     const checklistSummary = chosenChecklist ? D.summarizeChecklist(chosenChecklist.activities) : null;
-    const checklistMinutes = checklistSummary && checklistSummary.minutes !== null ? Math.round(checklistSummary.minutes) : null;
     const employee = (employees || []).find((e) => e.id === employeeId) || null;
     const conflicts = employeeId && startIso && endIso ? D.conflictsFor(employeeId, startIso, endIso, tasks || [], selfIds) : [];
     const employeeChanged = employeeId && (!task || !task.employee || task.employee.id !== employeeId);
@@ -74,12 +73,6 @@
     if (checkoutDate && date && date < checkoutDate) {
       warnings.push("La fecha planificada es anterior al checkout (" + D.formatDate(checkoutDate) + ").");
     }
-
-    const useChecklistDuration = () => {
-      if (!start || checklistMinutes === null) return;
-      setEnd(D.addMinutesToHm(start, checklistMinutes));
-      setErrors((e) => Object.assign({}, e, { end: null }));
-    };
 
     // Una pendiente se puede guardar a medias (por ejemplo, solo corregir el
     // checkout): sigue en Pendientes hasta tener empleado y horario. Una que ya
@@ -219,17 +212,9 @@
         ${chosenChecklist
           ? html`<div class="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-600">
               <${U.ChecklistSummaryLine} rows=${chosenChecklist.activities} />
-              ${checklistMinutes !== null
-                ? html`<${U.Button}
-                    size="sm"
-                    icon="Timer"
-                    disabled=${!start}
-                    title=${start ? "" : "Primero escribe la hora de inicio"}
-                    onClick=${useChecklistDuration}
-                  >
-                    Usar duración del checklist (${checklistMinutes} min)
-                  </${U.Button}>`
-                : html`<span class="text-xs text-amber-700">Sin minutos: sin recordatorios ni duración sugerida.</span>`}
+              ${checklistSummary.minutes === null
+                ? html`<span class="text-xs text-amber-700">Sin minutos: el empleado no tendrá recordatorios.</span>`
+                : null}
             </div>`
           : null}
 

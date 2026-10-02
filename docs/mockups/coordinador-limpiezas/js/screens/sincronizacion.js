@@ -64,7 +64,7 @@
             </${U.Button}>`
           : null}
       >
-        ${message.text}<span class="ml-2 text-xs opacity-75">${D.formatDate(Coord.clock.today)} ${Coord.clock.nowHm}</span>
+        ${message.text}
       </${U.InlineAlert}>
       ${r.errors && r.errors.length
         ? html`<${U.Ann} tag="propuesta" note="Hoy la respuesta de la sincronización trae solo los contadores: no dice qué reservas fallaron.">
@@ -82,8 +82,8 @@
 
   function ConfirmModal({ kind, from, to, pendingCount, onCancel, onConfirm }) {
     const text =
-      kind === "today"
-        ? "¿Deseas generar las tareas de limpieza de los checkouts de hoy (" + D.formatDate(from) + ")? Las tareas duplicadas se omitirán automáticamente."
+      kind === "day"
+        ? "¿Deseas generar las tareas de limpieza de los checkouts del " + D.formatDate(from) + "? Las tareas duplicadas se omitirán automáticamente."
         : "¿Deseas generar las tareas de limpieza de los checkouts entre el " +
           D.formatDate(from) +
           " y el " +
@@ -92,7 +92,7 @@
           (pendingCount != null ? " Hay " + pendingCount + " por crear." : "") +
           " Las tareas duplicadas se omitirán automáticamente.";
     return html`<${U.Modal}
-      title=${kind === "today" ? "Confirmar sincronización" : "Sincronizar rango"}
+      title=${kind === "day" ? "Confirmar sincronización" : "Sincronizar rango"}
       onClose=${onCancel}
       footer=${html`<${U.Button} onClick=${onCancel}>Cancelar</${U.Button}><${U.Button} variant="primary" icon="RefreshCw" onClick=${onConfirm}>Sincronizar</${U.Button}>`}
     >
@@ -100,127 +100,10 @@
     </${U.Modal}>`;
   }
 
-  const CREATED_FIELDS = [
-    ["Número", "TaskNumber", "CT.2026.NNNN", "existe"],
-    ["Descripción", "Description", "Limpieza - {nombre del listing}", "existe"],
-    ["Fase", "phase", "Asignada", "existe"],
-    ["Fecha de checkout", "CheckoutDate", "Solo la fecha; la hora no se guarda", "existe"],
-    ["Reserva", "HostawayReservation", "Evita duplicados", "existe"],
-    ["Origen", "Source", "Hostaway", "existe"],
-    ["Sincronizada el", "GeneratedDate", "Día de la sincronización", "existe"],
-    ["Listing", "HostawayListingID", "listingMapId de la reserva", "propuesta"],
-    ["Unidad", "Unit", "La vincula openMAINT por el listing; puede quedar vacía", "propuesta"],
-  ];
-
-  function CreatedFieldsCard() {
-    return html`<${U.Card}
-      title="Qué lleva cada limpieza creada"
-      subtitle="Nace sin empleado, sin horario y sin checklist: por eso aparece en Pendientes."
-    >
-      <ul class="divide-y divide-slate-100 text-sm">
-        ${CREATED_FIELDS.map(
-          ([label, attr, value, tag]) => html`<li key=${attr} class="flex items-start justify-between gap-3 py-2">
-            <div class="min-w-0">
-              <p class="font-medium text-slate-900">${label}</p>
-              <p class="text-xs text-slate-500">${value}</p>
-            </div>
-            <${U.Ann}
-              tag=${tag}
-              inline=${true}
-              note=${tag === "propuesta"
-                ? "Cambio de backend: al crear la tarjeta, enviar HostawayListingID = listingMapId; openMAINT se encarga de vincular la unidad."
-                : "Ya lo escribe la sincronización hoy."}
-            >
-              <code class="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs text-slate-700">${attr}</code>
-            </${U.Ann}>
-          </li>`
-        )}
-      </ul>
-    </${U.Card}>`;
-  }
-
-  function HistoryCard() {
-    const runsQ = U.useApi(() => api.getSyncRuns(), []);
-    const [open, setOpen] = useState(null);
-    const runs = runsQ.data ? runsQ.data.data : [];
-    const today = Coord.clock.today;
-
-    return html`<${U.Card}
-      id="historial"
-      title="Historial de sincronizaciones"
-      subtitle="Quién sincronizó, qué rango y qué pasó."
-      bodyClass=""
-      annotation=${{ tag: "propuesta", note: "No existe: hoy no se guarda el historial ni el detalle de errores (GET /cleaning-tasks/sync/runs)." }}
-    >
-      ${!runsQ.data
-        ? html`<${U.Skeleton} rows=${4} />`
-        : runs.length === 0
-          ? html`<${U.EmptyState} icon="History" title="Aún no hay sincronizaciones registradas." />`
-          : html`<div class="relative overflow-x-auto">
-              <table class="min-w-full text-sm">
-                <thead class="bg-slate-50">
-                  <tr>
-                    <th scope="col" class=${U.TH}>Fecha y hora</th>
-                    <th scope="col" class=${U.TH}>Quién</th>
-                    <th scope="col" class=${U.TH}>Rango</th>
-                    <th scope="col" class=${cx(U.TH, "text-right")}>Procesados</th>
-                    <th scope="col" class=${cx(U.TH, "text-right")}>Creadas</th>
-                    <th scope="col" class=${cx(U.TH, "text-right")}>Duplicadas</th>
-                    <th scope="col" class=${cx(U.TH, "text-right")}>Errores</th>
-                    <th scope="col" class=${U.TH}><span class="sr-only">Detalle</span></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  ${runs.map((run) => {
-                    const hasDetail = run.errors.length > 0 || run.status === "error";
-                    const expanded = open === run.id;
-                    return html`<tr key=${run.id} class="border-t border-slate-100">
-                        <td class=${cx(U.TD, "whitespace-nowrap tabular-nums text-slate-900")}>
-                          ${D.relativeDay(D.ymdOf(run.startedAt), today)}, ${D.formatTime(run.startedAt)}
-                        </td>
-                        <td class=${cx(U.TD, "text-slate-700")}>${run.user || html`<span class="text-slate-500">Página de openMAINT (sin usuario)</span>`}</td>
-                        <td class=${cx(U.TD, "whitespace-nowrap text-slate-700")}>
-                          ${run.dateFrom === run.dateTo ? D.formatDate(run.dateFrom) : D.formatDate(run.dateFrom) + " – " + D.formatDate(run.dateTo)}
-                        </td>
-                        <td class=${cx(U.TD, "text-right tabular-nums")}>${run.status === "error" ? "—" : run.total}</td>
-                        <td class=${cx(U.TD, "text-right tabular-nums")}>${run.status === "error" ? "—" : run.created}</td>
-                        <td class=${cx(U.TD, "text-right tabular-nums")}>${run.status === "error" ? "—" : run.skipped}</td>
-                        <td class=${cx(U.TD, "text-right font-semibold tabular-nums", run.failed || run.status === "error" ? "text-red-700" : "text-slate-700")}>
-                          ${run.status === "error" ? "Hostaway" : run.failed}
-                        </td>
-                        <td class=${cx(U.TD, "text-right")}>
-                          ${hasDetail
-                            ? html`<${U.Button} size="sm" variant="ghost" icon=${expanded ? "ChevronUp" : "ChevronDown"} onClick=${() => setOpen(expanded ? null : run.id)}>
-                                ${expanded ? "Ocultar" : "Ver errores"}
-                              </${U.Button}>`
-                            : null}
-                        </td>
-                      </tr>
-                      ${expanded
-                        ? html`<tr class="bg-red-50/40">
-                            <td colspan="8" class="px-4 pb-3">
-                              ${run.status === "error"
-                                ? html`<p class="text-sm text-red-800">${run.message}</p>`
-                                : html`<ul class="space-y-1 text-sm">
-                                    ${run.errors.map(
-                                      (e) => html`<li key=${e.reservationId} class="flex flex-wrap gap-x-2 text-slate-700">
-                                        <span class="font-mono text-slate-900">${e.reservationId}</span><span>·</span><span>${e.listingName}</span><span class="text-red-700">${e.message}</span>
-                                      </li>`
-                                    )}
-                                  </ul>`}
-                            </td>
-                          </tr>`
-                        : null}`;
-                  })}
-                </tbody>
-              </table>
-            </div>`}
-    </${U.Card}>`;
-  }
-
   function SincronizacionScreen() {
     const today = Coord.clock.today;
-    const [todayState, setTodayState] = useState({ running: false, result: null, error: null });
+    const [day, setDay] = useState(today);
+    const [dayState, setDayState] = useState({ running: false, result: null, error: null });
     const [rangeState, setRangeState] = useState({ running: false, result: null, error: null });
     const [confirm, setConfirm] = useState(null);
     const [from, setFrom] = useState(today);
@@ -228,14 +111,15 @@
     const [query, setQuery] = useState({ from: today, to: D.addDays(today, 7) });
     const [rangeError, setRangeError] = useState(null);
     const [filter, setFilter] = useState("todos");
+    const [creating, setCreating] = useState(null);
 
     const previewQ = U.useApi(() => api.getCheckouts({ dateFrom: query.from, dateTo: query.to }), [query.from, query.to]);
 
-    // "Sincronizar hoy" desde el panel abre directo la confirmación.
+    // "Sincronizar" desde el panel abre directo la confirmación del día de hoy.
     useEffect(() => {
       if (U.store.state.intent === "sync-today") {
         U.store.set({ intent: null });
-        setConfirm({ kind: "today" });
+        setConfirm({ kind: "day" });
       }
     }, []);
 
@@ -251,14 +135,28 @@
     );
 
     const runSync = (kind) => {
-      const body = kind === "today" ? { dateFrom: today, dateTo: today } : { dateFrom: from, dateTo: to };
-      const setState = kind === "today" ? setTodayState : setRangeState;
+      const body = kind === "day" ? { dateFrom: day, dateTo: day } : { dateFrom: from, dateTo: to };
+      const setState = kind === "day" ? setDayState : setRangeState;
       setConfirm(null);
       setState({ running: true, result: null, error: null });
       api
         .postSync(body)
         .then((result) => setState({ running: false, result, error: null }))
         .catch((error) => setState({ running: false, result: null, error }));
+    };
+
+    const createOne = (row) => {
+      setCreating(row.reservationId);
+      api
+        .createFromCheckout(row.reservationId)
+        .then((result) =>
+          U.flash(
+            "success",
+            "Limpieza " + result.taskNumber + " creada para " + row.listingName + " (checkout " + D.formatDate(row.checkoutDate) + "). Quedó en Pendientes."
+          )
+        )
+        .catch((error) => U.flash("error", "No se pudo crear la limpieza de la reserva " + row.reservationId + ": " + error.message))
+        .finally(() => setCreating(null));
     };
 
     const showPreview = () => {
@@ -275,6 +173,7 @@
       setConfirm({ kind: "range" });
     };
 
+    const busy = dayState.running || rangeState.running;
     const pastWarning = from && from < today && !rangeProblem(from, to);
     const previewMatches = query.from === from && query.to === to && previewQ.data;
 
@@ -284,44 +183,33 @@
         subtitle="Crea las limpiezas a partir de los checkouts de Hostaway. Reemplaza la página de sincronización de openMAINT."
       />
 
-      <div class="grid gap-6 xl:grid-cols-5">
-        <div class="min-w-0 xl:col-span-3">
-          <${U.Card}
-            title="Sincronización de hoy"
-            subtitle="Crea una limpieza por cada checkout de hoy. Las reservas que ya tienen limpieza se omiten."
-            annotation=${{
-              tag: "existe",
-              note: "POST /cleaning-tasks/sync con dateFrom = dateTo = hoy en Guayaquil. La página de openMAINT usa /sync/today, que calcula 'hoy' en UTC (después de las 19:00 ya es mañana): así se evita sin tocar el backend.",
-            }}
-          >
-            <div class="space-y-4">
-              <div class="flex flex-wrap items-end justify-between gap-4">
-                <div>
-                  <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">Fecha</p>
-                  <p class="text-lg font-semibold tabular-nums text-slate-900">${D.formatDate(today)}</p>
-                </div>
-                <${U.Button}
-                  variant="primary"
-                  icon="RefreshCw"
-                  loading=${todayState.running}
-                  disabled=${todayState.running || rangeState.running}
-                  onClick=${() => setConfirm({ kind: "today" })}
-                >
-                  ${todayState.running ? "Sincronizando…" : "Sincronizar ahora"}
-                </${U.Button}>
-              </div>
-              <${SyncResult} state=${todayState} single=${true} />
-            </div>
-          </${U.Card}>
+      <${U.Card}
+        title="Sincronizar un día"
+        subtitle="Crea una limpieza por cada checkout del día elegido. Las reservas que ya tienen limpieza se omiten."
+        annotation=${{
+          tag: "existe",
+          note: "POST /cleaning-tasks/sync con dateFrom = dateTo = el día elegido. La página de openMAINT solo sincroniza 'hoy' con /sync/today, que además calcula la fecha en UTC (después de las 19:00 ya es mañana).",
+        }}
+      >
+        <div class="space-y-4">
+          <div class="flex flex-wrap items-end gap-3">
+            <${U.Field} label="Día" htmlFor="dia-sync">
+              <input id="dia-sync" type="date" class=${U.inputClass(!day)} value=${day} onInput=${(e) => setDay(e.target.value)} />
+            </${U.Field}>
+            <${U.Button} variant="primary" icon="RefreshCw" loading=${dayState.running} disabled=${busy || !day} onClick=${() => setConfirm({ kind: "day" })}>
+              ${dayState.running ? "Sincronizando…" : "Sincronizar"}
+            </${U.Button}>
+          </div>
+          ${day && day < today
+            ? html`<${U.InlineAlert} tone="warning">Es un día pasado: se crearán limpiezas de checkouts que ya ocurrieron.</${U.InlineAlert}>`
+            : null}
+          <${SyncResult} state=${dayState} single=${true} />
         </div>
-        <div class="min-w-0 xl:col-span-2">
-          <${CreatedFieldsCard} />
-        </div>
-      </div>
+      </${U.Card}>
 
       <${U.Card}
         title="Próximas limpiezas"
-        subtitle="Revisa los checkouts de un rango antes de sincronizarlo."
+        subtitle="Revisa los checkouts de un rango. Puedes crear una limpieza suelta o sincronizar todo el rango."
         bodyClass=""
         annotation=${{
           tag: "existe",
@@ -337,13 +225,7 @@
               <input id="rango-fin" type="date" class=${U.inputClass(Boolean(rangeError))} value=${to} onInput=${(e) => setTo(e.target.value)} />
             </${U.Field}>
             <${U.Button} icon="Search" onClick=${showPreview}>Ver próximas limpiezas</${U.Button}>
-            <${U.Button}
-              variant="primary"
-              icon="RefreshCw"
-              loading=${rangeState.running}
-              disabled=${rangeState.running || todayState.running}
-              onClick=${askRangeSync}
-            >
+            <${U.Button} variant="primary" icon="RefreshCw" loading=${rangeState.running} disabled=${busy} onClick=${askRangeSync}>
               ${rangeState.running ? "Sincronizando…" : "Sincronizar rango"}
             </${U.Button}>
           </div>
@@ -394,7 +276,7 @@
                         const shownDate = r.hostawayCheckoutDate || r.checkoutDate;
                         return html`<tr key=${r.reservationId} class="border-t border-slate-100">
                           <td class=${cx(U.TD, "whitespace-nowrap")}>
-                            <p class="font-medium tabular-nums text-slate-900">${D.formatDayShort(shownDate)} · ${r.checkoutTime || "—"}</p>
+                            <p class="font-medium tabular-nums text-slate-900">${D.formatDayShort(shownDate)}</p>
                             ${r.status === "cambio"
                               ? html`<p class="text-xs text-amber-700">La limpieza dice ${D.formatDayShort(r.task.checkoutDate)}</p>`
                               : r.status === "huerfana"
@@ -425,11 +307,26 @@
                               : html`<span class="text-slate-400">—</span>`}
                           </td>
                           <td class=${cx(U.TD, "text-right")}>
-                            ${r.status === "cambio" && D.canEdit(r.task)
-                              ? html`<${U.Button} size="sm" onClick=${() => U.openTask(r.task.id, "editar")}>Corregir fecha</${U.Button}>`
-                              : r.status === "huerfana"
-                                ? html`<${U.Button} size="sm" onClick=${() => U.openTask(r.task.id)}>Revisar</${U.Button}>`
-                                : null}
+                            ${r.status === "por-crear"
+                              ? html`<${U.Ann}
+                                  tag="existe"
+                                  inline=${true}
+                                  note="POST /cleaning-tasks ya crea una sola tarjeta a partir de un checkout (la sincronización lo usa por dentro). Falta exigir sesión y enviar HostawayListingID."
+                                >
+                                  <${U.Button}
+                                    size="sm"
+                                    variant="primary"
+                                    icon="Plus"
+                                    loading=${creating === r.reservationId}
+                                    disabled=${busy || Boolean(creating)}
+                                    onClick=${() => createOne(r)}
+                                  >Crear limpieza</${U.Button}>
+                                </${U.Ann}>`
+                              : r.status === "cambio" && D.canEdit(r.task)
+                                ? html`<${U.Button} size="sm" onClick=${() => U.openTask(r.task.id, "editar")}>Corregir fecha</${U.Button}>`
+                                : r.status === "huerfana"
+                                  ? html`<${U.Button} size="sm" onClick=${() => U.openTask(r.task.id)}>Revisar</${U.Button}>`
+                                  : null}
                           </td>
                         </tr>`;
                       })}
@@ -451,13 +348,11 @@
           : null}
       </${U.Card}>
 
-      <${HistoryCard} />
-
       ${confirm
         ? html`<${ConfirmModal}
             kind=${confirm.kind}
-            from=${confirm.kind === "today" ? today : from}
-            to=${confirm.kind === "today" ? today : to}
+            from=${confirm.kind === "day" ? day : from}
+            to=${confirm.kind === "day" ? day : to}
             pendingCount=${confirm.kind === "range" && previewMatches ? counts["por-crear"] : null}
             onCancel=${() => setConfirm(null)}
             onConfirm=${() => runSync(confirm.kind)}
@@ -469,7 +364,7 @@
   Coord.screens = Coord.screens || {};
   Coord.screens.sincronizacion = {
     title: "Sincronización con Hostaway",
-    calls: ["postSync", "getCheckouts", "getSyncRuns"],
+    calls: ["postSync", "getCheckouts", "createFromCheckout"],
     Component: SincronizacionScreen,
   };
 })();

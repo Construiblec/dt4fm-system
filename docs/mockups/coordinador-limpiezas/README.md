@@ -10,7 +10,7 @@ Prototipo navegable del rol **Coordinador de limpiezas** (Code openMAINT `Coordi
 
 - **Local:** doble clic en `index.html`. Necesita internet para cargar Tailwind, Preact y los íconos desde CDN.
 - **Enlaces directos:** el hash lleva a cada pantalla, por ejemplo `index.html#pendientes`, `#agenda`, `#sincronizacion`, `#checklists`, `#nueva`, `#limpieza-2310013` (una ficha) o `#checklist-9002`.
-- La hora está fija en **10:30 (Guayaquil)** y las fechas se arman relativas al día en que lo abras, así los números siempre calzan.
+- Las fechas se arman relativas al día en que lo abras (internamente la hora está fija en 10:30, Guayaquil), así los números siempre calzan. La interfaz no muestra la hora.
 
 ## Panel del prototipo
 
@@ -37,8 +37,8 @@ Etiquetas de las anotaciones (pasa el mouse sobre la etiqueta para leer el detal
 
 | Hace | No hace (queda con SupervisorLimpieza, AsistenteSL o SuperUser) |
 |---|---|
-| Sincronizar con Hostaway (hoy o un rango), revisar los checkouts antes de sincronizar y ver el historial | Ejecutar limpiezas |
-| Completar las pendientes: unidad, horario, empleado, checklist y observaciones, una por una o en lote | Revisar, aprobar o rechazar |
+| Sincronizar con Hostaway (un día o un rango) y revisar los checkouts antes de sincronizar | Ejecutar limpiezas |
+| Completar las pendientes: unidad, horario, empleado, checklist y observaciones, una por una | Revisar, aprobar o rechazar |
 | Crear limpiezas manuales (`Source: Manual`) | Reabrir |
 | Editar limpiezas que no empezaron, corregir un checkout cambiado y cancelar (huérfanas incluidas) | Editar o reasignar una limpieza en pausa |
 | Ver la agenda del día por empleado, con superposiciones y atrasos | |
@@ -48,11 +48,11 @@ Etiquetas de las anotaciones (pasa el mouse sobre la etiqueta para leer el detal
 
 | Pantalla | Para qué |
 |---|---|
-| **Panel** | Indicadores del día, checkouts de hoy con su limpieza y avisos (pendientes, checkouts sin limpieza, checkout cambiado, reserva que ya no está, superposiciones, sincronización con errores) |
-| **Pendientes** | Limpiezas sin empleado o sin horario, recién creadas arriba. Completar una o asignar varias en lote |
+| **Panel** | Indicadores del día y checkouts de hoy con su limpieza |
+| **Pendientes** | Limpiezas sin empleado o sin horario, recién creadas arriba. Se completan una por una |
 | **Limpiezas** | Tabla de todas las limpiezas y agenda del día en línea de tiempo por empleado |
-| **Sincronización** | Reemplaza la página ExtJS de openMAINT: sincronización de hoy (mismos textos y resultados), rango con vista previa y estado por reserva, e historial |
-| **Checklists** | Lista de `CleaningActivity` y ficha para crear o editar, con vista previa igual a la del empleado y revisión fila por fila |
+| **Sincronización** | Reemplaza la página ExtJS de openMAINT: sincronizar un día elegido, revisar un rango con el estado de cada reserva, crear una limpieza suelta desde la vista previa o sincronizar el rango completo |
+| **Checklists** | Lista de `CleaningActivity` y ficha para crear o editar, con vista previa igual a la del empleado |
 | **Ficha de limpieza** | La tarjeta completa. Se edita si no empezó; si no, es de solo lectura con el motivo |
 | **Nueva limpieza** | Limpieza manual. Sin empleado, queda en Pendientes |
 
@@ -68,7 +68,10 @@ Etiquetas de las anotaciones (pasa el mouse sobre la etiqueta para leer el detal
 - **Checklists:** se crean y editan como en openMAINT: el archivo **Plantilla** es un campo más de la ficha. En la limpieza, el checklist es un campo más, sin checklist por defecto.
 - **Minutos:** si un checklist no tiene minutos, no hay recordatorio y no se sugiere duración.
 - **Empleados:** los proveedores no usan la app y no aparecen en el selector.
-- **Datos ocultos:** no se muestra el nombre del huésped.
+- **Datos ocultos:** no se muestra el nombre del huésped ni la hora de checkout.
+- **Sincronización:** se elige el día (no solo hoy) y desde la vista previa se puede crear una limpieza suelta (`POST /cleaning-tasks`, que ya existe).
+- **Horarios:** el inicio y el fin los escribe el coordinador; el checklist no sugiere duración.
+- **Asignación:** una limpieza a la vez; no hay asignación en lote.
 - **Orden:** las listas muestran primero lo recién creado.
 - **Colores:** los de `statusPalette.ts`. En pausa violeta, atrasada roja, "Por asignar" gris. El rol va en índigo, provisional.
 
@@ -93,7 +96,7 @@ Etiquetas de las anotaciones (pasa el mouse sobre la etiqueta para leer el detal
 | Bitácora / Supervisión | `teamObservations`, `supervisionObserv` | `TeamObservations`, `SupervisionObserv` | lee | Existe |
 | Motivo de cancelación | — | `Notes` | escribe al cancelar | Cancelar es solo de supervisión; `Notes` nunca se devuelve |
 
-Checklist (`CleaningActivity`): `NombrePlantilla`, `Code`, `Description`, `Detalle` (texto) y `Plantilla` (archivo CSV). Si el archivo se puede leer, el equipo ve el archivo; si no, el `Detalle`. El CSV tiene las columnas `Titulo, Actividad, Minutos`, con separador coma o punto y coma.
+Checklist (`CleaningActivity`): `NombrePlantilla` (en pantalla, "Nombre de checklist"), `Code`, `Description`, `Detalle` (texto) y `Plantilla` (archivo CSV). Si el archivo se puede leer, el equipo ve el archivo; si no, el `Detalle`. El CSV tiene las columnas `Titulo, Actividad, Minutos`, con separador coma o punto y coma.
 
 ## Cambios de backend para la implementación real
 
@@ -107,7 +110,7 @@ Ninguno está hecho en esta rama.
 6. **Rol `Coordinator`:** necesita su propio conjunto de roles, con permiso para cancelar. Sumarlo a `SUPERVISOR_ROLES` le daría revisar, reabrir y los avisos de supervisión. Además hay que crear el grupo en openMAINT, con permisos sobre `CleaningTask` y `CleaningActivity`.
 7. **Endpoints sin sesión:** `checkouts`, `sync*`, `GET/POST /`, `generate` y `PUT :id` hoy no piden sesión. Si se les exige, la página ExtJS de openMAINT deja de funcionar.
 8. **Listado:** `/all?date` filtra por `GeneratedDate` (en UTC), devuelve 50 por página y no incluye el checklist. La tabla y la agenda necesitan filtrar por fecha planificada y por fecha de checkout.
-9. **Historial de sincronizaciones:** hoy no se guarda ni el historial ni el detalle de errores.
+9. **Errores de sincronización:** hoy la respuesta trae solo contadores, sin decir qué reservas fallaron.
 10. **`TaskNumber` repetido:** usa los últimos 4 dígitos del reloj y las tarjetas se crean en paralelo, así que dos pueden quedar con el mismo número.
 11. **Bug del parser de checklists:** una fila con la celda de minutos vacía (`Baño;Lavar cortina;`, lo que Excel escribe siempre) se muestra como "Lavar cortina;". Se arregla con una línea en `toRow` (`cleaningChecklistUtils.ts`). El prototipo lo reproduce y lo avisa.
 12. **Colores de la tarjeta del empleado:** usa verde para "en pausa" y naranja para "atrasada", distinto de `statusPalette.ts`. Se decidió `statusPalette`.
@@ -126,17 +129,16 @@ Ninguno está hecho en esta rama.
 Con el escenario "Día normal" recién cargado:
 
 1. **Panel:** Por asignar 11, Programadas hoy 7, En ejecución 1 (+1 en pausa), Atrasadas 1, 9 checkouts hoy.
-2. **Sincronización → Sincronizar ahora:** 9 procesados, 1 creada, 8 duplicadas, 0 errores. La segunda vez: "Sin tareas nuevas: todas ya existían."
+2. **Sincronización → Sincronizar un día (hoy):** 9 procesados, 1 creada, 8 duplicadas, 0 errores. La segunda vez: "Sin tareas nuevas: todas ya existían." Con mañana: 4 / 0 / 4 / 0. En la vista previa, "Crear limpieza" en la reserva 58201777 crea solo esa.
 3. **Rango de hoy a +7 días:** 21 checkouts. Si sincronizas el rango con los datos recién cargados: 21 / 4 / 17 / 0.
-4. **Pendientes → Completar CT.xxxx.1180:** inicio 10:00, checklist "Checkout estándar", "Usar duración del checklist" pone el fin a las 11:28. Con "Repaso rápido" no hay duración sugerida.
+4. **Pendientes → Completar CT.xxxx.1180:** inicio y fin se escriben a mano. Con el checklist "Repaso rápido" avisa que el empleado no tendrá recordatorios.
 5. **Completar 6047** con Luis a las 12:00: avisa que se superpone con 11:30–13:00 y 12:30–14:00, pero deja guardar.
-6. **Lote 1180 + 1184 + 1187:** para María, encadenado desde las 10:00 con 15 min, queda 10:00–11:28 / 11:43–13:11 / 13:26–14:54, con 2 superposiciones.
-7. **Fichas:** 7736 dice "En pausa" y es de solo lectura; 4821 se puede editar y cancelar.
-8. **Huérfana 1203:** se cancela con motivo. En **1214** se corrige la fecha de checkout y deja de figurar como cambiada.
-9. **Agenda:** superposición de Luis en rojo, 2590 atrasada, línea "ahora" y franja "Sin horario".
-10. **Nueva limpieza** sin empleado: aparece primera en Pendientes.
-11. **Checklists → Limpieza profunda:** "Baño" aparece dos veces. Los botones "Probar con…" cargan un CSV de Excel, uno con problemas, uno UTF-16 y un xlsx (que se rechaza).
-12. Cada escenario del panel del prototipo, y "Reiniciar datos" desde cualquier pantalla.
+6. **Fichas:** 7736 dice "En pausa" y es de solo lectura; 4821 se puede editar y cancelar.
+7. **Huérfana 1203:** se cancela con motivo. En **1214** se corrige la fecha de checkout y deja de figurar como cambiada.
+8. **Agenda:** superposición de Luis en rojo, 2590 atrasada, línea "ahora" y franja "Sin horario".
+9. **Nueva limpieza** sin empleado: aparece primera en Pendientes.
+10. **Checklists → Limpieza profunda:** "Baño" aparece dos veces. Al subir un CSV se valida igual que en el backend: un .xlsx se rechaza y un archivo "Texto Unicode" avisa que está separado por tabulaciones.
+11. Cada escenario del panel del prototipo, y "Reiniciar datos" desde cualquier pantalla.
 
 ## Notas técnicas
 

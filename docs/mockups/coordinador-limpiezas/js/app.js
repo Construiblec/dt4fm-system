@@ -16,7 +16,7 @@
     "LayoutDashboard", "Inbox", "CalendarDays", "RefreshCw", "ListChecks", "CalendarCheck", "Plus", "Search", "X",
     "ChevronLeft", "ChevronRight", "ChevronDown", "ChevronUp", "TriangleAlert", "CircleCheck", "CirclePause", "Clock",
     "Play", "Link2Off", "FileSpreadsheet", "Upload", "Copy", "Trash2", "Pencil", "Ban", "History", "CircleAlert", "Info",
-    "Menu", "ArrowUpDown", "ArrowUp", "ArrowDown", "Eye", "Timer", "Users", "UserCheck", "Bell", "ClipboardList",
+    "Menu", "ArrowUpDown", "ArrowUp", "ArrowDown", "Eye", "UserCheck", "Bell", "ClipboardList",
     "RotateCcw", "FlaskConical", "Minus", "CalendarClock", "FileText", "Save", "Paperclip", "Table",
   ];
 
@@ -118,10 +118,8 @@
         </button>
         <p class="truncate text-sm font-semibold text-slate-900 lg:hidden">Coordinación de limpiezas</p>
         <div class="ml-auto flex items-center gap-2 text-sm text-slate-600">
-          <${U.Icon} name="Clock" class="h-4 w-4 text-slate-400" />
-          <span class="hidden sm:inline">${D.formatLongDate(today)} ·</span>
-          <span class="font-semibold tabular-nums text-slate-900">${Coord.clock.nowHm}</span>
-          <span class="hidden text-xs text-slate-400 md:inline">(hora simulada)</span>
+          <${U.Icon} name="CalendarDays" class="h-4 w-4 text-slate-400" />
+          <span>${D.formatLongDate(today)}</span>
         </div>
       </div>
     </header>`;
@@ -191,7 +189,7 @@
 
     const changeScenario = (id) => {
       Coord.data.setScenario(id);
-      U.store.set({ scenario: id, selection: [], flash: null });
+      U.store.set({ scenario: id, flash: null });
       if (U.store.state.route.overlay) U.navigate(U.store.state.baseToken || "panel", { replace: true });
       const label = Coord.data.SCENARIOS.find((s) => s.id === id).label;
       U.flash("info", "Escenario del prototipo: " + label + ".");
@@ -199,7 +197,6 @@
 
     const reset = () => {
       Coord.data.reset();
-      U.store.set({ selection: [] });
       if (U.store.state.route.overlay) U.navigate(U.store.state.baseToken || "panel", { replace: true });
       U.flash("info", "Datos de ejemplo reiniciados.");
     };
@@ -231,7 +228,7 @@
 
       <div class="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4">
         <p class="text-xs leading-relaxed text-slate-400">
-          Datos de ejemplo relativos a hoy, con la hora fija en ${Coord.clock.nowHm} (Guayaquil). Nada sale del navegador: ni openMAINT ni Hostaway.
+          Datos de ejemplo relativos a hoy. Nada sale del navegador: ni openMAINT ni Hostaway.
         </p>
 
         <div class="space-y-1.5">
@@ -336,9 +333,7 @@
     const panelDef =
       route.overlay && route.overlay.type === "limpieza"
         ? { panelTitle: "Qué llama la ficha", calls: ["getTaskDetail", "updateTask", "cancelTask", "listEmployees", "listChecklists", "getBuildings", "getBuildingLocations"] }
-        : route.overlay && route.overlay.type === "lote"
-          ? { panelTitle: "Qué llama la asignación en lote", calls: ["getAllTasks", "updateTask", "listEmployees", "listChecklists"] }
-          : screenDef;
+        : screenDef;
 
     let overlay = null;
     if (route.overlay && route.overlay.type === "limpieza") {
@@ -347,8 +342,6 @@
         id=${route.overlay.id}
         mode=${route.overlay.mode}
       />`;
-    } else if (route.overlay && route.overlay.type === "lote") {
-      overlay = html`<${Coord.screens.BulkDrawer} />`;
     }
 
     return html`<div class="min-h-screen bg-gray-100 text-slate-900">

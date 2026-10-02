@@ -1097,6 +1097,26 @@
       );
     },
 
+    /** Una sola limpieza a partir de un checkout (POST /cleaning-tasks, que ya existe). */
+    createFromCheckout: function (reservationId) {
+      return call(
+        "createFromCheckout",
+        [reservationId],
+        function (id) {
+          if (db.hostawayDown) throw new ApiError(503, "No se pudo conectar con Hostaway. Intenta más tarde.");
+          var reservation = db.reservations.find(function (r) {
+            return r.reservationId === id;
+          });
+          if (!reservation) throw new ApiError(404, "La reserva " + id + " ya no está en Hostaway.");
+          if (taskForReservation(id)) throw new ApiError(409, "La reserva " + id + " ya tiene limpieza.");
+          if (db.failReservations.has(id)) throw new ApiError(500, "Error al crear tarea para reserva " + id);
+          var t = createFromReservation(reservation, nextNowIso());
+          return { created: true, taskId: t.id, taskNumber: t.taskNumber, reservationId: id };
+        },
+        { mutation: true }
+      );
+    },
+
     getSyncRuns: function () {
       return call("getSyncRuns", [], function () {
         return { data: db.syncRuns.slice() };
@@ -1166,7 +1186,7 @@
         [payload],
         function (p) {
           var name = String(p.templateName || "").trim();
-          if (!name) throw new ApiError(400, "Escribe el nombre de la plantilla.");
+          if (!name) throw new ApiError(400, "Escribe el nombre del checklist.");
 
           var existing = p.id ? findChecklist(Number(p.id)) : null;
           if (p.id && !existing) throw new ApiError(404, "No se encontró el checklist " + p.id + ".");
@@ -1247,6 +1267,12 @@
       path: "/cleaning-tasks/sync",
       tag: "existe",
       note: "Existe (sin sesión). Se llama con la fecha de Guayaquil. Falta guardar HostawayListingID en la tarjeta y registrar el historial con sus errores.",
+    },
+    createFromCheckout: {
+      method: "POST",
+      path: "/cleaning-tasks",
+      tag: "existe",
+      note: "Existe (sin sesión): crea una tarjeta a partir de un checkout (hostawayReservationId, listingName, listingId, checkoutDate). Es lo que usa la sincronización por dentro. Falta exigir sesión y enviar HostawayListingID.",
     },
     getSyncRuns: {
       method: "GET",

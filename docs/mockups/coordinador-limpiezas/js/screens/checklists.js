@@ -1,6 +1,6 @@
 /*
  * Checklists (CleaningActivity en openMAINT). El coordinador los crea y edita
- * como en openMAINT: la ficha tiene Nombre plantilla, Código, Descripción,
+ * como en openMAINT: la ficha tiene Nombre de checklist, Código, Descripción,
  * Detalle y el archivo Plantilla (CSV) como un campo más. Si hay archivo, el
  * equipo ve el archivo; si no, el Detalle.
  */
@@ -81,7 +81,7 @@
                   <table class="min-w-full text-sm">
                     <thead class="bg-slate-50">
                       <tr>
-                        <th scope="col" class=${U.TH}>Nombre plantilla</th>
+                        <th scope="col" class=${U.TH}>Nombre de checklist</th>
                         <th scope="col" class=${U.TH}>Código</th>
                         <th scope="col" class=${cx(U.TH, "text-right")}>Secciones</th>
                         <th scope="col" class=${cx(U.TH, "text-right")}>Actividades</th>
@@ -146,16 +146,9 @@
   // Ficha (crear / editar)
   // ───────────────────────────────────────────────────────────────────────────
 
-  const LEVEL_STYLE = {
-    info: { icon: "Info", cls: "text-sky-600" },
-    warn: { icon: "TriangleAlert", cls: "text-amber-600" },
-    error: { icon: "CircleAlert", cls: "text-red-600" },
-  };
-
   function ChecklistEditor({ id }) {
     const isNew = id === "nuevo";
     const detailQ = U.useApi(() => (isNew ? Promise.resolve(null) : api.getChecklist(id)), [id]);
-    const tasksQ = U.useApi(() => api.getAllTasks(), []);
 
     const [loadedId, setLoadedId] = useState(null);
     const [templateName, setTemplateName] = useState("");
@@ -210,13 +203,11 @@
     const rows = plantilla ? plantilla.rows : D.detalleToRows(detalle);
     const summary = D.summarizeChecklist(rows);
     const lint = D.lintChecklist(rows);
-    const tasks = tasksQ.data ? tasksQ.data.data : [];
-    const using = isNew ? [] : inUse(tasks, Number(id));
 
     const save = () => {
       setSubmitError(null);
       const next = {};
-      if (!templateName.trim()) next.templateName = "Escribe el nombre de la plantilla.";
+      if (!templateName.trim()) next.templateName = "Escribe el nombre del checklist.";
       if (rows.length === 0 || summary.activityCount === 0) next.content = "Agrega actividades en el Detalle o sube el archivo de la plantilla.";
       setErrors(next);
       if (Object.keys(next).length) return;
@@ -256,14 +247,6 @@
         />
       </div>
 
-      ${using.length
-        ? html`<${U.Ann} tag="propuesta" note="Cambiar un checklist en uso afecta a esas limpiezas. En una que está en ejecución, la app del empleado detecta que el checklist cambió y reinicia su progreso.">
-            <${U.InlineAlert} tone="warning">
-              Lo ${using.length === 1 ? "usa 1 limpieza que todavía no termina" : "usan " + using.length + " limpiezas que todavía no terminan"}: verán el cambio.
-            </${U.InlineAlert}>
-          </${U.Ann}>`
-        : null}
-
       ${loading
         ? html`<${U.Card} bodyClass=""><${U.Skeleton} rows=${6} /></${U.Card}>`
         : html`<div class="grid gap-6 lg:grid-cols-12">
@@ -274,7 +257,7 @@
                 annotation=${{ tag: "propuesta", note: "No existe endpoint para crear ni editar (POST/PUT /cleaning-tasks/checklists, multipart con el archivo Plantilla). Los campos son los de CleaningActivity: NombrePlantilla, Code, Description, Detalle y Plantilla." }}
               >
                 <div class="space-y-4">
-                  <${U.Field} label="Nombre plantilla" htmlFor="chk-nombre" required=${true} error=${errors.templateName}>
+                  <${U.Field} label="Nombre de checklist" htmlFor="chk-nombre" required=${true} error=${errors.templateName}>
                     <input id="chk-nombre" class=${U.inputClass(errors.templateName)} value=${templateName} maxlength="120" onInput=${(e) => setTemplateName(e.target.value)} />
                   </${U.Field}>
                   <div class="grid gap-4 sm:grid-cols-2">
@@ -337,23 +320,10 @@
                           <${U.InlineAlert} tone="error">${fileError}</${U.InlineAlert}>
                         </${U.Ann}>`
                       : null}
-                    <div class="flex flex-wrap items-center gap-2 pt-1 text-xs text-slate-500">
-                      <span>Probar con:</span>
-                      ${Coord.data.TEST_FILES.map(
-                        (f) => html`<button
-                          key=${f.id}
-                          type="button"
-                          class=${cx("rounded-md border border-slate-300 bg-white px-2 py-1 font-semibold text-slate-600 hover:border-brand hover:text-brand", U.FOCUS)}
-                          onClick=${() => loadBytes(f.fileName, f.build())}
-                        >
-                          ${f.label}
-                        </button>`
-                      )}
-                    </div>
                   </div>
 
                   <${U.Field}
-                    label="Detalle"
+                    label="Detalle (solo si no hay un CSV cargado)"
                     htmlFor="chk-detalle"
                     error=${errors.content}
                     hint=${plantilla ? "Hay archivo: el equipo verá el archivo y este texto se ignora." : "Una actividad por línea: Titulo,Actividad,Minutos."}
@@ -381,19 +351,6 @@
                 >
                   <div class="max-h-[60vh] overflow-y-auto pr-1"><${U.ChecklistPreview} rows=${rows} /></div>
                 </${U.Card}>
-                ${lint.warnings.length
-                  ? html`<${U.Card} title="Revisión" subtitle="Lo que conviene saber antes de guardar." annotation=${{ tag: "ui", note: "Ayuda de la pantalla: repite los pasos del parser y explica qué pasará con cada fila." }}>
-                      <ul class="space-y-2 text-sm">
-                        ${lint.warnings.map((w, i) => {
-                          const style = LEVEL_STYLE[w.level] || LEVEL_STYLE.info;
-                          return html`<li key=${i} class="flex items-start gap-2">
-                            <${U.Icon} name=${style.icon} class=${cx("mt-0.5 h-4 w-4 shrink-0", style.cls)} />
-                            <span class="text-slate-700">${w.text}</span>
-                          </li>`;
-                        })}
-                      </ul>
-                    </${U.Card}>`
-                  : null}
               </div>
             </div>
           </div>`}

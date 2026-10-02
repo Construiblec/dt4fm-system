@@ -49,7 +49,6 @@
       failNext: false,
       scenario: "normal",
       navOpen: false,
-      selection: [],
       flash: null,
     },
     listeners: new Set(),
@@ -132,7 +131,6 @@
     if ((match = /^limpieza-(\d+)(-editar)?$/.exec(token))) {
       return { token, screen: null, overlay: { type: "limpieza", id: Number(match[1]), mode: match[2] ? "editar" : "ver" }, checklistId: null };
     }
-    if (token === "lote") return { token, screen: null, overlay: { type: "lote" }, checklistId: null };
     if ((match = /^checklist-(\d+)$/.exec(token))) return { token, screen: "checklists", overlay: null, checklistId: Number(match[1]) };
     if (token === "checklist-nuevo") return { token, screen: "checklists", overlay: null, checklistId: "nuevo" };
     return { token: "panel", screen: "panel", overlay: null, checklistId: null };
@@ -142,7 +140,7 @@
     const parsed = parseToken(raw);
     store.set((s) => {
       if (parsed.overlay) {
-        const fallback = parsed.overlay.type === "lote" ? "pendientes" : "limpiezas";
+        const fallback = "limpiezas";
         const base = parseToken(s.baseToken && s.route.token !== parsed.token ? s.baseToken : fallback);
         return {
           route: { token: parsed.token, screen: base.screen, overlay: parsed.overlay, checklistId: base.checklistId },
@@ -306,7 +304,7 @@
     return html`<button
       type=${type}
       class=${cx(
-        "inline-flex items-center justify-center gap-2 rounded-lg font-semibold transition disabled:cursor-not-allowed disabled:opacity-50",
+        "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg font-semibold transition disabled:cursor-not-allowed disabled:opacity-50",
         FOCUS,
         BUTTON[variant],
         BUTTON_SIZE[size],
@@ -735,7 +733,7 @@
     ).length;
     return {
       busy: false,
-      text: sameDay ? sameDay + (sameDay === 1 ? " limpieza ese día" : " limpiezas ese día") : "libre ese día",
+      text: sameDay ? sameDay + (sameDay === 1 ? " limpieza ese día" : " limpiezas ese día") : "",
       conflicts: [],
     };
   };
@@ -757,7 +755,7 @@
         ([team, list]) => html`<optgroup key=${team} label=${team}>
           ${list.map((e) => {
             const a = availability(e, tasks || [], date, startIso, endIso, excludeIds);
-            return html`<option key=${e.id} value=${e.id}>${D.formatEmployeeName(e.name)} — ${a.text}</option>`;
+            return html`<option key=${e.id} value=${e.id}>${D.formatEmployeeName(e.name) + (a.text ? " — " + a.text : "")}</option>`;
           })}
         </optgroup>`
       )}
