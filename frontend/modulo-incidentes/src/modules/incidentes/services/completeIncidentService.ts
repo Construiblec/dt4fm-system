@@ -1,4 +1,5 @@
 import { env } from "@/config/env";
+import { fetchWithSessionRenewal } from "@/shared/auth/sessionHttp";
 import { redirectToLogin } from "@/shared/auth/returnTo";
 
 // `VITE_API_URL` termina en `/api`, pero el backend no declara prefijo global:
@@ -32,12 +33,15 @@ export const startIncident = async (
 ): Promise<StartIncidentResponse> => {
   const sessionId = localStorage.getItem("sessionId");
 
-  const response = await fetch(`${incidentsBaseUrl}/incidents/${id}/start`, {
-    method: "POST",
-    headers: {
-      Authorization: sessionId ?? "",
+  const response = await fetchWithSessionRenewal(
+    `${incidentsBaseUrl}/incidents/${id}/start`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: sessionId ?? "",
+      },
     },
-  });
+  );
 
   if (response.status === 401) {
     redirectToLogin();
@@ -67,13 +71,16 @@ export const completeIncident = async (
     formData.append("file", file);
   }
 
-  const response = await fetch(`${incidentsBaseUrl}/incidents/${id}/complete`, {
-    method: "POST",
-    headers: {
-      Authorization: sessionId ?? "",
+  const response = await fetchWithSessionRenewal(
+    `${incidentsBaseUrl}/incidents/${id}/complete`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: sessionId ?? "",
+      },
+      body: formData,
     },
-    body: formData,
-  });
+  );
 
   if (response.status === 401) {
     redirectToLogin();

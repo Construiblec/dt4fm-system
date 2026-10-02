@@ -1,5 +1,6 @@
 import axios from "axios";
 import { env } from "@/config/env";
+import { attachSessionRenewal } from "@/shared/auth/sessionHttp";
 import { buildAttachmentUrl } from "@/shared/utils/attachmentUrl";
 import type {
   CleaningTaskAttachment,
@@ -15,6 +16,8 @@ import { redirectToLogin } from "@/shared/auth/returnTo";
 const cleaningExecutionApi = axios.create({
   baseURL: env.VITE_API_URL.replace(/\/api\/?$/, ""),
 });
+
+attachSessionRenewal(cleaningExecutionApi, "x-session-token");
 
 const getCleaningHeaders = () => ({
   "x-session-token": localStorage.getItem("sessionId") ?? "",

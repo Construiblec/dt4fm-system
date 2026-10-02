@@ -1,5 +1,6 @@
 import axios from "axios";
 import { env } from "@/config/env";
+import { attachSessionRenewal } from "@/shared/auth/sessionHttp";
 import type {
   GetAllCleaningTasksParams,
   GetAllCleaningTasksResponse,
@@ -15,6 +16,8 @@ import { redirectToLogin } from "@/shared/auth/returnTo";
 const supervisorApi = axios.create({
   baseURL: env.VITE_API_URL.replace(/\/api\/?$/, ""),
 });
+
+attachSessionRenewal(supervisorApi, "x-session-token");
 
 function getAuthHeaders() {
   return {

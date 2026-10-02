@@ -4,16 +4,12 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { createHmac } from 'crypto';
 import {
-  createCipheriv,
-  createDecipheriv,
-  createHmac,
-  randomBytes,
-} from 'crypto';
-
-const ALGORITHM = 'aes-256-gcm';
-const IV_BYTES = 12;
-const KEY_BYTES = 32;
+  AES_KEY_BYTES,
+  decryptAesGcm,
+  encryptAesGcm,
+} from '../../common/utils/aes-gcm.util';
 
 /**
  * Cifra y descifra el PIN, y calcula su huella.
@@ -42,42 +38,12 @@ export class PinCipherService {
   }
 
   encrypt(pin: string): string {
-    const key = this.requireKey();
-    const iv = randomBytes(IV_BYTES);
-    const cipher = createCipheriv(ALGORITHM, key, iv);
-    const ciphertext = Buffer.concat([
-      cipher.update(pin, 'utf8'),
-      cipher.final(),
-    ]);
-
-    return [
-      iv.toString('base64url'),
-      cipher.getAuthTag().toString('base64url'),
-      ciphertext.toString('base64url'),
-    ].join(':');
+    return encryptAesGcm(this.requireKey(), pin);
   }
 
   /** Único punto del código autorizado a revelar un PIN. */
   decrypt(payload: string): string {
-    const key = this.requireKey();
-    const parts = (payload ?? '').split(':');
-
-    if (parts.length !== 3) {
-      throw new Error('Formato de PIN cifrado inválido');
-    }
-
-    const [iv, tag, ciphertext] = parts.map((part) =>
-      Buffer.from(part, 'base64url'),
-    );
-
-    const decipher = createDecipheriv(ALGORITHM, key, iv);
-    // GCM detecta manipulación aquí: final() lanza si el tag no cuadra.
-    decipher.setAuthTag(tag);
-
-    return Buffer.concat([
-      decipher.update(ciphertext),
-      decipher.final(),
-    ]).toString('utf8');
+    return decryptAesGcm(this.requireKey(), payload, 'PIN cifrado');
   }
 
   /** Permite comprobar unicidad, enfriamiento y coincidencias sin descifrar. */
@@ -118,9 +84,9 @@ export class PinCipherService {
 
     const key = Buffer.from(raw, 'base64');
 
-    if (key.length !== KEY_BYTES) {
+    if (key.length !== AES_KEY_BYTES) {
       this.logger.error(
-        `${name} debe decodificar a ${KEY_BYTES} bytes en base64; llegaron ${key.length}`,
+        `${name} debe decodificar a ${AES_KEY_BYTES} bytes en base64; llegaron ${key.length}`,
       );
       return null;
     }

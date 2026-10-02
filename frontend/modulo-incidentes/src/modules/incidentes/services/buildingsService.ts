@@ -1,5 +1,6 @@
 import axios from "axios";
 import { env } from "@/config/env";
+import { attachSessionRenewal } from "@/shared/auth/sessionHttp";
 import type { Building } from "@/modules/incidentes/types/Building";
 import type { BuildingLocations } from "@/modules/incidentes/types/BuildingLocations";
 
@@ -9,6 +10,8 @@ const buildingsApi = axios.create({
     "Content-Type": "application/json",
   },
 });
+
+attachSessionRenewal(buildingsApi, "authorization");
 
 export const getBuildings = async (): Promise<Building[]> => {
   const sessionId = localStorage.getItem("sessionId");

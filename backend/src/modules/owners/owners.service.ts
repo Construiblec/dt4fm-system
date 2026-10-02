@@ -11,6 +11,7 @@ import { OpenmaintService } from '../../integrations/openmaint/openmaint.service
 import { OpenmaintClient } from '../../integrations/openmaint/openmaint.client';
 import { OpenmaintServiceSession } from '../../integrations/openmaint/openmaint.service-session';
 import { OpenmaintUsersService } from '../../integrations/openmaint/openmaint.users.service';
+import { AppSessionsService } from '../app-sessions/app-sessions.service';
 import { AuthService } from '../auth/auth.service';
 import { VerifyOwnerDto } from './dto/verify-owner.dto';
 import { RegisterOwnerDto } from './dto/register-owner.dto';
@@ -114,6 +115,7 @@ export class OwnersService {
     private readonly openmaintUsers: OpenmaintUsersService,
     private readonly authService: AuthService,
     private readonly paidNotifier: PaymentPaidNotifierService,
+    private readonly appSessions: AppSessionsService,
   ) {}
 
   // ─── Auth ──────────────────────────────────────────────────────────────────
@@ -437,7 +439,12 @@ export class OwnersService {
     }
   }
 
-  async changeOwnerPassword(userId: number, dto: ChangePasswordDto) {
+  /** `currentSessionId` es la sesión que se conserva: la de quien la cambia. */
+  async changeOwnerPassword(
+    userId: number,
+    dto: ChangePasswordDto,
+    currentSessionId?: string,
+  ) {
     const adminSessionId = await this.serviceSession.get();
     const account = await this.openmaintUsers.getAccount(
       userId,
@@ -467,7 +474,6 @@ export class OwnersService {
         dto.newPassword,
         adminSessionId,
       );
-      return { success: true, message: 'Contraseña actualizada correctamente' };
     } catch (error) {
       console.error('[owners] changeOwnerPassword error:', {
         status: error?.response?.status,
@@ -476,6 +482,11 @@ export class OwnersService {
         'No se pudo actualizar la contraseña',
       );
     }
+
+    // Los demás dispositivos vuelven al login; este sigue dentro.
+    await this.appSessions.closeAllForUser(account.username, currentSessionId);
+
+    return { success: true, message: 'Contraseña actualizada correctamente' };
   }
 
   async contactAdmin(tenantId: number, dto: ContactAdminDto) {

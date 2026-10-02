@@ -1,5 +1,6 @@
 import axios from "axios";
 import { env } from "@/config/env";
+import { attachSessionRenewal } from "@/shared/auth/sessionHttp";
 import { redirectToLogin } from "@/shared/auth/returnTo";
 
 /** Con `VITE_CAV_MOCK=true` ningún servicio de CAV llega a tocar la red. */
@@ -8,6 +9,8 @@ export const isCavMock = env.VITE_CAV_MOCK === "true";
 export const cavApi = axios.create({
   baseURL: env.VITE_API_URL.replace(/\/api\/?$/, ""),
 });
+
+attachSessionRenewal(cavApi, "authorization");
 
 /**
  * Solo la sesión. El rol **no** se manda desde el cliente: el backend lo
