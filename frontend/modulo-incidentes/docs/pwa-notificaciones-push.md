@@ -108,8 +108,9 @@ Esto **no alarga la sesión**, solo abarata su caducidad: sigue costando un logi
 
 openMAINT cierra una sesión tras **una hora sin uso** (`timeToLiveSeconds: 3600`), y por eso el operario caía en el login cada mañana. Con la casilla «Mantener la sesión iniciada en este dispositivo» del login, marcada por defecto porque los móviles del equipo son personales, el backend la mantiene viva con el keepalive oficial de openMAINT (`POST /sessions/current/keepalive`) cada 20 minutos, hasta 30 días sin abrir la app. Lo hace `AppSessionsService` en el backend, que guarda las sesiones cifradas en la tabla `app_session`.
 
+* **Abrir la app entra directo.** La PWA arranca en `/` (`start_url`), que es el login. Con una sesión guardada, `useResumeSession` pregunta `GET /auth/session` y lleva a la pantalla de inicio del rol, o al destino pendiente si lo hay. Solo con un 401 enseña el formulario. Antes el formulario salía siempre, aunque la sesión siguiera viva.
 * **El móvil guarda una sesión normal del usuario**, la misma que antes: no hay token nuevo ni nada con más permisos que los suyos. Por eso se descartó la suplantación de openMAINT, que habría permitido volver a una sesión de administrador.
-* **Cerrar sesión la cierra también en openMAINT** (`POST /auth/logout`). Antes seguía viva una hora después.
+* **Cerrar sesión la cierra también en openMAINT** (`POST /auth/logout`), también desde el panel de residentes. Antes seguía viva una hora después.
 * **Cambiar la contraseña cierra la sesión en los demás dispositivos**, recordados o no, y conserva la del que la cambió. Restablecerla por correo las cierra todas.
 * Si openMAINT se reinicia y pierde las sesiones, el móvil vuelve al login: no hay forma de revivirlas sin la contraseña, y el backend no la guarda.
 * El login de visitante (cuenta compartida) nunca se recuerda.
