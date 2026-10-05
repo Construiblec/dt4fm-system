@@ -9,7 +9,7 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { AppLayout } from "@/app/layout/AppLayout";
-import { clearSession } from "@/shared/auth/session";
+import { useLogout } from "@/modules/auth/hooks/useLogout";
 import {
   getOwnerUnits,
   getOwnerPayments,
@@ -19,6 +19,9 @@ import {
 
 export const OwnerDashboardPage = () => {
   const navigate = useNavigate();
+  // El mismo cierre que el del equipo: también cierra la sesión en openMAINT,
+  // que si no seguiría viva —y, si era recordada, hasta 30 días—.
+  const logout = useLogout();
   const ownerName =
     localStorage.getItem("ownerName") ??
     localStorage.getItem("username") ??
@@ -50,11 +53,6 @@ export const OwnerDashboardPage = () => {
       .finally(() => setLoadingPayments(false));
   }, [tenantId]);
 
-  const handleLogout = () => {
-    clearSession();
-    navigate("/login");
-  };
-
   const pendientes = pagos.filter((p) => p.estadoCodigo === "Pendiente");
   const firstName = ownerName.split(" ")[0];
 
@@ -73,7 +71,7 @@ export const OwnerDashboardPage = () => {
           </div>
           <button
             type="button"
-            onClick={handleLogout}
+            onClick={logout}
             className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 shadow-sm transition hover:bg-slate-50"
           >
             <LogOut className="h-4 w-4" />
