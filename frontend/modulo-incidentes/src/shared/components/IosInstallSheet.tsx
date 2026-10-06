@@ -1,20 +1,34 @@
 import { Share, SquarePlus, X } from "lucide-react";
+import { isIosSafari } from "@/shared/pwa/platform";
 
 type IosInstallSheetProps = {
   open: boolean;
   onClose: () => void;
 };
 
-const steps = [
-  { icon: Share, text: "Toca Compartir en la barra inferior de Safari." },
-  { icon: SquarePlus, text: "Desliza y elige Añadir a pantalla de inicio." },
-];
+/**
+ * Dónde está Compartir depende del navegador: Safari lo tiene abajo y Chrome
+ * en la barra de direcciones. El resto del camino es el mismo.
+ */
+const shareStep = () =>
+  isIosSafari()
+    ? "Toca Compartir en la barra inferior de Safari."
+    : "Toca Compartir en tu navegador (en Chrome, en la barra de direcciones).";
 
-/** Safari no expone `beforeinstallprompt`: en iOS solo queda la guía manual. */
+/**
+ * Ningún navegador de iPhone expone `beforeinstallprompt`: solo queda la guía
+ * manual. Desde iOS 16.4 todos, no solo Safari, pueden añadir la app a la
+ * pantalla de inicio.
+ */
 export const IosInstallSheet = ({ open, onClose }: IosInstallSheetProps) => {
   if (!open) {
     return null;
   }
+
+  const steps = [
+    { icon: Share, text: shareStep() },
+    { icon: SquarePlus, text: "Desliza y elige Añadir a pantalla de inicio." },
+  ];
 
   return (
     <div
