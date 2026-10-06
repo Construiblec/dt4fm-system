@@ -6,48 +6,58 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { timingSafeEqual } from 'crypto';
+import { createHash, timingSafeEqual } from 'crypto';
 import type { Request } from 'express';
 
-export const HOSTAWAY_SECRET_HEADER = 'x-hostaway-secret';
-
 /**
- * Mismo patrón que `IotWebhookGuard`, y por una razón más fuerte: este webhook
- * emite y revoca credenciales de puerta. Sin secreto, cualquiera podría inventar
- * una reserva para que se emitiera un PIN, o mandar una cancelación con un id
- * conocido para revocar uno legítimo.
+ * Basic Auth porque es lo único que sabe enviar el unified webhook de Hostaway
+ * (`login`/`password`). Este webhook emite y revoca PINes: sin credenciales, se cierra.
  */
 @Injectable()
 export class HostawayWebhookGuard implements CanActivate {
   constructor(private readonly configService: ConfigService) {}
 
   canActivate(context: ExecutionContext): boolean {
-    const expected =
-      this.configService.get<string>('HOSTAWAY_WEBHOOK_SECRET') ?? '';
+    const user = this.config('HOSTAWAY_WEBHOOK_USER');
+    const secret = this.config('HOSTAWAY_WEBHOOK_SECRET');
 
-    // Sin secreto configurado el endpoint se apaga; nunca queda abierto.
-    if (!expected) {
+    if (!user || !secret) {
       throw new ServiceUnavailableException(
         'El webhook de reservas no está configurado',
       );
     }
 
-    const received = context.switchToHttp().getRequest<Request>().headers[
-      HOSTAWAY_SECRET_HEADER
-    ];
+    const received = this.basicCredentials(
+      context.switchToHttp().getRequest<Request>().headers.authorization,
+    );
 
-    if (typeof received !== 'string' || !this.matches(received, expected)) {
-      throw new UnauthorizedException('Secreto de webhook inválido');
+    if (received === null || !this.matches(received, `${user}:${secret}`)) {
+      throw new UnauthorizedException('Credenciales de webhook inválidas');
     }
 
     return true;
   }
 
-  private matches(received: string, expected: string): boolean {
-    const a = Buffer.from(received);
-    const b = Buffer.from(expected);
+  private config(name: string): string {
+    return this.configService.get<string>(name)?.trim() ?? '';
+  }
 
-    // timingSafeEqual exige la misma longitud, así que se comprueba antes.
-    return a.length === b.length && timingSafeEqual(a, b);
+  private basicCredentials(header?: string): string | null {
+    const match = /^Basic\s+([A-Za-z0-9+/]+=*)\s*$/i.exec(header ?? '');
+
+    if (!match) return null;
+
+    const decoded = Buffer.from(match[1], 'base64').toString('utf8');
+
+    return decoded.includes(':') ? decoded : null;
+  }
+
+  // Digests de longitud fija: la comparación no filtra la longitud del secreto.
+  private matches(received: string, expected: string): boolean {
+    return timingSafeEqual(this.digest(received), this.digest(expected));
+  }
+
+  private digest(value: string): Buffer {
+    return createHash('sha256').update(value).digest();
   }
 }

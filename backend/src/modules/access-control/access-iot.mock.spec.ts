@@ -91,8 +91,8 @@ describe('AccessIotMockGateway', () => {
       peticion({ subjectType: 'employee', pin: '7412' }),
     );
 
-    expect(huesped.devices[0].employeeNo).toMatch(/^DT4-G-[0-9a-f]{8}$/);
-    expect(personal.devices[0].employeeNo).toMatch(/^DT4-E-[0-9a-f]{8}$/);
+    expect(huesped.devices[0].employeeNo).toMatch(/^DT4G[0-9A-F]{8}$/);
+    expect(personal.devices[0].employeeNo).toMatch(/^DT4E[0-9A-F]{8}$/);
   });
 
   it('borrar algo ya borrado es éxito, no un fallo', async () => {
@@ -100,6 +100,7 @@ describe('AccessIotMockGateway', () => {
 
     await expect(gateway.deleteCredential('cred-8')).resolves.toMatchObject({
       state: 'written',
+      devices: [{ deviceId: 'ING-PEATONAL-1', state: 'deleted' }],
     });
     await expect(gateway.deleteCredential('cred-8')).resolves.toMatchObject({
       state: 'written',
@@ -111,11 +112,11 @@ describe('AccessIotMockGateway', () => {
     await gateway.putCredential('cred-9', peticion());
 
     const { users } = await gateway.getDeviceInventory('ING-PEATONAL-1');
-    const manual = users.find((user) => user.employeeNo === 'LOCAL-77');
+    const manual = users.find((user) => user.employeeNo === '77');
     const gestionado = users.find((user) => user.managed);
 
     expect(manual?.managed).toBe(false);
-    expect(gestionado?.employeeNo).toMatch(/^DT4-/);
+    expect(gestionado?.employeeNo).toMatch(/^DT4[GTE][0-9A-F]{8}$/);
   });
 
   it('el inventario nunca expone PINes', async () => {
@@ -126,6 +127,73 @@ describe('AccessIotMockGateway', () => {
     expect(JSON.stringify(users)).not.toContain('5073');
   });
 
+  describe('triggerDevice', () => {
+    const id = (n: number) =>
+      `6f1c9a5e-3b2d-4c8e-9a71-0d4e2f5b8c${String(n).padStart(2, '0')}`;
+
+    it('pulsa una barrera vehicular en línea', async () => {
+      await expect(
+        gateway.triggerDevice('ING-VEHICULAR-1', { requestId: id(1) }),
+      ).resolves.toEqual({ outcome: 'triggered' });
+    });
+
+    it('una puerta peatonal es device_not_compatible', async () => {
+      await expect(
+        gateway.triggerDevice('ING-PEATONAL-1', { requestId: id(2) }),
+      ).resolves.toEqual({
+        outcome: 'failed',
+        errorCode: 'device_not_compatible',
+      });
+    });
+
+    it('una barrera caída falla con device_unreachable', async () => {
+      await expect(
+        gateway.triggerDevice('PRA-VEHICULAR-1', { requestId: id(3) }),
+      ).resolves.toEqual({
+        outcome: 'failed',
+        errorCode: 'device_unreachable',
+      });
+    });
+
+    it('una puerta desconocida es not_found', async () => {
+      await expect(
+        gateway.triggerDevice('NO-EXISTE', { requestId: id(4) }),
+      ).resolves.toEqual({ outcome: 'failed', errorCode: 'not_found' });
+    });
+
+    it('rechaza actor u otro campo, como la API central', async () => {
+      await expect(
+        gateway.triggerDevice('ING-VEHICULAR-1', {
+          requestId: id(5),
+          actor: { type: 'staff', ref: 'cav.mock' },
+        } as never),
+      ).resolves.toEqual({ outcome: 'failed', errorCode: 'invalid_request' });
+    });
+
+    it('rechaza un requestId en mayúsculas o con llaves', async () => {
+      for (const requestId of [id(6).toUpperCase(), `{${id(6)}}`]) {
+        await expect(
+          gateway.triggerDevice('ING-VEHICULAR-1', { requestId }),
+        ).resolves.toEqual({ outcome: 'failed', errorCode: 'invalid_request' });
+      }
+    });
+
+    it('repetir el requestId devuelve el mismo pulso, no un segundo', async () => {
+      const primera = await gateway.triggerDevice('ING-VEHICULAR-1', {
+        requestId: id(7),
+      });
+      const segunda = await gateway.triggerDevice('ING-VEHICULAR-1', {
+        requestId: id(7),
+      });
+
+      expect(segunda).toBe(primera);
+    });
+
+    it('ya no expone open ni close', () => {
+      expect('commandDevice' in gateway).toBe(false);
+    });
+  });
+
   it('la salud separa el túnel del gateway de la LAN de cada terminal', async () => {
     const { buildings } = await gateway.getHealth();
     const pradera = buildings.find((building) => building.buildingId === PRA);
@@ -134,5 +202,54 @@ describe('AccessIotMockGateway', () => {
     expect(pradera?.devices?.some((device) => device.online === false)).toBe(
       true,
     );
+  });
+
+  describe('cámaras en vivo', () => {
+    const REQUEST_ID = '6f1c9a5e-3b2d-4c8e-9a71-0d4e2f5b8c13';
+
+    it('filtra el catálogo por edificio', async () => {
+      const camaras = await gateway.listCameras(ING);
+
+      expect(camaras.map((camara) => camara.cameraId)).toEqual([
+        'ING-CAM-01',
+        'ING-CAM-02',
+      ]);
+    });
+
+    it('emite una sesión solo por relay, con el eco de la petición', async () => {
+      const resultado = await gateway.createLiveSession('ING-CAM-01', {
+        requestId: REQUEST_ID,
+      });
+
+      expect(resultado).toMatchObject({
+        outcome: 'issued',
+        session: {
+          requestId: REQUEST_ID,
+          cameraId: 'ING-CAM-01',
+          buildingId: ING,
+          iceTransportPolicy: 'relay',
+        },
+      });
+    });
+
+    it('una cámara desconocida es not_found y un requestId en mayúsculas, invalid_request', async () => {
+      await expect(
+        gateway.createLiveSession('BAT-CAM-01', { requestId: REQUEST_ID }),
+      ).resolves.toEqual({ outcome: 'failed', errorCode: 'not_found' });
+      await expect(
+        gateway.createLiveSession('ING-CAM-01', {
+          requestId: REQUEST_ID.toUpperCase(),
+        }),
+      ).resolves.toEqual({ outcome: 'failed', errorCode: 'invalid_request' });
+    });
+
+    it('PRA-CAM-02 simula los cupos agotados', async () => {
+      await expect(
+        gateway.createLiveSession('PRA-CAM-02', { requestId: REQUEST_ID }),
+      ).resolves.toEqual({
+        outcome: 'failed',
+        errorCode: 'live_capacity_reached',
+      });
+    });
   });
 });

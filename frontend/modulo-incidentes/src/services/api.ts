@@ -1,5 +1,6 @@
 import axios from "axios";
 import { env } from "@/config/env";
+import { attachSessionRenewal } from "@/shared/auth/sessionHttp";
 
 export type LoginResponse = {
   sessionId: string;
@@ -173,23 +174,39 @@ authApi.interceptors.request.use((config) => {
   return config;
 });
 
+attachSessionRenewal(authApi, "authorization");
+
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 
 /**
  * Login único para equipo y residentes. `role` es opcional: sirve para entrar
  * directamente con un grupo concreto cuando ya se eligió en el selector.
+ *
+ * Con `remember` el backend mantiene viva la sesión mientras se use, hasta 30
+ * días sin abrir la app; sin él caduca tras una hora sin uso, como siempre.
  */
 export const login = async (
   username: string,
   password: string,
   role?: string,
+  remember = false,
 ): Promise<LoginResponse> => {
   const { data } = await authApi.post<LoginResponse>("/auth/login", {
     username,
     password,
     ...(role ? { role } : {}),
+    ...(remember ? { remember } : {}),
   });
   return data;
+};
+
+/**
+ * Cierra la sesión también en openMAINT. Sin esto seguía viva una hora después
+ * de pulsar «Cerrar sesión», y una recordada se mantendría viva hasta 30 días.
+ */
+export const logout = async (): Promise<void> => {
+  // Con timeout: sin red, cerrar sesión no puede quedarse colgado.
+  await authApi.post("/auth/logout", undefined, { timeout: 5000 });
 };
 
 /**
@@ -207,6 +224,14 @@ export const switchRole = async (
     { headers: { Authorization: sessionId } },
   );
   return data;
+};
+
+/**
+ * ¿openMAINT sigue aceptando la sesión guardada? Responde 401 si no; con
+ * openMAINT caído responde 500, que no es motivo para mandar a nadie al login.
+ */
+export const checkSession = async (): Promise<void> => {
+  await authApi.get("/auth/session");
 };
 
 /** Cambio de contraseña con sesión iniciada, para cualquier rol. */

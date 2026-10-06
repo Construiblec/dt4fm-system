@@ -1,23 +1,27 @@
-import { Injectable, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { UnitResolverService } from '../../integrations/openmaint/unit-resolver.service';
+import {
+  UnitLocation,
+  UnitResolverService,
+} from '../../integrations/openmaint/unit-resolver.service';
+import { GuestLinkService } from '../guest-link/guest-link.service';
 import { BuildingCatalogService } from './building-catalog.service';
 import { CredentialService } from './credential.service';
 import { GuestStay } from './entities/guest-stay.entity';
-
-/**
- * Ecuador es UTC−5 todo el año, sin horario de verano. Es el único punto donde
- * una fecha de Hostaway (`YYYY-MM-DD`) se convierte en un instante; si algún
- * día hay un edificio en otra zona, se cambia aquí.
- */
-const LOCAL_UTC_OFFSET = '-05:00';
-
-const DEFAULT_CHECKIN_HOUR = 15;
-const DEFAULT_CHECKOUT_HOUR = 11;
-const DEFAULT_LEAD_HOURS = 3;
-const DEFAULT_GRACE_HOURS = 3;
+import {
+  atLocalHour,
+  configHour,
+  DEFAULT_CHECKIN_HOUR,
+  DEFAULT_CHECKOUT_HOUR,
+  graceHours,
+  leadHours,
+} from './guest-stay-timing';
 
 /**
  * Lista blanca, no negra. Con una lista negra cualquier estado nuevo o
@@ -40,6 +44,9 @@ export interface ReservationInput {
   listingId: string;
   guestName: string;
   guestEmail?: string | null;
+  guestPhone?: string | null;
+  /** `channelName` de Hostaway. Decide por dónde se entrega el enlace. */
+  channelName?: string | null;
   arrivalDate: string;
   departureDate: string;
   status?: string | null;
@@ -48,6 +55,8 @@ export interface ReservationInput {
   checkInTime?: number | null;
   checkOutTime?: number | null;
   issuedBy: string;
+  /** El webhook no puede esperar a la VPS dentro del plazo de Hostaway. */
+  deferSync?: boolean;
 }
 
 @Injectable()
@@ -60,6 +69,7 @@ export class GuestStayService {
     private readonly unitResolver: UnitResolverService,
     private readonly catalog: BuildingCatalogService,
     private readonly credentialService: CredentialService,
+    private readonly guestLink: GuestLinkService,
     private readonly configService: ConfigService,
   ) {}
 
@@ -80,12 +90,13 @@ export class GuestStayService {
       return null;
     }
 
-    const stay = await this.persist(input);
+    const { stay, created } = await this.persist(input);
 
     if (this.isCancelled(input.status)) {
       const revoked = await this.credentialService.revokeByGuestStay(
         stay.id,
         'reservation_cancelled',
+        input.deferSync,
       );
 
       if (revoked > 0) {
@@ -97,34 +108,72 @@ export class GuestStayService {
       return stay;
     }
 
-    await this.syncCredential(stay, input.issuedBy);
+    await this.syncCredential(stay, input.issuedBy, input.deferSync);
+
+    // `deliver()` es idempotente: salta si ya hubo un envío correcto, así que
+    // una modificación no reenvía un enlace ya entregado (sigue valiendo porque
+    // no lleva fechas dentro). Llamarlo también en las actualizaciones es lo
+    // que reintenta los fallos —p. ej. la conversación de Airbnb que aún no
+    // existía en `reservation.created`—. Se entrega aunque el edificio no
+    // tenga lector, porque el portal es más que el PIN.
+    // TEMPORAL: con el canal `hostaway` solo se entrega a la reserva de prueba
+    // para no escribir a huéspedes reales. Quitar al terminar la prueba piloto.
+    const viaHostaway =
+      (
+        this.configService.get<string>('GUEST_LINK_CHANNEL') ?? ''
+      ).toLowerCase() === 'hostaway';
+    if (
+      (created || stay.status !== 'completed') &&
+      (!viaHostaway || stay.guestName?.includes('Pame'))
+    ) {
+      await this.deliverLink(stay);
+    }
 
     return stay;
   }
 
-  private async persist(input: ReservationInput): Promise<GuestStay> {
+  /**
+   * Best-effort, igual que el webhook de reservas: un canal de entrega caído no
+   * puede impedir que la estancia y su PIN existan. El fallo queda registrado
+   * en `guest_link_delivery` para reenviarlo a mano.
+   */
+  private async deliverLink(stay: GuestStay): Promise<void> {
+    try {
+      await this.guestLink.deliver(stay);
+    } catch (error) {
+      this.logger.error(
+        `No se pudo entregar el enlace de la estancia ${stay.id}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+  }
+
+  private async persist(
+    input: ReservationInput,
+  ): Promise<{ stay: GuestStay; created: boolean }> {
     const existing = await this.stays.findOne({
       where: { hostawayReservationId: input.hostawayReservationId },
     });
 
-    const location = await this.unitResolver.byListingId(input.listingId);
-    const accessValidFrom = this.atLocalHour(
+    const location = await this.resolveLocation(input, existing);
+    const accessValidFrom = atLocalHour(
       input.arrivalDate,
       this.reservationHour(
         input.checkInTime,
         'ACCESS_CHECKIN_HOUR',
         DEFAULT_CHECKIN_HOUR,
       ),
-      -this.hour('ACCESS_GUEST_LEAD_HOURS', DEFAULT_LEAD_HOURS),
+      -leadHours(this.configService),
     );
-    const accessValidTo = this.atLocalHour(
+    const accessValidTo = atLocalHour(
       input.departureDate,
       this.reservationHour(
         input.checkOutTime,
         'ACCESS_CHECKOUT_HOUR',
         DEFAULT_CHECKOUT_HOUR,
       ),
-      this.hour('ACCESS_GUEST_GRACE_HOURS', DEFAULT_GRACE_HOURS),
+      graceHours(this.configService),
     );
 
     const stay = this.stays.create({
@@ -137,6 +186,9 @@ export class GuestStayService {
       buildingId: location?.buildingId ?? existing?.buildingId ?? null,
       guestName: input.guestName,
       guestEmail: input.guestEmail ?? null,
+      // Un evento que no traiga el campo no borra el valor ya conocido.
+      guestPhone: input.guestPhone?.trim() || existing?.guestPhone || null,
+      channelName: input.channelName?.trim() || existing?.channelName || null,
       arrivalDate: input.arrivalDate,
       departureDate: input.departureDate,
       accessValidFrom,
@@ -146,13 +198,14 @@ export class GuestStayService {
         : this.statusFromDates(accessValidFrom, accessValidTo),
     });
 
-    return this.stays.save(stay);
+    return { stay: await this.stays.save(stay), created: existing === null };
   }
 
   /** Emite si no había credencial, y solo mueve la vigencia si ya la había. */
   private async syncCredential(
     stay: GuestStay,
     issuedBy: string,
+    deferSync?: boolean,
   ): Promise<void> {
     if (stay.buildingId === null) {
       this.logger.warn(
@@ -189,6 +242,7 @@ export class GuestStayService {
           existing.id,
           stay.accessValidFrom,
           stay.accessValidTo,
+          deferSync,
         );
       }
 
@@ -206,7 +260,31 @@ export class GuestStayService {
       validTo: stay.accessValidTo,
       issuedBy,
       guestStayId: stay.id,
+      deferSync,
     });
+  }
+
+  /**
+   * openMAINT caído solo es fatal sin edificio que reutilizar: sin él no se emite,
+   * y el 503 deja reintentar a Hostaway. Una cancelación no necesita edificio.
+   */
+  private async resolveLocation(
+    input: ReservationInput,
+    existing: GuestStay | null,
+  ): Promise<UnitLocation | null> {
+    try {
+      return await this.unitResolver.byListingId(input.listingId);
+    } catch (error) {
+      if (existing?.buildingId != null || this.isCancelled(input.status)) {
+        return null;
+      }
+
+      throw new ServiceUnavailableException(
+        `openMAINT no resolvió el listing ${input.listingId}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
   }
 
   private statusFromDates(from: Date, to: Date): GuestStay['status'] {
@@ -240,20 +318,6 @@ export class GuestStayService {
       return fromReservation!;
     }
 
-    return this.hour(envName, fallback);
-  }
-
-  private atLocalHour(date: string, hour: number, offsetHours: number): Date {
-    const base = new Date(
-      `${date}T${String(hour).padStart(2, '0')}:00:00${LOCAL_UTC_OFFSET}`,
-    );
-
-    return new Date(base.getTime() + offsetHours * 60 * 60 * 1000);
-  }
-
-  private hour(name: string, fallback: number): number {
-    const raw = Number(this.configService.get<string>(name));
-
-    return Number.isInteger(raw) && raw >= 0 && raw <= 23 ? raw : fallback;
+    return configHour(this.configService, envName, fallback);
   }
 }

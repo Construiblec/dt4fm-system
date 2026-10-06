@@ -9,5 +9,7 @@ import { IncidentsService } from './incidents.service';
   imports: [OpenmaintModule, NotificationsModule, PushNotificationsModule],
   controllers: [IncidentsController],
   providers: [IncidentsService],
+  // El portal del huésped abre correctivos por el mismo camino.
+  exports: [IncidentsService],
 })
 export class IncidentsModule {}

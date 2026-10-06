@@ -1,10 +1,29 @@
+import { Loader2 } from "lucide-react";
 import { AppLayout } from "@/app/layout/AppLayout";
 import { LoginForm } from "@/modules/auth/components/LoginForm";
+import { useResumeSession } from "@/modules/auth/hooks/useResumeSession";
 import logo from "@/shared/assets/images/logo.svg";
 
+const BACKGROUND = "bg-gradient-to-b from-slate-100 via-slate-50 to-white";
+
 export const LoginPage = () => {
+  const resuming = useResumeSession();
+
+  if (resuming) {
+    return (
+      <AppLayout className={BACKGROUND}>
+        <main className="flex min-h-screen items-center justify-center">
+          <Loader2
+            className="h-8 w-8 animate-spin text-slate-400"
+            aria-label="Comprobando la sesión"
+          />
+        </main>
+      </AppLayout>
+    );
+  }
+
   return (
-    <AppLayout className="bg-gradient-to-b from-slate-100 via-slate-50 to-white">
+    <AppLayout className={BACKGROUND}>
       <main className="min-h-screen px-4 py-8">
         <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center">
           <section className="w-full max-w-sm rounded-[22px] border border-white/80 bg-white px-6 pb-5 pt-6 shadow-[0_20px_60px_rgba(15,23,42,0.10)]">

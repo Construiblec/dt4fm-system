@@ -25,6 +25,7 @@ D-01 y D-02 las fijó el negocio. El resto se derivan de ellas.
 | [D-15](#d-15--el-inventario-se-pagina-siempre) | El inventario se pagina siempre | IoT |
 | [D-16](#d-16--un-repositorio-despliegue-parametrizado) | Un repositorio, no uno por edificio | IoT |
 | [D-17](#d-17--servicio-persistente-y-latido) | Servicio persistente y latido | IoT |
+| [D-18](#d-18--apertura-remota-de-un-toque) | Apertura remota de un toque | Ambos |
 
 ---
 
@@ -67,8 +68,9 @@ Se invierte el sentido: el gateway **informa** lo que hay en el terminal, el bac
 Además así la corrección es un `PUT` idempotente normal, sin camino de escritura especial ni
 necesidad de que la VPS conserve el PIN.
 
-**La regla que protege a la gente:** lo que no lleva prefijo `DT4-` se reporta y **no se toca**. Un
-barrido que borre lo desconocido deja a residentes fuera de su casa.
+**La regla que protege a la gente:** lo que no cumple entero el formato reservado `DT4[GTE]<8 HEX>`
+(D-06) se reporta y **no se toca**. Un barrido que borre lo desconocido deja a residentes fuera de su
+casa.
 
 ## D-05 · El tramo VPS ↔ gateway es síncrono
 
@@ -85,12 +87,19 @@ backend. Es peor.
 
 ## D-06 · Identidad y espacio de nombres
 
-El `credentialId` lo propone el backend (uuid) y viaja en la URL. El `employeeNo` se **deriva** de él
-con prefijo reservado: `DT4-G-` huésped, `DT4-T-` residente, `DT4-E-` personal. **Nunca se reutiliza**
-un `employeeNo`, y **nunca se borra** un usuario sin ese prefijo.
+El `credentialId` lo propone el backend (uuid) y viaja en la URL. El `employeeNo` se **deriva** de él:
+`DT4` + `G` huésped / `T` residente / `E` personal + los 8 primeros hex del SHA-256 del
+`credentialId` en mayúsculas, p. ej. `DT4G688B2FCB`. **Nunca se reutiliza** un `employeeNo`, y
+**nunca se borra** un usuario que no cumpla entero `^DT4[GTE][0-9A-F]{8}$`.
 
 **Por qué.** Tres cosas a la vez: hace la escritura idempotente, la revocación precisa, y separa lo
 que creó el sistema de lo que cargó una persona.
+
+**Revisado el 28-09-2026.** El formato original era `DT4-G-<8 hex>`, pero los terminales Hikvision
+solo admiten letras y números en `employeeNo`. Se quitan los separadores y se fija la caja en
+mayúsculas, porque la conciliación compara por igualdad exacta. Sin separador, «empieza por `DT4`» ya
+no basta para distinguir lo propio: `managed` exige el formato completo. Comunicado a IoT en la
+[nota de cambio](nota-cambio-employeeno.md).
 
 **Qué corrige.** `next_available_employee_no()` devuelve el entero libre más bajo y el borrado elimina
 la fila, así que el número de un huésped que se fue **se reasigna al siguiente**, y cualquier evento
@@ -158,7 +167,7 @@ PINes al mes, un 3 % del espacio. El riesgo del PIN corto es la fuerza bruta, no
 ## D-12 · La consola local se queda
 
 El frontend del gateway y sus rutas `/api/` no se retiran: son la salida de emergencia cuando el
-backend o el túnel no estén disponibles. Lo creado a mano no lleva prefijo `DT4-`, escrituras y
+backend o el túnel no estén disponibles. Lo creado a mano no puede empezar por `DT4`, escrituras y
 control físico siguen apagados por defecto, y cada uso queda en el historial.
 
 **Por qué.** Una puerta que no abre a las once de la noche no espera a que Render despierte. Un camino
@@ -214,6 +223,45 @@ fallo peligroso del módulo.
 
 **Consecuencia.** `GET /v1/health` distingue `gatewayOnline` (túnel) de `online` por dispositivo
 (LAN): son incidentes distintos con responsables distintos.
+
+## D-18 · Apertura remota de un toque
+
+Decidido el 2026-09-18; enmendado el 2026-09-30 por la [nota de `trigger`](nota-cambio-trigger.md).
+El huésped pulsa la barrera **vehicular** de su edificio desde el portal y el Supervisor CAV
+**cualquier barrera vehicular** desde el panel. Las puertas peatonales ya no se abren a distancia:
+la API central las rechaza. En los dos casos es un solo toque, sin confirmación.
+
+El backend autoriza y la VPS ejecuta `POST /v1/devices/{id}/trigger`, **un pulso único**: la
+barrera no tiene sensor y el hardware solo admite eso. «Abrir» y «Cerrar» son fases de interfaz.
+Las salvaguardas:
+
+- **`ACCESS_REMOTE_OPEN_ENABLED`, apagado por defecto.** Es control físico, igual que en D-12.
+- **`requestId` por clic, deduplicado.** Repetir la petición no repite el pulso; un UUID nuevo, sí.
+- **Historial en `remote_open_request`**, escrito **antes** de llamar a la VPS. Es el único registro
+  de quién pulsó: `actor` ya no viaja.
+- **Enfriamiento de 10 s por barrera, para cualquier pulso**, y **tope de 30 aperturas por estancia
+  al día**. Los dos se cuentan en la base, bajo candado.
+- **El huésped solo dentro de su ventana de acceso** y con credencial `vehicular` o `both`.
+- **Ningún reintento automático.**
+
+**La fase, por barrera y en la base** (`vehicular_gate_phase`), compartida por huéspedes y
+Supervisor CAV. Tras un pulso desde `ready`:
+
+| Desde el pulso | Quién puede pulsar |
+|---|---|
+| Hasta la ventana de cierre | Quien la abrió o el Supervisor CAV («Cerrar») |
+| De ahí al cierre automático | Nadie: puede estar bajando |
+| Después | Cualquiera con acceso («Abrir») |
+
+Los dos tiempos se miden en sitio por edificio (`ACCESS_VEHICULAR_GATE_TIMINGS`). **Un edificio sin
+tiempos medidos no ofrece el botón.** Un «Abrir» sobre una barrera que no está en `ready` es un `409`
+y no llega a la VPS: con un pulso único, sería un «Cerrar» sobre el coche de otro.
+
+**Qué pasa con un resultado incierto.** Si el pulso pudo salir y nadie lo confirmó, se registra
+`uncertain`, se avisa al huésped («si no se abrió, marca tu PIN») y la barrera pasa a la fase
+`uncertain`. Nunca se deduce la fase de un incierto: el Supervisor CAV la revisa y la libera desde el
+panel. Queda pendiente con IoT si pasa sola a `ready` al vencer el cierre automático medido
+([nota](nota-cambio-trigger.md#pendiente-de-acordar)).
 
 ---
 

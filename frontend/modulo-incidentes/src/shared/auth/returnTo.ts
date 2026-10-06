@@ -9,13 +9,17 @@ const STORAGE_KEY = "post-login-return-to";
 /** Pasado ese plazo el destino ya no es lo que el usuario venía a hacer. */
 const TTL_MS = 30 * 60 * 1000;
 
-/** Login y recuperación, más el flujo de residentes, que tiene su propio acceso. */
+/**
+ * Login y recuperación, más los flujos con acceso propio: residentes y huéspedes
+ * (una URL de huésped nunca debe ser el destino de un login de personal).
+ */
 const IGNORED_PREFIXES = [
   "/login",
   "/forgot-password",
   "/reset-password",
   "/visitor-form",
   "/owner",
+  "/guest",
 ];
 
 type PendingRoute = { path: string; username: string | null; at: number };

@@ -4,30 +4,51 @@ import { ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { HostawayModule } from '../../integrations/hostaway/hostaway.module';
 import { OpenmaintModule } from '../../integrations/openmaint/openmaint.module';
+import { GuestLinkModule } from '../guest-link/guest-link.module';
 import { AccessControlController } from './access-control.controller';
+import { AuthorizationsController } from './authorizations.controller';
+import { AuthorizationsService } from './authorizations.service';
+import { DoorsController } from './doors.controller';
 import { AccessIotClient } from './access-iot.client';
 import { AccessMaintenanceService } from './access-maintenance.service';
 import { AccessIotGateway } from './access-iot.gateway';
 import { AccessIotMockGateway } from './access-iot.mock';
 import { BuildingCatalogService } from './building-catalog.service';
 import { CredentialService } from './credential.service';
+import { GuestPortalDataService } from './guest-portal-data.service';
 import { GuestStayService } from './guest-stay.service';
 import { ReservationSweepService } from './reservation-sweep.service';
 import { ReservationsController } from './reservations.controller';
 import { AccessCredential } from './entities/access-credential.entity';
 import { GuestStay } from './entities/guest-stay.entity';
+import { RemoteOpenRequest } from './entities/remote-open-request.entity';
+import { VehicularGatePhase } from './entities/vehicular-gate-phase.entity';
 import { PinCipherService } from './pin-cipher.service';
 import { PinGeneratorService } from './pin-generator.service';
+import { RemoteOpenService } from './remote-open.service';
 import { SyncRetryService } from './sync-retry.service';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([AccessCredential, GuestStay]),
+    TypeOrmModule.forFeature([
+      AccessCredential,
+      GuestStay,
+      RemoteOpenRequest,
+      VehicularGatePhase,
+    ]),
     HttpModule,
     OpenmaintModule,
     HostawayModule,
+    // Para entregar el enlace del portal cuando nace una estancia. No crea
+    // ciclo: guest-link no importa nada de este módulo.
+    GuestLinkModule,
   ],
-  controllers: [AccessControlController, ReservationsController],
+  controllers: [
+    AccessControlController,
+    AuthorizationsController,
+    DoorsController,
+    ReservationsController,
+  ],
   providers: [
     PinCipherService,
     PinGeneratorService,
@@ -35,8 +56,11 @@ import { SyncRetryService } from './sync-retry.service';
     CredentialService,
     SyncRetryService,
     GuestStayService,
+    GuestPortalDataService,
+    AuthorizationsService,
     ReservationSweepService,
     AccessMaintenanceService,
+    RemoteOpenService,
     {
       // Mientras la VPS no exista, ACCESS_IOT_USE_MOCK=true resuelve a la
       // implementación en memoria. Es el mismo recurso que HOSTAWAY_USE_MOCK.
@@ -48,6 +72,15 @@ import { SyncRetryService } from './sync-retry.service';
           : new AccessIotClient(httpService, configService),
     },
   ],
-  exports: [CredentialService, GuestStayService],
+  // `GuestPortalDataService` es lo único que consume el portal del huésped:
+  // así `CredentialService` —y con él `revealPin()`— no llega a ese módulo.
+  // El gateway y el catálogo van a videovigilancia: una VPS, una URL, un token.
+  exports: [
+    CredentialService,
+    GuestStayService,
+    GuestPortalDataService,
+    AccessIotGateway,
+    BuildingCatalogService,
+  ],
 })
 export class AccessControlModule {}

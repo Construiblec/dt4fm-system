@@ -30,6 +30,12 @@ process.env.MEETING_REMINDER_SCHEDULER_ENABLED = 'false';
 process.env.PAYMENTS_SCHEDULER_ENABLED = 'false';
 process.env.BILLING_SCHEDULER_ENABLED = 'false';
 process.env.PUSH_SCHEDULER_ENABLED = 'false';
+process.env.APP_SESSION_KEEPALIVE_ENABLED = 'false';
+
+// Sin clave el registro de sesiones queda apagado y el login no escribe en
+// `app_session`: las suites de auth no dependen de esa tabla. El registro se
+// cubre con tests unitarios (app-sessions.service.spec.ts).
+process.env.APP_SESSION_KEY = '';
 
 // Hostaway en modo mock — HostawayService también se sustituye por un mock
 // directo en cada suite, pero esto evita que onModuleInit u otro código que
@@ -47,6 +53,25 @@ process.env.VAPID_SUBJECT ??= 'mailto:no-reply@example.com';
 // Recuperación de contraseña: necesita un secreto para no auto-desactivarse.
 process.env.PASSWORD_RESET_SECRET ??= 'test-only-secret-do-not-use-in-prod';
 process.env.APP_BASE_URL ??= 'http://localhost:5173';
+
+// Portal del huésped: sin esto GuestTokenService se autodesactiva y todo lo
+// que cuelga de él responde 503. `??=` porque el valor no lo verifica ningún
+// test, solo tiene que existir y ser suficientemente largo.
+process.env.GUEST_MAGICLINK_SECRET ??=
+  'secreto-de-pruebas-suficientemente-largo';
+
+// Entrega del enlace del portal. `webhook` para que el factory elija ese canal,
+// pero el canal real se sustituye en test-app.ts por un doble: ninguna suite
+// debe salir a la red. La URL es ficticia a propósito.
+process.env.GUEST_LINK_CHANNEL = 'webhook';
+process.env.GUEST_LINK_WEBHOOK_URL = 'https://webhook.invalid/pruebas';
+process.env.GUEST_LINK_WEBHOOK_SECRET = '';
+// Sin espera entre reintentos: las suites encadenan un fallo y una
+// actualización en el mismo segundo.
+process.env.GUEST_LINK_RETRY_COOLDOWN_MINUTES = '0';
+
+// Solicitante de las incidencias del portal; ningún test depende del valor.
+process.env.OPENMAINT_GUEST_REQUESTER_ID ??= '8191306';
 
 // Webhook IoT: secreto fijo y conocido por los tests.
 //
@@ -85,6 +110,14 @@ process.env.ACCESS_IOT_URL ??= 'http://accesos.invalid';
 process.env.ACCESS_IOT_TOKEN ??= 'mock-client-id:mock-client-secret';
 process.env.ACCESS_SCHEDULER_ENABLED = 'false';
 process.env.ACCESS_ALLOW_PIN_REVEAL = 'false';
+process.env.ACCESS_REMOTE_OPEN_ENABLED = 'true';
+process.env.LIVE_VIDEO_ENABLED = 'true';
+// Tiempos de la barrera ficticios: en producción salen de medirlos en sitio.
+process.env.ACCESS_VEHICULAR_GATE_TIMINGS = JSON.stringify({
+  3025058: { closeWindowSeconds: 40, autoCloseSeconds: 90 },
+  3019998: { closeWindowSeconds: 40, autoCloseSeconds: 90 },
+});
+process.env.HOSTAWAY_WEBHOOK_USER = 'test-hostaway';
 process.env.HOSTAWAY_WEBHOOK_SECRET = 'test-hostaway-secret';
 
 // Ventana de vigencia del huésped, con `=` literal y no `??=`: ConfigModule

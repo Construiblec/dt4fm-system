@@ -1,5 +1,6 @@
 import axios from "axios";
 import { env } from "@/config/env";
+import { attachSessionRenewal } from "@/shared/auth/sessionHttp";
 import type { AppNotification } from "@/modules/notificaciones/types/AppNotification";
 
 const notificationsApi = axios.create({
@@ -8,6 +9,8 @@ const notificationsApi = axios.create({
     "Content-Type": "application/json",
   },
 });
+
+attachSessionRenewal(notificationsApi, "authorization");
 
 /** El backend resuelve la identidad desde la sesión; no se manda userId. */
 const authHeaders = () => ({

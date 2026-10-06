@@ -1,7 +1,7 @@
 /**
- * Contrato con la VPS central de accesos. Refleja
- * `docs/accesos y huespedes/guia-servidor-vps-accesos.md` §4: si este archivo
- * y ese documento divergen, manda el documento.
+ * Contrato con la VPS central de accesos: `openapi.yaml` de la API central
+ * (repositorio del gateway), que concreta la guía
+ * `docs/accesos y huespedes/guia-servidor-vps-accesos.md` §4.
  */
 
 export type CredentialScopeWire = 'pedestrian' | 'vehicular' | 'both';
@@ -14,16 +14,27 @@ export type CredentialWriteState =
   | 'unreachable'
   | 'failed';
 
-export type DeviceWriteState = 'written' | 'unreachable' | 'failed';
+/** `deleted` solo aparece en la respuesta del `DELETE`. */
+export type DeviceWriteState = 'written' | 'unreachable' | 'failed' | 'deleted';
 
 /** Códigos tipados: distinguen «reintentar» de «regenerar» de «alertar». */
 export type AccessIotErrorCode =
   | 'gateway_unreachable'
+  | 'gateway_rejected'
   | 'device_unreachable'
+  | 'device_unauthorized'
+  | 'device_ambiguous'
+  | 'no_devices_in_scope'
   | 'pin_conflict'
   | 'device_full'
+  | 'not_found'
   | 'unauthorized'
-  | 'invalid_request';
+  | 'invalid_request'
+  | 'device_not_compatible'
+  | 'operations_disabled'
+  | 'live_capacity_reached'
+  | 'live_unavailable'
+  | 'internal_error';
 
 export interface AccessIotBuilding {
   buildingId: number;
@@ -31,7 +42,7 @@ export interface AccessIotBuilding {
   name: string;
   online: boolean;
   scopes: DeviceScope[];
-  lastSeenAt?: string;
+  lastSeenAt?: string | null;
 }
 
 export interface AccessIotDevice {
@@ -44,34 +55,44 @@ export interface AccessIotDevice {
   usersCapacity?: number;
   firmware?: string;
   clockSkewSeconds?: number;
-  lastSeenAt?: string;
+  lastSeenAt?: string | null;
+  /** Solo si el terminal no pudo leerse; aparece con `online: false`, no se omite. */
+  errorCode?:
+    | 'device_unreachable'
+    | 'device_unauthorized'
+    | 'device_credential_absent';
 }
 
 export interface CredentialDeviceResult {
   deviceId: string;
   state: DeviceWriteState;
+  /** Presente en toda entrada `written`: es con lo que concilia el backend. */
   employeeNo?: string;
-  error?: string | null;
-  at?: string;
+  /** Presente en toda entrada `failed` y `unreachable`. */
+  errorCode?: AccessIotErrorCode;
+  at?: string | null;
+  validFrom?: string | null;
+  validTo?: string | null;
 }
 
 export interface CredentialWriteResult {
   credentialId: string;
   state: CredentialWriteState;
   devices: CredentialDeviceResult[];
-  /** Presente cuando `state` es `failed`: dice qué hacer a continuación. */
+  /** Presente en `failed`, y en `partial` si un aparato falló: dice qué hacer a continuación. */
   errorCode?: AccessIotErrorCode;
 }
 
 export interface PutCredentialRequest {
   buildingId: number;
   scope: CredentialScopeWire;
-  /** La VPS lo necesita para derivar el prefijo reservado `DT4-G/T/E-`. */
+  /** La VPS lo necesita para derivar el prefijo reservado `DT4G`/`DT4T`/`DT4E`. */
   subjectType: 'guest' | 'tenant' | 'employee';
   pin: string;
   /** ISO 8601 **con offset**: la hora ingenua no significa nada fuera de su proceso. */
   validFrom: string;
   validTo: string;
+  /** Hasta 128 caracteres; más es un `400`. */
   displayName: string;
   unitId?: number | null;
 }
@@ -82,28 +103,57 @@ export interface AccessIotHealthDevice {
   lastSeenAt?: string;
 }
 
-/** Separa los dos eslabones: túnel central ↔ gateway, y LAN gateway ↔ terminal. */
+/**
+ * Debería separar el túnel central ↔ gateway de la LAN gateway ↔ terminal, pero
+ * hoy la VPS solo informa el túnel: `devices` llega vacío y el estado por
+ * terminal está en `/v1/devices`.
+ */
 export interface AccessIotHealthBuilding {
   buildingId: number;
+  code?: string;
+  name?: string;
+  siteId?: string;
   gatewayOnline: boolean;
-  gatewayLastSeenAt?: string;
-  gatewayVersion?: string;
+  gatewayLastSeenAt?: string | null;
+  /** Versión del contrato del gateway, no la del agente. */
+  gatewayVersion?: string | null;
+  /** `false` mientras el gateway no cumpla los criterios de habilitación. */
+  operationsEnabled?: boolean;
   pendingJobs?: number;
   failedJobs?: number;
-  maxClockSkewSeconds?: number;
+  maxClockSkewSeconds?: number | null;
   devices?: AccessIotHealthDevice[];
+  errorCode?: 'gateway_unreachable' | 'gateway_invalid_response';
 }
 
 export interface AccessIotHealth {
   buildings: AccessIotHealthBuilding[];
 }
 
+/** Fase de interfaz: la VPS solo conoce `trigger`, un pulso a la barrera. */
+export type DoorAction = 'open' | 'close';
+
+/** `triggered` confirma que el pulso salió, nada sobre la posición; `uncertain`, que pudo salir. */
+export type TriggerOutcome = 'triggered' | 'failed' | 'uncertain';
+
+/** Solo `requestId`: cualquier otro campo es un `400 invalid_request`. */
+export interface TriggerRequest {
+  requestId: string;
+}
+
+export interface TriggerResult {
+  outcome: TriggerOutcome;
+  errorCode?: AccessIotErrorCode;
+}
+
+/** Un registro no gestionado llega solo con `employeeNo` y `managed`. */
 export interface InventoryUser {
   employeeNo: string;
-  name?: string;
-  validFrom?: string;
-  validTo?: string;
-  /** `true` si lleva el prefijo reservado. Lo que no lo lleva no se toca jamás. */
+  name?: string | null;
+  /** `null` si el terminal devolvió la marca sin offset: se reemite el `PUT`. */
+  validFrom?: string | null;
+  validTo?: string | null;
+  /** `true` si cumple entero el formato `DT4[GTE]<8 HEX>`. Lo demás no se toca jamás. */
   managed: boolean;
 }
 
@@ -111,3 +161,50 @@ export interface InventoryPage {
   users: InventoryUser[];
   nextCursor?: string | null;
 }
+
+/** Catálogo de video: un edificio cuyo gateway no responde no aporta cámaras. */
+export interface AccessIotCamera {
+  cameraId: string;
+  name: string;
+  buildingId: number;
+}
+
+export interface LiveSessionRequest {
+  requestId: string;
+}
+
+export interface LiveIceServer {
+  urls: string | string[];
+  username?: string;
+  credential?: string;
+}
+
+/** `ticket` y `credential` son secretos de corta vida: nunca a la base ni a los logs. */
+export interface LiveSession {
+  requestId: string;
+  cameraId: string;
+  buildingId: number;
+  whepUrl: string;
+  ticket: string;
+  ticketExpiresAt: string;
+  maxDurationSeconds: number;
+  iceServers: LiveIceServer[];
+  iceTransportPolicy: 'relay';
+}
+
+/** `unauthorized` es el service token; `timeout`, `network` e `invalid_response` no llegan de la VPS. */
+export type LiveSessionErrorCode =
+  | 'invalid_request'
+  | 'not_found'
+  | 'device_ambiguous'
+  | 'gateway_unreachable'
+  | 'live_capacity_reached'
+  | 'live_unavailable'
+  | 'unauthorized'
+  | 'timeout'
+  | 'network'
+  | 'invalid_response';
+
+export type LiveSessionResult =
+  | { outcome: 'issued'; session: LiveSession }
+  | { outcome: 'failed'; errorCode: LiveSessionErrorCode };

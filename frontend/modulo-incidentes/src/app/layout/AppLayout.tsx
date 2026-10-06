@@ -66,7 +66,9 @@ const isBottomNavRoute = (pathname: string, homeRoute: string) => {
   return (
     pathname === homeRoute ||
     pathname === "/cuenta" ||
-    pathname === "/notificaciones"
+    pathname === "/notificaciones" ||
+    (homeRoute.startsWith("/supervisor-cav") &&
+      ["/supervisor-cav/puertas", "/supervisor-cav/camaras"].includes(pathname))
   );
 };
 

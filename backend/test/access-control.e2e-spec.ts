@@ -1,4 +1,5 @@
 import { INestApplication } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import request from 'supertest';
 import { DataSource } from 'typeorm';
 import {
@@ -11,12 +12,18 @@ import {
   BAT_BUILDING_ID,
   DEFAULT_ACCESS_BUILDINGS,
   ING_BUILDING_ID,
+  PRA_BUILDING_ID,
 } from './mocks/gateways.mock';
+import { AuthorizationsService } from '../src/modules/access-control/authorizations.service';
 import { BuildingCatalogService } from '../src/modules/access-control/building-catalog.service';
 import { CredentialService } from '../src/modules/access-control/credential.service';
+import { AccessCredential } from '../src/modules/access-control/entities/access-credential.entity';
 import { GuestStayService } from '../src/modules/access-control/guest-stay.service';
 import { ReservationSweepService } from '../src/modules/access-control/reservation-sweep.service';
 import { GuestStay } from '../src/modules/access-control/entities/guest-stay.entity';
+import { RemoteOpenRequest } from '../src/modules/access-control/entities/remote-open-request.entity';
+import { GuestLinkDelivery } from '../src/modules/guest-link/entities/guest-link-delivery.entity';
+import { GuestPortalService } from '../src/modules/guest-portal/guest-portal.service';
 
 const SESSION = { 'x-session-token': MOCK_SESSION_ID };
 
@@ -31,6 +38,14 @@ const nuevaCredencial = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
+const DIA_MS = 24 * 60 * 60 * 1000;
+
+/** Fecha local de Quito (UTC−5) a `dias` de hoy, para lo que se compara con el reloj real. */
+const fechaLocal = (dias: number) =>
+  new Date(Date.now() + dias * DIA_MS - 5 * 60 * 60 * 1000)
+    .toISOString()
+    .slice(0, 10);
+
 /**
  * Persistencia real contra Postgres, VPS de accesos doblada. Lo que se prueba
  * aquí es el ciclo de vida y, sobre todo, que el PIN no se escape por ninguna
@@ -44,6 +59,55 @@ describe('AccessControlController (e2e)', () => {
   let guestStayService: GuestStayService;
   let catalog: BuildingCatalogService;
   let sweep: ReservationSweepService;
+
+  /** A mitad de la estancia que fijan los fixtures (14 al 18 de septiembre). */
+  const AHORA = new Date('2026-09-16T12:00:00-05:00');
+
+  /**
+   * Congela el reloj de Node en `AHORA` para el bloque que la invoque.
+   *
+   * Hace falta porque los fixtures fijan la estancia del 14 al 18 de septiembre
+   * de 2026 y `statusFromDates` la marca `completed` en cuanto el reloj pasa el
+   * `validTo`. Con ese estado la estancia desaparece de la lista de
+   * autorizaciones (filtra `pending`/`active`) y deja de entregarse el
+   * magiclink: el 19 de septiembre estos bloques empezaron a fallar solos, sin
+   * que cambiara una línea de código. Se congela en vez de pasar a fechas
+   * relativas para no perder las aserciones de timestamp exacto, que son las
+   * que prueban la conversión de zona horaria de Guayaquil y dejarían de valer
+   * si el test recalculara la fecha esperada con la misma lógica que prueba.
+   *
+   * OJO — no aplicarlo a toda la suite, y menos a un bloque que envejezca filas
+   * con `now()` de Postgres: el reloj de la base NO se congela, así que mezclar
+   * los dos abre un desfase de días y la fila recién escrita parece del futuro.
+   * Por eso esto se invoca bloque por bloque y no en el `beforeAll` de arriba.
+   *
+   * Solo se falsea `Date`. Los temporizadores quedan reales porque el test de
+   * reintentos de envío depende de un `setTimeout` que corra de verdad (con la
+   * espera en 0 que pone setup-env.ts).
+   */
+  const conRelojCongelado = () => {
+    beforeAll(() => {
+      jest.useFakeTimers({
+        doNotFake: [
+          'setTimeout',
+          'clearTimeout',
+          'setInterval',
+          'clearInterval',
+          'setImmediate',
+          'clearImmediate',
+          'nextTick',
+          'queueMicrotask',
+          'performance',
+          'hrtime',
+        ],
+        now: AHORA,
+      });
+    });
+
+    afterAll(() => {
+      jest.useRealTimers();
+    });
+  };
 
   beforeAll(async () => {
     ({ app, mocks } = await createTestApp());
@@ -60,7 +124,7 @@ describe('AccessControlController (e2e)', () => {
 
   beforeEach(async () => {
     await dataSource.query(
-      'TRUNCATE TABLE "access_credential", "guest_stay" CASCADE',
+      'TRUNCATE TABLE "vehicular_gate_phase", "remote_open_request", "access_credential", "guest_stay" CASCADE',
     );
     // El rol por defecto del mock es MaintOffice, que no administra accesos.
     mocks.openmaint.getSession.mockResolvedValue(
@@ -108,6 +172,11 @@ describe('AccessControlController (e2e)', () => {
       expect(res.body.syncState).toBe('synced');
       expect(res.body.issuedBy).toBe('manual:admin.mock');
       expect(res.body.pinConfigured).toBe(true);
+
+      // La VPS rechaza `…Z` y los milisegundos: exige el offset numérico.
+      const [, peticion] = mocks.accessIot.putCredential.mock.calls[0];
+      expect(peticion.validFrom).toBe('2026-09-14T12:00:00-05:00');
+      expect(peticion.validTo).toBe('2026-09-18T15:00:00-05:00');
     });
 
     it('deja la credencial en pending si solo se escribió en algunas puertas', async () => {
@@ -459,86 +528,223 @@ describe('AccessControlController (e2e)', () => {
   });
 
   describe('POST /webhooks/hostaway', () => {
-    const cuerpo = (overrides: Record<string, unknown> = {}) => ({
-      action: 'reservation_created',
+    const basic = (credentials: string) =>
+      `Basic ${Buffer.from(credentials).toString('base64')}`;
+
+    const AUTH = basic('test-hostaway:test-hostaway-secret');
+
+    /** Sobre real del unified webhook, con campos que el DTO descarta. */
+    const evento = (
+      data: Record<string, unknown> = {},
+      envelope: Record<string, unknown> = {},
+    ) => ({
+      object: 'reservation',
+      event: 'reservation.created',
+      accountId: 149703,
+      ...envelope,
       data: {
+        id: 44712233,
         hostawayReservationId: '44712233',
+        reservationId: '288172-guest-526348749-confirmation-HMFQM523QX',
         listingMapId: 288172,
+        channelName: 'airbnbOfficial',
         guestName: 'Ana Pérez',
-        guestEmail: 'ana@example.com',
+        guestEmail: null,
         arrivalDate: '2026-09-14',
         departureDate: '2026-09-18',
-        status: 'confirmed',
-        ...overrides,
+        checkInTime: 15,
+        checkOutTime: 11,
+        status: 'new',
+        paymentStatus: 'Unknown',
+        financeField: [{ name: 'baseRate', value: 36 }],
+        ...data,
       },
     });
 
-    it('401 con un secreto que no cuadra', async () => {
-      await request(app.getHttpServer())
-        .post('/webhooks/hostaway')
-        .set('x-hostaway-secret', 'otro-secreto')
-        .send(cuerpo())
-        .expect(401);
+    const enviar = (body: object, auth: string | null = AUTH) => {
+      const req = request(app.getHttpServer()).post('/webhooks/hostaway');
+
+      return (auth ? req.set('Authorization', auth) : req).send(body);
+    };
+
+    const credencialViva = () =>
+      credentialService.findLive('guest', '44712233', 'pedestrian');
+
+    it('401 con una contraseña que no cuadra', async () => {
+      await enviar(evento(), basic('test-hostaway:otra')).expect(401);
     });
 
-    it('401 sin secreto', async () => {
-      await request(app.getHttpServer())
-        .post('/webhooks/hostaway')
-        .send(cuerpo())
-        .expect(401);
+    it('401 sin credenciales', async () => {
+      await enviar(evento(), null).expect(401);
     });
 
-    it('200 y acepta el trabajo con el secreto correcto', async () => {
-      const res = await request(app.getHttpServer())
+    it('401 con la cabecera x-hostaway-secret, que ya no se acepta', async () => {
+      await request(app.getHttpServer())
         .post('/webhooks/hostaway')
         .set('x-hostaway-secret', 'test-hostaway-secret')
-        .send(cuerpo())
-        .expect(200);
+        .send(evento())
+        .expect(401);
+    });
+
+    it('proyecta la reserva y emite el PIN con reservation.created', async () => {
+      const res = await enviar(evento()).expect(200);
 
       expect(res.body).toEqual({ received: true, processed: true });
+      expect(await dataSource.getRepository(GuestStay).count()).toBe(1);
+      expect(await credencialViva()).not.toBeNull();
     });
 
-    it('200 pero no procesa si faltan las fechas', async () => {
-      const res = await request(app.getHttpServer())
-        .post('/webhooks/hostaway')
-        .set('x-hostaway-secret', 'test-hostaway-secret')
-        .send(cuerpo({ arrivalDate: undefined, departureDate: undefined }))
-        .expect(200);
+    it('guarda el canal y el teléfono de la reserva', async () => {
+      await enviar(evento({ phone: '+593986556536' })).expect(200);
+
+      // El canal decide por dónde se entrega el enlace; el teléfono queda
+      // listo para el futuro canal de WhatsApp.
+      const stay = await dataSource
+        .getRepository(GuestStay)
+        .findOneByOrFail({ hostawayReservationId: '44712233' });
+
+      expect(stay.channelName).toBe('airbnbOfficial');
+      expect(stay.guestPhone).toBe('+593986556536');
+    });
+
+    it('una actualización sin canal ni teléfono no borra los conocidos', async () => {
+      await enviar(evento({ phone: '+593986556536' })).expect(200);
+      await enviar(
+        evento(
+          { channelName: undefined, phone: undefined, status: 'modified' },
+          { event: 'reservation.updated' },
+        ),
+      ).expect(200);
+
+      const stay = await dataSource
+        .getRepository(GuestStay)
+        .findOneByOrFail({ hostawayReservationId: '44712233' });
+
+      expect(stay.channelName).toBe('airbnbOfficial');
+      expect(stay.guestPhone).toBe('+593986556536');
+    });
+
+    it('responde sin esperar a la VPS: el PIN queda pendiente de empuje', async () => {
+      mocks.accessIot.putCredential.mockReturnValueOnce(
+        new Promise(() => undefined),
+      );
+
+      await enviar(evento()).expect(200);
+
+      expect((await credencialViva())?.syncState).toBe('pending');
+    });
+
+    // Hostaway no filtra: un 4xx sería un email de alerta por cada mensaje.
+    it('ignora con 200 los objetos que no son reservas, sin validarlos', async () => {
+      const res = await enviar({
+        object: 'conversationMessage',
+        event: 'message.received',
+        accountId: 149703,
+        data: { id: 1, body: 'Hola', status: 7 },
+      }).expect(200);
+
+      expect(res.body.processed).toBe(false);
+      expect(await dataSource.getRepository(GuestStay).count()).toBe(0);
+    });
+
+    it('ignora con 200 un evento de reserva desconocido', async () => {
+      const res = await enviar(
+        evento({}, { event: 'reservation.archived' }),
+      ).expect(200);
 
       expect(res.body.processed).toBe(false);
     });
 
-    it('400 con un cuerpo que no tiene la forma esperada', async () => {
-      await request(app.getHttpServer())
-        .post('/webhooks/hostaway')
-        .set('x-hostaway-secret', 'test-hostaway-secret')
-        .send({ action: 'reservation_created' })
-        .expect(400);
+    it('no proyecta una reserva pending sin confirmar', async () => {
+      const res = await enviar(evento({ status: 'pending' })).expect(200);
+
+      expect(res.body.processed).toBe(false);
+      expect(await dataSource.getRepository(GuestStay).count()).toBe(0);
+    });
+
+    it('revoca el PIN cuando llega la cancelación', async () => {
+      await guestStayService.upsertFromReservation({
+        hostawayReservationId: '44712233',
+        listingId: '288172',
+        guestName: 'Ana Pérez',
+        arrivalDate: '2026-09-14',
+        departureDate: '2026-09-18',
+        status: 'new',
+        issuedBy: 'hostaway-webhook',
+      });
+
+      await enviar(
+        evento({ status: 'cancelled' }, { event: 'reservation.updated' }),
+      ).expect(200);
+
+      expect(await credencialViva()).toBeNull();
+    });
+
+    it('una entrega repetida no emite un segundo PIN', async () => {
+      await enviar(evento()).expect(200);
+      await enviar(evento()).expect(200);
+
+      expect(
+        await credentialService.list({ subject: '44712233' }),
+      ).toHaveLength(1);
+    });
+
+    it('503 si openMAINT no responde para una reserva nueva, para que Hostaway reintente', async () => {
+      mocks.unitResolver.byListingId.mockRejectedValueOnce(
+        new Error('ETIMEDOUT'),
+      );
+
+      await enviar(evento()).expect(503);
+      expect(await dataSource.getRepository(GuestStay).count()).toBe(0);
+    });
+
+    // Mismo día, entrada 23:00 y salida 00:00: la vigencia sale invertida.
+    it('200 sin reintento ante un error de negocio nuestro', async () => {
+      const res = await enviar(
+        evento({
+          departureDate: '2026-09-14',
+          checkInTime: 23,
+          checkOutTime: 0,
+        }),
+      ).expect(200);
+
+      expect(res.body.processed).toBe(false);
+    });
+
+    it('200 sin procesar si la reserva trae un formato inesperado', async () => {
+      const res = await enviar(evento({ arrivalDate: '14/09/2026' })).expect(
+        200,
+      );
+
+      expect(res.body.processed).toBe(false);
+    });
+
+    it('200 pero no procesa si faltan las fechas', async () => {
+      const res = await enviar(
+        evento({ arrivalDate: undefined, departureDate: undefined }),
+      ).expect(200);
+
+      expect(res.body.processed).toBe(false);
+    });
+
+    it('400 con un cuerpo que no es un evento de Hostaway', async () => {
+      await enviar({ data: {} }).expect(400);
     });
 
     // `reservationId` es el id del canal. Si se aceptara, el barrido —que usa
     // el id interno— crearía una segunda credencial para la misma reserva.
     it('ignora reservationId del canal y no procesa sin el id interno', async () => {
-      const res = await request(app.getHttpServer())
-        .post('/webhooks/hostaway')
-        .set('x-hostaway-secret', 'test-hostaway-secret')
-        .send(
-          cuerpo({
-            hostawayReservationId: undefined,
-            reservationId: '563484-guest-526348749-confirmation-HMFQM523QX',
-          }),
-        )
-        .expect(200);
+      const res = await enviar(
+        evento({ hostawayReservationId: undefined, id: undefined }),
+      ).expect(200);
 
       expect(res.body.processed).toBe(false);
     });
 
     it('usa el id interno cuando llega como `id`', async () => {
-      const res = await request(app.getHttpServer())
-        .post('/webhooks/hostaway')
-        .set('x-hostaway-secret', 'test-hostaway-secret')
-        .send(cuerpo({ hostawayReservationId: undefined, id: 65895170 }))
-        .expect(200);
+      const res = await enviar(
+        evento({ hostawayReservationId: undefined }),
+      ).expect(200);
 
       expect(res.body.processed).toBe(true);
     });
@@ -712,6 +918,30 @@ describe('AccessControlController (e2e)', () => {
 
       expect(await dataSource.getRepository(GuestStay).count()).toBe(1);
     });
+
+    it('reutiliza el edificio guardado si openMAINT no responde', async () => {
+      await proyectar();
+      mocks.unitResolver.byListingId.mockRejectedValueOnce(
+        new Error('ETIMEDOUT'),
+      );
+
+      const stay = await proyectar({ departureDate: '2026-09-20' });
+
+      expect(stay.buildingId).toBe(ING_BUILDING_ID);
+    });
+
+    it('revoca aunque openMAINT no responda: cancelar no necesita edificio', async () => {
+      await proyectar();
+      mocks.unitResolver.byListingId.mockRejectedValueOnce(
+        new Error('ETIMEDOUT'),
+      );
+
+      await proyectar({ status: 'cancelled' });
+
+      expect(
+        await credentialService.findLive('guest', '44712233', 'pedestrian'),
+      ).toBeNull();
+    });
   });
 
   describe('barrido de reservas', () => {
@@ -720,6 +950,8 @@ describe('AccessControlController (e2e)', () => {
       status: 'new',
       guestName: 'Ana Pérez',
       guestEmail: null,
+      guestPhone: null,
+      channelName: 'airbnbOfficial',
       listingMapId: '288172',
       arrivalDate: '2026-09-14',
       departureDate: '2026-09-18',
@@ -816,6 +1048,971 @@ describe('AccessControlController (e2e)', () => {
       expect(
         await credentialService.findLiveBySubject('guest', '44712233'),
       ).toBeNull();
+    });
+  });
+
+  /**
+   * La pantalla de Autorizaciones del Supervisor CAV.
+   *
+   * Vive en este archivo y no en uno propio a propósito: comparte `guest_stay`
+   * y `access_credential`, que el `beforeEach` de arriba trunca. Jest paraleliza
+   * por archivo, así que dos suites sobre las mismas tablas se pisan entre sí.
+   */
+  describe('Autorizaciones (Supervisor CAV)', () => {
+    // La lista filtra por estancias `pending`/`active`, así que sin congelar el
+    // reloj las del fixture salen `completed` y no devuelve nada.
+    conRelojCongelado();
+
+    /** El frontend de CAV manda la sesión en `Authorization`, sin esquema. */
+    const CAV_SESSION = { authorization: MOCK_SESSION_ID };
+    const UNIDAD_ING = 1187;
+
+    let authorizations: AuthorizationsService;
+
+    // Relativas a hoy: el listado solo muestra estancias pendientes o en curso.
+    const crearEstancia = (overrides: Record<string, unknown> = {}) =>
+      guestStayService.upsertFromReservation({
+        hostawayReservationId: '44712233',
+        listingId: '288172',
+        guestName: 'Ana Pérez',
+        guestEmail: 'ana@example.com',
+        arrivalDate: fechaLocal(-1),
+        departureDate: fechaLocal(3),
+        status: 'confirmed',
+        issuedBy: 'test',
+        ...overrides,
+      });
+
+    const huellaDe = async (subjectRef: string): Promise<string> => {
+      const credencial = await dataSource
+        .getRepository(AccessCredential)
+        .findOne({ where: { subjectRef } });
+
+      return credencial!.pinFingerprint;
+    };
+
+    beforeEach(() => {
+      authorizations = app.get(AuthorizationsService);
+
+      mocks.openmaint.getUnitsByBuilding.mockResolvedValue({
+        data: [{ _id: UNIDAD_ING, Description: 'UI R302', Code: 'R302' }],
+      });
+      // Las unidades se cachean 5 minutos: sin esto un test arrastra las del
+      // anterior, igual que pasa con el catálogo de edificios.
+      authorizations.invalidate();
+    });
+
+    describe('autenticación y rol', () => {
+      it('401 sin cabecera de sesión', async () => {
+        await request(app.getHttpServer())
+          .get('/access-authorizations')
+          .expect(401);
+      });
+
+      it('403 con un rol que no gestiona accesos', async () => {
+        mocks.openmaint.getSession.mockResolvedValue(
+          mockSession({ role: 'MaintOffice' }),
+        );
+
+        await request(app.getHttpServer())
+          .get('/access-authorizations')
+          .set(CAV_SESSION)
+          .expect(403);
+      });
+
+      it('200 con SupervisorCAV', async () => {
+        mocks.openmaint.getSession.mockResolvedValue(
+          mockSession({ role: 'SupervisorCAV', username: 'cav.mock' }),
+        );
+
+        await request(app.getHttpServer())
+          .get('/access-authorizations')
+          .set(CAV_SESSION)
+          .expect(200);
+      });
+
+      it('también acepta la sesión en x-session-token', async () => {
+        await request(app.getHttpServer())
+          .get('/access-authorizations')
+          .set(SESSION)
+          .expect(200);
+      });
+    });
+
+    describe('GET /access-authorizations', () => {
+      it('compone "edificio · unidad" y no devuelve el PIN', async () => {
+        await crearEstancia();
+
+        const res = await request(app.getHttpServer())
+          .get(
+            `/access-authorizations?from=${fechaLocal(-7)}&to=${fechaLocal(7)}`,
+          )
+          .set(CAV_SESSION)
+          .expect(200);
+
+        expect(res.body.data).toHaveLength(1);
+        expect(res.body.data[0]).toMatchObject({
+          guestName: 'Ana Pérez',
+          unitLabel: 'Inglaterra · UI R302',
+          accessLevel: 'pedestrian',
+        });
+        expect(JSON.stringify(res.body)).not.toContain('pin');
+      });
+
+      it('deja fuera las estancias de edificios sin control de accesos', async () => {
+        // Batán no está en el catálogo: la estancia se proyecta, pero nunca
+        // llega a tener credencial, y sin credencial no hay nada que gestionar.
+        mocks.unitResolver.byListingId.mockResolvedValue({
+          unitId: 99,
+          buildingId: BAT_BUILDING_ID,
+        });
+
+        await crearEstancia();
+
+        const res = await request(app.getHttpServer())
+          .get('/access-authorizations')
+          .set(CAV_SESSION)
+          .expect(200);
+
+        expect(res.body.data).toEqual([]);
+      });
+
+      it('respeta el rango de fechas de llegada', async () => {
+        await crearEstancia();
+
+        const res = await request(app.getHttpServer())
+          .get(
+            `/access-authorizations?from=${fechaLocal(60)}&to=${fechaLocal(90)}`,
+          )
+          .set(CAV_SESSION)
+          .expect(200);
+
+        expect(res.body.data).toEqual([]);
+      });
+
+      it('400 con un rango que no tiene formato de fecha', async () => {
+        await request(app.getHttpServer())
+          .get('/access-authorizations?from=ayer')
+          .set(CAV_SESSION)
+          .expect(400);
+      });
+    });
+
+    describe('GET /access-authorizations/:stayId', () => {
+      it('devuelve el detalle sin el PIN', async () => {
+        const estancia = await crearEstancia();
+
+        const res = await request(app.getHttpServer())
+          .get(`/access-authorizations/${estancia!.id}`)
+          .set(CAV_SESSION)
+          .expect(200);
+
+        expect(res.body.data.id).toBe(estancia!.id);
+        expect(res.body.data).not.toHaveProperty('pin');
+      });
+
+      it('404 con una estancia que no existe', async () => {
+        await request(app.getHttpServer())
+          .get('/access-authorizations/11111111-2222-4333-a444-555555555555')
+          .set(CAV_SESSION)
+          .expect(404);
+      });
+
+      it('400 con un id que no es uuid', async () => {
+        await request(app.getHttpServer())
+          .get('/access-authorizations/44712233')
+          .set(CAV_SESSION)
+          .expect(400);
+      });
+    });
+
+    describe('POST /access-authorizations/:stayId/regenerate', () => {
+      it('cambia el PIN de verdad y no lo devuelve', async () => {
+        const estancia = await crearEstancia();
+        const antes = await huellaDe('44712233');
+
+        const res = await request(app.getHttpServer())
+          .post(`/access-authorizations/${estancia!.id}/regenerate`)
+          .set(CAV_SESSION)
+          .expect(200);
+
+        expect(await huellaDe('44712233')).not.toBe(antes);
+        expect(JSON.stringify(res.body)).not.toContain('pin');
+      });
+
+      it('404 si la estancia no tiene credencial viva', async () => {
+        mocks.unitResolver.byListingId.mockResolvedValue({
+          unitId: 99,
+          buildingId: BAT_BUILDING_ID,
+        });
+
+        const estancia = await crearEstancia();
+
+        await request(app.getHttpServer())
+          .post(`/access-authorizations/${estancia!.id}/regenerate`)
+          .set(CAV_SESSION)
+          .expect(404);
+      });
+    });
+
+    describe('POST /access-authorizations/:stayId/access-level', () => {
+      it('amplía el ámbito sin tocar el PIN', async () => {
+        const estancia = await crearEstancia();
+        const antes = await huellaDe('44712233');
+
+        const res = await request(app.getHttpServer())
+          .post(`/access-authorizations/${estancia!.id}/access-level`)
+          .set(CAV_SESSION)
+          .send({ accessLevel: 'both' })
+          .expect(200);
+
+        expect(res.body.data.accessLevel).toBe('both');
+        // El dueño ya lo tiene anotado: cambiar de ámbito no puede cambiárselo.
+        expect(await huellaDe('44712233')).toBe(antes);
+      });
+
+      it('400 con un nivel que no existe', async () => {
+        const estancia = await crearEstancia();
+
+        await request(app.getHttpServer())
+          .post(`/access-authorizations/${estancia!.id}/access-level`)
+          .set(CAV_SESSION)
+          .send({ accessLevel: 'helicoptero' })
+          .expect(400);
+      });
+    });
+  });
+
+  /**
+   * Apertura remota por `trigger`: un pulso único a la barrera vehicular, con
+   * «Abrir» y «Cerrar» como fases por barrera guardadas en la base. Tiempos de
+   * `setup-env.ts`: ventana de cierre 40 s y cierre automático 90 s. Las fechas
+   * van relativas a hoy porque la ventana de acceso se compara con el reloj real.
+   */
+  describe('Apertura remota', () => {
+    const CAV_SESSION = { authorization: MOCK_SESSION_ID };
+    const PUERTAS = [
+      {
+        deviceId: 'ING-PEATONAL-1',
+        buildingId: ING_BUILDING_ID,
+        kind: 'terminal',
+        scope: 'pedestrian',
+        online: true,
+      },
+      {
+        deviceId: 'ING-VEHICULAR-1',
+        buildingId: ING_BUILDING_ID,
+        kind: 'barrier',
+        scope: 'vehicular',
+        online: true,
+      },
+    ];
+
+    const estanciaConToken = async (
+      opciones: {
+        vehicular?: boolean;
+        llegadaEnDias?: number;
+        reserva?: string;
+      } = {},
+    ) => {
+      const {
+        vehicular = true,
+        llegadaEnDias = -1,
+        reserva = '55120001',
+      } = opciones;
+      const estancia = await guestStayService.upsertFromReservation({
+        hostawayReservationId: reserva,
+        listingId: '288172',
+        guestName: 'Lucía Mora',
+        guestEmail: 'lucia@example.com',
+        arrivalDate: fechaLocal(llegadaEnDias),
+        departureDate: fechaLocal(llegadaEnDias + 3),
+        status: 'confirmed',
+        issuedBy: 'test',
+      });
+
+      if (vehicular) {
+        await request(app.getHttpServer())
+          .post(`/access-authorizations/${estancia!.id}/access-level`)
+          .set(SESSION)
+          .send({ accessLevel: 'both' })
+          .expect(200);
+      }
+
+      const { token } = await app
+        .get(GuestPortalService)
+        .issueLink(estancia!.id);
+
+      return { stayId: estancia!.id, auth: `Bearer ${token}` };
+    };
+
+    const abrirComoHuesped = (auth: string, requestId: string = randomUUID()) =>
+      request(app.getHttpServer())
+        .post('/guest/vehicular-gate/open')
+        .set('Authorization', auth)
+        .send({ requestId });
+
+    const cerrarComoHuesped = (
+      auth: string,
+      requestId: string = randomUUID(),
+    ) =>
+      request(app.getHttpServer())
+        .post('/guest/vehicular-gate/close')
+        .set('Authorization', auth)
+        .send({ requestId });
+
+    const portal = (auth: string) =>
+      request(app.getHttpServer())
+        .get('/guest/me')
+        .set('Authorization', auth)
+        .expect(200);
+
+    const historial = () => dataSource.getRepository(RemoteOpenRequest).find();
+
+    /** Mueve hacia atrás el historial y la fase: simula que pasó el tiempo. */
+    const envejecer = async (segundos: number) => {
+      await dataSource.query(
+        `UPDATE "remote_open_request" SET "requested_at" = "requested_at" - make_interval(secs => $1::float8), "finished_at" = "finished_at" - make_interval(secs => $1::float8)`,
+        [segundos],
+      );
+      await dataSource.query(
+        `UPDATE "vehicular_gate_phase" SET "pulsed_at" = "pulsed_at" - make_interval(secs => $1::float8), "updated_at" = "updated_at" - make_interval(secs => $1::float8)`,
+        [segundos],
+      );
+    };
+
+    beforeEach(() => {
+      mocks.accessIot.listDevices.mockResolvedValue(PUERTAS);
+      mocks.accessIot.triggerDevice.mockResolvedValue({ outcome: 'triggered' });
+    });
+
+    describe('huésped', () => {
+      it('pulsa la barrera de su edificio con solo el requestId y deja constancia', async () => {
+        const { stayId, auth } = await estanciaConToken();
+        const requestId = randomUUID();
+
+        const res = await abrirComoHuesped(auth, requestId).expect(200);
+
+        expect(res.body).toMatchObject({ requestId, outcome: 'triggered' });
+        expect(
+          new Date(res.body.openUntil).getTime() -
+            new Date(res.body.at).getTime(),
+        ).toBe(40_000);
+        expect(mocks.accessIot.triggerDevice).toHaveBeenCalledWith(
+          'ING-VEHICULAR-1',
+          { requestId },
+        );
+        const [fila] = await historial();
+        expect(new Date(res.body.cooldownUntil).getTime()).toBe(
+          fila.requestedAt.getTime() + 10_000,
+        );
+        expect(await historial()).toEqual([
+          expect.objectContaining({
+            deviceId: 'ING-VEHICULAR-1',
+            action: 'open',
+            actorType: 'guest',
+            guestStayId: stayId,
+            status: 'triggered',
+          }),
+        ]);
+      });
+
+      it('el UUID viaja en minúsculas', async () => {
+        const { auth } = await estanciaConToken();
+        const requestId = randomUUID();
+
+        await abrirComoHuesped(auth, requestId.toUpperCase()).expect(200);
+
+        expect(mocks.accessIot.triggerDevice).toHaveBeenCalledWith(
+          'ING-VEHICULAR-1',
+          { requestId },
+        );
+        expect((await historial())[0].requestId).toBe(requestId);
+      });
+
+      it('el portal anuncia el botón y, tras abrir, la ventana de cierre', async () => {
+        const { auth } = await estanciaConToken();
+
+        expect((await portal(auth)).body).toMatchObject({
+          vehicularGateAvailable: true,
+          canOpenVehicularGate: true,
+          vehicularGateOpenUntil: null,
+        });
+
+        const apertura = await abrirComoHuesped(auth).expect(200);
+
+        expect((await portal(auth)).body).toMatchObject({
+          canOpenVehicularGate: false,
+          vehicularGateOpenUntil: apertura.body.openUntil,
+        });
+      });
+
+      it('repetir el mismo requestId no manda un segundo pulso', async () => {
+        const { auth } = await estanciaConToken();
+        const requestId = randomUUID();
+
+        await abrirComoHuesped(auth, requestId).expect(200);
+        const res = await abrirComoHuesped(auth, requestId).expect(200);
+
+        expect(res.body.outcome).toBe('triggered');
+        expect(mocks.accessIot.triggerDevice).toHaveBeenCalledTimes(1);
+      });
+
+      it('409 y sin llamar a la VPS si otro huésped acaba de abrirla', async () => {
+        const primero = await estanciaConToken();
+        const segundo = await estanciaConToken({ reserva: '55120002' });
+        await abrirComoHuesped(primero.auth).expect(200);
+        await envejecer(15);
+
+        await abrirComoHuesped(segundo.auth).expect(409);
+        await cerrarComoHuesped(segundo.auth).expect(409);
+
+        expect(mocks.accessIot.triggerDevice).toHaveBeenCalledTimes(1);
+        expect((await portal(segundo.auth)).body).toMatchObject({
+          vehicularGateAvailable: true,
+          canOpenVehicularGate: false,
+          vehicularGateOpenUntil: null,
+        });
+      });
+
+      it('quien la abrió pulsa «Cerrar» dentro de la ventana, con otro UUID', async () => {
+        const { auth } = await estanciaConToken();
+        const apertura = await abrirComoHuesped(auth).expect(200);
+        await envejecer(15);
+
+        const cierre = await cerrarComoHuesped(auth).expect(200);
+
+        expect(cierre.body).toMatchObject({
+          outcome: 'triggered',
+          openUntil: null,
+        });
+        expect(cierre.body.requestId).not.toBe(apertura.body.requestId);
+        expect(mocks.accessIot.triggerDevice).toHaveBeenLastCalledWith(
+          'ING-VEHICULAR-1',
+          { requestId: cierre.body.requestId },
+        );
+        expect((await portal(auth)).body.vehicularGateOpenUntil).toBeNull();
+      });
+
+      it('409 al cerrar sin haberla abierto', async () => {
+        const { auth } = await estanciaConToken();
+
+        await cerrarComoHuesped(auth).expect(409);
+        expect(mocks.accessIot.triggerDevice).not.toHaveBeenCalled();
+      });
+
+      it('entre la ventana de cierre y el cierre automático nadie pulsa', async () => {
+        const primero = await estanciaConToken();
+        const segundo = await estanciaConToken({ reserva: '55120002' });
+        await abrirComoHuesped(primero.auth).expect(200);
+        await envejecer(50);
+
+        await cerrarComoHuesped(primero.auth).expect(409);
+        await abrirComoHuesped(primero.auth).expect(409);
+        await abrirComoHuesped(segundo.auth).expect(409);
+        expect(mocks.accessIot.triggerDevice).toHaveBeenCalledTimes(1);
+
+        await envejecer(45);
+
+        await abrirComoHuesped(segundo.auth).expect(200);
+        expect(mocks.accessIot.triggerDevice).toHaveBeenCalledTimes(2);
+      });
+
+      it('enfriamiento de 10 s por barrera para cualquier pulso', async () => {
+        const { auth } = await estanciaConToken();
+        await abrirComoHuesped(auth).expect(200);
+        await envejecer(15);
+        await cerrarComoHuesped(auth).expect(200);
+
+        const res = await abrirComoHuesped(auth).expect(429);
+
+        expect(res.body.retryAfterSeconds).toBeGreaterThan(0);
+        expect(mocks.accessIot.triggerDevice).toHaveBeenCalledTimes(2);
+      });
+
+      it('el portal dice hasta cuándo dura el enfriamiento', async () => {
+        const { auth } = await estanciaConToken();
+
+        expect((await portal(auth)).body.vehicularGateCooldownUntil).toBeNull();
+
+        const apertura = await abrirComoHuesped(auth).expect(200);
+
+        expect((await portal(auth)).body.vehicularGateCooldownUntil).toBe(
+          apertura.body.cooldownUntil,
+        );
+
+        await envejecer(15);
+
+        expect((await portal(auth)).body.vehicularGateCooldownUntil).toBeNull();
+      });
+
+      it('un fallo no mueve la fase ni activa el enfriamiento', async () => {
+        mocks.accessIot.triggerDevice.mockResolvedValueOnce({
+          outcome: 'failed',
+          errorCode: 'device_unreachable',
+        });
+        const { auth } = await estanciaConToken();
+
+        const fallo = await abrirComoHuesped(auth).expect(200);
+        expect((await portal(auth)).body.canOpenVehicularGate).toBe(true);
+        const reintento = await abrirComoHuesped(auth).expect(200);
+
+        expect(fallo.body).toMatchObject({
+          outcome: 'failed',
+          errorCode: 'device_unreachable',
+          openUntil: null,
+          cooldownUntil: null,
+        });
+        expect(reintento.body.outcome).toBe('triggered');
+      });
+
+      it('un pulso incierto deja la barrera en uncertain, sin segundo pulso', async () => {
+        mocks.accessIot.triggerDevice.mockResolvedValueOnce({
+          outcome: 'uncertain',
+        });
+        const { auth } = await estanciaConToken();
+
+        const res = await abrirComoHuesped(auth).expect(200);
+        await envejecer(120);
+
+        expect(res.body).toMatchObject({
+          outcome: 'uncertain',
+          openUntil: null,
+        });
+        expect((await historial())[0].status).toBe('uncertain');
+        expect((await portal(auth)).body.canOpenVehicularGate).toBe(false);
+        await abrirComoHuesped(auth).expect(409);
+        expect(mocks.accessIot.triggerDevice).toHaveBeenCalledTimes(1);
+      });
+
+      it('sin tiempos medidos el edificio no ofrece el botón', async () => {
+        const { auth } = await estanciaConToken();
+        const tiempos = process.env.ACCESS_VEHICULAR_GATE_TIMINGS;
+        delete process.env.ACCESS_VEHICULAR_GATE_TIMINGS;
+
+        try {
+          expect((await portal(auth)).body).toMatchObject({
+            vehicularGateAvailable: false,
+            canOpenVehicularGate: false,
+          });
+          await abrirComoHuesped(auth).expect(422);
+          expect(mocks.accessIot.triggerDevice).not.toHaveBeenCalled();
+        } finally {
+          process.env.ACCESS_VEHICULAR_GATE_TIMINGS = tiempos;
+        }
+      });
+
+      it('403 con una reserva solo peatonal', async () => {
+        const { auth } = await estanciaConToken({ vehicular: false });
+
+        await abrirComoHuesped(auth).expect(403);
+        expect(mocks.accessIot.triggerDevice).not.toHaveBeenCalled();
+      });
+
+      it('403 antes de que empiece la ventana de acceso', async () => {
+        const { auth } = await estanciaConToken({ llegadaEnDias: 3 });
+
+        await abrirComoHuesped(auth).expect(403);
+        expect(mocks.accessIot.triggerDevice).not.toHaveBeenCalled();
+      });
+
+      it('422 si el edificio no tiene barrera', async () => {
+        mocks.accessIot.listDevices.mockResolvedValue([PUERTAS[0]]);
+        const { auth } = await estanciaConToken();
+
+        await abrirComoHuesped(auth).expect(422);
+      });
+
+      it('400 con un requestId que no es uuid', async () => {
+        const { auth } = await estanciaConToken();
+
+        await abrirComoHuesped(auth, 'toque-1').expect(400);
+      });
+
+      it('401 sin enlace', async () => {
+        await request(app.getHttpServer())
+          .post('/guest/vehicular-gate/open')
+          .send({ requestId: randomUUID() })
+          .expect(401);
+      });
+
+      it('503 con la apertura remota desactivada', async () => {
+        const { auth } = await estanciaConToken();
+        process.env.ACCESS_REMOTE_OPEN_ENABLED = 'false';
+
+        try {
+          await abrirComoHuesped(auth).expect(503);
+        } finally {
+          process.env.ACCESS_REMOTE_OPEN_ENABLED = 'true';
+        }
+      });
+    });
+
+    describe('Supervisor CAV', () => {
+      beforeEach(() => {
+        mocks.openmaint.getSession.mockResolvedValue(
+          mockSession({ role: 'SupervisorCAV', username: 'cav.mock' }),
+        );
+      });
+
+      const comoCav = (
+        deviceId: string,
+        accion: 'open' | 'close',
+        requestId = randomUUID(),
+      ) =>
+        request(app.getHttpServer())
+          .post(`/access-doors/${deviceId}/${accion}`)
+          .set(CAV_SESSION)
+          .send({ requestId });
+
+      const liberar = (deviceId: string) =>
+        request(app.getHttpServer())
+          .post(`/access-doors/${deviceId}/resolve`)
+          .set(CAV_SESSION);
+
+      const puertas = async () =>
+        (
+          await request(app.getHttpServer())
+            .get('/access-doors')
+            .set(CAV_SESSION)
+            .expect(200)
+        ).body.data;
+
+      it('pulsa una barrera vehicular sin mandar quién fue', async () => {
+        const requestId = randomUUID();
+
+        const res = await comoCav('ING-VEHICULAR-1', 'open', requestId).expect(
+          200,
+        );
+
+        expect(res.body.data).toMatchObject({
+          requestId,
+          deviceId: 'ING-VEHICULAR-1',
+          outcome: 'triggered',
+        });
+        expect(mocks.accessIot.triggerDevice).toHaveBeenCalledWith(
+          'ING-VEHICULAR-1',
+          { requestId },
+        );
+        expect((await historial())[0]).toMatchObject({
+          actorType: 'staff',
+          actorUsername: 'cav.mock',
+        });
+      });
+
+      it('422 con una puerta peatonal: ya no se abre a distancia', async () => {
+        await comoCav('ING-PEATONAL-1', 'open').expect(422);
+        expect(mocks.accessIot.triggerDevice).not.toHaveBeenCalled();
+      });
+
+      it('baja la barrera que abrió un huésped, dentro de la ventana', async () => {
+        const { auth } = await estanciaConToken();
+        await abrirComoHuesped(auth).expect(200);
+        await envejecer(15);
+
+        const res = await comoCav('ING-VEHICULAR-1', 'close').expect(200);
+
+        expect(res.body.data.outcome).toBe('triggered');
+        expect((await portal(auth)).body.vehicularGateOpenUntil).toBeNull();
+      });
+
+      it('409 al abrir una barrera en su ventana de cierre', async () => {
+        await comoCav('ING-VEHICULAR-1', 'open').expect(200);
+        await envejecer(15);
+
+        await comoCav('ING-VEHICULAR-1', 'open').expect(409);
+        expect(mocks.accessIot.triggerDevice).toHaveBeenCalledTimes(1);
+      });
+
+      it('lista la fase de cada barrera; las peatonales sin control remoto', async () => {
+        const antes = await puertas();
+        await comoCav('ING-VEHICULAR-1', 'open').expect(200);
+        const despues = await puertas();
+
+        expect(antes.enabled).toBe(true);
+        expect(antes.buildings[0].doors).toEqual([
+          expect.objectContaining({
+            deviceId: 'ING-PEATONAL-1',
+            remoteControl: false,
+            phase: null,
+            openUntil: null,
+          }),
+          expect.objectContaining({
+            deviceId: 'ING-VEHICULAR-1',
+            remoteControl: true,
+            phase: 'ready',
+            lastCommand: null,
+            cooldownUntil: null,
+          }),
+        ]);
+        expect(despues.buildings[0].doors[1]).toMatchObject({
+          phase: 'closable',
+          openUntil: expect.any(String),
+          settlesAt: expect.any(String),
+          cooldownUntil: expect.any(String),
+          lastCommand: expect.objectContaining({
+            action: 'open',
+            outcome: 'triggered',
+            actorType: 'staff',
+            actorUsername: 'cav.mock',
+          }),
+        });
+      });
+
+      it('una barrera sin confirmar solo se libera a mano', async () => {
+        mocks.accessIot.triggerDevice.mockResolvedValueOnce({
+          outcome: 'uncertain',
+        });
+        await comoCav('ING-VEHICULAR-1', 'open').expect(200);
+        await envejecer(120);
+
+        expect((await puertas()).buildings[0].doors[1].phase).toBe('uncertain');
+        await comoCav('ING-VEHICULAR-1', 'open').expect(409);
+
+        await liberar('ING-VEHICULAR-1').expect(200);
+
+        expect((await puertas()).buildings[0].doors[1].phase).toBe('ready');
+        await comoCav('ING-VEHICULAR-1', 'open').expect(200);
+        expect(mocks.accessIot.triggerDevice).toHaveBeenCalledTimes(2);
+      });
+
+      it('409 al liberar una barrera que no está sin confirmar', async () => {
+        await liberar('ING-VEHICULAR-1').expect(409);
+      });
+
+      it('pulsa barreras de cualquier edificio', async () => {
+        mocks.accessIot.listDevices.mockResolvedValue([
+          ...PUERTAS,
+          {
+            deviceId: 'PRA-VEHICULAR-1',
+            buildingId: PRA_BUILDING_ID,
+            kind: 'barrier',
+            scope: 'vehicular',
+            online: true,
+          },
+        ]);
+
+        const res = await comoCav('PRA-VEHICULAR-1', 'open').expect(200);
+        const lista = await puertas();
+
+        expect(res.body.data).toMatchObject({
+          deviceId: 'PRA-VEHICULAR-1',
+          outcome: 'triggered',
+        });
+        expect(lista.buildings.map((b: { name: string }) => b.name)).toEqual([
+          'Inglaterra',
+          'Pradera',
+        ]);
+      });
+
+      it('devuelve por qué no salió el pulso', async () => {
+        mocks.accessIot.triggerDevice.mockResolvedValueOnce({
+          outcome: 'failed',
+          errorCode: 'operations_disabled',
+        });
+
+        const res = await comoCav('ING-VEHICULAR-1', 'open').expect(200);
+
+        expect(res.body.data).toMatchObject({
+          outcome: 'failed',
+          errorCode: 'operations_disabled',
+        });
+      });
+
+      it('404 con una puerta que no existe', async () => {
+        await comoCav('NO-EXISTE', 'open').expect(404);
+      });
+
+      it('409 si el requestId ya lo usó otra persona', async () => {
+        const requestId = randomUUID();
+        await comoCav('ING-VEHICULAR-1', 'open', requestId).expect(200);
+
+        mocks.openmaint.getSession.mockResolvedValue(
+          mockSession({ role: 'SupervisorCAV', username: 'otra.persona' }),
+        );
+
+        await comoCav('ING-VEHICULAR-1', 'open', requestId).expect(409);
+      });
+
+      it('403 sin rol de CAV', async () => {
+        mocks.openmaint.getSession.mockResolvedValue(
+          mockSession({ role: 'MaintOffice' }),
+        );
+
+        await comoCav('ING-VEHICULAR-1', 'open').expect(403);
+        await liberar('ING-VEHICULAR-1').expect(403);
+        await request(app.getHttpServer())
+          .get('/access-doors')
+          .set(CAV_SESSION)
+          .expect(403);
+      });
+    });
+  });
+
+  /**
+   * Entrega del enlace del portal al proyectarse la reserva.
+   *
+   * Se llama a `upsertFromReservation` directo, como hace «proyección de la
+   * reserva» más arriba: el webhook HTTP procesa en segundo plano y no hay
+   * nada que esperar de forma determinista.
+   */
+  describe('entrega del enlace del portal', () => {
+    // La entrega exige que la estancia no esté `completed`; con el reloj real,
+    // las fechas del fixture ya pasaron y no se entrega nada.
+    conRelojCongelado();
+
+    const reserva = (overrides: Record<string, unknown> = {}) => ({
+      hostawayReservationId: '44712233',
+      listingId: '288172',
+      guestName: 'Pamela Pérez',
+      guestEmail: 'ana@example.com',
+      // Relativas a hoy: una estancia terminada no recibe ni canjea enlaces.
+      arrivalDate: fechaLocal(-1),
+      departureDate: fechaLocal(3),
+      status: 'confirmed',
+      issuedBy: 'hostaway-webhook',
+      ...overrides,
+    });
+
+    const enviosDe = (stayId: string) =>
+      dataSource
+        .getRepository(GuestLinkDelivery)
+        .find({ where: { guestStayId: stayId }, order: { createdAt: 'ASC' } });
+
+    beforeEach(() => {
+      mocks.openmaint.getSession.mockResolvedValue(
+        mockSession({ role: 'SuperUser', username: 'admin.mock' }),
+      );
+    });
+
+    it('una estancia nueva entrega el enlace una vez, con la URL del portal', async () => {
+      const estancia = await guestStayService.upsertFromReservation(reserva());
+
+      expect(mocks.guestLinkChannel.send).toHaveBeenCalledTimes(1);
+
+      const [payload] = mocks.guestLinkChannel.send.mock.calls[0] as [
+        { event: string; stay: { id: string }; link: { url: string } },
+      ];
+      expect(payload.event).toBe('guest-link.issued');
+      expect(payload.stay.id).toBe(estancia!.id);
+      expect(payload.link.url).toMatch(/\/g\/[0-9A-Za-z]{10}$/);
+      // Ni el PIN ni el token suelto viajan al canal.
+      expect(JSON.stringify(payload)).not.toContain('"pin"');
+
+      const envios = await enviosDe(estancia!.id);
+      expect(envios).toHaveLength(1);
+      expect(envios[0]).toMatchObject({ status: 'sent', channel: 'webhook' });
+    });
+
+    it('la URL entregada abre el portal', async () => {
+      await guestStayService.upsertFromReservation(reserva());
+
+      const [payload] = mocks.guestLinkChannel.send.mock.calls[0] as [
+        { link: { url: string } },
+      ];
+      const code = payload.link.url.split('/').pop();
+
+      const canje = await request(app.getHttpServer())
+        .post('/guest/short-link/redeem')
+        .send({ code })
+        .expect(200);
+      const token = (canje.body as { token: string }).token;
+
+      await request(app.getHttpServer())
+        .get('/guest/me')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+    });
+
+    it('una modificación de la reserva NO reenvía el enlace', async () => {
+      await guestStayService.upsertFromReservation(reserva());
+      const estancia = await guestStayService.upsertFromReservation(
+        reserva({ departureDate: fechaLocal(5), status: 'modified' }),
+      );
+
+      // El enlace ya entregado no lleva fechas: sigue valiendo con la nueva.
+      expect(mocks.guestLinkChannel.send).toHaveBeenCalledTimes(1);
+      expect(await enviosDe(estancia!.id)).toHaveLength(1);
+    });
+
+    it('un envío fallido se reintenta en la siguiente actualización', async () => {
+      mocks.guestLinkChannel.send.mockResolvedValueOnce({
+        success: false,
+        target: '',
+        error: 'conversation_not_found',
+      });
+
+      await guestStayService.upsertFromReservation(reserva());
+      const estancia = await guestStayService.upsertFromReservation(
+        reserva({ status: 'modified' }),
+      );
+
+      // Es la red de seguridad para la conversación de Airbnb que aún no
+      // existía cuando llegó reservation.created. La espera entre reintentos
+      // está en 0 en setup-env.ts.
+      expect(mocks.guestLinkChannel.send).toHaveBeenCalledTimes(2);
+
+      const envios = await enviosDe(estancia!.id);
+      expect(envios.map((e) => e.status)).toEqual(['failed', 'sent']);
+    });
+
+    it('el canal de la reserva viaja en el payload para poder enrutar', async () => {
+      await guestStayService.upsertFromReservation(
+        reserva({ channelName: 'direct' }),
+      );
+
+      const [payload] = mocks.guestLinkChannel.send.mock.calls[0] as [
+        { stay: { channelName: string | null } },
+      ];
+      expect(payload.stay.channelName).toBe('direct');
+    });
+
+    it('también se entrega en edificios sin control de accesos', async () => {
+      mocks.unitResolver.byListingId.mockResolvedValue({
+        unitId: 99,
+        buildingId: BAT_BUILDING_ID,
+      });
+
+      const estancia = await guestStayService.upsertFromReservation(reserva());
+
+      // Sin credencial, pero con enlace: el portal es más que el PIN.
+      expect(
+        await credentialService.findLiveBySubject('guest', '44712233'),
+      ).toBeNull();
+      expect(await enviosDe(estancia!.id)).toHaveLength(1);
+    });
+
+    it('un canal caído deja constancia y no impide emitir el PIN', async () => {
+      mocks.guestLinkChannel.send.mockResolvedValueOnce({
+        success: false,
+        target: 'https://webhook.invalid/pruebas',
+        httpStatus: 503,
+        error: 'status=503',
+      });
+
+      const estancia = await guestStayService.upsertFromReservation(reserva());
+
+      const [envio] = await enviosDe(estancia!.id);
+      expect(envio).toMatchObject({ status: 'failed', httpStatus: 503 });
+      // La proyección y el PIN son independientes del canal.
+      expect(
+        await credentialService.findLiveBySubject('guest', '44712233'),
+      ).not.toBeNull();
+    });
+
+    it('POST /guest/magic-link/deliver reenvía aunque ya se hubiera enviado', async () => {
+      const estancia = await guestStayService.upsertFromReservation(reserva());
+
+      const res = await request(app.getHttpServer())
+        .post('/guest/magic-link/deliver')
+        .set(SESSION)
+        .send({ stayId: estancia!.id })
+        .expect(200);
+
+      expect(res.body).toMatchObject({ outcome: 'sent', channel: 'webhook' });
+      expect(res.body).not.toHaveProperty('token');
+      expect(mocks.guestLinkChannel.send).toHaveBeenCalledTimes(2);
+      expect(await enviosDe(estancia!.id)).toHaveLength(2);
     });
   });
 });

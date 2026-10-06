@@ -4,6 +4,9 @@ import { OpenmaintServiceSession } from './openmaint.service-session';
 
 const CACHE_TTL_MS = 5 * 60 * 1000;
 
+/** Por llamada; el webhook de Hostaway corta a los 20 s y aquí hay dos. */
+const LOOKUP_TIMEOUT_MS = 5_000;
+
 /**
  * Atributo de `Unit` que guarda el `listingMapId` de Hostaway. Verificado
  * contra `GET /classes/Unit/attributes`: la `D` final va en mayúscula, y el
@@ -45,6 +48,7 @@ export class UnitResolverService {
     private readonly serviceSession: OpenmaintServiceSession,
   ) {}
 
+  /** `null` es definitivo (sin mapear o ambiguo); un fallo de openMAINT se propaga. */
   async byListingId(listingId: string): Promise<UnitLocation | null> {
     const key = (listingId ?? '').trim();
 
@@ -58,17 +62,10 @@ export class UnitResolverService {
       return cached.value;
     }
 
-    try {
-      const value = await this.lookup(key);
-      this.cache.set(key, { value, cachedAt: Date.now() });
-      this.evictExpired();
-      return value;
-    } catch (error) {
-      this.logger.warn(
-        `No se pudo resolver el listing ${key} contra openMAINT: ${this.describe(error)}`,
-      );
-      return null;
-    }
+    const value = await this.lookup(key);
+    this.cache.set(key, { value, cachedAt: Date.now() });
+    this.evictExpired();
+    return value;
   }
 
   forget(listingId: string): void {
@@ -76,7 +73,9 @@ export class UnitResolverService {
   }
 
   private async lookup(listingId: string): Promise<UnitLocation | null> {
-    const sessionId = await this.serviceSession.get();
+    const sessionId = await this.serviceSession.get({
+      timeout: LOOKUP_TIMEOUT_MS,
+    });
     const filter = encodeURIComponent(
       JSON.stringify({
         attribute: {
@@ -92,6 +91,7 @@ export class UnitResolverService {
     const response = (await this.client.get(
       `/classes/Unit/cards?limit=500&filter=${filter}`,
       sessionId,
+      { timeout: LOOKUP_TIMEOUT_MS },
     )) as UnitCardsResponse;
 
     const cards = response?.data ?? [];
@@ -128,9 +128,5 @@ export class UnitResolverService {
         this.cache.delete(key);
       }
     }
-  }
-
-  private describe(error: unknown): string {
-    return error instanceof Error ? error.message : String(error);
   }
 }

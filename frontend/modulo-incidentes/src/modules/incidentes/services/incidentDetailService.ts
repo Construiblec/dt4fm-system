@@ -1,4 +1,5 @@
 import { env } from "@/config/env";
+import { fetchWithSessionRenewal } from "@/shared/auth/sessionHttp";
 import type { IncidentDetail } from "@/modules/incidentes/types/IncidentDetail";
 import { redirectToLogin } from "@/shared/auth/returnTo";
 
@@ -7,12 +8,15 @@ const incidentsBaseUrl = env.VITE_API_URL.replace(/\/api\/?$/, "");
 export const getIncidentById = async (id: string): Promise<IncidentDetail> => {
   const sessionId = localStorage.getItem("sessionId");
 
-  const response = await fetch(`${incidentsBaseUrl}/incidents/${id}`, {
-    method: "GET",
-    headers: {
-      Authorization: sessionId ?? "",
+  const response = await fetchWithSessionRenewal(
+    `${incidentsBaseUrl}/incidents/${id}`,
+    {
+      method: "GET",
+      headers: {
+        Authorization: sessionId ?? "",
+      },
     },
-  });
+  );
 
   if (response.status === 401) {
     redirectToLogin();

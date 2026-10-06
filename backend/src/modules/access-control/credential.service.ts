@@ -15,6 +15,7 @@ import {
   CredentialStatus,
   SubjectType,
 } from './entities/access-credential.entity';
+import { toWireTimestamp } from './guest-stay-timing';
 import { PinCipherService } from './pin-cipher.service';
 import { PinGeneratorService } from './pin-generator.service';
 
@@ -22,6 +23,9 @@ import { PinGeneratorService } from './pin-generator.service';
 export const LIVE_STATUSES = ['pending', 'active'];
 
 const MAX_PIN_CONFLICT_RETRIES = 3;
+
+/** Tope de la VPS; el nombre completo se conserva aquí. */
+const DISPLAY_NAME_MAX = 128;
 
 export interface IssueCredentialInput {
   subjectType: SubjectType;
@@ -34,6 +38,8 @@ export interface IssueCredentialInput {
   validTo: Date;
   issuedBy: string;
   guestStayId?: string | null;
+  /** No espera a la VPS: la fila ya queda en `pending` para `sync-retry`. */
+  deferSync?: boolean;
 }
 
 @Injectable()
@@ -70,6 +76,9 @@ export class CredentialService {
       );
     }
 
+    // La VPS rechaza con 400 un ámbito sin puertas: mejor decirlo antes de crear la fila.
+    await this.assertScopeAvailable(input.buildingId, input.scope);
+
     if (input.validTo <= input.validFrom) {
       throw new BadRequestException(
         'La vigencia debe terminar después de empezar',
@@ -78,10 +87,14 @@ export class CredentialService {
 
     const credential = await this.persistWithFreshPin(input);
 
-    return this.sync(credential);
+    return this.push(credential, input.deferSync);
   }
 
-  async revoke(id: string, reason: string): Promise<AccessCredential> {
+  async revoke(
+    id: string,
+    reason: string,
+    deferSync = false,
+  ): Promise<AccessCredential> {
     const credential = await this.credentials.findOne({ where: { id } });
 
     if (!credential) {
@@ -98,20 +111,21 @@ export class CredentialService {
     credential.syncAttempts = 0;
     await this.credentials.save(credential);
 
-    return this.sync(credential);
+    return this.push(credential, deferSync);
   }
 
   /** Revoca en bloque; se usa al cancelarse una reserva. */
   async revokeByGuestStay(
     guestStayId: string,
     reason: string,
+    deferSync = false,
   ): Promise<number> {
     const live = await this.credentials.find({
       where: { guestStayId, status: In(LIVE_STATUSES) },
     });
 
     for (const credential of live) {
-      await this.revoke(credential.id, reason);
+      await this.revoke(credential.id, reason, deferSync);
     }
 
     return live.length;
@@ -125,6 +139,7 @@ export class CredentialService {
     id: string,
     validFrom: Date,
     validTo: Date,
+    deferSync = false,
   ): Promise<AccessCredential> {
     const credential = await this.credentials.findOne({ where: { id } });
 
@@ -144,7 +159,25 @@ export class CredentialService {
     credential.syncAttempts = 0;
     await this.credentials.save(credential);
 
-    return this.sync(credential);
+    return this.push(credential, deferSync);
+  }
+
+  /** Con `deferSync` el empuje corre sin esperarlo; si falla, lo recoge `sync-retry`. */
+  private push(
+    credential: AccessCredential,
+    deferSync = false,
+  ): Promise<AccessCredential> {
+    if (!deferSync) {
+      return this.sync(credential);
+    }
+
+    void this.sync(credential).catch((error) =>
+      this.logger.warn(
+        `Empuje diferido de ${credential.id} fallido: ${this.describe(error)}`,
+      ),
+    );
+
+    return Promise.resolve(credential);
   }
 
   /**
@@ -251,6 +284,39 @@ export class CredentialService {
   }
 
   /**
+   * Renueva el PIN de una credencial viva a petición de un supervisor.
+   *
+   * Es la contraparte deliberada de `reschedule()` y `changeScope()`, que
+   * **nunca** tocan el PIN: aquí cambiarlo es justamente el propósito. El caso
+   * real es el huésped que dice que alguien vio su código.
+   *
+   * No hay que avisarle del código nuevo por ningún canal aparte: el portal lee
+   * el PIN vigente en cada visita, así que el enlace que ya tiene muestra el
+   * nuevo sin reemitir nada.
+   */
+  async regeneratePin(id: string): Promise<AccessCredential> {
+    const credential = await this.findById(id);
+
+    if (!LIVE_STATUSES.includes(credential.status)) {
+      throw new BadRequestException(
+        'Solo se puede renovar el PIN de una credencial vigente',
+      );
+    }
+
+    // `rotatePin` ya respeta la unicidad por edificio y el enfriamiento, porque
+    // pasa por el mismo `PinGeneratorService` que la emisión.
+    const rotada = await this.rotatePin(credential);
+
+    rotada.syncState = 'pending';
+    rotada.syncAttempts = 0;
+    await this.credentials.save(rotada);
+
+    this.logger.log(`PIN renovado para la credencial ${rotada.id}`);
+
+    return this.sync(rotada);
+  }
+
+  /**
    * Pedir acceso vehicular en un edificio que solo tiene entrada peatonal es un
    * error del operador, no algo que deba escribirse y fallar en el aparato.
    */
@@ -297,6 +363,21 @@ export class CredentialService {
     });
   }
 
+  /**
+   * Todas las credenciales vivas de un huésped, en orden estable. El índice
+   * único es por ámbito, así que puede haber más de una a la vez.
+   */
+  findLiveForGuest(reservationId: string): Promise<AccessCredential[]> {
+    return this.credentials.find({
+      where: {
+        subjectType: 'guest',
+        subjectRef: reservationId,
+        status: In(LIVE_STATUSES),
+      },
+      order: { createdAt: 'ASC' },
+    });
+  }
+
   /** Único punto del código que revela un PIN. */
   revealPin(credential: AccessCredential): string {
     return this.cipher.decrypt(credential.pinCiphertext);
@@ -313,9 +394,9 @@ export class CredentialService {
         scope: current.scope,
         subjectType: current.subjectType,
         pin: this.cipher.decrypt(current.pinCiphertext),
-        validFrom: current.validFrom.toISOString(),
-        validTo: current.validTo.toISOString(),
-        displayName: current.displayName,
+        validFrom: toWireTimestamp(current.validFrom),
+        validTo: toWireTimestamp(current.validTo),
+        displayName: current.displayName.slice(0, DISPLAY_NAME_MAX),
         unitId: current.openmaintUnitId,
       });
 
@@ -402,6 +483,13 @@ export class CredentialService {
       );
     } else {
       credential.syncState = 'pending';
+
+      // Un `partial` trae código si un aparato falló, y `device_full` no se arregla solo.
+      if (result.errorCode) {
+        this.logger.warn(
+          `Escritura ${result.state} de ${credential.id}: ${result.errorCode}`,
+        );
+      }
     }
 
     return this.credentials.save(credential);

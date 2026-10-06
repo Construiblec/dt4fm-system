@@ -1,70 +1,36 @@
-import axios from "axios";
-import { env } from "@/config/env";
 import {
   mockGetAuthorization,
   mockListAuthorizations,
   mockRegeneratePin,
-  mockSendPin,
+  mockUpdateAccessLevel,
 } from "@/modules/supervisor-cav/services/authorizationsService.mock";
+import {
+  cavApi as api,
+  getAuthHeaders,
+  handleUnauthorized,
+  isCavMock as useMock,
+} from "@/modules/supervisor-cav/services/cavApi";
 import type {
+  AccessLevel,
   AuthorizationResponse,
   ListAuthorizationsParams,
   ListAuthorizationsResponse,
 } from "@/modules/supervisor-cav/types/Authorization";
-import { redirectToLogin } from "@/shared/auth/returnTo";
 
 /**
- * Endpoints propuestos, aún no confirmados con el backend — ver el mensaje de
- * handover para el detalle completo de qué pedirle:
+ * Endpoints del backend (módulo `access-control`):
  *
- *   GET  /access-authorizations?from&to        lista de próximos check-ins
- *   GET  /access-authorizations/:id            detalle (nunca trae el PIN)
- *   POST /access-authorizations/:id/regenerate genera un PIN nuevo
- *   POST /access-authorizations/:id/send       lo envía al huésped
+ *   GET  /access-authorizations?from&to             próximos check-ins
+ *   GET  /access-authorizations/:stayId             detalle (nunca trae el PIN)
+ *   POST /access-authorizations/:stayId/regenerate  renueva el PIN
+ *   POST /access-authorizations/:stayId/access-level { accessLevel }
  *
- * Con `VITE_CAV_MOCK=true` ninguno de los cuatro llega a tocar la red: se
- * resuelven con los datos quemados de `authorizationsService.mock.ts`.
+ * No hay endpoint de envío: el PIN se actualiza en la base y el huésped lo ve
+ * en su portal la próxima vez que abre su enlace, que nunca cambia.
+ *
+ * Con `VITE_CAV_MOCK=true` ninguno llega a tocar la red: se resuelven con los
+ * datos quemados de `authorizationsService.mock.ts`.
  */
-const useMock = env.VITE_CAV_MOCK === "true";
-
-const api = axios.create({
-  baseURL: env.VITE_API_URL.replace(/\/api\/?$/, ""),
-});
-
-/**
- * El backend gatea por `x-role`, pero la barrera real son los permisos de
- * grupo de la sesión en openMAINT: este header solo evita llamadas de un rol
- * equivocado.
- */
-const getAuthHeaders = () => ({
-  Authorization: localStorage.getItem("sessionId") ?? "",
-  "x-role": localStorage.getItem("role") ?? "",
-});
-
-/** Redirige al login cuando la sesión de openMAINT ya no es válida. */
-const handleUnauthorized = (error: unknown): never => {
-  if (axios.isAxiosError(error) && error.response?.status === 401) {
-    redirectToLogin();
-  }
-
-  throw error;
-};
-
-/** Mensaje que el backend devolvió, para poder mostrarlo tal cual en la UI. */
-export const getApiErrorMessage = (
-  error: unknown,
-  fallback: string,
-): string => {
-  if (axios.isAxiosError(error)) {
-    const message = (error.response?.data as { message?: string | string[] })
-      ?.message;
-
-    if (Array.isArray(message)) return message.join(". ");
-    if (typeof message === "string") return message;
-  }
-
-  return fallback;
-};
 
 const buildQuery = ({ from, to }: ListAuthorizationsParams) => {
   const params = new URLSearchParams();
@@ -89,9 +55,9 @@ export const listAuthorizations = async (
   }
 };
 
-/** Nunca trae el PIN: solo su estado y la fecha hasta la que es válido. */
+/** Nunca trae el PIN: solo su nivel de acceso y hasta cuándo es válido. */
 export const getAuthorization = async (
-  id: number,
+  id: string,
 ): Promise<AuthorizationResponse> => {
   if (useMock) return mockGetAuthorization(id);
 
@@ -106,9 +72,12 @@ export const getAuthorization = async (
   }
 };
 
-/** Reemplaza el PIN vigente por uno nuevo; queda "pending" hasta enviarlo. */
+/**
+ * Reemplaza el PIN vigente por uno nuevo. No hay nada que enviar después: el
+ * portal del huésped lee el PIN vigente cada vez que se abre.
+ */
 export const regeneratePin = async (
-  id: number,
+  id: string,
 ): Promise<AuthorizationResponse> => {
   if (useMock) return mockRegeneratePin(id);
 
@@ -124,13 +93,17 @@ export const regeneratePin = async (
   }
 };
 
-export const sendPin = async (id: number): Promise<AuthorizationResponse> => {
-  if (useMock) return mockSendPin(id);
+/** A qué tipo de acceso habilita el PIN: peatonal, vehicular, o ambos. */
+export const updateAccessLevel = async (
+  id: string,
+  accessLevel: AccessLevel,
+): Promise<AuthorizationResponse> => {
+  if (useMock) return mockUpdateAccessLevel(id, accessLevel);
 
   try {
     const { data } = await api.post<AuthorizationResponse>(
-      `/access-authorizations/${id}/send`,
-      {},
+      `/access-authorizations/${id}/access-level`,
+      { accessLevel },
       { headers: getAuthHeaders() },
     );
     return data;

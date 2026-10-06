@@ -59,6 +59,107 @@ describe('AuthController (e2e)', () => {
         .send({ password: 'password123' })
         .expect(400);
     });
+
+    it('201 con remember: true', async () => {
+      await request(app.getHttpServer())
+        .post('/auth/login')
+        .send({ username: 'tecnico.mock', password: 'x', remember: true })
+        .expect(201);
+    });
+
+    it('400 si remember no es booleano', async () => {
+      await request(app.getHttpServer())
+        .post('/auth/login')
+        .send({ username: 'tecnico.mock', password: 'x', remember: 'si' })
+        .expect(400);
+    });
+  });
+
+  describe('POST /auth/logout', () => {
+    it('200: cierra la sesión en openMAINT', async () => {
+      await request(app.getHttpServer())
+        .post('/auth/logout')
+        .set('authorization', 'mock-session-id')
+        .expect(200, { success: true });
+
+      expect(mocks.openmaintAuth.logout).toHaveBeenCalledWith(
+        'mock-session-id',
+      );
+    });
+
+    it('200 sin sesión: no hay nada que cerrar', async () => {
+      await request(app.getHttpServer()).post('/auth/logout').expect(200);
+
+      expect(mocks.openmaintAuth.logout).not.toHaveBeenCalled();
+    });
+
+    it('200 aunque openMAINT ya la hubiera cerrado', async () => {
+      mocks.openmaintAuth.logout.mockRejectedValueOnce({
+        response: { status: 401 },
+      });
+
+      await request(app.getHttpServer())
+        .post('/auth/logout')
+        .set('authorization', 'sesion-caducada')
+        .expect(200);
+    });
+  });
+
+  describe('GET /auth/session', () => {
+    it('200: la sesión sigue viva', async () => {
+      mocks.openmaintAuth.getSession.mockResolvedValueOnce({
+        data: mockSession({ availableRoles: ['MaintOffice', 'Supplier'] }),
+      });
+
+      const res = await request(app.getHttpServer())
+        .get('/auth/session')
+        .set('authorization', 'mock-session-id')
+        .expect(200);
+
+      expect(mocks.openmaintAuth.getSession).toHaveBeenCalledWith(
+        'mock-session-id',
+      );
+      expect(res.body).toEqual({
+        username: 'tecnico.mock',
+        role: 'MaintOffice',
+        availableRoles: ['MaintOffice', 'Supplier'],
+      });
+    });
+
+    it('200: también acepta la sesión en x-session-token', async () => {
+      await request(app.getHttpServer())
+        .get('/auth/session')
+        .set('x-session-token', 'mock-session-id')
+        .expect(200);
+    });
+
+    it('401 si openMAINT ya no reconoce la sesión', async () => {
+      mocks.openmaintAuth.getSession.mockRejectedValueOnce({
+        response: { status: 401 },
+      });
+
+      await request(app.getHttpServer())
+        .get('/auth/session')
+        .set('authorization', 'sesion-caducada')
+        .expect(401);
+    });
+
+    it('401 sin cabecera de sesión', async () => {
+      await request(app.getHttpServer()).get('/auth/session').expect(401);
+
+      expect(mocks.openmaintAuth.getSession).not.toHaveBeenCalled();
+    });
+
+    it('500 si openMAINT no responde', async () => {
+      mocks.openmaintAuth.getSession.mockRejectedValueOnce(
+        new Error('connect ECONNREFUSED'),
+      );
+
+      await request(app.getHttpServer())
+        .get('/auth/session')
+        .set('authorization', 'mock-session-id')
+        .expect(500);
+    });
   });
 
   describe('POST /auth/role', () => {

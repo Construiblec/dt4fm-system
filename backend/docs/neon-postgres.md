@@ -90,6 +90,7 @@ Los límites del plan y su justificación están en el ADR-004. Lo que hay que *
 * **Las conexiones ociosas se sueltan.** `idleTimeoutMillis: 10_000` en [`database.config.ts`](../src/config/database.config.ts). Una conexión abierta impide la suspensión, y cada una reinicia el temporizador.
 * **El autoescalado fijo en 0,25 CU**, en las dos ramas.
 * **El scheduler de limpiezas consulta openMAINT primero** y solo toca PostgreSQL cuando encuentra algo atrasado. Da igual que corra cada 15 minutos: no despierta el compute en la mayoría de las ejecuciones.
+* **El keepalive de las sesiones recordadas trabaja en memoria.** [`AppSessionsService`](../src/modules/app-sessions/app-sessions.service.ts) carga `app_session` una vez al arrancar, y la tarea de cada 20 minutos solo habla con openMAINT. La base se toca con actividad real (login, cierre de sesión, cambio de contraseña y, como mucho una vez al día por sesión, al usarse) y en la limpieza de las 04:30, solo si hay sesiones vencidas. Leer la tabla en cada pasada mantendría el compute despierto las 24 horas: unas 180 horas al mes por rama. Funciona porque cada entorno corre una sola instancia del backend.
 * **Hay 0,5 GB de almacenamiento y son para las dos ramas.** El historial de notificaciones y el registro de idempotencia crecen sin techo; habrá que podarlos.
 
 Los arranques en frío rondan el segundo. `connectionTimeoutMillis: 15_000` da margen de sobra para que el compute despierte y, a la vez, evita que una caída de Neon deje una petición colgada para siempre.

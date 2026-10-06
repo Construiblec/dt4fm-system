@@ -102,7 +102,26 @@ Los nueve manejadores de 401 llaman ahora a `redirectToLogin()` en vez de a `win
 * **Se descartan rutas externas** (`//host`, absolutas) y las de autenticación, más todo `/owner`, que tiene su propio acceso.
 * **`clearSession()` lo borra**: un cierre de sesión deliberado no deja destino pendiente.
 
-Esto **no alarga la sesión**, solo abarata su caducidad: sigue costando un login, pero ya no un login más navegación manual. La sesión persistente de verdad —que el backend emita su propio token largo y acuñe la sesión de openMAINT bajo demanda— es trabajo aparte, y es una decisión de seguridad porque implica que el backend guarde algo capaz de re-autenticar al usuario.
+Esto **no alarga la sesión**, solo abarata su caducidad: sigue costando un login, pero ya no un login más navegación manual. Lo que la alarga es la sesión recordada, a continuación.
+
+### Mantener la sesión iniciada
+
+openMAINT cierra una sesión tras **una hora sin uso** (`timeToLiveSeconds: 3600`), y por eso el operario caía en el login cada mañana. Con la casilla «Mantener la sesión iniciada en este dispositivo» del login, marcada por defecto porque los móviles del equipo son personales, el backend la mantiene viva con el keepalive oficial de openMAINT (`POST /sessions/current/keepalive`) cada 20 minutos, hasta 30 días sin abrir la app. Lo hace `AppSessionsService` en el backend, que guarda las sesiones cifradas en la tabla `app_session`.
+
+* **Abrir la app entra directo.** La PWA arranca en `/` (`start_url`), que es el login. Con una sesión guardada, `useResumeSession` pregunta `GET /auth/session` y lleva a la pantalla de inicio del rol, o al destino pendiente si lo hay. Solo con un 401 enseña el formulario. Antes el formulario salía siempre, aunque la sesión siguiera viva.
+* **El móvil guarda una sesión normal del usuario**, la misma que antes: no hay token nuevo ni nada con más permisos que los suyos. Por eso se descartó la suplantación de openMAINT, que habría permitido volver a una sesión de administrador.
+* **Cerrar sesión la cierra también en openMAINT** (`POST /auth/logout`), también desde el panel de residentes. Antes seguía viva una hora después.
+* **Cambiar la contraseña cierra la sesión en los demás dispositivos**, recordados o no, y conserva la del que la cambió. Restablecerla por correo las cierra todas.
+* Si openMAINT se reinicia y pierde las sesiones, el móvil vuelve al login: no hay forma de revivirlas sin la contraseña, y el backend no la guarda.
+* El login de visitante (cuenta compartida) nunca se recuerda.
+
+### La sesión se comprueba al abrir y se renueva en un solo sitio
+
+`src/shared/auth/sessionWatch.ts` pregunta `GET /auth/session` al abrir la app y cada vez que vuelve a primer plano (como mucho una vez por minuto). Si openMAINT ya no acepta la sesión manda al login con el destino guardado, en vez de pintar el dashboard vacío hasta que falle la primera llamada. Un 500 —openMAINT caído— no echa a nadie. Cada comprobación cuenta como uso y aplaza los 30 días de la sesión recordada. Corre en todas las pantallas con sesión, también las de residentes; no en login, recuperación, registro, visitantes ni huéspedes.
+
+Todas las instancias de axios que mandan la sesión llevan `attachSessionRenewal` (`src/shared/auth/sessionHttp.ts`), y los servicios con `fetch` usan `fetchWithSessionRenewal`. Ante un 401 intentan renovar y reintentan **una vez**; solo si no pueden, el 401 llega al servicio, que hace lo de siempre (redirigir, avisar o dejárselo a la página). No hay renovador registrado (`setSessionRenewer`): con la sesión recordada el `sessionId` no cambia, así que solo reintentan cuando la sesión cambió mientras la petición iba de camino, por ejemplo tras volver a entrar en otra pestaña.
+
+En **iOS** la PWA instalada no comparte almacenamiento con Safari: una sesión iniciada en Safari no vale en la app de la pantalla de inicio, hay que entrar desde la propia app. Ya instalada, se pide almacenamiento persistente (`navigator.storage.persist()`, en `src/shared/pwa/persistentStorage.ts`) para que el sistema no borre la sesión cuando ande corto de espacio.
 
 ---
 
@@ -207,9 +226,12 @@ src
 ├ shared
 │ ├ auth
 │ │ ├ returnTo.ts                        Destino pendiente tras un 401
+│ │ ├ sessionHttp.ts                     Renovar y reintentar ante un 401
+│ │ ├ sessionWatch.ts                    Comprobar la sesión al abrir/volver
 │ │ └ session.ts                         (existente, + forgetReturnTo)
 │ ├ pwa
 │ │ ├ pushSubscription.ts                Alta, baja y errores
+│ │ ├ persistentStorage.ts               navigator.storage.persist()
 │ │ ├ platform.ts                        isRunningStandalone / isIos / isIosSafari
 │ │ └ installPromptStore.ts              (existente)
 │ ├ hooks

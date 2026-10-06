@@ -19,6 +19,7 @@ import { PasswordRecoveryOpenmaintService } from '../../src/modules/password-rec
 import { PaymentsOpenmaintRepository } from '../../src/modules/payments/payments-openmaint.repository';
 import { AccessIotGateway } from '../../src/modules/access-control/access-iot.gateway';
 import { UnitResolverService } from '../../src/integrations/openmaint/unit-resolver.service';
+import { GUEST_LINK_CHANNEL } from '../../src/modules/guest-link/delivery/guest-link-channel.interface';
 
 import { MailerService } from '../../src/modules/notifications/mail/mailer.service';
 import { ContificoService } from '../../src/integrations/contifico/contifico.service';
@@ -43,6 +44,7 @@ import {
   createPaymentsOpenmaintRepositoryMock,
   createAccessIotGatewayMock,
   createUnitResolverServiceMock,
+  createGuestLinkChannelMock,
 } from '../mocks/gateways.mock';
 import {
   createMailerServiceMock,
@@ -97,6 +99,7 @@ export interface TestAppMocks {
   /** VPS central de accesos: no existe todavía, siempre va doblada. */
   accessIot: ReturnType<typeof createAccessIotGatewayMock>;
   unitResolver: ReturnType<typeof createUnitResolverServiceMock>;
+  guestLinkChannel: ReturnType<typeof createGuestLinkChannelMock>;
 }
 
 export const createFreshMocks = (): TestAppMocks => ({
@@ -119,6 +122,7 @@ export const createFreshMocks = (): TestAppMocks => ({
   pushDispatch: createPushDispatchServiceMock(),
   accessIot: createAccessIotGatewayMock(),
   unitResolver: createUnitResolverServiceMock(),
+  guestLinkChannel: createGuestLinkChannelMock(),
 });
 
 export interface CreateTestAppOptions {
@@ -178,7 +182,9 @@ export async function createTestApp(
     .overrideProvider(AccessIotGateway)
     .useValue(mocks.accessIot)
     .overrideProvider(UnitResolverService)
-    .useValue(mocks.unitResolver);
+    .useValue(mocks.unitResolver)
+    .overrideProvider(GUEST_LINK_CHANNEL)
+    .useValue(mocks.guestLinkChannel);
 
   if (!options.realNotificationsService) {
     builder

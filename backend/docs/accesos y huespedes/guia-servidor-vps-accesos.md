@@ -8,6 +8,14 @@ El backend **ya está implementado y probado** contra una simulación de este co
 responda como se describe aquí, se cambia una variable de entorno y funciona. **Si el mock y este
 documento divergen, manda este documento.**
 
+> **Cambio del 28-09-2026:** el `employeeNo` pasa a `DT4G688B2FCB`, sin guiones, porque los
+> terminales Hikvision solo admiten letras y números. Detalle en la
+> [nota de cambio](nota-cambio-employeeno.md) y en [§2](#el-employeeno-que-se-escribe-en-el-terminal).
+>
+> **Cambio del 30-09-2026:** `open` y `close` desaparecen; queda
+> [`POST /v1/devices/{deviceId}/trigger`](#post-v1devicesdeviceidtrigger--pulso-a-la-barrera-vehicular),
+> un pulso a la barrera vehicular. Detalle en la [nota de cambio](nota-cambio-trigger.md).
+
 ---
 
 ## 1. El reparto, en una frase
@@ -55,7 +63,7 @@ Bloquean todo lo demás.
 |---|---|
 | **`buildingId` = `Building._id` de openMAINT**, entero | Es la clave con la que el backend decide dónde colocar una credencial. Si la VPS usa nombres propios (`torre-a`) hace falta una tabla de mapeo. Reales: Inglaterra `3025058`, Pradera `3019998`, Republica `564939` |
 | **`credentialId` lo propone el backend** (uuid) y viaja en la URL | De él derivas el `employeeNo`. Es lo que hace idempotente reenviar una escritura y precisa una revocación |
-| **Prefijo `DT4-` en `employeeNo`** | Marca lo creado por este sistema. **Nunca borrar un usuario sin ese prefijo** |
+| **Formato reservado `DT4[GTE]<8 HEX>` en `employeeNo`** | Marca lo creado por este sistema. **Nunca borrar un usuario que no lo cumpla** |
 | **`unitId` = `Unit._id`**, opcional | Solo contexto. El acceso no puede depender de que el mapeo exista |
 | **`deviceId`** lo eliges tú, estable | El backend lo guarda en `sync_detail` y lo usa para conciliar. Si cambia, pierde la traza |
 
@@ -68,24 +76,34 @@ con el entero y se lee con el código, por eso `GET /v1/buildings` devuelve los 
 Se **deriva** del `credentialId`, con prefijo reservado según el tipo de sujeto:
 
 ```
-DT4-G-<8 hex>   huésped
-DT4-T-<8 hex>   residente
-DT4-E-<8 hex>   personal
+DT4G<8 HEX>   huésped
+DT4T<8 HEX>   residente
+DT4E<8 HEX>   personal
 ```
 
-Los 8 hex son los primeros 8 caracteres del SHA-256 del `credentialId`. El `subjectType` viaja en el
-cuerpo del `PUT` justo para que puedas derivar el prefijo.
+Los 8 HEX son los primeros 8 caracteres del SHA-256 del `credentialId`, **en mayúsculas**. El
+resultado tiene 12 caracteres: `3f9a2b11-7c4e-4d2a-9b61-5e8f0a1c2d34` → `DT4G688B2FCB`. El
+`subjectType` viaja en el cuerpo del `PUT` justo para que puedas derivar el prefijo.
 
-**Tres reglas, y las tres importan:**
+**Sin separadores:** los terminales Hikvision solo admiten letras y números en `employeeNo`, y
+rechazan un `DT4-G-…`. **Todo en mayúsculas** para que ningún tramo cambie la caja: el backend
+concilia comparando el `employeeNo` por igualdad exacta.
+
+**Cuatro reglas, y las cuatro importan:**
 
 1. **Nunca reutilices un `employeeNo`**, aunque su credencial se haya borrado. Hoy
    `next_available_employee_no()` devuelve el hueco más bajo, así que el número de un huésped que se
    fue se reasigna al siguiente: cualquier evento histórico quedaría atribuido a la persona
    equivocada.
-2. **Nunca borres un usuario sin prefijo `DT4-`.** Un `employeeNo` `"7"` puede ser un residente
-   cargado a mano por iVMS-4200. Un barrido «limpiador» deja gente fuera de su casa.
+2. **Nunca borres un usuario que no cumpla entero `^DT4[GTE][0-9A-F]{8}$`.** No basta con que
+   empiece por `DT4`: sin separador, un `DT4FM01` cargado a mano pasaría por propio. Un `employeeNo`
+   `"7"` puede ser un residente cargado por iVMS-4200, y un barrido «limpiador» deja gente fuera de
+   su casa.
 3. Derivar en vez de autonumerar hace la escritura **idempotente**: reenviar el mismo `PUT` apunta al
    mismo registro, no crea un segundo.
+4. **Devuelve el `employeeNo` idéntico** en el `PUT`, en `GET /v1/credentials/{id}` y en el
+   inventario. Si el terminal lo devolviera con otra caja, la conciliación lo daría por ausente y lo
+   reescribiría cada noche.
 
 ---
 
@@ -132,7 +150,7 @@ credenciales ISAPI viven en el gateway, no en la VPS.
 
 ## 4. Los endpoints que se deben exponer
 
-Siete operaciones. Es exactamente lo que el backend llama hoy
+Nueve operaciones. Es exactamente lo que el backend llama hoy
 ([access-iot.client.ts](../../src/modules/access-control/access-iot.client.ts)).
 
 Todas las marcas de tiempo, en cuerpo y respuesta, van en **ISO 8601 con offset explícito**. Ver
@@ -197,11 +215,11 @@ Respuesta, **con detalle por dispositivo**:
 
 ```json
 {
-  "credentialId": "3f9a2b11-...",
+  "credentialId": "3f9a2b11-7c4e-4d2a-9b61-5e8f0a1c2d34",
   "state": "partial",
   "devices": [
     { "deviceId": "ING-PEATONAL-1", "state": "written",
-      "employeeNo": "DT4-G-3f9a2b11", "at": "2026-09-08T09:41:13-05:00" },
+      "employeeNo": "DT4G688B2FCB", "at": "2026-09-08T09:41:13-05:00" },
     { "deviceId": "ING-VEHICULAR-1", "state": "unreachable", "error": "link down" }
   ]
 }
@@ -265,16 +283,16 @@ Lo consume la conciliación nocturna del backend.
 
 ```json
 { "users": [
-    { "employeeNo": "DT4-G-3f9a2b11", "name": "Ana Perez",
+    { "employeeNo": "DT4G688B2FCB", "name": "Ana Perez",
       "validFrom": "2026-09-14T12:00:00-05:00", "validTo": "2026-09-18T15:00:00-05:00",
       "managed": true },
-    { "employeeNo": "LOCAL-77", "managed": false }
+    { "employeeNo": "77", "managed": false }
   ],
   "nextCursor": "eyJwb3MiOjIwMH0" }
 ```
 
-- `managed` — `true` si el `employeeNo` lleva el prefijo reservado. Es lo que protege a los
-  residentes cargados a mano.
+- `managed` — `true` solo si el `employeeNo` cumple entero `^DT4[GTE][0-9A-F]{8}$`. Es lo que
+  protege a los residentes cargados a mano.
 - `nextCursor` — `null` o ausente cuando se acabó. El backend pagina hasta agotar, con un tope
   defensivo de 50 páginas.
 - **Nunca el PIN.** `UserInfo/Search` de ISAPI devuelve `password`: descártalo en memoria.
@@ -285,6 +303,39 @@ fijo, seguido de `DELETE FROM device_users WHERE device_id = ?`, hace que en un 
 pero el inventario deja de ser fiable sin que nada falle. Y la conciliación del backend depende de
 que el inventario esté completo: con paginación parcial, reescribiría credenciales por creerlas
 ausentes. **Es prerrequisito, no una mejora paralela.**
+
+### `POST /v1/devices/{deviceId}/trigger` — pulso a la barrera vehicular
+
+La única orden física: un pulso de relé a la barrera vehicular de un edificio. La barrera no tiene
+sensor de posición, así que **Abrir** y **Cerrar** son fases de la interfaz que lleva el backend;
+las dos mandan este mismo pulso, cada una con su `requestId`. `open` y `close` responden `404`: no
+hay alias.
+
+```json
+{ "requestId": "6f1c9a5e-3b2d-4c8e-9a71-0d4e2f5b8c13" }
+```
+
+```json
+{ "requestId": "6f1c9a5e-3b2d-4c8e-9a71-0d4e2f5b8c13", "deviceId": "ING-VEHICULAR-1",
+  "state": "triggered" }
+```
+
+- **Solo `requestId`**, UUID canónico en minúsculas, con guiones y sin llaves. Cualquier otro
+  campo da `400 invalid_request`. `actor` ya no viaja: quién pulsó queda en `remote_open_request`.
+- **Solo el service token** y **solo barreras vehiculares** (`kind: "barrier"`,
+  `scope: "vehicular"`). Una puerta peatonal da `400 device_not_compatible`.
+- `state` es `triggered` si el pulso salió o `ambiguous` si pudo salir. **Ninguno dice nada sobre la
+  posición de la barrera**, y no llega `at`: la hora del pulso la pone el backend.
+- **El gateway deduplica por `(deviceId, requestId)`**, en disco y durante al menos 24 h: repetir
+  la orden devuelve el resultado guardado sin un segundo pulso. Un UUID nuevo siempre es un pulso nuevo.
+- Responde en **7 s como máximo** (2 s para encontrar el gateway y 5 s para el pulso). El backend
+  corta a los 8 s y lo registra como incierto.
+- Con el control físico apagado en el gateway, `503 operations_disabled`.
+
+El backend **no reintenta esta operación**. Tampoco deduce la posición de la barrera: la fase por
+barrera (ventana de cierre, cierre automático medido y enfriamiento de 10 s) vive en su base y es
+solo una ayuda de interfaz. Qué respuestas cuentan como «no hubo pulso» está en la
+[lista blanca](nota-cambio-trigger.md#cómo-leer-la-respuesta) de la nota de cambio.
 
 ---
 
@@ -301,6 +352,8 @@ alertar**, y sin código no puede.
 | `device_full` | Tope de usuarios alcanzado | Alerta. **No reintenta** |
 | `unauthorized` | Service token inválido | Alerta. No reintenta |
 | `invalid_request` | Cuerpo mal formado | No reintenta |
+| `operations_disabled` | El gateway tiene apagado el control físico | Informa al usuario. No reintenta |
+| `device_not_compatible` | `trigger` sobre algo que no es una barrera vehicular habilitada | Alerta de configuración |
 
 **Dos formas válidas de devolverlos**, y el backend acepta las dos:
 
@@ -325,6 +378,10 @@ combinaciones, alguien puede recorrerlas todas. Dejar fallar la escritura no fil
 Para que dimensiones: timeout de **15 s** por petición, **3 intentos** (uno más dos reintentos) con
 espera creciente de 1,5 s. Reintenta ante `5xx`, `429` y errores de red. **Nunca** reintenta ante
 `401`/`403`, `unauthorized`, `invalid_request`, `pin_conflict` ni `device_full`.
+
+**`trigger` es la excepción: un solo intento, 8 s de timeout y ningún reintento.** Solo las
+respuestas de la [lista blanca](nota-cambio-trigger.md#cómo-leer-la-respuesta) se dan por «no hubo
+pulso»; cualquier otra, `internal_error` incluido, es incierta.
 
 ---
 
@@ -435,8 +492,8 @@ Lo que hace el backend cada noche, por dispositivo:
 | Situación | Acción |
 |---|---|
 | En Postgres como escrita, ausente del aparato | Reemite el `PUT`. Se reescribe sola |
-| Con prefijo `DT4-` y sin credencial viva detrás | `DELETE`. Es basura de una revocación fallida |
-| **Sin** prefijo `DT4-` | **Reporta y no toca.** Es un residente cargado a mano |
+| Con formato `DT4[GTE]<8 HEX>` y sin credencial viva detrás | `DELETE`. Es basura de una revocación fallida |
+| **Sin** ese formato | **Reporta y no toca.** Es un residente cargado a mano |
 | En ambos con vigencia distinta | Reemite el `PUT` con el valor de Postgres |
 
 La parte de IoT es que `GET /v1/devices/{id}/inventory` sea **completo** y que `managed` sea fiable.
@@ -451,8 +508,8 @@ que Render despierte, y ese camino manual ya está construido, probado y endurec
 
 Tres reglas:
 
-- Lo que se cree a mano **no lleva prefijo `DT4-`**, y por tanto la conciliación lo reporta y no lo
-  toca.
+- Lo que se cree a mano **no puede empezar por `DT4`**, y por tanto la conciliación lo reporta y no
+  lo toca. La consola debe rechazar ese prefijo al dar de alta.
 - Escrituras y control físico siguen **apagados por defecto**, con sus flags separados.
 - Cada uso queda en el historial, y la operación posterior se reconcilia con el backend.
 
@@ -483,7 +540,7 @@ Forma acordada, para no renegociar el contrato después:
 ```json
 { "events": [
   { "eventId": "ING-PEATONAL-1:88123", "deviceId": "ING-PEATONAL-1",
-    "buildingId": 3025058, "credentialId": "3f9a…", "employeeNo": "DT4-G-3f9a2b11",
+    "buildingId": 3025058, "credentialId": "3f9a2b11-…", "employeeNo": "DT4G688B2FCB",
     "eventType": "access_granted", "reason": null,
     "occurredAt": "2026-09-14T13:05:22-05:00" } ] }
 ```
@@ -500,8 +557,9 @@ error. El webhook `POST /iot/alarms` que ya existe sigue igual y nada de esto lo
 - [ ] `DELETE` sobre algo ya borrado devuelve éxito, no `404`
 - [ ] `GET /v1/credentials/{id}` devuelve `404` cuando no existe
 - [ ] Toda marca de tiempo sale con offset, y el gateway **acepta** offset en la entrada
-- [ ] Los `employeeNo` llevan prefijo `DT4-` y **jamás** se reutilizan
-- [ ] Un usuario sin prefijo `DT4-` nunca se borra, en ningún camino de código
+- [ ] Los `employeeNo` siguen `DT4[GTE]<8 HEX>`, solo letras y números, y **jamás** se reutilizan
+- [ ] El `employeeNo` vuelve idéntico, en mayúsculas, en el `PUT`, el `GET` y el inventario
+- [ ] Un usuario que no cumpla entero el formato nunca se borra, en ningún camino de código
 - [ ] El inventario pagina hasta agotar; probado con un terminal de más de 50 usuarios
 - [ ] `managed` distingue correctamente lo propio de lo cargado a mano
 - [ ] El PIN no aparece en la base, ni en logs, ni en ninguna respuesta. **Con una prueba que lo fije**
@@ -511,6 +569,11 @@ error. El webhook `POST /iot/alarms` que ya existe sigue igual y nada de esto lo
 - [ ] `/v1/health` distingue `gatewayOnline` de `online` por dispositivo, y hay alerta sobre el latido
 - [ ] El gateway corre bajo `systemd` con `Restart=on-failure`
 - [ ] Bloqueo por intentos fallidos activado y **verificado** en cada terminal
+- [ ] `POST /v1/devices/{id}/trigger` deduplica por `(deviceId, requestId)`, en disco y 24 h: la misma orden dos veces da un solo pulso
+- [ ] `trigger` acepta solo `{"requestId"}` y devuelve `triggered` o `ambiguous`, sin `at`; `open` y `close` dan `404`
+- [ ] Solo la barrera vehicular admite `trigger`; una peatonal da `400 device_not_compatible`
+- [ ] El control físico del gateway sigue apagado por defecto y responde `503 operations_disabled`
+- [ ] **En sitio:** se mide cuánto tarda cada barrera en bajar sola, un pulso con la barrera arriba la baja y nunca baja sobre un vehículo
 - [ ] Existe un entorno de staging que no toca puertas de edificios habitados
 
 ---

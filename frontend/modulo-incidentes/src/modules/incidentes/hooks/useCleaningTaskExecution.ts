@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useLocation } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { completeTaskSchema } from "@/modules/incidentes/schemas/cleaningTaskExecutionSchema";
 import {
@@ -14,7 +15,13 @@ import {
   isActiveCleaningTaskPhase,
   useCleaningTaskExecutionStore,
 } from "@/store/cleaningTaskExecutionStore";
-import { getCheckableActivitiesCount } from "@/modules/incidentes/utils/cleaningChecklistUtils";
+import { useStartCleaningTask } from "@/modules/incidentes/hooks/useStartCleaningTask";
+import {
+  countChecklistActivities,
+  countCompletedSections,
+  getChecklistSignature,
+  parseCleaningChecklist,
+} from "@/modules/incidentes/utils/cleaningChecklistUtils";
 
 const toActiveTask = (task: CleaningTaskExecutionDetail): ActiveCleaningTask => ({
   id: task.id,
@@ -34,6 +41,7 @@ const toActiveTask = (task: CleaningTaskExecutionDetail): ActiveCleaningTask => 
 
 export const useCleaningTaskExecution = (taskId: number) => {
   const queryClient = useQueryClient();
+  const location = useLocation();
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successOpen, setSuccessOpen] = useState(false);
   const [pauseModalOpen, setPauseModalOpen] = useState(false);
@@ -50,9 +58,6 @@ export const useCleaningTaskExecution = (taskId: number) => {
   const clearActiveTask = useCleaningTaskExecutionStore((state) => state.clearActiveTask);
   const releaseActiveTask = useCleaningTaskExecutionStore((state) => state.releaseActiveTask);
   const canCompleteStore = useCleaningTaskExecutionStore((state) => state.canComplete);
-  const completedChecklistCountStore = useCleaningTaskExecutionStore(
-    (state) => state.completedChecklistCount,
-  );
   const isChecklistCompleteStore = useCleaningTaskExecutionStore(
     (state) => state.isChecklistComplete,
   );
@@ -63,6 +68,24 @@ export const useCleaningTaskExecution = (taskId: number) => {
     staleTime: 5 * 60 * 1000,
     enabled: Number.isFinite(taskId) && taskId > 0,
   });
+
+  // Se parsea una sola vez por cambio de datos, no dos veces por render: lo
+  // consumen tanto el efecto de inicialización como los contadores de abajo.
+  const checklistSections = useMemo(
+    () => parseCleaningChecklist(detailQuery.data?.checklistDetail?.activities ?? []),
+    [detailQuery.data],
+  );
+  const checklistSignature = getChecklistSignature(checklistSections);
+  /**
+   * OJO: este conteo es por ACTIVIDAD y existe solo para sembrar el store, que
+   * está indexado por `checkableIndex` de actividad. Si se lo reemplaza por el
+   * número de secciones, el mapa queda corto y las actividades sin clave no se
+   * pueden marcar nunca. No se muestra en ninguna pantalla.
+   */
+  const totalActivities = countChecklistActivities(checklistSections);
+  // Lo que sí ve el operario: bloques.
+  const totalSections = checklistSections.length;
+  const completedSections = countCompletedSections(checklistSections, checklistProgress);
 
   useEffect(() => {
     if (successOpen || pauseSuccessOpen) {
@@ -103,10 +126,7 @@ export const useCleaningTaskExecution = (taskId: number) => {
         : nextActiveTask,
     );
 
-    const totalActivities = taskDetail.checklistDetail
-      ? getCheckableActivitiesCount(taskDetail.checklistDetail.activities)
-      : 0;
-    initializeChecklist(totalActivities);
+    initializeChecklist(totalActivities, checklistSignature);
 
     // Borrador que quedó guardado al pausar: vuelve al campo de escritura. Solo
     // se recupera si no hay ya texto local, para no pisar lo que el empleado
@@ -122,6 +142,7 @@ export const useCleaningTaskExecution = (taskId: number) => {
     activeTask?.actualStartTime,
     activeTask?.executionStartedAt,
     activeTask?.id,
+    checklistSignature,
     clearActiveTask,
     detailQuery.data,
     detailQuery.dataUpdatedAt,
@@ -131,6 +152,7 @@ export const useCleaningTaskExecution = (taskId: number) => {
     setObservations,
     successOpen,
     syncActiveTask,
+    totalActivities,
   ]);
 
   /**
@@ -158,12 +180,53 @@ export const useCleaningTaskExecution = (taskId: number) => {
     return accumulated + elapsedMinutes;
   };
 
-  const totalActivities = detailQuery.data?.checklistDetail
-    ? getCheckableActivitiesCount(detailQuery.data.checklistDetail.activities)
-    : 0;
-  const completedActivities = completedChecklistCountStore();
   const isChecklistComplete = isChecklistCompleteStore();
   const canComplete = canCompleteStore();
+
+  /**
+   * Se mira PRIMERO el store y después la fase del detalle: al pulsar "Iniciar
+   * tarea" el store queda escrito al instante, mientras que el detalle tarda en
+   * volver a leerse.
+   */
+  const isRunning =
+    activeTask?.id === taskId || isActiveCleaningTaskPhase(detailQuery.data?.phase);
+
+  /**
+   * Pestillo para el arranque hecho DESDE esta pantalla: una vez confirmado, no
+   * se vuelve a "por iniciar" aunque alguna de las señales de arriba parpadee.
+   *
+   * Se guarda el id y no un booleano para que no se herede si la pantalla se
+   * reutiliza para otra tarea.
+   */
+  const [startedTaskId, setStartedTaskId] = useState<number | null>(null);
+
+  /**
+   * Lo pone la tarjeta al reanudar, y es lo que cubre la carrera de verdad:
+   * escribir el store cambia `contextTaskId`, eso vuelve a disparar el efecto
+   * de reconciliación del dashboard, y ese efecto —leyendo la lista vieja,
+   * donde la tarea todavía figura pausada— suelta `activeTask` ANTES de que
+   * esta pantalla llegue a montarse. Sin esta bandera, `isRunning` nace en
+   * falso, el pestillo nunca se echa, y el operario ve reaparecer la vista
+   * previa con la tarea ya corriendo hasta que vuelve el detalle.
+   */
+  const justStarted = Boolean(
+    (location.state as { justStarted?: boolean } | null)?.justStarted,
+  );
+
+  const hasStarted = isRunning || startedTaskId === taskId || justStarted;
+
+  const startAction = useStartCleaningTask({
+    id: taskId,
+    taskNumber: detailQuery.data?.taskNumber ?? "",
+    description: detailQuery.data?.description ?? "",
+    unitDescription:
+      detailQuery.data?.unit?.description ?? detailQuery.data?.description ?? "",
+    plannedStartTime: detailQuery.data?.plannedStartTime ?? "",
+    plannedEndTime: detailQuery.data?.plannedEndTime ?? "",
+    actualStartTime: detailQuery.data?.actualStartTime,
+    accumulatedMinutes: detailQuery.data?.executionTime ?? 0,
+    isPaused: detailQuery.data?.isPaused,
+  });
 
   const completeMutation = useMutation({
     mutationFn: async () => {
@@ -232,14 +295,22 @@ export const useCleaningTaskExecution = (taskId: number) => {
 
   const validationMessage = useMemo(() => {
     if (!isChecklistComplete) {
-      return `Completa todas las actividades del checklist (${completedActivities}/${totalActivities} completadas)`;
+      return `Completa todas las secciones del checklist (${completedSections}/${totalSections} completadas)`;
     }
 
     return null;
-  }, [completedActivities, isChecklistComplete, totalActivities]);
+  }, [completedSections, isChecklistComplete, totalSections]);
 
   return {
     taskDetail: detailQuery.data,
+    hasStarted,
+    // El pestillo se echa acá y no en un efecto: "esta pantalla arrancó la
+    // tarea" es un evento confirmado contra el backend, no un estado que se
+    // pueda derivar de otra cosa.
+    startTask: () => startAction.start(() => setStartedTaskId(taskId)),
+    isStarting: startAction.isStarting,
+    startError: startAction.error,
+    clearStartError: startAction.clearError,
     isLoading: detailQuery.isLoading,
     isFetching: detailQuery.isFetching,
     loadError:
@@ -251,8 +322,8 @@ export const useCleaningTaskExecution = (taskId: number) => {
     checklistProgress,
     observations,
     attachments: detailQuery.data?.attachments ?? [],
-    totalActivities,
-    completedActivities,
+    totalSections,
+    completedSections,
     isChecklistComplete,
     canComplete,
     validationMessage,

@@ -1,8 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import {
-  getApiErrorMessage,
-  listAuthorizations,
-} from "@/modules/supervisor-cav/services/authorizationsService";
+import { listAuthorizations } from "@/modules/supervisor-cav/services/authorizationsService";
+import { getApiErrorMessage } from "@/modules/supervisor-cav/services/cavApi";
 import type { Authorization } from "@/modules/supervisor-cav/types/Authorization";
 import { toIsoDate } from "@/shared/utils/dateTimeInput";
 

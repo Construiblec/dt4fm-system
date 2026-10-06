@@ -1,5 +1,6 @@
 import {
   BadGatewayException,
+  HttpException,
   Injectable,
   Logger,
   ServiceUnavailableException,
@@ -11,12 +12,19 @@ import { firstValueFrom } from 'rxjs';
 import { AccessIotGateway } from './access-iot.gateway';
 import {
   AccessIotBuilding,
+  AccessIotCamera,
   AccessIotDevice,
   AccessIotErrorCode,
   AccessIotHealth,
   CredentialWriteResult,
   InventoryPage,
+  LiveSession,
+  LiveSessionErrorCode,
+  LiveSessionRequest,
+  LiveSessionResult,
   PutCredentialRequest,
+  TriggerRequest,
+  TriggerResult,
 } from './access-iot.types';
 
 /**
@@ -28,15 +36,130 @@ const BUSINESS_ERROR_CODES: AccessIotErrorCode[] = [
   'device_full',
 ];
 
+/**
+ * Lista blanca de la nota de cambio de `trigger`: solo estas parejas de estado
+ * y código garantizan que no salió ningún pulso. Cualquier otra es incierta.
+ */
+const NO_PULSE_CODES: Record<number, AccessIotErrorCode[]> = {
+  400: ['invalid_request', 'device_not_compatible'],
+  401: ['unauthorized'],
+  403: ['unauthorized'],
+  404: ['not_found'],
+  500: ['device_ambiguous'],
+  502: ['gateway_rejected'],
+  503: ['operations_disabled', 'device_unreachable', 'gateway_unreachable'],
+};
+
+// Sin conexión establecida la petición no salió de aquí: no pudo haber pulso.
+const NEVER_SENT_NETWORK_CODES = ['ECONNREFUSED', 'ENOTFOUND', 'EAI_AGAIN'];
+
+/** Errores tipados de `live-sessions` según `live-integration-dt4fm.md`. */
+const LIVE_SESSION_CODES: LiveSessionErrorCode[] = [
+  'invalid_request',
+  'not_found',
+  'device_ambiguous',
+  'gateway_unreachable',
+  'live_capacity_reached',
+  'live_unavailable',
+];
+
 interface ErrorBody {
   code?: AccessIotErrorCode;
   message?: string;
 }
 
+interface TriggerResponse {
+  requestId?: string;
+  deviceId?: string;
+  state?: 'triggered' | 'ambiguous';
+}
+
+const isCredentialResult = (data: CredentialWriteResult): boolean =>
+  typeof data?.state === 'string' && Array.isArray(data?.devices);
+
+/** Un `200` solo es `triggered` si repite nuestro `requestId` y `deviceId`. */
+export const classifyTriggerResponse = (
+  body: TriggerResponse | undefined,
+  deviceId: string,
+  requestId: string,
+): TriggerResult =>
+  body?.state === 'triggered' &&
+  body.requestId === requestId &&
+  body.deviceId === deviceId
+    ? { outcome: 'triggered' }
+    : { outcome: 'uncertain' };
+
+/** Un `201` solo vale si repite nuestro `requestId` y `cameraId` y trae con qué negociar. */
+export const isLiveSession = (
+  body: LiveSession | undefined,
+  cameraId: string,
+  requestId: string,
+): boolean =>
+  body?.requestId === requestId &&
+  body.cameraId === cameraId &&
+  typeof body.buildingId === 'number' &&
+  typeof body.whepUrl === 'string' &&
+  typeof body.ticket === 'string' &&
+  Array.isArray(body.iceServers);
+
+/** Un 404 sin `code` es una ruta que no existe, no una cámara retirada. */
+export const classifyLiveSessionError = (
+  error: unknown,
+): LiveSessionErrorCode => {
+  const axiosError = error as AxiosError<ErrorBody> | undefined;
+  const status = axiosError?.response?.status;
+  const code = axiosError?.response?.data?.code as LiveSessionErrorCode;
+
+  if (status != null) {
+    if ((status >= 300 && status < 400) || status === 401 || status === 403) {
+      return 'unauthorized';
+    }
+
+    if (LIVE_SESSION_CODES.includes(code)) return code;
+
+    return status === 400 ? 'invalid_request' : 'live_unavailable';
+  }
+
+  return ['ECONNABORTED', 'ETIMEDOUT'].includes(axiosError?.code ?? '')
+    ? 'timeout'
+    : 'network';
+};
+
+/** Fuera de la lista blanca, todo es incierto: `internal_error`, un 5xx sin código, un corte. */
+export const classifyTriggerError = (error: unknown): TriggerResult => {
+  const axiosError = error as AxiosError<ErrorBody> | undefined;
+  const status = axiosError?.response?.status;
+  const code = axiosError?.response?.data?.code;
+
+  if (status != null) {
+    // El 302 de Cloudflare a su login o un 401/403 sin cuerpo: el token no pasó.
+    if ((status >= 300 && status < 400) || status === 401 || status === 403) {
+      return { outcome: 'failed', errorCode: 'unauthorized' };
+    }
+
+    if (code && NO_PULSE_CODES[status]?.includes(code)) {
+      return { outcome: 'failed', errorCode: code };
+    }
+
+    return code
+      ? { outcome: 'uncertain', errorCode: code }
+      : { outcome: 'uncertain' };
+  }
+
+  if (!axiosError?.isAxiosError) return { outcome: 'failed' };
+
+  return NEVER_SENT_NETWORK_CODES.includes(axiosError.code ?? '')
+    ? { outcome: 'failed' }
+    : { outcome: 'uncertain' };
+};
+
 @Injectable()
 export class AccessIotClient extends AccessIotGateway {
   private readonly logger = new Logger(AccessIotClient.name);
   private readonly requestTimeoutMs = 15_000;
+  private readonly commandTimeoutMs = 8_000;
+  // La VPS consulta a los gateways (2 s) y a Cloudflare (5 s); el contrato pide cortar a los 10 s.
+  private readonly liveSessionTimeoutMs = 10_000;
   private readonly maxRetries = 2;
 
   constructor(
@@ -47,21 +170,23 @@ export class AccessIotClient extends AccessIotGateway {
   }
 
   async listBuildings(): Promise<AccessIotBuilding[]> {
-    const response = await this.request<AccessIotBuilding[]>(
-      'GET /v1/buildings',
-      { method: 'GET', url: '/v1/buildings' },
-    );
+    const operation = 'GET /v1/buildings';
+    const { data } = await this.request<AccessIotBuilding[]>(operation, {
+      method: 'GET',
+      url: '/v1/buildings',
+    });
 
-    return response.data ?? [];
+    return this.ensure(operation, data, (body) => Array.isArray(body));
   }
 
   async listDevices(): Promise<AccessIotDevice[]> {
-    const response = await this.request<AccessIotDevice[]>('GET /v1/devices', {
+    const operation = 'GET /v1/devices';
+    const { data } = await this.request<AccessIotDevice[]>(operation, {
       method: 'GET',
       url: '/v1/devices',
     });
 
-    return response.data ?? [];
+    return this.ensure(operation, data, (body) => Array.isArray(body));
   }
 
   async putCredential(
@@ -85,71 +210,179 @@ export class AccessIotClient extends AccessIotGateway {
   async getCredential(
     credentialId: string,
   ): Promise<CredentialWriteResult | null> {
+    const operation = `GET /v1/credentials/${credentialId}`;
+
     try {
-      const response = await this.request<CredentialWriteResult>(
-        `GET /v1/credentials/${credentialId}`,
+      const { data } = await this.withRetries<CredentialWriteResult>(
+        operation,
         {
           method: 'GET',
           url: `/v1/credentials/${encodeURIComponent(credentialId)}`,
         },
       );
 
-      return response.data ?? null;
+      return this.ensure(operation, data, isCredentialResult);
     } catch (error) {
-      if (this.statusOf(error) === 404) {
+      // Si algún gateway no respondió llega un 200 `unreachable`, nunca un 404.
+      if (this.errorCodeOf(error) === 'not_found') {
         return null;
       }
 
-      throw error;
+      throw this.translate(error);
     }
   }
 
   async getHealth(): Promise<AccessIotHealth> {
-    const response = await this.request<AccessIotHealth>('GET /v1/health', {
+    const operation = 'GET /v1/health';
+    const { data } = await this.request<AccessIotHealth>(operation, {
       method: 'GET',
       url: '/v1/health',
     });
 
-    return response.data ?? { buildings: [] };
+    return this.ensure(operation, data, (body) =>
+      Array.isArray(body?.buildings),
+    );
   }
 
+  /** Nunca una página corta: la conciliación la leería como credenciales ausentes. */
   async getDeviceInventory(
     deviceId: string,
     cursor?: string,
   ): Promise<InventoryPage> {
+    const operation = `GET /v1/devices/${deviceId}/inventory`;
     const query = cursor ? `?cursor=${encodeURIComponent(cursor)}` : '';
-    const response = await this.request<InventoryPage>(
-      `GET /v1/devices/${deviceId}/inventory`,
-      {
-        method: 'GET',
-        url: `/v1/devices/${encodeURIComponent(deviceId)}/inventory${query}`,
-      },
-    );
+    const { data } = await this.request<InventoryPage>(operation, {
+      method: 'GET',
+      url: `/v1/devices/${encodeURIComponent(deviceId)}/inventory${query}`,
+    });
 
-    return response.data ?? { users: [], nextCursor: null };
+    return this.ensure(operation, data, (body) => Array.isArray(body?.users));
+  }
+
+  async triggerDevice(
+    deviceId: string,
+    request: TriggerRequest,
+  ): Promise<TriggerResult> {
+    const operation = `POST /v1/devices/${deviceId}/trigger`;
+    // Solo `requestId`: la API central rechaza cualquier otro campo.
+    const requestId = request.requestId.toLowerCase();
+
+    try {
+      const response = await this.send<TriggerResponse>(
+        {
+          method: 'POST',
+          url: `/v1/devices/${encodeURIComponent(deviceId)}/trigger`,
+          data: { requestId },
+        },
+        this.commandTimeoutMs,
+      );
+      const result = classifyTriggerResponse(
+        response.data,
+        deviceId,
+        requestId,
+      );
+
+      if (result.outcome !== 'triggered') {
+        this.logger.warn(
+          `${operation} -> ${result.outcome} (state=${response.data?.state ?? '?'} request=${requestId})`,
+        );
+      }
+
+      return result;
+    } catch (error) {
+      const result = classifyTriggerError(error);
+      const detail =
+        this.buildSafeErrorMessage(error) || (error as Error).message;
+
+      this.logger.warn(
+        `${operation} -> ${result.outcome} (${detail}) request=${requestId}`,
+      );
+
+      return result;
+    }
+  }
+
+  async listCameras(buildingId?: number): Promise<AccessIotCamera[]> {
+    const operation = 'GET /v1/cameras';
+    const { data } = await this.request<AccessIotCamera[]>(operation, {
+      method: 'GET',
+      url: '/v1/cameras',
+      params: buildingId != null ? { buildingId } : undefined,
+    });
+
+    return this.ensure(operation, data, (body) => Array.isArray(body));
+  }
+
+  /** El cuerpo de éxito no se registra: lleva el `ticket` y la credencial TURN. */
+  async createLiveSession(
+    cameraId: string,
+    request: LiveSessionRequest,
+  ): Promise<LiveSessionResult> {
+    const operation = `POST /v1/cameras/${cameraId}/live-sessions`;
+    const requestId = request.requestId.toLowerCase();
+
+    try {
+      const { data } = await this.send<LiveSession>(
+        {
+          method: 'POST',
+          url: `/v1/cameras/${encodeURIComponent(cameraId)}/live-sessions`,
+          data: { requestId },
+        },
+        this.liveSessionTimeoutMs,
+      );
+
+      if (!isLiveSession(data, cameraId, requestId)) {
+        this.logger.warn(
+          `${operation} -> respuesta fuera de contrato request=${requestId}`,
+        );
+
+        return { outcome: 'failed', errorCode: 'invalid_response' };
+      }
+
+      return { outcome: 'issued', session: data };
+    } catch (error) {
+      // Configuración ausente: no es un desenlace de la VPS.
+      if (error instanceof HttpException) throw error;
+
+      const errorCode = classifyLiveSessionError(error);
+      const detail =
+        this.buildSafeErrorMessage(error) || (error as Error).message;
+
+      this.logger.warn(
+        `${operation} -> ${errorCode} (${detail}) request=${requestId}`,
+      );
+
+      return { outcome: 'failed', errorCode };
+    }
   }
 
   /**
-   * Una escritura devuelve su desenlace en el cuerpo. Solo `pin_conflict` y
-   * `device_full` llegan como resultado; lo demás sube como excepción, porque
-   * es configuración o red y no algo que el flujo de negocio pueda resolver.
+   * Una escritura devuelve su desenlace en el cuerpo. `pin_conflict` y
+   * `device_full` también pueden llegar como error HTTP, e `invalid_request`
+   * no se arregla reintentando: los tres vuelven como `failed`. Lo demás sube
+   * como excepción, porque es configuración o red.
    */
   private async writeCredential(
     operation: string,
     config: AxiosRequestConfig,
   ): Promise<CredentialWriteResult> {
     try {
-      const response = await this.request<CredentialWriteResult>(
+      const { data } = await this.withRetries<CredentialWriteResult>(
         operation,
         config,
       );
 
-      return response.data;
+      return this.ensure(operation, data, isCredentialResult);
     } catch (error) {
       const code = this.errorCodeOf(error);
 
-      if (code && BUSINESS_ERROR_CODES.includes(code)) {
-        this.logger.warn(`${operation} devolvió ${code}`);
+      if (
+        code &&
+        (BUSINESS_ERROR_CODES.includes(code) || code === 'invalid_request')
+      ) {
+        this.logger.warn(
+          `${operation} devolvió ${code} (${this.buildSafeErrorMessage(error)})`,
+        );
 
         return {
           credentialId: '',
@@ -159,40 +392,65 @@ export class AccessIotClient extends AccessIotGateway {
         };
       }
 
-      throw error;
+      throw this.translate(error);
     }
+  }
+
+  private send<T>(
+    config: AxiosRequestConfig,
+    timeoutMs: number,
+  ): Promise<AxiosResponse<T>> {
+    const token = this.token();
+
+    return firstValueFrom(
+      this.httpService.request<T>({
+        ...config,
+        baseURL: this.baseUrl(),
+        timeout: timeoutMs,
+        // Con el token inválido, Cloudflare responde un 302 a su login: seguirlo
+        // devolvería un 200 con HTML en lugar del error.
+        maxRedirects: 0,
+        headers: {
+          ...(config.headers ?? {}),
+          // Service token de Cloudflare Access: no hay lista blanca de IP
+          // porque Render no garantiza IP de salida.
+          'CF-Access-Client-Id': token.clientId,
+          'CF-Access-Client-Secret': token.clientSecret,
+        },
+      }),
+    );
   }
 
   private async request<T>(
     operation: string,
     config: AxiosRequestConfig,
   ): Promise<AxiosResponse<T>> {
-    const baseUrl = this.baseUrl();
-    const token = this.token();
+    try {
+      return await this.withRetries<T>(operation, config);
+    } catch (error) {
+      throw this.translate(error);
+    }
+  }
 
-    let lastError: AxiosError | Error | null = null;
+  /** Lanza el error de axios sin traducir, para que el llamante lea su `code`. */
+  private async withRetries<T>(
+    operation: string,
+    config: AxiosRequestConfig,
+  ): Promise<AxiosResponse<T>> {
+    // Se validan antes del bucle: una configuración ausente no se reintenta.
+    this.baseUrl();
+    this.token();
+
+    let lastError: unknown = null;
 
     for (let attempt = 1; attempt <= this.maxRetries + 1; attempt += 1) {
       try {
-        return await firstValueFrom(
-          this.httpService.request<T>({
-            ...config,
-            baseURL: baseUrl,
-            timeout: this.requestTimeoutMs,
-            headers: {
-              ...(config.headers ?? {}),
-              // Service token de Cloudflare Access: no hay lista blanca de IP
-              // porque Render no garantiza IP de salida.
-              'CF-Access-Client-Id': token.clientId,
-              'CF-Access-Client-Secret': token.clientSecret,
-            },
-          }),
-        );
+        return await this.send<T>(config, this.requestTimeoutMs);
       } catch (error) {
-        lastError = error as AxiosError | Error;
-        const safeMessage = this.buildSafeErrorMessage(lastError);
+        lastError = error;
+        const safeMessage = this.buildSafeErrorMessage(error);
         const shouldRetry =
-          attempt <= this.maxRetries && this.isRetryableError(lastError);
+          attempt <= this.maxRetries && this.isRetryableError(error);
 
         this.logger.warn(
           `${operation} falló en intento ${attempt}/${this.maxRetries + 1}` +
@@ -205,15 +463,37 @@ export class AccessIotClient extends AccessIotGateway {
       }
     }
 
-    throw this.translate(lastError);
+    throw lastError;
   }
 
-  private translate(error: AxiosError | Error | null): Error {
+  /** Un 200 fuera de contrato no puede leerse como una lista vacía. */
+  private ensure<T>(
+    operation: string,
+    data: T,
+    valid: (data: T) => boolean,
+  ): T {
+    if (!valid(data)) {
+      throw new BadGatewayException(
+        `${operation}: la VPS de accesos respondió fuera de contrato`,
+      );
+    }
+
+    return data;
+  }
+
+  private translate(error: unknown): Error {
+    if (error instanceof HttpException) return error;
+
     const safeMessage = this.buildSafeErrorMessage(error);
     const code = this.errorCodeOf(error);
     const status = this.statusOf(error);
 
-    if (code === 'unauthorized' || status === 401 || status === 403) {
+    if (
+      code === 'unauthorized' ||
+      status === 401 ||
+      status === 403 ||
+      (status != null && status >= 300 && status < 400)
+    ) {
       return new ServiceUnavailableException(
         `La VPS de accesos rechazó el service token (${safeMessage})`,
       );
@@ -231,7 +511,7 @@ export class AccessIotClient extends AccessIotGateway {
     );
   }
 
-  private isRetryableError(error: AxiosError | Error): boolean {
+  private isRetryableError(error: unknown): boolean {
     const axiosError = error as AxiosError;
     const status = axiosError.response?.status;
     const code = this.errorCodeOf(error);
@@ -253,8 +533,10 @@ export class AccessIotClient extends AccessIotGateway {
     ].includes(axiosError.code ?? '');
   }
 
-  private buildSafeErrorMessage(error: AxiosError | Error | null): string {
-    const axiosError = error as AxiosError<ErrorBody>;
+  /** El `rid` es el X-Request-ID de la VPS: con él se busca la petición en sus logs. */
+  private buildSafeErrorMessage(error: unknown): string {
+    const axiosError = error as AxiosError<ErrorBody> | null;
+    const requestId: unknown = axiosError?.response?.headers?.['x-request-id'];
 
     return [
       axiosError?.response?.status
@@ -264,6 +546,7 @@ export class AccessIotClient extends AccessIotGateway {
       axiosError?.response?.data?.code
         ? `iot=${axiosError.response.data.code}`
         : null,
+      typeof requestId === 'string' ? `rid=${requestId}` : null,
       axiosError?.response?.data?.message,
     ]
       .filter(Boolean)

@@ -1,5 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { AppSessionsService } from '../app-sessions/app-sessions.service';
 import { MailerService } from '../notifications/mail/mailer.service';
 import {
   PasswordRecoveryOpenmaintService,
@@ -62,14 +63,19 @@ const buildHarness = () => {
       key === 'APP_BASE_URL' ? 'https://app.construiblec.cloud' : undefined,
   } as unknown as ConfigService;
 
+  const appSessions = {
+    closeAllForUser: jest.fn().mockResolvedValue(0),
+  } as unknown as jest.Mocked<AppSessionsService>;
+
   const service = new PasswordRecoveryService(
     openmaint,
     tokenService,
     mailer,
     config,
+    appSessions,
   );
 
-  return { service, openmaint, mailer, tokenService };
+  return { service, openmaint, mailer, tokenService, appSessions };
 };
 
 describe('PasswordRecoveryService', () => {
@@ -155,14 +161,35 @@ describe('PasswordRecoveryService', () => {
 
   describe('resetPassword', () => {
     const tokenValido = () => {
-      const { service, openmaint, mailer, tokenService } = buildHarness();
+      const { service, openmaint, mailer, tokenService, appSessions } =
+        buildHarness();
       return {
         service,
         openmaint,
         mailer,
+        appSessions,
         token: tokenService.create(USER_ID, PASSWORD_HASH),
       };
     };
+
+    // Quien restablece por correo puede venir de perder el móvil: ninguna
+    // sesión abierta con la contraseña vieja debe sobrevivir.
+    it('cierra todas las sesiones de la app del usuario', async () => {
+      const { service, appSessions, token } = tokenValido();
+
+      await service.resetPassword(token, 'ClaveNueva2026.');
+
+      expect(appSessions.closeAllForUser).toHaveBeenCalledWith('raul.ontaneda');
+    });
+
+    it('con un token inválido no cierra ninguna sesión', async () => {
+      const { service, appSessions } = tokenValido();
+
+      await expect(
+        service.resetPassword('token-falso', 'ClaveNueva2026.'),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(appSessions.closeAllForUser).not.toHaveBeenCalled();
+    });
 
     it('conserva los grupos del usuario al cambiar la contraseña', async () => {
       const { service, openmaint, token } = tokenValido();

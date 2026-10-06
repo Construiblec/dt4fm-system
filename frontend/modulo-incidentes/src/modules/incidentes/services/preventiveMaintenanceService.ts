@@ -1,5 +1,6 @@
 import axios from "axios";
 import { env } from "@/config/env";
+import { attachSessionRenewal } from "@/shared/auth/sessionHttp";
 import type {
   ChecklistAnswer,
   PreventiveChecklistItem,
@@ -16,6 +17,8 @@ import { redirectToLogin } from "@/shared/auth/returnTo";
 const preventiveMaintenanceApi = axios.create({
   baseURL: env.VITE_API_URL.replace(/\/api\/?$/, ""),
 });
+
+attachSessionRenewal(preventiveMaintenanceApi, "authorization");
 
 type ListResponse = {
   success: boolean;

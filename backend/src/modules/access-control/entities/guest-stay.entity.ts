@@ -38,6 +38,17 @@ export class GuestStay {
   @Column({ name: 'guest_email', type: 'text', nullable: true })
   guestEmail: string | null;
 
+  /** Sin uso funcional todavía: se guarda para el futuro canal de WhatsApp. */
+  @Column({ name: 'guest_phone', type: 'text', nullable: true })
+  guestPhone: string | null;
+
+  /**
+   * `channelName` de Hostaway (`airbnbOfficial`, `bookingcom`, `direct`…).
+   * Decide por dónde se entrega el enlace del portal.
+   */
+  @Column({ name: 'channel_name', type: 'text', nullable: true })
+  channelName: string | null;
+
   /** Segundo factor del canje del enlace, cuando exista el portal. */
   @Column({ name: 'guest_last_name_hash', type: 'text', nullable: true })
   guestLastNameHash: string | null;

@@ -1,4 +1,6 @@
-import { defineConfig } from 'vite'
+// `defineConfig` sale de vitest y no de vite para que el bloque `test` de abajo
+// tenga tipos: vitest reexporta el de vite tal cual.
+import { defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 import path from 'path'
@@ -77,6 +79,20 @@ export default defineConfig(({ mode }) => ({
     alias: {
       '@': path.resolve(__dirname, './src'),
     },
+  },
+  // Solo afecta a `vite dev`/`vite preview`, nunca al build de producción.
+  // Desde Vite 5.4 el dev server rechaza cualquier `Host` que no reconozca
+  // (protección contra DNS rebinding), y eso incluye el host público que pone
+  // un túnel de Cloudflare al probar en otros dispositivos. Se permite solo el
+  // sufijo de los túneles rápidos, no cualquier host.
+  server: {
+    allowedHosts: ['.trycloudflare.com'],
+  },
+  // Sin jsdom a propósito: lo que se testea son funciones puras (el parseo del
+  // checklist), que no tocan el DOM.
+  test: {
+    environment: 'node',
+    include: ['src/**/*.test.ts'],
   },
 }))
 

@@ -1,15 +1,20 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { createHash } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 import { AccessIotGateway } from './access-iot.gateway';
 import {
   AccessIotBuilding,
+  AccessIotCamera,
   AccessIotDevice,
   AccessIotHealth,
   CredentialDeviceResult,
   CredentialWriteResult,
   InventoryPage,
   InventoryUser,
+  LiveSessionRequest,
+  LiveSessionResult,
   PutCredentialRequest,
+  TriggerRequest,
+  TriggerResult,
 } from './access-iot.types';
 
 /**
@@ -74,14 +79,28 @@ const DEVICES: AccessIotDevice[] = [
   },
 ];
 
+/** `PRA-CAM-02` responde siempre sin cupos: da el camino `live_capacity_reached`. */
+const CAMERAS: AccessIotCamera[] = [
+  { cameraId: 'ING-CAM-01', name: 'Acceso vehicular', buildingId: 3025058 },
+  { cameraId: 'ING-CAM-02', name: 'Lobby', buildingId: 3025058 },
+  { cameraId: 'PRA-CAM-01', name: 'Acceso vehicular', buildingId: 3019998 },
+  { cameraId: 'PRA-CAM-02', name: 'Parqueadero', buildingId: 3019998 },
+];
+
+const FULL_CAMERA_ID = 'PRA-CAM-02';
+
 /**
  * Usuario cargado a mano en el terminal, sin prefijo reservado. Existe para que
  * la conciliación tenga algo que reportar y no tocar, y para que el camino de
  * `pin_conflict` sea alcanzable sin trucar nada.
  */
 const MANUAL_USERS: Record<string, { employeeNo: string; pin: string }[]> = {
-  'ING-PEATONAL-1': [{ employeeNo: 'LOCAL-77', pin: '4821' }],
+  'ING-PEATONAL-1': [{ employeeNo: '77', pin: '4821' }],
 };
+
+/** UUID canónico en minúsculas, con guiones y sin llaves, como exige `trigger`. */
+const CANONICAL_UUID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 const PREFIX_BY_SUBJECT = { guest: 'G', tenant: 'T', employee: 'E' } as const;
 
@@ -99,6 +118,7 @@ interface StoredCredential {
 export class AccessIotMockGateway extends AccessIotGateway {
   private readonly logger = new Logger(AccessIotMockGateway.name);
   private readonly store = new Map<string, StoredCredential>();
+  private readonly triggers = new Map<string, TriggerResult>();
 
   listBuildings(): Promise<AccessIotBuilding[]> {
     return Promise.resolve(BUILDINGS);
@@ -114,6 +134,7 @@ export class AccessIotMockGateway extends AccessIotGateway {
   ): Promise<CredentialWriteResult> {
     const targets = this.devicesFor(request.buildingId, request.scope);
 
+    // La API responde 400 `invalid_request`; el cliente HTTP lo traduce a esto.
     if (targets.length === 0) {
       return Promise.resolve({
         credentialId,
@@ -153,7 +174,7 @@ export class AccessIotMockGateway extends AccessIotGateway {
         : {
             deviceId: device.deviceId,
             state: 'unreachable',
-            error: 'link down',
+            errorCode: 'device_unreachable',
           },
     );
 
@@ -172,7 +193,7 @@ export class AccessIotMockGateway extends AccessIotGateway {
 
     // Idempotente: borrar algo ya borrado es éxito, no 404.
     const devices: CredentialDeviceResult[] = (stored?.devices ?? []).map(
-      (device) => ({ deviceId: device.deviceId, state: 'written' }),
+      (device) => ({ deviceId: device.deviceId, state: 'deleted' }),
     );
 
     return Promise.resolve({ credentialId, state: 'written', devices });
@@ -196,9 +217,13 @@ export class AccessIotMockGateway extends AccessIotGateway {
     return Promise.resolve({
       buildings: BUILDINGS.map((building) => ({
         buildingId: building.buildingId,
+        code: building.code,
+        name: building.name,
+        siteId: building.code.toLowerCase(),
         gatewayOnline: true,
         gatewayLastSeenAt: new Date().toISOString(),
-        gatewayVersion: '0.0.0-mock',
+        gatewayVersion: 'v1',
+        operationsEnabled: true,
         pendingJobs: 0,
         failedJobs: 0,
         maxClockSkewSeconds: 1,
@@ -238,6 +263,101 @@ export class AccessIotMockGateway extends AccessIotGateway {
     });
   }
 
+  /**
+   * Como el gateway: solo la barrera vehicular, solo `{ requestId }`, y
+   * deduplica por `(deviceId, requestId)`, así que repetir no da un segundo pulso.
+   */
+  triggerDevice(
+    deviceId: string,
+    request: TriggerRequest,
+  ): Promise<TriggerResult> {
+    const extra = Object.keys(request).filter((key) => key !== 'requestId');
+
+    if (extra.length > 0 || !CANONICAL_UUID.test(request.requestId)) {
+      return Promise.resolve({
+        outcome: 'failed',
+        errorCode: 'invalid_request',
+      });
+    }
+
+    const key = `${deviceId}:${request.requestId}`;
+    const previous = this.triggers.get(key);
+
+    if (previous) return Promise.resolve(previous);
+
+    const device = DEVICES.find((candidate) => candidate.deviceId === deviceId);
+    const result: TriggerResult = !device
+      ? { outcome: 'failed', errorCode: 'not_found' }
+      : device.kind !== 'barrier' || device.scope !== 'vehicular'
+        ? { outcome: 'failed', errorCode: 'device_not_compatible' }
+        : !device.online
+          ? { outcome: 'failed', errorCode: 'device_unreachable' }
+          : { outcome: 'triggered' };
+
+    this.triggers.set(key, result);
+    this.logger.log(`Pulso simulado en ${deviceId}: ${result.outcome}`);
+
+    return Promise.resolve(result);
+  }
+
+  listCameras(buildingId?: number): Promise<AccessIotCamera[]> {
+    return Promise.resolve(
+      CAMERAS.filter(
+        (camera) => buildingId == null || camera.buildingId === buildingId,
+      ),
+    );
+  }
+
+  /** La sesión es ficticia: el `ticket` no negocia contra el hostname de video real. */
+  createLiveSession(
+    cameraId: string,
+    request: LiveSessionRequest,
+  ): Promise<LiveSessionResult> {
+    const extra = Object.keys(request).filter((key) => key !== 'requestId');
+    const camera = CAMERAS.find((candidate) => candidate.cameraId === cameraId);
+
+    if (extra.length > 0 || !CANONICAL_UUID.test(request.requestId)) {
+      return Promise.resolve({
+        outcome: 'failed',
+        errorCode: 'invalid_request',
+      });
+    }
+
+    if (!camera) {
+      return Promise.resolve({ outcome: 'failed', errorCode: 'not_found' });
+    }
+
+    if (camera.cameraId === FULL_CAMERA_ID) {
+      return Promise.resolve({
+        outcome: 'failed',
+        errorCode: 'live_capacity_reached',
+      });
+    }
+
+    this.logger.log(`Sesión en vivo simulada en ${cameraId}`);
+
+    return Promise.resolve({
+      outcome: 'issued',
+      session: {
+        requestId: request.requestId,
+        cameraId,
+        buildingId: camera.buildingId,
+        whepUrl: `https://live.construiblec.cloud/v1/live/${cameraId}/whep`,
+        ticket: `mock-${randomUUID()}`,
+        ticketExpiresAt: new Date(Date.now() + 60_000).toISOString(),
+        maxDurationSeconds: 300,
+        iceServers: [
+          {
+            urls: ['turn:turn.cloudflare.com:3478?transport=udp'],
+            username: 'mock',
+            credential: 'mock',
+          },
+        ],
+        iceTransportPolicy: 'relay',
+      },
+    });
+  }
+
   private devicesFor(
     buildingId: number,
     scope: PutCredentialRequest['scope'],
@@ -262,7 +382,10 @@ export class AccessIotMockGateway extends AccessIotGateway {
     return 'partial';
   }
 
-  /** Deriva el identificador del terminal igual que hará la VPS: `DT4-<X>-<8 hex>`. */
+  /**
+   * Deriva el identificador como hará la VPS: `DT4<X><8 HEX>`. Sin separadores
+   * porque Hikvision solo admite letras y números.
+   */
   private employeeNo(
     credentialId: string,
     subjectType: PutCredentialRequest['subjectType'],
@@ -270,8 +393,9 @@ export class AccessIotMockGateway extends AccessIotGateway {
     const digest = createHash('sha256')
       .update(credentialId)
       .digest('hex')
-      .slice(0, 8);
+      .slice(0, 8)
+      .toUpperCase();
 
-    return `DT4-${PREFIX_BY_SUBJECT[subjectType]}-${digest}`;
+    return `DT4${PREFIX_BY_SUBJECT[subjectType]}${digest}`;
   }
 }

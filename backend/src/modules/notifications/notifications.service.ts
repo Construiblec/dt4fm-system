@@ -6,6 +6,7 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { escapeHtml } from '../../common/utils/html-escape.util';
 import { OpenmaintAuthService } from '../../integrations/openmaint/openmaint.auth.service';
 import { OpenmaintClient } from '../../integrations/openmaint/openmaint.client';
 import { MailerService, type BulkSendSummary } from './mail/mailer.service';
@@ -212,21 +213,23 @@ export class NotificationsService {
     const nameMatch = visitorBlock?.match(/Nombre:\s*(.*?)\s*Tel[eé]fono:/i);
     const phoneMatch = visitorBlock?.match(/Tel[eé]fono:\s*(.*)/i);
 
+    // Todo lo que viene de openMAINT es texto libre (lo escribe quien reporta,
+    // incluido cualquier huésped desde el portal): se escapa sin excepción.
     const visitorHtml = `
     <div style="margin-top:12px;font-size:13px;">
       <strong>Reporta:</strong>
-      <div>Nombre: ${nameMatch?.[1]?.trim() ?? 'No disponible'}</div>
-      <div>Teléfono: ${phoneMatch?.[1]?.trim() ?? 'No disponible'}</div>
+      <div>Nombre: ${escapeHtml(nameMatch?.[1]?.trim() ?? 'No disponible')}</div>
+      <div>Teléfono: ${escapeHtml(phoneMatch?.[1]?.trim() ?? 'No disponible')}</div>
     </div>`;
 
     const subject = `[INCIDENTE NUEVO] ${incidentNumber} - ${incidentBuilding}`;
 
     const html = `
     <div style="font-family:Arial,sans-serif;max-width:520px;margin:auto;padding:16px;border:1px solid #eee;border-radius:6px;">
-      <h3 style="margin:0 0 10px 0;">Incidente #${incidentNumber}</h3>
+      <h3 style="margin:0 0 10px 0;">Incidente #${escapeHtml(incidentNumber)}</h3>
       <div style="font-size:13px;color:#555;">
-        <div><strong>Edificio:</strong> ${incidentBuilding}</div>
-        <div><strong>Ubicación:</strong> ${incidentLocation}</div>
+        <div><strong>Edificio:</strong> ${escapeHtml(incidentBuilding)}</div>
+        <div><strong>Ubicación:</strong> ${escapeHtml(incidentLocation)}</div>
         <div><strong>Prioridad:</strong>
           <span style="color:${priority.color};font-weight:bold;">${priority.text}</span>
         </div>
@@ -235,7 +238,7 @@ export class NotificationsService {
       <hr style="margin:12px 0;" />
       <div style="font-size:13px;">
         <strong>Descripción</strong>
-        <p style="margin:6px 0;white-space:pre-wrap;">${description || 'Sin descripción'}</p>
+        <p style="margin:6px 0;white-space:pre-wrap;">${escapeHtml(description || 'Sin descripción')}</p>
       </div>
       ${visitorHtml}
       <div style="margin-top:16px;font-size:11px;color:#999;text-align:center;">

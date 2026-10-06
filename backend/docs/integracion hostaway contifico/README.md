@@ -156,14 +156,16 @@ Configuradas en **Render → Environment → Environment Variables**:
 | Campo | Valor |
 |---|---|
 | **URL** | `https://tu-backend.onrender.com/webhooks/hostaway` |
-| **Events** | `reservation_created`, `reservation_updated` |
+| **Login** | valor de `HOSTAWAY_WEBHOOK_USER` |
+| **Password** | valor de `HOSTAWAY_WEBHOOK_SECRET` |
 
-> Esa URL la atiende hoy el módulo de **control de accesos**, que exige la cabecera
-> `x-hostaway-secret` y responde `401` sin ella. Al configurar el webhook hay que añadirla.
+> Es un **unified webhook**: Hostaway envía todos los eventos sin filtrar. Esa URL la
+> atiende el módulo de **control de accesos**, que exige Basic Auth (`401` sin ella),
+> proyecta `reservation.created` y `reservation.updated`, e ignora el resto con `200`.
 
 > **Importante:** Solo el Account Owner puede acceder a Settings en Hostaway. Los usuarios admin no tienen acceso a esta sección aunque tengan todos los permisos.
 
-> Hostaway reintenta el webhook 3 veces si no recibe `2xx`. El backend siempre responde `200 OK` al recibir el payload para evitar reintentos. Los errores internos se registran en openMAINT.
+> Hostaway reintenta hasta 3 veces en ~1 h ante un `5xx`; un `4xx` no se reintenta y dispara un email de alerta. Por eso el backend responde `503` solo ante fallos transitorios (base de datos, openMAINT) y `200` en todo lo demás.
 
 ---
 

@@ -1,5 +1,9 @@
 import { CheckCircle2 } from "lucide-react";
-import { parseCleaningChecklist } from "@/modules/incidentes/utils/cleaningChecklistUtils";
+import { useMemo } from "react";
+import {
+  formatMinutes,
+  parseCleaningChecklist,
+} from "@/modules/incidentes/utils/cleaningChecklistUtils";
 
 type Props = {
   activities: string[];
@@ -7,9 +11,11 @@ type Props = {
 };
 
 export const TaskDetailChecklist = ({ activities, templateName }: Props) => {
-  if (activities.length === 0) return null;
+  const sections = useMemo(() => parseCleaningChecklist(activities), [activities]);
 
-  const sections = parseCleaningChecklist(activities);
+  // Cubre además el caso de una plantilla que llegó pero no se pudo parsear
+  // (solo cabecera, o filas sin actividad): no hay nada que mostrar.
+  if (sections.length === 0) return null;
 
   return (
     <section className="rounded-2xl bg-white p-4 shadow-sm">
@@ -26,10 +32,18 @@ export const TaskDetailChecklist = ({ activities, templateName }: Props) => {
         {sections.map((section, sIdx) => (
           <div key={sIdx} className="space-y-2">
             {section.title && (
-              <h4 className="flex items-start gap-2 text-lg font-bold text-slate-800">
-                <CheckCircle2 className="mt-1 h-4 w-4 shrink-0 text-emerald-500" />
-                <span>{section.title}</span>
-              </h4>
+              <div className="flex items-start justify-between gap-2">
+                <h4 className="flex items-start gap-2 text-lg font-bold text-slate-800">
+                  <CheckCircle2 className="mt-1 h-4 w-4 shrink-0 text-emerald-500" />
+                  <span>{section.title}</span>
+                </h4>
+                {section.totalMinutes !== null && (
+                  <span className="mt-1 shrink-0 rounded-md bg-slate-100 px-2 py-0.5 text-xs text-slate-500">
+                    {section.hasPartialMinutes ? "~" : ""}
+                    {formatMinutes(section.totalMinutes)}
+                  </span>
+                )}
+              </div>
             )}
             <ul className={section.title ? "space-y-2 pl-6" : "space-y-2"}>
               {section.items.map((item) => (

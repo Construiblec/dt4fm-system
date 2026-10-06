@@ -7,12 +7,15 @@ import { toSession } from "@/modules/auth/hooks/useRoleSwitch";
 import { getHomeRoute } from "@/shared/auth/session";
 import { consumeReturnTo } from "@/shared/auth/returnTo";
 import { getSelectableRoles } from "@/shared/constants/rolePalette";
+import { requestPersistentStorage } from "@/shared/pwa/persistentStorage";
 import { login } from "@/services/api";
 import { useSessionStore } from "@/store/sessionStore";
 
 type LoginFormValues = {
   usuario: string;
   password: string;
+  /** Marcada por defecto: los móviles del equipo son personales. */
+  recordar: boolean;
 };
 
 // `text-base` no es decorativo: por debajo de 16px, Safari en iOS hace zoom
@@ -36,15 +39,16 @@ export const LoginForm = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [isVisitorModalOpen, setIsVisitorModalOpen] = useState(false);
   const { register, handleSubmit, formState } = useForm<LoginFormValues>({
-    defaultValues: { usuario: "", password: "" },
+    defaultValues: { usuario: "", password: "", recordar: true },
   });
 
-  const onSubmit = async ({ usuario, password }: LoginFormValues) => {
+  const onSubmit = async ({ usuario, password, recordar }: LoginFormValues) => {
     try {
       setErrorMessage(null);
 
-      const response = await login(usuario.trim(), password);
+      const response = await login(usuario.trim(), password, undefined, recordar);
       setSession(toSession(response));
+      void requestPersistentStorage();
 
       // Con varias vistas disponibles se pregunta con cuál entrar; con una sola
       // el selector sobra y se va directo al dashboard que le toca.
@@ -147,6 +151,15 @@ export const LoginForm = () => {
           ) : null}
         </div>
       </div>
+
+      <label className="flex cursor-pointer items-center gap-2.5 text-[13px] font-semibold text-slate-600">
+        <input
+          type="checkbox"
+          className="h-[18px] w-[18px] shrink-0 cursor-pointer accent-brand"
+          {...register("recordar")}
+        />
+        Mantener la sesión iniciada en este dispositivo
+      </label>
 
       {errorMessage ? (
         <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">

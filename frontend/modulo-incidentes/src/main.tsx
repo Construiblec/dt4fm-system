@@ -5,6 +5,9 @@ import { RouterProvider } from "react-router-dom";
 import { router } from "./app/router/router";
 // Debe evaluarse antes del primer render para no perder `beforeinstallprompt`.
 import "@/shared/pwa/installPromptStore";
+// Antes del primer render: la PWA que se abre con una sesión caducada debe ir
+// al login, no pintar pantallas vacías esperando a la primera llamada.
+import "@/shared/auth/sessionWatch";
 import { UpdateAppToast } from "@/shared/components/UpdateAppToast";
 import "./index.css";
 

@@ -7,6 +7,7 @@ import {
   Post,
   Put,
   Query,
+  Req,
   UploadedFile,
   UseGuards,
   UseInterceptors,
@@ -23,7 +24,11 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
-import { OwnerSessionGuard } from './guards/owner-session.guard';
+import {
+  OwnerSessionGuard,
+  readSessionId,
+  type RequestWithOwner,
+} from './guards/owner-session.guard';
 import { OwnersService } from './owners.service';
 import { VerifyOwnerDto } from './dto/verify-owner.dto';
 import { RegisterOwnerDto } from './dto/register-owner.dto';
@@ -333,8 +338,14 @@ export class OwnersController {
   async changePassword(
     @Param('userId', ParseIntPipe) userId: number,
     @Body() dto: ChangePasswordDto,
+    @Req() request: RequestWithOwner,
   ) {
-    return this.ownersService.changeOwnerPassword(userId, dto);
+    // La sesión de quien cambia la contraseña es la única que se conserva.
+    return this.ownersService.changeOwnerPassword(
+      userId,
+      dto,
+      readSessionId(request),
+    );
   }
 
   @Post(':tenantId/contact')

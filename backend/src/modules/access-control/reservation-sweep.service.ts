@@ -62,6 +62,8 @@ export class ReservationSweepService {
           listingId: String(reservation.listingMapId ?? ''),
           guestName: reservation.guestName,
           guestEmail: reservation.guestEmail,
+          guestPhone: reservation.guestPhone,
+          channelName: reservation.channelName,
           arrivalDate: reservation.arrivalDate,
           departureDate: reservation.departureDate,
           // El estado real, no 'confirmed' fijo: si no, el barrido resucitaría

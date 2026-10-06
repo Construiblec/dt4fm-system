@@ -12,7 +12,7 @@ import {
 } from '../owners-identity.service';
 
 /** La sesión viaja en `Authorization` sin esquema, o en `x-session-token`. */
-const readSessionId = (request: Request): string =>
+export const readSessionId = (request: Request): string =>
   (
     (request.headers['x-session-token'] as string | undefined) ??
     request.headers.authorization ??
