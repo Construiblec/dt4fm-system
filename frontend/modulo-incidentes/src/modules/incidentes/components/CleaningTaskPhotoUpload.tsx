@@ -1,7 +1,8 @@
 import { useEffect, useState, type ChangeEvent } from "react";
-import { Camera, LoaderCircle, Trash2, ZoomIn } from "lucide-react";
+import { Camera, ImagePlus, LoaderCircle, Trash2, ZoomIn } from "lucide-react";
 import { useTaskPhotos } from "@/modules/incidentes/hooks/useTaskPhotos";
 import { PhotoLightbox } from "@/shared/components/PhotoLightbox";
+import { TakePhotoButton } from "@/shared/components/TakePhotoButton";
 import { getAttachmentUrl } from "@/modules/incidentes/services/cleaningTaskExecutionService";
 import type { CleaningTaskAttachment } from "@/modules/incidentes/types/CleaningTaskExecution";
 
@@ -191,9 +192,11 @@ export const CleaningTaskPhotoUpload = ({
               </>
             ) : (
               <>
-                <Camera className="h-8 w-8" />
+                <ImagePlus className="h-8 w-8" />
                 <p className="mt-3 text-sm font-semibold">
-                  {photos.length > 0 ? "Agregar más fotos" : "Seleccionar imágenes"}
+                  {photos.length > 0
+                    ? "Agregar más desde la galería"
+                    : "Elegir de la galería"}
                 </p>
                 <p className="mt-1 text-xs text-slate-400">
                   {remainingSlots === 0
@@ -213,6 +216,12 @@ export const CleaningTaskPhotoUpload = ({
             disabled={isBusy || remainingSlots === 0}
           />
         </label>
+
+        <TakePhotoButton
+          className="mt-3"
+          onChange={handleFileChange}
+          disabled={isBusy || remainingSlots === 0}
+        />
 
         {deleteMutation.isPending ? (
           <p className="mt-3 inline-flex items-center gap-2 text-sm text-slate-500">

@@ -22,6 +22,8 @@ import {
   type SearchableSelectOption,
 } from "@/shared/components/SearchableSelect";
 import { SuccessModal } from "@/shared/components/SuccessModal";
+import { TakePhotoButton } from "@/shared/components/TakePhotoButton";
+import { downscaleImage } from "@/shared/utils/downscaleImage";
 import {
   clearSession,
   getHomeRoute,
@@ -351,12 +353,19 @@ export const ReportIncidentPage = () => {
     [images.length],
   );
 
-  const handleEvidenceChange = (event: ChangeEvent<HTMLInputElement>) => {
-    const selectedFiles = Array.from(event.target.files ?? []);
+  const handleEvidenceChange = async (event: ChangeEvent<HTMLInputElement>) => {
+    // Se copian antes de limpiar el campo, que se vac\u00eda para poder volver a
+    // elegir la misma foto.
+    const picked = Array.from(event.target.files ?? []);
+    event.target.value = "";
 
-    if (selectedFiles.length === 0) {
+    if (picked.length === 0) {
       return;
     }
+
+    // Antes de validar: una foto de c\u00e1mara de un m\u00f3vil actual pasa de los
+    // 5 MB; reducida a 1920 px queda en unos cientos de KB.
+    const selectedFiles = await Promise.all(picked.map(downscaleImage));
 
     const invalidFile = selectedFiles.find(
       (file) => file.size > MAX_IMAGE_SIZE_BYTES,
@@ -364,7 +373,6 @@ export const ReportIncidentPage = () => {
 
     if (invalidFile) {
       setError("Cada imagen debe pesar m\u00e1ximo 5MB.");
-      event.target.value = "";
       return;
     }
 
@@ -372,10 +380,10 @@ export const ReportIncidentPage = () => {
       setError("Solo puede adjuntar hasta 6 im\u00e1genes.");
     }
 
-    const updatedImages = [...images, ...selectedFiles].slice(0, MAX_IMAGES);
-
-    setImages(updatedImages);
-    event.target.value = "";
+    // Funcional: mientras se reduc\u00edan, pudo entrar otra foto.
+    setImages((current) =>
+      [...current, ...selectedFiles].slice(0, MAX_IMAGES),
+    );
   };
 
   const removeEvidence = (fileToRemove: File) => {
@@ -765,7 +773,7 @@ export const ReportIncidentPage = () => {
 
             <label className="flex cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-white px-4 py-6 text-center">
               <span className="text-sm font-semibold text-slate-700">
-                Seleccionar im{"\u00e1"}genes
+                Elegir de la galer{"\u00ed"}a
               </span>
               <span className="mt-1 text-xs text-slate-400">
                 JPG, PNG o WEBP. M{"\u00e1"}ximo 6 im{"\u00e1"}genes.
@@ -779,6 +787,11 @@ export const ReportIncidentPage = () => {
                 disabled={remainingSlots === 0}
               />
             </label>
+
+            <TakePhotoButton
+              onChange={handleEvidenceChange}
+              disabled={remainingSlots === 0}
+            />
 
             {imagePreviews.length > 0 ? (
               <div className="grid grid-cols-3 gap-3">

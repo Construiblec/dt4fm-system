@@ -13,6 +13,6 @@ export const isIos = () => {
   );
 };
 
-/** Solo Safari en iOS ofrece "Añadir a pantalla de inicio". */
+/** Safari en iOS, frente a Chrome, Firefox… que también corren en WebKit. */
 export const isIosSafari = () =>
   isIos() && !/CriOS|FxiOS|EdgiOS|OPiOS/.test(window.navigator.userAgent);

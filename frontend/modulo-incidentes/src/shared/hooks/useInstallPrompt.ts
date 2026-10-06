@@ -5,7 +5,7 @@ import {
   getPromptSnapshot,
   subscribeInstallPrompt,
 } from "@/shared/pwa/installPromptStore";
-import { isIosSafari, isRunningStandalone } from "@/shared/pwa/platform";
+import { isIos, isRunningStandalone } from "@/shared/pwa/platform";
 
 const DISMISSED_KEY = "pwa-install-dismissed-at";
 const DISMISS_WINDOW_MS = 14 * 24 * 60 * 60 * 1000;
@@ -48,12 +48,14 @@ export const useInstallPrompt = () => {
     return outcome;
   }, [dismiss]);
 
+  // En iPhone, las instrucciones en cualquier navegador: desde iOS 16.4 no
+  // solo Safari puede añadir la app a la pantalla de inicio.
   const mode: InstallPromptMode =
     installed || isRunningStandalone() || dismissed
       ? "hidden"
       : deferredPrompt
         ? "prompt"
-        : isIosSafari()
+        : isIos()
           ? "ios-instructions"
           : "hidden";
 
