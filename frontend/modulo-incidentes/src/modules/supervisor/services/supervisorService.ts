@@ -10,6 +10,7 @@ import type {
   ReopenTaskResponse,
   ReviewTaskPayload,
   ReviewTaskResponse,
+  SupervisionEvidenceResponse,
 } from "@/modules/supervisor/types/SupervisorTask";
 import { redirectToLogin } from "@/shared/auth/returnTo";
 
@@ -123,5 +124,45 @@ export const reviewCleaningTask = async (
     return data;
   } catch (error) {
     return handleUnauthorized(error);
+  }
+};
+
+// ─── Evidencia de supervisión ─────────────────────────────────────────────────
+
+export const uploadSupervisionEvidence = async (
+  taskId: number,
+  file: File,
+): Promise<SupervisionEvidenceResponse> => {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  try {
+    const { data } = await supervisorApi.post<SupervisionEvidenceResponse>(
+      `/cleaning-tasks/${taskId}/supervision-evidence`,
+      formData,
+      {
+        headers: {
+          ...getAuthHeaders(),
+          "Content-Type": "multipart/form-data",
+        },
+      },
+    );
+    return data;
+  } catch (error) {
+    return handleUnauthorized(error);
+  }
+};
+
+export const deleteSupervisionEvidence = async (
+  taskId: number,
+  attachmentId: string,
+): Promise<void> => {
+  try {
+    await supervisorApi.delete(
+      `/cleaning-tasks/${taskId}/supervision-evidence/${attachmentId}`,
+      { headers: getAuthHeaders() },
+    );
+  } catch (error) {
+    handleUnauthorized(error);
   }
 };

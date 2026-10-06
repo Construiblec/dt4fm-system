@@ -5,6 +5,7 @@ import { useTaskDetail } from "@/modules/supervisor/hooks/useTaskDetail";
 import { TaskDetailInfo } from "@/modules/supervisor/components/TaskDetailInfo";
 import { TaskDetailChecklist } from "@/modules/supervisor/components/TaskDetailChecklist";
 import { TaskDetailPhotos } from "@/modules/supervisor/components/TaskDetailPhotos";
+import { SupervisionEvidenceSection } from "@/modules/supervisor/components/SupervisionEvidenceSection";
 import { ReviewModal } from "@/modules/supervisor/components/ReviewModal";
 import { ReopenModal } from "@/modules/supervisor/components/ReopenModal";
 import { LoadingModal } from "@/shared/components/LoadingModal";
@@ -64,6 +65,15 @@ export const AsistenteSLTaskDetailPage = () => {
 
               {/* Fotos */}
               <TaskDetailPhotos attachments={attachments} />
+
+              {/* Evidencia de supervisión: se edita con la tarea Completed o
+                  Reviewed, que es justo cuando se puede reabrir (canReopen). */}
+              <SupervisionEvidenceSection
+                taskId={taskId}
+                attachments={attachments}
+                editable={detail.canReopen}
+                onChanged={reload}
+              />
 
               {/* Checklist */}
               {detail.checklistDetail && (
