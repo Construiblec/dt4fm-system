@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { checkSession } from "@/services/api";
 import { consumeReturnTo } from "@/shared/auth/returnTo";
 import {
@@ -19,13 +19,21 @@ import { getSession } from "@/store/sessionStore";
  * y «Mantener la sesión iniciada» no servía de nada.
  *
  * Antes de entrar se pregunta al backend, así una sesión caducada se queda en
- * el login y no rebota entre pantallas. Devuelve `true` mientras pregunta, para
- * no enseñar el formulario un instante y quitarlo.
+ * el login. Devuelve `true` mientras pregunta, para no enseñar el formulario
+ * un instante y quitarlo.
+ *
+ * **Solo en `/`**, donde arranca la PWA. A `/login` se llega porque algo
+ * rechazó la sesión (un 401, el aviso de sesión caducada) o tras cerrar
+ * sesión, y ahí se enseña siempre el formulario. Si también reanudara ahí,
+ * cualquier desacuerdo entre `/auth/session` y una pantalla sobre si la sesión
+ * vale se convertiría en un bucle de recargas: ya pasó, con un 500 de
+ * `/auth/session` frente a un 401 de la pantalla.
  */
 export const useResumeSession = () => {
   const navigate = useNavigate();
+  const { pathname } = useLocation();
   const [checking, setChecking] = useState(
-    () => hasActiveSession() && !isVisitorSession(),
+    () => pathname === "/" && hasActiveSession() && !isVisitorSession(),
   );
 
   useEffect(() => {
