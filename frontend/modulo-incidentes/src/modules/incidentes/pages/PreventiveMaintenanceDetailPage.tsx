@@ -598,7 +598,6 @@ export const PreventiveMaintenanceDetailPage = () => {
 
         <SuccessModal
           open={successOpen}
-          incidentId={maintenance?.id ?? null}
           title="Mantenimiento completado"
           message="El mantenimiento preventivo fue finalizado correctamente."
           buttonLabel="Volver al Dashboard"
@@ -633,7 +632,6 @@ export const PreventiveMaintenanceDetailPage = () => {
 
         <SuccessModal
           open={suspendSuccessOpen}
-          incidentId={maintenance?.id ?? null}
           title="Mantenimiento suspendido"
           message="Las actividades sin completar se registraron como N.D. y volverán a estar pendientes al reanudar."
           buttonLabel="Volver al Dashboard"

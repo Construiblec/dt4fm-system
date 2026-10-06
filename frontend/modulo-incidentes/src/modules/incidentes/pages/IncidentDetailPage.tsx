@@ -457,7 +457,6 @@ export const IncidentDetailPage = () => {
         <LoadingModal open={isCompleting} message="Finalizando incidente..." />
         <SuccessModal
           open={successComplete}
-          incidentId={incident?.id ?? null}
           title="Incidente finalizado correctamente"
           message="Incidente finalizado correctamente"
           buttonLabel="Volver al Dashboard"
