@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import axios from "axios";
 import { hasActiveSession, isVisitorSession } from "@/shared/auth/session";
 import { isIos, isRunningStandalone } from "@/shared/pwa/platform";
 import {
@@ -26,7 +27,11 @@ const readDismissed = () => {
 const readPermission = (): NotificationPermission =>
   isPushSupported() ? Notification.permission : "denied";
 
-export type NotificationPromptMode = "hidden" | "prompt" | "error";
+/** `expired`: el alta falló con 401; reintentar no sirve, toca volver a entrar. */
+export type NotificationPromptMode = "hidden" | "prompt" | "error" | "expired";
+
+const isSessionExpired = (cause: unknown) =>
+  axios.isAxiosError(cause) && cause.response?.status === 401;
 
 /**
  * Pre-prompt propio, mismo patrón que useInstallPrompt.
@@ -40,6 +45,12 @@ export const useNotificationPrompt = () => {
   const [permission, setPermission] =
     useState<NotificationPermission>(readPermission);
   const [error, setError] = useState<string | null>(null);
+  const [expired, setExpired] = useState(false);
+
+  const fail = useCallback((cause: unknown) => {
+    setExpired(isSessionExpired(cause));
+    setError(describePushError(cause));
+  }, []);
 
   // Con el permiso ya concedido se re-registra en silencio: cubre el login en
   // un dispositivo que ya lo tenía y la rotación del endpoint por el navegador.
@@ -48,9 +59,9 @@ export const useNotificationPrompt = () => {
 
     void subscribeToPush().catch((cause) => {
       console.error("[push] re-registro automático fallido:", cause);
-      setError(describePushError(cause));
+      fail(cause);
     });
-  }, [permission]);
+  }, [permission, fail]);
 
   const dismiss = useCallback(() => {
     localStorage.setItem(DISMISSED_KEY, String(Date.now()));
@@ -73,14 +84,14 @@ export const useNotificationPrompt = () => {
       await subscribeToPush();
     } catch (cause) {
       console.error("[push] alta fallida:", cause);
-      setError(describePushError(cause));
+      fail(cause);
     }
-  }, [dismiss]);
+  }, [dismiss, fail]);
 
   const mode: NotificationPromptMode = (() => {
     if (!isPushSupported()) return "hidden";
     if (!hasActiveSession() || isVisitorSession()) return "hidden";
-    if (error) return "error";
+    if (error) return expired ? "expired" : "error";
     // "denied" es terminal: insistir no sirve de nada.
     if (permission !== "default") return "hidden";
     if (dismissed) return "hidden";

@@ -1,6 +1,5 @@
 type SuccessModalProps = {
   open: boolean;
-  incidentId: number | null;
   message: string;
   onClose: () => void;
   title?: string;
@@ -9,13 +8,12 @@ type SuccessModalProps = {
 
 export const SuccessModal = ({
   open,
-  incidentId,
   message,
   onClose,
   title = "Novedad reportada correctamente",
   buttonLabel = "Volver a pagina principal",
 }: SuccessModalProps) => {
-  if (!open || incidentId === null) {
+  if (!open) {
     return null;
   }
 
@@ -28,7 +26,6 @@ export const SuccessModal = ({
 
         <div className="mt-4 space-y-2 text-center">
           <h2 className="text-lg font-bold text-slate-900">{title}</h2>
-          <p className="text-sm text-slate-600">ID: {incidentId}</p>
           <p className="whitespace-pre-line text-sm text-slate-500">
             {message}
           </p>

@@ -197,7 +197,6 @@ export const CleaningTaskExecutionPage = () => {
         />
         <SuccessModal
           open={pauseSuccessOpen}
-          incidentId={taskId}
           title="Tarea pausada"
           message="El tiempo trabajado quedó guardado. Al reanudar, el cronómetro continúa desde ahí."
           buttonLabel="Volver al Dashboard"
@@ -208,7 +207,6 @@ export const CleaningTaskExecutionPage = () => {
         />
         <SuccessModal
           open={successOpen}
-          incidentId={taskId}
           title="Tarea completada exitosamente"
           message="La tarea de limpieza fue finalizada correctamente."
           buttonLabel="Volver al Dashboard"

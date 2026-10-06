@@ -256,7 +256,6 @@ export const GuestIncidentPage = () => {
       <LoadingModal open={sending} message="Enviando tu reporte..." />
       <SuccessModal
         open={incidentId !== null}
-        incidentId={incidentId}
         title="Reporte enviado"
         message="Nuestro equipo ya lo tiene y se pondrá en marcha."
         buttonLabel="Volver a mi portal"
