@@ -8,7 +8,6 @@ import { CleaningTaskObservations } from "@/modules/incidentes/components/Cleani
 import { CleaningTaskPhotoUpload } from "@/modules/incidentes/components/CleaningTaskPhotoUpload";
 import { CleaningTaskTimer } from "@/modules/incidentes/components/CleaningTaskTimer";
 import { PauseCleaningTaskModal } from "@/modules/incidentes/components/PauseCleaningTaskModal";
-import { SupervisionEvidenceGallery } from "@/modules/incidentes/components/SupervisionEvidenceGallery";
 import { useActiveTaskTimer } from "@/modules/incidentes/hooks/useActiveTaskTimer";
 import { useCleaningTaskExecution } from "@/modules/incidentes/hooks/useCleaningTaskExecution";
 import { ErrorModal } from "@/shared/components/ErrorModal";
@@ -79,23 +78,14 @@ export const CleaningTaskExecutionPage = () => {
               directa), y ahí ofrecer "Iniciar tarea" sería mentir: el backend
               rechazaría la transición. */}
           {taskDetail && !hasStarted && taskDetail.phase === "Assigned" ? (
-            <>
-              {/* Tarea reabierta con evidencia: el operario ve qué corregir antes
-                  de iniciar. Aquí no hay otro sitio que muestre las
-                  observaciones de supervisión, así que van con las fotos. */}
-              <SupervisionEvidenceGallery
-                attachments={attachments}
-                observations={taskDetail.supervisionObserv}
-              />
-              <CleaningTaskPreStart
-                activities={taskDetail.checklistDetail?.activities ?? []}
-                isPaused={taskDetail.isPaused}
-                isStarting={isStarting}
-                onStart={() => startTask()}
-                // Ya existe el asistente, así que el aviso deja de ser una promesa.
-                showVoiceNotice
-              />
-            </>
+            <CleaningTaskPreStart
+              activities={taskDetail.checklistDetail?.activities ?? []}
+              isPaused={taskDetail.isPaused}
+              isStarting={isStarting}
+              onStart={() => startTask()}
+              // Ya existe el asistente, así que el aviso deja de ser una promesa.
+              showVoiceNotice
+            />
           ) : null}
 
           {taskDetail && !hasStarted && taskDetail.phase !== "Assigned" ? (
@@ -130,9 +120,6 @@ export const CleaningTaskExecutionPage = () => {
                   )}
                 </section>
               )}
-
-              {/* Las observaciones de supervisión ya salen arriba; aquí solo las fotos. */}
-              <SupervisionEvidenceGallery attachments={attachments} />
 
               <CleaningTaskTimer />
               <CleaningTaskChecklist
