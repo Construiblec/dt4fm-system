@@ -831,6 +831,116 @@ export class CleaningTasksController {
     );
   }
 
+  /**
+   * POST /cleaning-tasks/:taskId/supervision-evidence
+   * Sube una foto de evidencia de supervisión: las novedades que el supervisor
+   * encuentra al revisar. Solo con la tarea Completed o Reviewed.
+   * Content-Type: multipart/form-data, campo "file". Solo SuperUser,
+   * SupervisorLimpieza y AsistenteSL.
+   */
+  @Post(':taskId/supervision-evidence')
+  @UseInterceptors(FileInterceptor('file'))
+  @ApiOperation({
+    summary: 'Subir una foto de evidencia de supervisión a la tarea',
+  })
+  @ApiParam({
+    name: 'taskId',
+    description: 'ID de la tarea de limpieza',
+    type: 'integer',
+  })
+  @ApiHeader({
+    name: 'x-session-token',
+    description: 'Token de sesión del supervisor',
+    required: true,
+  })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    description: 'Fotografía de la novedad encontrada',
+    schema: {
+      type: 'object',
+      properties: {
+        file: {
+          type: 'string',
+          format: 'binary',
+          description: 'Imagen JPG, PNG o HEIC de hasta 10MB',
+        },
+      },
+      required: ['file'],
+    },
+  })
+  @ApiResponse({ status: 201, description: 'Evidencia subida correctamente' })
+  @ApiResponse({
+    status: 400,
+    description: 'Archivo inválido, tope alcanzado o fase no permitida',
+  })
+  @ApiResponse({ status: 403, description: 'El rol no es de supervisión' })
+  async uploadSupervisionEvidence(
+    @Param('taskId', ParseIntPipe) taskId: number,
+    @UploadedFile()
+    file: {
+      originalname: string;
+      mimetype: string;
+      size: number;
+      buffer: Buffer;
+    },
+    @Headers('x-session-token') sessionToken: string,
+  ) {
+    this.requireSessionToken(sessionToken);
+    await this.requireSupervisorRole(sessionToken);
+
+    if (!file) {
+      throw new BadRequestException('File is required');
+    }
+
+    return this.cleaningTasksService.uploadSupervisionEvidence(
+      taskId,
+      file,
+      sessionToken,
+    );
+  }
+
+  /**
+   * DELETE /cleaning-tasks/:taskId/supervision-evidence/:attachmentId
+   * Borra una foto de evidencia de supervisión. Las fotos del operario no se
+   * pueden borrar por aquí.
+   */
+  @Delete(':taskId/supervision-evidence/:attachmentId')
+  @ApiOperation({ summary: 'Borrar una foto de evidencia de supervisión' })
+  @ApiParam({
+    name: 'taskId',
+    description: 'ID de la tarea de limpieza',
+    type: 'integer',
+  })
+  @ApiParam({
+    name: 'attachmentId',
+    description: 'ID del archivo adjunto en OpenMAINT',
+    type: 'string',
+  })
+  @ApiHeader({
+    name: 'x-session-token',
+    description: 'Token de sesión del supervisor',
+    required: true,
+  })
+  @ApiResponse({ status: 200, description: 'Evidencia borrada correctamente.' })
+  @ApiResponse({
+    status: 403,
+    description: 'El rol no es de supervisión o el adjunto es del operario.',
+  })
+  async deleteSupervisionEvidence(
+    @Param('taskId', ParseIntPipe) taskId: number,
+    @Param('attachmentId') attachmentId: string,
+    @Headers('x-session-token') sessionToken: string,
+  ) {
+    this.requireSessionToken(sessionToken);
+    await this.requireSupervisorRole(sessionToken);
+
+    return this.cleaningTasksService.deleteSupervisionEvidence(
+      taskId,
+      attachmentId,
+      sessionToken,
+    );
+  }
+
   // ─── Helpers privados ─────────────────────────────────────────────────────
 
   private requireSessionToken(token: string | undefined): void {

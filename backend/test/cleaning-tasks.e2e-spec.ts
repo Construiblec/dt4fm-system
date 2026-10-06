@@ -353,4 +353,246 @@ describe('CleaningTasksController (e2e)', () => {
         .expect(400);
     });
   });
+
+  describe('Evidencia de supervisión', () => {
+    // Como llegan de openMAINT: los adjuntos de clase traen el nombre en `name`
+    // y la descripción vacía, aunque se haya enviado.
+    type AttachmentFixture = {
+      _id: string;
+      name: string;
+      category: string;
+      description: string | null;
+    };
+
+    const operatorPhoto = (id: string): AttachmentFixture => ({
+      _id: id,
+      name: `1791204734903_${id}.jpg`,
+      category: 'Photo',
+      description: '',
+    });
+    const supervisionPhoto = (id: string): AttachmentFixture => ({
+      _id: id,
+      name: `supervision_1791204734903_${id}.jpg`,
+      category: 'Photo',
+      description: '',
+    });
+    const photos = (
+      count: number,
+      make: (id: string) => AttachmentFixture,
+      prefix: string,
+    ) => Array.from({ length: count }, (_, i) => make(`${prefix}-${i}`));
+
+    const postEvidence = () =>
+      request(app.getHttpServer())
+        .post('/cleaning-tasks/777/supervision-evidence')
+        .set('x-session-token', 'mock-session-token')
+        .attach('file', Buffer.from('fake-image'), {
+          filename: 'novedad.jpg',
+          contentType: 'image/jpeg',
+        });
+
+    describe('POST /:taskId/supervision-evidence', () => {
+      it('201: sube con la marca [Supervisión]; las fotos del operario no cuentan', async () => {
+        mocks.cleaningTasksOpenmaint.getTaskById.mockResolvedValueOnce(
+          cleaningTaskResponse({ phase: PHASE_IDS.COMPLETED, employee: 4567 }),
+        );
+        mocks.cleaningTasksOpenmaint.getAttachments.mockResolvedValueOnce({
+          data: photos(10, operatorPhoto, 'op'),
+        });
+        mocks.cleaningTasksOpenmaint.uploadAttachment.mockResolvedValueOnce({
+          data: { _id: 'sup-1', fileName: 'sup-1.jpg' },
+        });
+
+        const res = await postEvidence().expect(201);
+
+        expect(res.body.data.origin).toBe('supervision');
+        expect(
+          mocks.cleaningTasksOpenmaint.uploadAttachment,
+        ).toHaveBeenCalledWith(
+          777,
+          expect.any(Buffer),
+          expect.stringMatching(/^supervision_/),
+          'image/jpeg',
+          'Photo',
+          'mock-session-token',
+          '[Supervisión]',
+        );
+      });
+
+      it('201 también con la tarea Reviewed', async () => {
+        mocks.cleaningTasksOpenmaint.getTaskById.mockResolvedValueOnce(
+          cleaningTaskResponse({ phase: PHASE_IDS.REVIEWED, employee: 4567 }),
+        );
+        mocks.cleaningTasksOpenmaint.uploadAttachment.mockResolvedValueOnce({
+          data: { _id: 'sup-1' },
+        });
+
+        await postEvidence().expect(201);
+      });
+
+      it('400 si la tarea no está Completed ni Reviewed', async () => {
+        mocks.cleaningTasksOpenmaint.getTaskById.mockResolvedValueOnce(
+          cleaningTaskResponse({ phase: PHASE_IDS.ASSIGNED, employee: 4567 }),
+        );
+
+        await postEvidence().expect(400);
+
+        expect(
+          mocks.cleaningTasksOpenmaint.uploadAttachment,
+        ).not.toHaveBeenCalled();
+      });
+
+      it('403 si el rol no es de supervisión', async () => {
+        mocks.openmaint.getSession.mockResolvedValueOnce(
+          mockSession({ role: 'MaintOffice' }),
+        );
+
+        await postEvidence().expect(403);
+
+        expect(mocks.cleaningTasksOpenmaint.getTaskById).not.toHaveBeenCalled();
+      });
+
+      it('400 al llegar al tope de evidencia de supervisión', async () => {
+        mocks.cleaningTasksOpenmaint.getTaskById.mockResolvedValueOnce(
+          cleaningTaskResponse({ phase: PHASE_IDS.COMPLETED, employee: 4567 }),
+        );
+        mocks.cleaningTasksOpenmaint.getAttachments.mockResolvedValueOnce({
+          data: photos(10, supervisionPhoto, 'sup'),
+        });
+
+        await postEvidence().expect(400);
+
+        expect(
+          mocks.cleaningTasksOpenmaint.uploadAttachment,
+        ).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('DELETE /:taskId/supervision-evidence/:attachmentId', () => {
+      it('200: borra su propia evidencia', async () => {
+        mocks.cleaningTasksOpenmaint.getTaskById.mockResolvedValueOnce(
+          cleaningTaskResponse({ phase: PHASE_IDS.REVIEWED, employee: 4567 }),
+        );
+        mocks.cleaningTasksOpenmaint.getAttachments.mockResolvedValueOnce({
+          data: [supervisionPhoto('sup-1')],
+        });
+
+        await request(app.getHttpServer())
+          .delete('/cleaning-tasks/777/supervision-evidence/sup-1')
+          .set('x-session-token', 'mock-session-token')
+          .expect(200);
+
+        expect(
+          mocks.cleaningTasksOpenmaint.deleteAttachment,
+        ).toHaveBeenCalledWith(777, 'sup-1', 'mock-session-token');
+      });
+
+      it('403 sobre una foto del operario', async () => {
+        mocks.cleaningTasksOpenmaint.getTaskById.mockResolvedValueOnce(
+          cleaningTaskResponse({ phase: PHASE_IDS.COMPLETED, employee: 4567 }),
+        );
+        mocks.cleaningTasksOpenmaint.getAttachments.mockResolvedValueOnce({
+          data: [operatorPhoto('op-1')],
+        });
+
+        await request(app.getHttpServer())
+          .delete('/cleaning-tasks/777/supervision-evidence/op-1')
+          .set('x-session-token', 'mock-session-token')
+          .expect(403);
+
+        expect(
+          mocks.cleaningTasksOpenmaint.deleteAttachment,
+        ).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('fotos del operario', () => {
+      it('201: el cupo del operario ignora la evidencia de supervisión', async () => {
+        mocks.cleaningTasksOpenmaint.getTaskById.mockResolvedValueOnce(
+          cleaningTaskResponse({
+            phase: PHASE_IDS.IN_EXECUTION,
+            employee: 4567,
+          }),
+        );
+        mocks.cleaningTasksOpenmaint.getAttachments.mockResolvedValueOnce({
+          data: [
+            ...photos(10, supervisionPhoto, 'sup'),
+            ...photos(9, operatorPhoto, 'op'),
+          ],
+        });
+        mocks.cleaningTasksOpenmaint.uploadAttachment.mockResolvedValueOnce({
+          data: { _id: 'op-9' },
+        });
+
+        await request(app.getHttpServer())
+          .post('/cleaning-tasks/777/attachments')
+          .set('x-session-token', 'mock-session-token')
+          .set('x-cleaning-employee-id', '4567')
+          .field('description', '[Supervisión] intento de suplantar')
+          .attach('file', Buffer.from('fake-image'), {
+            filename: 'cocina.jpg',
+            contentType: 'image/jpeg',
+          })
+          .expect(201);
+
+        // La descripción del operario nunca llega a openMAINT.
+        expect(
+          mocks.cleaningTasksOpenmaint.uploadAttachment,
+        ).toHaveBeenCalledWith(
+          777,
+          expect.any(Buffer),
+          expect.any(String),
+          'image/jpeg',
+          'Photo',
+          'mock-session-token',
+        );
+      });
+
+      it('403: el operario no puede borrar evidencia de supervisión', async () => {
+        mocks.cleaningTasksOpenmaint.getTaskById.mockResolvedValueOnce(
+          cleaningTaskResponse({
+            phase: PHASE_IDS.IN_EXECUTION,
+            employee: 4567,
+          }),
+        );
+        mocks.cleaningTasksOpenmaint.getAttachments.mockResolvedValueOnce({
+          data: [supervisionPhoto('sup-1')],
+        });
+
+        await request(app.getHttpServer())
+          .delete('/cleaning-tasks/777/attachments/sup-1')
+          .set('x-session-token', 'mock-session-token')
+          .set('x-cleaning-employee-id', '4567')
+          .expect(403);
+
+        expect(
+          mocks.cleaningTasksOpenmaint.deleteAttachment,
+        ).not.toHaveBeenCalled();
+      });
+    });
+
+    it('GET /:taskId marca el origen de cada adjunto', async () => {
+      mocks.cleaningTasksOpenmaint.getTaskById.mockResolvedValueOnce(
+        cleaningTaskResponse({ phase: PHASE_IDS.COMPLETED, employee: 4567 }),
+      );
+      mocks.cleaningTasksOpenmaint.getAttachments.mockResolvedValueOnce({
+        data: [operatorPhoto('op-1'), supervisionPhoto('sup-1')],
+      });
+
+      const res = await request(app.getHttpServer())
+        .get('/cleaning-tasks/777')
+        .set('x-session-token', 'mock-session-token')
+        .expect(200);
+
+      expect(
+        res.body.data.attachments.map((a: { id: string; origin: string }) => [
+          a.id,
+          a.origin,
+        ]),
+      ).toEqual([
+        ['op-1', 'execution'],
+        ['sup-1', 'supervision'],
+      ]);
+    });
+  });
 });

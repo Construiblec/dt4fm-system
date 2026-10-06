@@ -18,6 +18,11 @@ export type CleaningTaskAttachment = {
   fileName?: string;
   description?: string | null;
   category?: string | null;
+  /**
+   * Quién aportó la foto: el operario al ejecutar, o el supervisor al revisar.
+   * La de supervisión el operario la ve, pero no es suya: no la cuenta ni la borra.
+   */
+  origin?: "supervision" | "execution";
   mimeType?: string | null;
   uploadDate?: string | null;
 };
