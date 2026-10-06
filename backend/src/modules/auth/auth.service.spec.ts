@@ -406,7 +406,9 @@ describe('AuthService', () => {
       });
     });
 
-    it.each([401, 403, 404])(
+    // El 400 es el caso real: `/sessions/current` responde así a una sesión
+    // caducada. Con un 500 la app entraba igual y rebotaba con el login.
+    it.each([400, 401, 403, 404])(
       'trata el %s de openMAINT como sesión caducada',
       async (status) => {
         const { service, auth } = buildHarness();

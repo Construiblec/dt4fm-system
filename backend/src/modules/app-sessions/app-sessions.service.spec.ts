@@ -361,17 +361,22 @@ describe('AppSessionsService', () => {
       expect(openmaint.keepAlive).toHaveBeenCalledWith('antes-del-reinicio');
     });
 
-    it('olvida las que openMAINT ya no reconoce', async () => {
-      const { service, rows, openmaint } = buildHarness();
-      await service.register(issued('recordada'), true);
-      openmaint.keepAlive.mockRejectedValueOnce(httpError(401));
+    // 400 incluido: es lo que responden las rutas `/sessions/current` a una
+    // sesión que ya no existe.
+    it.each([400, 401])(
+      'olvida las que openMAINT ya no reconoce (%s)',
+      async (status) => {
+        const { service, rows, openmaint } = buildHarness();
+        await service.register(issued('recordada'), true);
+        openmaint.keepAlive.mockRejectedValueOnce(httpError(status));
 
-      await service.keepAlive();
-      await service.keepAlive();
+        await service.keepAlive();
+        await service.keepAlive();
 
-      expect(rows).toHaveLength(0);
-      expect(openmaint.keepAlive).toHaveBeenCalledTimes(1);
-    });
+        expect(rows).toHaveLength(0);
+        expect(openmaint.keepAlive).toHaveBeenCalledTimes(1);
+      },
+    );
 
     it('con openMAINT caído las conserva para la siguiente pasada', async () => {
       const { service, rows, openmaint } = buildHarness();

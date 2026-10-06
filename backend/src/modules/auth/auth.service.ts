@@ -192,7 +192,16 @@ export class AuthService {
       const status = (error as { response?: { status?: number } })?.response
         ?.status;
 
-      if (status === 401 || status === 403 || status === 404) {
+      // El 400 también es una sesión que ya no existe: `GET /sessions/current`
+      // con una sesión caducada responde 400 `session not found for id = null`,
+      // no 401. Tratarlo como caída devolvía un 500, la app lo tomaba por
+      // «openMAINT caído, entra igual» y rebotaba sin fin con el login.
+      if (
+        status === 400 ||
+        status === 401 ||
+        status === 403 ||
+        status === 404
+      ) {
         throw new UnauthorizedException('Sesión no válida');
       }
 
