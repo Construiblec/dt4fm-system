@@ -824,7 +824,6 @@ export const ReportIncidentPage = () => {
         />
         <SuccessModal
           open={successData !== null}
-          incidentId={successData?.incidentId ?? null}
           message={successData ? getSuccessMessage(successData) : ""}
           onClose={() => {
             if (isVisitorSession()) {

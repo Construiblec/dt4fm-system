@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import FormData from 'form-data';
+import { toImageDataUrl } from '../../common/utils/image-data-url.util';
 import { OpenmaintClient } from '../../integrations/openmaint/openmaint.client';
 import {
   PREV_MAINT_TASK_CLASS,
@@ -110,13 +111,6 @@ export type PrevMaintConfigCard = {
 export type PrevMaintConfigResponse = {
   success?: boolean;
   data?: PrevMaintConfigCard;
-};
-
-export type PreventiveMaintAttachmentPreviewResponse = {
-  data?: {
-    hasPreview?: boolean;
-    dataUrl?: string;
-  };
 };
 
 export type UploadedFile = {
@@ -468,15 +462,21 @@ export class PreventiveMaintenanceOpenmaintService {
     )) as PreventiveMaintAttachmentsResponse;
   }
 
-  async findAttachmentPreview(
+  /**
+   * La imagen **original** del adjunto, como data URL. No se usa `/preview`:
+   * openMAINT la reduce a 100 px de ancho y en pantalla se veía borrosa.
+   */
+  async findAttachmentImage(
     sessionId: string,
     id: number,
     attachmentId: string,
-  ): Promise<PreventiveMaintAttachmentPreviewResponse> {
-    return (await this.client.get(
-      `${INSTANCES_PATH}/${id}/attachments/${attachmentId}/preview`,
+  ): Promise<string> {
+    const { data, contentType, fileName } = await this.client.getBuffer(
+      `${INSTANCES_PATH}/${id}/attachments/${attachmentId}/download`,
       sessionId,
-    )) as PreventiveMaintAttachmentPreviewResponse;
+    );
+
+    return toImageDataUrl(data, contentType, fileName);
   }
 
   /** Binario de un adjunto, para reenviarlo al navegador. */

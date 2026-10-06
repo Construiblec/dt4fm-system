@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { ImageOff, ZoomIn, X } from "lucide-react";
+import { ImageOff, ZoomIn } from "lucide-react";
 import { buildAttachmentUrl } from "@/shared/utils/attachmentUrl";
+import { PhotoLightbox } from "@/shared/components/PhotoLightbox";
 import type { TaskAttachment } from "@/modules/supervisor/types/SupervisorTask";
 
 type Props = {
@@ -9,11 +10,14 @@ type Props = {
 
 import { formatDayMonthTime as formatUploadDate } from "@/shared/utils/dateUtils";
 
+/** Fotos que subió el operario. La evidencia de supervisión va en su propia sección. */
 export const TaskDetailPhotos = ({ attachments }: Props) => {
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
 
   const photos = attachments.filter(
-    (a) => a.category === "Photo" || a.category === "Image",
+    (a) =>
+      (a.category === "Photo" || a.category === "Image") &&
+      a.origin !== "supervision",
   );
 
   if (photos.length === 0) {
@@ -68,27 +72,7 @@ export const TaskDetailPhotos = ({ attachments }: Props) => {
         </div>
       </section>
 
-      {/* Lightbox */}
-      {lightboxUrl && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4"
-          onClick={() => setLightboxUrl(null)}
-        >
-          <button
-            type="button"
-            onClick={() => setLightboxUrl(null)}
-            className="absolute right-4 top-4 rounded-full bg-white/10 p-2 text-white hover:bg-white/20"
-          >
-            <X className="h-6 w-6" />
-          </button>
-          <img
-            src={lightboxUrl}
-            alt="Evidencia ampliada"
-            className="max-h-full max-w-full rounded-xl object-contain"
-            onClick={(e) => e.stopPropagation()}
-          />
-        </div>
-      )}
+      <PhotoLightbox url={lightboxUrl} onClose={() => setLightboxUrl(null)} />
     </>
   );
 };

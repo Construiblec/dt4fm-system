@@ -8,7 +8,10 @@ import {
 } from '@nestjs/common';
 import { HostawayService } from '../../integrations/hostaway/hostaway.service';
 import { PushDispatchService } from '../push-notifications/push-dispatch.service';
-import { CleaningTasksOpenmaintService } from './cleaning-tasks.openmaint.service';
+import {
+  AttachmentCard,
+  CleaningTasksOpenmaintService,
+} from './cleaning-tasks.openmaint.service';
 import {
   PHASE_DESC_TO_ID,
   PHASE_IDS,
@@ -17,6 +20,13 @@ import {
   PhaseId,
 } from './constants/phase.constants';
 import { SUPERVISOR_ROLES } from './constants/roles.constants';
+import {
+  MAX_SUPERVISION_EVIDENCE,
+  resolveAttachmentOrigin,
+  SUPERVISION_EVIDENCE_FILE_PREFIX,
+  SUPERVISION_EVIDENCE_PHASES,
+  SUPERVISION_EVIDENCE_TAG,
+} from './constants/supervision-evidence.constants';
 import { CancelTaskDto } from './dto/cancel-task.dto';
 import { CompleteTaskDto } from './dto/complete-task.dto';
 import { CreateCleaningTaskDto } from './dto/create-cleaning-task.dto';
@@ -247,6 +257,7 @@ const ALLOWED_MIME_TYPES = [
   'image/heif',
 ];
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
+/** Tope de fotos del operario. La evidencia de supervisión tiene el suyo. */
 const MAX_ATTACHMENTS = 10;
 /**
  * Tope defensivo, en minutos, para el tiempo total de ejecución reportado por el
@@ -604,16 +615,9 @@ export class CleaningTasksService {
         ? this.fetchUnitInfo(task.Unit, sessionToken)
         : Promise.resolve(null),
     ]);
-    // downloadUrl es imprescindible: sin él la vista de ejecución no tiene de
-    // dónde pintar las fotos ya subidas, que era justo lo que fallaba al reanudar
-    // o reabrir una tarea.
-    const attachments = (attResponse?.data ?? []).map((a) => ({
-      id: a._id,
-      fileName: a.fileName,
-      category: a._category_description ?? a.category,
-      uploadDate: a.created ?? a.modified ?? null,
-      downloadUrl: `/cleaning-tasks/${task._id}/attachments/${a._id}/download`,
-    }));
+    const attachments = (attResponse?.data ?? []).map((a) =>
+      this.toAttachment(task._id, a),
+    );
     return {
       success: true,
       data: {
@@ -1219,13 +1223,9 @@ export class CleaningTasksService {
     const response = await this.openmaintService
       .getAttachments(taskId, sessionToken)
       .catch(() => ({ data: [] }));
-    let attachments = (response.data ?? []).map((a) => ({
-      id: a._id,
-      fileName: a.fileName,
-      category: a._category_description ?? a.category,
-      uploadDate: a.created ?? a.modified ?? null,
-      downloadUrl: `/cleaning-tasks/${taskId}/attachments/${a._id}/download`,
-    }));
+    let attachments = (response.data ?? []).map((a) =>
+      this.toAttachment(taskId, a),
+    );
     if (category && category !== 'all') {
       attachments = attachments.filter((a) => a.category === category);
     }
@@ -1253,25 +1253,23 @@ export class CleaningTasksService {
       throw new BadRequestException(
         'Photos can only be uploaded when task is InExecution or Completed',
       );
-    if (!ALLOWED_MIME_TYPES.includes(file.mimetype))
-      throw new BadRequestException(
-        'Only jpg, jpeg, png, heic files are allowed',
-      );
-    if (file.size > MAX_FILE_SIZE_BYTES)
-      throw new BadRequestException('File size must not exceed 10MB');
+    this.assertValidPhoto(file);
+    // La evidencia de supervisión no gasta el cupo del operario.
     const existing = await this.openmaintService.getAttachments(
       taskId,
       sessionToken,
     );
-    if ((existing.data?.length ?? 0) >= MAX_ATTACHMENTS)
+    const ownCount = (existing.data ?? []).filter(
+      (a) => resolveAttachmentOrigin(a) === 'execution',
+    ).length;
+    if (ownCount >= MAX_ATTACHMENTS)
       throw new BadRequestException(
         `Maximum ${MAX_ATTACHMENTS} photos allowed per task`,
       );
     const categoryCode = dto.category ?? 'Photo';
-    const ext = file.originalname.includes('.')
-      ? file.originalname.split('.').pop()
-      : 'jpg';
-    const uniqueName = `${Date.now()}_${Math.random().toString(36).slice(2, 7)}.${ext}`;
+    const uniqueName = this.buildUniqueFileName(file);
+    // dto.description no se reenvía a propósito: la descripción es la que marca
+    // la evidencia de supervisión, y el operario no debe poder escribirla.
     const response = await this.openmaintService.uploadAttachment(
       taskId,
       file.buffer,
@@ -1295,6 +1293,8 @@ export class CleaningTasksService {
   /**
    * Borra una foto de la tarea. Mismas fases que la subida: mientras la tarea
    * está en ejecución o recién completada, la evidencia sigue siendo del empleado.
+   * La evidencia de supervisión no es suya: tras una reapertura la ve, pero no
+   * puede borrarla.
    */
   async deleteAttachment(
     taskId: number,
@@ -1313,6 +1313,95 @@ export class CleaningTasksService {
         'Photos can only be deleted when task is InExecution or Completed',
       );
     }
+
+    const target = await this.findAttachment(
+      taskId,
+      attachmentId,
+      sessionToken,
+    );
+    if (target && resolveAttachmentOrigin(target) === 'supervision')
+      throw new ForbiddenException(
+        'La evidencia de supervisión solo la puede borrar un supervisor',
+      );
+
+    await this.openmaintService.deleteAttachment(
+      taskId,
+      attachmentId,
+      sessionToken,
+    );
+    return { success: true, data: { id: attachmentId, deleted: true } };
+  }
+
+  /**
+   * Sube una foto de evidencia de supervisión: las novedades que el supervisor
+   * encuentra al revisar. El operario la ve si la tarea se reabre.
+   * El rol lo valida el controller; aquí solo la fase, el archivo y el tope.
+   */
+  async uploadSupervisionEvidence(
+    taskId: number,
+    file: UploadedFile,
+    sessionToken: string,
+  ) {
+    await this.fetchTaskInSupervisionPhase(taskId, sessionToken);
+    this.assertValidPhoto(file);
+
+    const existing = await this.openmaintService.getAttachments(
+      taskId,
+      sessionToken,
+    );
+    const evidenceCount = (existing.data ?? []).filter(
+      (a) => resolveAttachmentOrigin(a) === 'supervision',
+    ).length;
+    if (evidenceCount >= MAX_SUPERVISION_EVIDENCE)
+      throw new BadRequestException(
+        `Máximo ${MAX_SUPERVISION_EVIDENCE} fotos de evidencia de supervisión por tarea`,
+      );
+
+    const uniqueName = this.buildUniqueFileName(
+      file,
+      SUPERVISION_EVIDENCE_FILE_PREFIX,
+    );
+    const response = await this.openmaintService.uploadAttachment(
+      taskId,
+      file.buffer,
+      uniqueName,
+      file.mimetype,
+      'Photo',
+      sessionToken,
+      SUPERVISION_EVIDENCE_TAG,
+    );
+    const att = response?.data;
+    return {
+      success: true,
+      data: {
+        id: att?._id ?? null,
+        fileName: att?.fileName ?? uniqueName,
+        category: 'Photo',
+        origin: 'supervision',
+        uploadDate: att?.created ?? new Date().toISOString(),
+      },
+    };
+  }
+
+  /** Borra una foto de evidencia de supervisión; las del operario no. */
+  async deleteSupervisionEvidence(
+    taskId: number,
+    attachmentId: string,
+    sessionToken: string,
+  ) {
+    await this.fetchTaskInSupervisionPhase(taskId, sessionToken);
+
+    const target = await this.findAttachment(
+      taskId,
+      attachmentId,
+      sessionToken,
+    );
+    if (!target)
+      throw new NotFoundException(`Adjunto ${attachmentId} no encontrado`);
+    if (resolveAttachmentOrigin(target) !== 'supervision')
+      throw new ForbiddenException(
+        'Solo se puede borrar evidencia de supervisión',
+      );
 
     await this.openmaintService.deleteAttachment(
       taskId,
@@ -1355,6 +1444,71 @@ export class CleaningTasksService {
     if (!task) throw new NotFoundException(`Tarea ${taskId} no encontrada`);
     this.validateOwnership(task.Employee, employeeId);
     return task;
+  }
+
+  private async fetchTaskInSupervisionPhase(
+    taskId: number,
+    sessionToken: string,
+  ) {
+    const response = await this.openmaintService.getTaskById(
+      taskId,
+      sessionToken,
+    );
+    const task = response?.data;
+    if (!task) throw new NotFoundException(`Tarea ${taskId} no encontrada`);
+    const phaseDesc = task._phase_description ?? String(task.phase);
+    if (!SUPERVISION_EVIDENCE_PHASES.includes(phaseDesc))
+      throw new BadRequestException(
+        `La evidencia de supervisión solo se puede modificar con la tarea Completed o Reviewed. Estado actual: ${phaseDesc}`,
+      );
+    return task;
+  }
+
+  private async findAttachment(
+    taskId: number,
+    attachmentId: string,
+    sessionToken: string,
+  ) {
+    const response = await this.openmaintService.getAttachments(
+      taskId,
+      sessionToken,
+    );
+    return (response.data ?? []).find((a) => a._id === attachmentId) ?? null;
+  }
+
+  /**
+   * Forma única de un adjunto hacia el front, para el detalle y para el listado.
+   * downloadUrl es imprescindible: sin él la vista de ejecución no tiene de
+   * dónde pintar las fotos ya subidas, que era justo lo que fallaba al reanudar
+   * o reabrir una tarea.
+   */
+  private toAttachment(taskId: number, a: AttachmentCard) {
+    return {
+      id: a._id,
+      // Los adjuntos de clase traen `name`; `fileName` es de los de proceso.
+      fileName: a.name ?? a.fileName,
+      category: a._category_description ?? a.category,
+      description: a.description ?? null,
+      origin: resolveAttachmentOrigin(a),
+      uploadDate: a.created ?? a.modified ?? null,
+      downloadUrl: `/cleaning-tasks/${taskId}/attachments/${a._id}/download`,
+    };
+  }
+
+  private assertValidPhoto(file: UploadedFile): void {
+    if (!ALLOWED_MIME_TYPES.includes(file.mimetype))
+      throw new BadRequestException(
+        'Only jpg, jpeg, png, heic files are allowed',
+      );
+    if (file.size > MAX_FILE_SIZE_BYTES)
+      throw new BadRequestException('File size must not exceed 10MB');
+  }
+
+  private buildUniqueFileName(file: UploadedFile, prefix = ''): string {
+    const ext = file.originalname.includes('.')
+      ? file.originalname.split('.').pop()
+      : 'jpg';
+    return `${prefix}${Date.now()}_${Math.random().toString(36).slice(2, 7)}.${ext}`;
   }
 
   private validateOwnership(

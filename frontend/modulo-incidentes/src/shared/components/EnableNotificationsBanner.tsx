@@ -1,4 +1,5 @@
 import { AlertTriangle, Bell, X } from "lucide-react";
+import { redirectToLogin } from "@/shared/auth/returnTo";
 import type { NotificationPromptMode } from "@/shared/hooks/useNotificationPrompt";
 
 type EnableNotificationsBannerProps = {
@@ -22,7 +23,8 @@ export const EnableNotificationsBanner = ({
     return null;
   }
 
-  const isError = mode === "error";
+  const isExpired = mode === "expired";
+  const isError = mode === "error" || isExpired;
 
   return (
     <div
@@ -56,12 +58,14 @@ export const EnableNotificationsBanner = ({
         <div className="flex shrink-0 items-center gap-1">
           <button
             type="button"
-            onClick={onEnable}
+            // Con la sesión caducada reintentar volvería a dar 401: se entra de
+            // nuevo, recordando la pantalla para volver tras el login.
+            onClick={isExpired ? redirectToLogin : onEnable}
             className={`rounded-full bg-white px-3 py-1.5 text-xs font-bold ${
               isError ? "text-amber-700" : "text-brand"
             }`}
           >
-            {isError ? "Reintentar" : "Activar"}
+            {isExpired ? "Iniciar sesión" : isError ? "Reintentar" : "Activar"}
           </button>
           <button
             type="button"

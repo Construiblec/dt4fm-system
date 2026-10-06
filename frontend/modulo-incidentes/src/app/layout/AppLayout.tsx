@@ -102,7 +102,9 @@ export const AppLayout = ({ children, className = "bg-white" }: AppLayoutProps) 
   const notifications = useNotificationPrompt();
   const showNotifications =
     notifications.mode !== "hidden" &&
-    (notifications.mode === "error" || !showInstall) &&
+    (notifications.mode === "error" ||
+      notifications.mode === "expired" ||
+      !showInstall) &&
     !isInstallBlockedRoute(location.pathname);
 
   // Cada barra fija mide 56px (pt-14) y se apilan.

@@ -1,6 +1,7 @@
 import { useEffect, useState, type ChangeEvent } from "react";
-import { Camera, LoaderCircle, Trash2, X, ZoomIn } from "lucide-react";
+import { Camera, LoaderCircle, Trash2, ZoomIn } from "lucide-react";
 import { useTaskPhotos } from "@/modules/incidentes/hooks/useTaskPhotos";
+import { PhotoLightbox } from "@/shared/components/PhotoLightbox";
 import { getAttachmentUrl } from "@/modules/incidentes/services/cleaningTaskExecutionService";
 import type { CleaningTaskAttachment } from "@/modules/incidentes/types/CleaningTaskExecution";
 
@@ -14,8 +15,10 @@ type CleaningTaskPhotoUploadProps = {
 /** Tope por tarea en el backend. */
 const MAX_PHOTOS = 10;
 
+/** Solo las fotos propias: la evidencia de supervisión se muestra aparte. */
 const isPhoto = (attachment: CleaningTaskAttachment) =>
-  attachment.category === "Photo" || attachment.category === "Image";
+  (attachment.category === "Photo" || attachment.category === "Image") &&
+  attachment.origin !== "supervision";
 
 import { formatDayMonthTime } from "@/shared/utils/dateUtils";
 
@@ -219,27 +222,7 @@ export const CleaningTaskPhotoUpload = ({
         ) : null}
       </section>
 
-      {lightboxUrl ? (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4"
-          onClick={() => setLightboxUrl(null)}
-        >
-          <button
-            type="button"
-            onClick={() => setLightboxUrl(null)}
-            aria-label="Cerrar"
-            className="absolute right-4 top-4 rounded-full bg-white/10 p-2 text-white hover:bg-white/20"
-          >
-            <X className="h-6 w-6" />
-          </button>
-          <img
-            src={lightboxUrl}
-            alt="Evidencia ampliada"
-            className="max-h-full max-w-full rounded-xl object-contain"
-            onClick={(event) => event.stopPropagation()}
-          />
-        </div>
-      ) : null}
+      <PhotoLightbox url={lightboxUrl} onClose={() => setLightboxUrl(null)} />
     </>
   );
 };

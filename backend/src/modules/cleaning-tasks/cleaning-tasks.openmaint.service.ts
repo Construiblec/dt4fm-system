@@ -78,11 +78,15 @@ type UnitResponse = {
   data: UnitCard;
 };
 
-type AttachmentCard = {
+export type AttachmentCard = {
   _id: string;
+  /** Los adjuntos de clase traen el nombre aquí; `fileName` llega vacío. */
+  name?: string;
   fileName: string;
   category: string;
   _category_description?: string;
+  description?: string | null;
+  author?: string;
   modified?: string;
   created?: string;
 };
@@ -420,6 +424,7 @@ export class CleaningTasksOpenmaintService {
    * Sube un attachment a una tarea.
    * OpenMAINT espera multipart/form-data con los campos "attachment" (JSON) y "file" (binario).
    * La categoría se convierte de código legible ("Photo") al ID numérico de DMS (390625).
+   * La descripción es lo que distingue la evidencia de supervisión de la del operario.
    */
   async uploadAttachment(
     taskId: number,
@@ -428,7 +433,8 @@ export class CleaningTasksOpenmaintService {
     mimeType: string,
     categoryCode: DmsCategoryCode,
     sessionToken: string,
-  ): Promise<any> {
+    description?: string,
+  ): Promise<{ data?: AttachmentCard } | undefined> {
     const categoryId = DMS_CATEGORY_IDS[categoryCode];
 
     const formData = new globalThis.FormData();
@@ -438,6 +444,7 @@ export class CleaningTasksOpenmaintService {
       JSON.stringify({
         category: categoryId.toString(),
         fileName,
+        ...(description ? { description } : {}),
       }),
     );
 
@@ -448,11 +455,11 @@ export class CleaningTasksOpenmaintService {
     );
 
     try {
-      return await this.client.postFormData(
+      return (await this.client.postFormData(
         `/classes/CleaningTask/cards/${taskId}/attachments`,
         formData,
         sessionToken,
-      );
+      )) as { data?: AttachmentCard } | undefined;
     } catch (error) {
       this.logger.error(
         `Error al subir attachment a tarea ${taskId}:`,

@@ -16,7 +16,7 @@ import {
   createGuestIncident,
   getGuestApiErrorMessage,
 } from "../services/guestPortalService";
-import { downscaleImage } from "../utils/downscaleImage";
+import { downscaleImage } from "@/shared/utils/downscaleImage";
 
 const MAX_IMAGES = 6;
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
@@ -256,7 +256,6 @@ export const GuestIncidentPage = () => {
       <LoadingModal open={sending} message="Enviando tu reporte..." />
       <SuccessModal
         open={incidentId !== null}
-        incidentId={incidentId}
         title="Reporte enviado"
         message="Nuestro equipo ya lo tiene y se pondrá en marcha."
         buttonLabel="Volver a mi portal"

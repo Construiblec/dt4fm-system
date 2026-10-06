@@ -380,6 +380,17 @@ export const MaintenanceSupervisorDetailPage = () => {
                 </div>
               </section>
 
+              {maintenance.reportNotes ? (
+                <section className="rounded-3xl bg-white p-5 shadow-sm">
+                  <h2 className="mb-3 text-sm font-bold text-slate-900">
+                    Detalle del reporte
+                  </h2>
+                  <p className="whitespace-pre-line text-sm leading-6 text-slate-600">
+                    {maintenance.reportNotes}
+                  </p>
+                </section>
+              ) : null}
+
               <section className="rounded-3xl bg-white p-5 shadow-sm">
                 <h2 className="mb-3 text-sm font-bold text-slate-900">
                   Programación

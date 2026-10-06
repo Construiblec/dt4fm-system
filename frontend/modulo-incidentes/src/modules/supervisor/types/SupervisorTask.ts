@@ -34,11 +34,30 @@ export type ReviewTaskResponse = {
 
 // ─── Detalle de tarea ─────────────────────────────────────────────────────────
 
+/**
+ * Quién aportó la foto: el operario al ejecutar, o el supervisor al revisar.
+ * Lo resuelve el backend; ninguna vista debe deducirlo de la descripción.
+ */
+export type AttachmentOrigin = "supervision" | "execution";
+
 export type TaskAttachment = {
   id: string;
+  fileName?: string;
   category: string;
+  origin: AttachmentOrigin;
   uploadDate: string;
   downloadUrl: string;
+};
+
+export type SupervisionEvidenceResponse = {
+  success: boolean;
+  data: {
+    id: string | null;
+    fileName: string;
+    category: string;
+    origin: AttachmentOrigin;
+    uploadDate: string;
+  };
 };
 
 export type ChecklistDetail = {

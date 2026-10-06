@@ -69,9 +69,13 @@ const httpStatus = (error: unknown) =>
 const reasonOf = (error: unknown) =>
   httpStatus(error) ?? (error as Error)?.message;
 
-/** openMAINT ya no reconoce la sesión: caducó o la cerró otro. */
+/**
+ * openMAINT ya no reconoce la sesión: caducó o la cerró otro. Incluye el 400
+ * porque las rutas `/sessions/current` responden así a una sesión que no
+ * existe (`session not found for id = null`).
+ */
 const isGone = (error: unknown) =>
-  [401, 403, 404].includes(httpStatus(error) ?? 0);
+  [400, 401, 403, 404].includes(httpStatus(error) ?? 0);
 
 /**
  * Sesiones de la app que el backend mantiene vivas y sabe cerrar.

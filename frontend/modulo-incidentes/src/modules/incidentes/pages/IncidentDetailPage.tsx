@@ -307,10 +307,23 @@ export const IncidentDetailPage = () => {
                 </section>
               ) : null}
 
-              {incident.notes !== null ? (
+              {incident.reportNotes ? (
                 <section className="rounded-3xl bg-white p-5 shadow-sm">
                   <h2 className="text-base font-semibold text-slate-900">
-                    Historial de notas
+                    Detalle del reporte
+                  </h2>
+                  <p className="mt-3 whitespace-pre-line text-sm leading-6 text-slate-600">
+                    {incident.reportNotes}
+                  </p>
+                </section>
+              ) : null}
+
+              {/* Mientras nadie más escriba, la última nota es la del reporte. */}
+              {incident.notes !== null &&
+              incident.notes !== incident.reportNotes ? (
+                <section className="rounded-3xl bg-white p-5 shadow-sm">
+                  <h2 className="text-base font-semibold text-slate-900">
+                    Última nota
                   </h2>
                   <p className="mt-3 whitespace-pre-line text-sm leading-6 text-slate-600">
                     {incident.notes}
@@ -457,7 +470,6 @@ export const IncidentDetailPage = () => {
         <LoadingModal open={isCompleting} message="Finalizando incidente..." />
         <SuccessModal
           open={successComplete}
-          incidentId={incident?.id ?? null}
           title="Incidente finalizado correctamente"
           message="Incidente finalizado correctamente"
           buttonLabel="Volver al Dashboard"

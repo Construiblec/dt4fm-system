@@ -13,6 +13,7 @@ import type {
   SuspensionReason,
 } from "@/modules/incidentes/types/PreventiveMaintenance";
 import { redirectToLogin } from "@/shared/auth/returnTo";
+import { downscaleImage } from "@/shared/utils/downscaleImage";
 
 const preventiveMaintenanceApi = axios.create({
   baseURL: env.VITE_API_URL.replace(/\/api\/?$/, ""),
@@ -158,7 +159,8 @@ export const uploadPreventiveMaintenanceDocument = async (
   file: File,
 ): Promise<PreventiveMaintenanceAttachment[]> => {
   const formData = new FormData();
-  formData.append("file", file);
+  // Solo reduce fotos; un PDF u otro documento pasa tal cual.
+  formData.append("file", await downscaleImage(file));
 
   try {
     const { data } = await preventiveMaintenanceApi.post<AttachmentsResponse>(

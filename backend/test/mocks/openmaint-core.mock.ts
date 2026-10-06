@@ -69,9 +69,10 @@ export const createOpenmaintServiceMock = () => ({
     },
   }),
   getIncidentAttachments: jest.fn().mockResolvedValue({ data: [] }),
-  getAttachmentPreview: jest
+  getAttachmentImage: jest
     .fn()
-    .mockResolvedValue({ data: { hasPreview: false } }),
+    // Como antes `hasPreview: false`: el adjunto no aporta imagen.
+    .mockRejectedValue(new Error('sin imagen en el mock')),
   getIncidentWithTask: jest.fn().mockResolvedValue({
     data: {
       ExecStartDate: null,

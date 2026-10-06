@@ -144,6 +144,19 @@ describe('AuthController (e2e)', () => {
         .expect(401);
     });
 
+    // Lo que responde de verdad `GET /sessions/current` con una sesión
+    // caducada. Antes salía un 500 y la app rebotaba sin fin con el login.
+    it('401 si openMAINT responde 400 (session not found)', async () => {
+      mocks.openmaintAuth.getSession.mockRejectedValueOnce({
+        response: { status: 400 },
+      });
+
+      await request(app.getHttpServer())
+        .get('/auth/session')
+        .set('authorization', 'sesion-caducada')
+        .expect(401);
+    });
+
     it('401 sin cabecera de sesión', async () => {
       await request(app.getHttpServer()).get('/auth/session').expect(401);
 
