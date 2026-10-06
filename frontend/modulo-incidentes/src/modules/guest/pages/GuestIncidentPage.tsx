@@ -5,6 +5,7 @@ import { Navigate, useNavigate } from "react-router-dom";
 import { ErrorModal } from "@/shared/components/ErrorModal";
 import { LoadingModal } from "@/shared/components/LoadingModal";
 import { SuccessModal } from "@/shared/components/SuccessModal";
+import { TakePhotoButton } from "@/shared/components/TakePhotoButton";
 import { GuestBackHeader } from "../components/GuestBackHeader";
 import { GuestPageShell } from "../components/GuestPageShell";
 import { GuestCard } from "../components/GuestSection";
@@ -227,6 +228,9 @@ export const GuestIncidentPage = () => {
                 </button>
               ) : null}
             </div>
+            {photos.length < MAX_IMAGES ? (
+              <TakePhotoButton className="mt-2" onChange={addPhotos} />
+            ) : null}
             <input
               ref={fileInput}
               type="file"

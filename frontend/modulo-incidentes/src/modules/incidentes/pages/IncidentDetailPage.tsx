@@ -29,6 +29,7 @@ import { PILL_SHAPE } from "@/shared/constants/statusPalette";
 import { ErrorModal } from "@/shared/components/ErrorModal";
 import { LoadingModal } from "@/shared/components/LoadingModal";
 import { SuccessModal } from "@/shared/components/SuccessModal";
+import { TakePhotoButton } from "@/shared/components/TakePhotoButton";
 
 import { formatDateTime as formatDate } from "@/shared/utils/dateUtils";
 
@@ -392,7 +393,7 @@ export const IncidentDetailPage = () => {
                           Adjuntar evidencia de resolución
                         </p>
                         <p className="mt-1 text-xs text-slate-400">
-                          Selecciona una imagen opcional
+                          Opcional: elige una imagen de la galería
                         </p>
 
                         {resolutionPreview ? (
@@ -416,6 +417,8 @@ export const IncidentDetailPage = () => {
                           onChange={handleResolutionImageChange}
                         />
                       </label>
+
+                      <TakePhotoButton onChange={handleResolutionImageChange} />
                     </div>
                   </section>
 

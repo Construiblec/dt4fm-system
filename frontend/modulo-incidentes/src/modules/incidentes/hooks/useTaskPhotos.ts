@@ -4,6 +4,7 @@ import {
   deleteCleaningTaskAttachment,
   uploadCleaningTaskPhoto,
 } from "@/modules/incidentes/services/cleaningTaskExecutionService";
+import { downscaleImage } from "@/shared/utils/downscaleImage";
 
 /**
  * Alta y baja de fotos de evidencia.
@@ -25,7 +26,10 @@ export const useTaskPhotos = (taskId: number) => {
     mutationFn: async (files: File[]) => {
       // De una en una: OpenMAINT valida el tope de adjuntos en cada subida, y en
       // paralelo dos peticiones podrían pasarlo a la vez.
-      for (const file of files) {
+      for (const original of files) {
+        // Antes de validar: una foto de cámara de un móvil actual pasa de los
+        // 5 MB; reducida a 1920 px queda en unos cientos de KB.
+        const file = await downscaleImage(original);
         const parsed = photoUploadSchema.safeParse({ file });
 
         if (!parsed.success) {
