@@ -7,6 +7,7 @@ import {
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
+import { extractReportNotes } from '../../common/utils/openmaint-register.util';
 import { OpenmaintService } from '../../integrations/openmaint/openmaint.service';
 import {
   PM_ACTIONS,
@@ -78,6 +79,11 @@ export type SupervisedMaintenance = {
    * mientras lo están: OpenMAINT lo limpia al reanudar.
    */
   suspensionReason?: string | null;
+  /**
+   * Lo que escribió quien reportó la novedad: la nota del primer paso de la
+   * bitácora. Solo correctivos.
+   */
+  reportNotes?: string | null;
 };
 
 export type Assignee = {
@@ -106,10 +112,6 @@ type RawAttachment = {
   fileName?: string | null;
   created?: string | null;
   modified?: string | null;
-};
-
-type RawPreview = {
-  data?: { hasPreview?: boolean; dataUrl?: string };
 };
 
 const IMAGE_FILE = /\.(png|jpe?g|webp|heic|heif)$/i;
@@ -257,32 +259,20 @@ export class MaintenanceSupervisionService {
 
     const attachments = await this.listImageAttachments(sessionId, kind, id);
 
-    const previews = await Promise.allSettled(
+    const images = await Promise.allSettled(
       attachments.map((attachment) =>
         kind === 'corrective'
-          ? this.openmaint.getAttachmentPreview(id, attachment._id, sessionId)
-          : this.preventive.findAttachmentPreview(
-              sessionId,
-              id,
-              attachment._id,
-            ),
+          ? this.openmaint.getAttachmentImage(id, attachment._id, sessionId)
+          : this.preventive.findAttachmentImage(sessionId, id, attachment._id),
       ),
     );
 
     const data = attachments.reduce<MaintenanceEvidence[]>(
       (accumulator, attachment, index) => {
-        const result = previews[index];
+        const result = images[index];
 
+        // Una foto que no se pudo descargar no tumba la galería.
         if (result.status !== 'fulfilled') {
-          return accumulator;
-        }
-
-        const preview = (result.value as RawPreview).data;
-
-        if (
-          preview?.hasPreview !== true ||
-          typeof preview.dataUrl !== 'string'
-        ) {
           return accumulator;
         }
 
@@ -290,7 +280,7 @@ export class MaintenanceSupervisionService {
           id: attachment._id,
           name: attachment.name ?? attachment.fileName ?? null,
           uploadDate: attachment.created ?? attachment.modified ?? null,
-          dataUrl: preview.dataUrl,
+          dataUrl: result.value,
         });
 
         return accumulator;
@@ -947,6 +937,9 @@ export class MaintenanceSupervisionService {
       isOverdue: this.isOverdue(dueDate, isClosed),
       execStartDate: card.ExecStartDate ?? null,
       execEndDate: card.ExecEndDate ?? null,
+      reportNotes: extractReportNotes(
+        card.Register ?? card._Register_html ?? null,
+      ),
     };
   }
 

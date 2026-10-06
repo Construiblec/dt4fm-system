@@ -36,6 +36,8 @@ export type SupervisedMaintenance = {
    * openMAINT lo limpia al reanudar.
    */
   suspensionReason?: string | null;
+  /** Lo que escribió quien reportó la novedad. Solo correctivos. */
+  reportNotes?: string | null;
 };
 
 export type Assignee = {
