@@ -16,7 +16,7 @@ import {
   createGuestIncident,
   getGuestApiErrorMessage,
 } from "../services/guestPortalService";
-import { downscaleImage } from "../utils/downscaleImage";
+import { downscaleImage } from "@/shared/utils/downscaleImage";
 
 const MAX_IMAGES = 6;
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;

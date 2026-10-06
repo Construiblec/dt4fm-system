@@ -49,9 +49,10 @@ export const createPreventiveMaintenanceOpenmaintServiceMock = () => ({
   advance: jest.fn().mockResolvedValue({ data: {} }),
   saveFields: jest.fn().mockResolvedValue({ data: {} }),
   findAttachments: jest.fn().mockResolvedValue({ data: [] }),
-  findAttachmentPreview: jest
+  findAttachmentImage: jest
     .fn()
-    .mockResolvedValue({ data: { hasPreview: false } }),
+    // Como antes `hasPreview: false`: el adjunto no aporta imagen.
+    .mockRejectedValue(new Error('sin imagen en el mock')),
   downloadAttachment: jest.fn().mockResolvedValue({
     data: Buffer.from('mock'),
     contentType: 'application/pdf',

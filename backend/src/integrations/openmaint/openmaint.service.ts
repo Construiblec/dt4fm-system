@@ -4,6 +4,7 @@ import {
   Injectable,
 } from '@nestjs/common';
 import FormData from 'form-data';
+import { toImageDataUrl } from '../../common/utils/image-data-url.util';
 import {
   CM_ACTIONS,
   CM_OUTCOME_POSITIVE,
@@ -213,15 +214,23 @@ export class OpenmaintService {
     );
   }
 
-  async getAttachmentPreview(
+  /**
+   * La imagen **original** del adjunto, como data URL.
+   *
+   * No se usa `/preview`: openMAINT la reduce a 100 px de ancho, y estirada a
+   * la pantalla se veía borrosa.
+   */
+  async getAttachmentImage(
     incidentId: number,
     attachmentId: string,
     sessionId: string,
-  ) {
-    return this.client.get(
-      `/processes/CorrectiveMaint/instances/${incidentId}/attachments/${attachmentId}/preview`,
+  ): Promise<string> {
+    const { data, contentType, fileName } = await this.client.getBuffer(
+      `/processes/CorrectiveMaint/instances/${incidentId}/attachments/${attachmentId}/download`,
       sessionId,
     );
+
+    return toImageDataUrl(data, contentType, fileName);
   }
 
   async uploadCompletionAttachment(
