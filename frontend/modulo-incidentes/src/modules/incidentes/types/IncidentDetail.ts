@@ -11,6 +11,9 @@ export type IncidentDetail = {
   status: string;
   priority: string;
   createdAt: string;
+  /** Lo que escribió quien reportó la novedad. */
+  reportNotes: string | null;
+  /** La nota del último paso del flujo. */
   notes: string | null;
   images: string[];
 };

@@ -1,6 +1,7 @@
 import { env } from "@/config/env";
 import { fetchWithSessionRenewal } from "@/shared/auth/sessionHttp";
 import { redirectToLogin } from "@/shared/auth/returnTo";
+import { downscaleImage } from "@/shared/utils/downscaleImage";
 
 // `VITE_API_URL` termina en `/api`, pero el backend no declara prefijo global:
 // sus rutas cuelgan de la raíz. Sin recortarlo se pide `/api/incidents/...` y
@@ -68,7 +69,7 @@ export const completeIncident = async (
   }
 
   if (file) {
-    formData.append("file", file);
+    formData.append("file", await downscaleImage(file));
   }
 
   const response = await fetchWithSessionRenewal(

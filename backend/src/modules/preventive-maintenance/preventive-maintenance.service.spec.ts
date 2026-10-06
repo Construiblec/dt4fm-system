@@ -76,7 +76,7 @@ describe('PreventiveMaintenanceService', () => {
       advance: jest.fn(),
       saveFields: jest.fn(),
       findAttachments: jest.fn().mockResolvedValue({ data: [] }),
-      findAttachmentPreview: jest.fn(),
+      findAttachmentImage: jest.fn(),
       downloadAttachment: jest.fn(),
       uploadAttachment: jest.fn(),
       deleteAttachment: jest.fn(),
@@ -271,9 +271,9 @@ describe('PreventiveMaintenanceService', () => {
           { _id: 'a2', name: 'manual.pdf' },
         ],
       });
-      openmaint.findAttachmentPreview.mockResolvedValue({
-        data: { hasPreview: true, dataUrl: 'data:image/png;base64,AAA' },
-      });
+      openmaint.findAttachmentImage.mockResolvedValue(
+        'data:image/png;base64,AAA',
+      );
 
       const { data } = await service.getPreventiveMaintenanceDetail(
         SESSION_ID,
@@ -282,8 +282,8 @@ describe('PreventiveMaintenanceService', () => {
 
       expect(data.notes).toBe('sdfasf');
       expect(data.images).toEqual(['data:image/png;base64,AAA']);
-      // El PDF no se pide como vista previa
-      expect(openmaint.findAttachmentPreview).toHaveBeenCalledTimes(1);
+      // El PDF no se descarga como imagen
+      expect(openmaint.findAttachmentImage).toHaveBeenCalledTimes(1);
     });
 
     it('devuelve el detalle aunque fallen los adjuntos', async () => {

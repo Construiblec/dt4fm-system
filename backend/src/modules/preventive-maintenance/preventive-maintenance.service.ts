@@ -31,7 +31,6 @@ import {
 } from './preventive-checklist.service';
 import {
   PreventiveMaintAttachment,
-  PreventiveMaintAttachmentPreviewResponse,
   PreventiveMaintAttachmentsResponse,
   PreventiveMaintCard,
   PreventiveMaintCardsResponse,
@@ -1081,22 +1080,19 @@ export class PreventiveMaintenanceService {
       IMAGE_FILE_REGEX.test(attachment.name ?? attachment.fileName ?? ''),
     );
 
-    const previews = await Promise.allSettled(
+    const results = await Promise.allSettled(
       images.map((attachment) =>
-        this.openmaint.findAttachmentPreview(sessionId, id, attachment._id),
+        this.openmaint.findAttachmentImage(sessionId, id, attachment._id),
       ),
     );
 
-    return previews
+    // Una foto que no se pudo descargar no tumba el detalle.
+    return results
       .filter(
-        (
-          result,
-        ): result is PromiseFulfilledResult<PreventiveMaintAttachmentPreviewResponse> =>
-          result.status === 'fulfilled' &&
-          result.value?.data?.hasPreview === true &&
-          typeof result.value.data.dataUrl === 'string',
+        (result): result is PromiseFulfilledResult<string> =>
+          result.status === 'fulfilled',
       )
-      .map((result) => result.value.data!.dataUrl!);
+      .map((result) => result.value);
   }
 
   /** Un fallo al contar los archivos de un mantenimiento no invalida su fila. */

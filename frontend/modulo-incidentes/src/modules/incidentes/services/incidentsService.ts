@@ -4,6 +4,7 @@ import { attachSessionRenewal } from "@/shared/auth/sessionHttp";
 import { getEmployeeId } from "@/shared/auth/session";
 import type { Incident } from "@/modules/incidentes/types/Incident";
 import { redirectToLogin } from "@/shared/auth/returnTo";
+import { downscaleImage } from "@/shared/utils/downscaleImage";
 
 /**
  * El usuario de openMAINT no tiene tarjeta de Employee asociada (atributo
@@ -80,7 +81,9 @@ export const createIncident = async ({
     }
   });
 
-  images.forEach((image) => {
+  // Se enseñan a tamaño original: reducidas, nítidas y sin pesar megas.
+  const prepared = await Promise.all(images.map(downscaleImage));
+  prepared.forEach((image) => {
     formData.append("images", image);
   });
 

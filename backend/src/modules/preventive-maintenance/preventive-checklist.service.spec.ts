@@ -102,7 +102,7 @@ describe('PreventiveChecklistService', () => {
       advance: jest.fn(),
       saveFields: jest.fn(),
       findAttachments: jest.fn(),
-      findAttachmentPreview: jest.fn(),
+      findAttachmentImage: jest.fn(),
       uploadAttachment: jest.fn(),
       findChecklistCard: jest.fn(),
       updateChecklistCard: jest.fn().mockResolvedValue({ success: true }),

@@ -5,7 +5,10 @@ import {
   InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
-import { extractRegisterNotes } from '../../common/utils/openmaint-register.util';
+import {
+  extractRegisterNotes,
+  extractReportNotes,
+} from '../../common/utils/openmaint-register.util';
 import { OpenmaintService } from '../../integrations/openmaint/openmaint.service';
 import {
   CM_DERIVED_ASSIGNED,
@@ -97,13 +100,6 @@ type OpenmaintIncidentTaskContextData = {
   ExecStartDate?: string | null;
   ExecEndDate?: string | null;
   _tasklist?: OpenmaintTaskItem[];
-};
-
-type AttachmentPreviewResponse = {
-  data?: {
-    hasPreview?: boolean;
-    dataUrl?: string;
-  };
 };
 
 @Injectable()
@@ -274,24 +270,19 @@ export class IncidentsService {
       /\.(png|jpg|jpeg|webp)$/i.test(attachment.name),
     );
 
-    const previewResults = await Promise.allSettled(
+    const imageResults = await Promise.allSettled(
       imageAttachments.map((attachment) =>
-        this.openmaintService.getAttachmentPreview(
-          id,
-          attachment._id,
-          sessionId,
-        ),
+        this.openmaintService.getAttachmentImage(id, attachment._id, sessionId),
       ),
     );
 
-    const images = previewResults
+    // Una foto que no se pudo descargar no tumba el detalle.
+    const images = imageResults
       .filter(
-        (result): result is PromiseFulfilledResult<AttachmentPreviewResponse> =>
-          result.status === 'fulfilled' &&
-          result.value?.data?.hasPreview === true &&
-          typeof result.value.data.dataUrl === 'string',
+        (result): result is PromiseFulfilledResult<string> =>
+          result.status === 'fulfilled',
       )
-      .map((result) => result.value.data!.dataUrl!);
+      .map((result) => result.value);
 
     return {
       id: incident._id ?? null,
@@ -310,6 +301,8 @@ export class IncidentsService {
       priority:
         incident._Priority_description ?? incident.Priority_description ?? null,
       createdAt: incident.OpeningDate ?? null,
+      // Lo que escribió quien reportó; `notes` es la nota del último paso.
+      reportNotes: extractReportNotes(incident.Register ?? null),
       notes: extractRegisterNotes(incident.Register ?? null),
       requesterName: incident._Requester_description ?? null,
       assigneeName: incident._Assignee_description ?? null,
