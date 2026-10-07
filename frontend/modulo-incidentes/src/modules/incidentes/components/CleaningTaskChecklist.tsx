@@ -87,13 +87,16 @@ export const CleaningTaskChecklist = ({ activities }: CleaningTaskChecklistProps
   // exige para el micrófono) y el de reanudar, donde se intenta igual y si el
   // navegador lo bloquea queda el botón de encender.
   const autoStartedRef = useRef(false);
-  const { supported: voiceSupported, start: startVoice } = voice;
+  const { supported: voiceSupported, start: startVoice, complete: checklistComplete } = voice;
 
   useEffect(() => {
     if (autoStartedRef.current || !voiceSupported || sections.length === 0) return;
     autoStartedRef.current = true;
+    // Con todo marcado no queda nada que guiar: al completarse se apaga solo, y
+    // encenderlo al volver a la tarea sería solo para despedirse otra vez.
+    if (checklistComplete) return;
     startVoice();
-  }, [sections.length, startVoice, voiceSupported]);
+  }, [checklistComplete, sections.length, startVoice, voiceSupported]);
 
   return (
     <section className="rounded-3xl bg-white p-5 shadow-sm">
@@ -128,6 +131,7 @@ export const CleaningTaskChecklist = ({ activities }: CleaningTaskChecklistProps
             blockTitle={voice.currentBlockTitle}
             activityText={voice.currentActivityText}
             failure={voice.failure}
+            complete={voice.complete}
             onStart={voice.start}
             onStop={voice.stop}
           />
