@@ -1,7 +1,7 @@
 import { useState, type ChangeEvent } from "react";
 import axios from "axios";
 import { useMutation } from "@tanstack/react-query";
-import { Camera, ImageOff, LoaderCircle, Trash2, ZoomIn } from "lucide-react";
+import { ImageOff, ImagePlus, LoaderCircle, Trash2, ZoomIn } from "lucide-react";
 import { photoUploadSchema } from "@/modules/incidentes/schemas/cleaningTaskExecutionSchema";
 import {
   deleteSupervisionEvidence,
@@ -10,7 +10,9 @@ import {
 import type { TaskAttachment } from "@/modules/supervisor/types/SupervisorTask";
 import { ErrorModal } from "@/shared/components/ErrorModal";
 import { PhotoLightbox } from "@/shared/components/PhotoLightbox";
+import { TakePhotoButton } from "@/shared/components/TakePhotoButton";
 import { buildAttachmentUrl } from "@/shared/utils/attachmentUrl";
+import { prepareImage } from "@/shared/utils/prepareImage";
 import { formatDayMonthTime } from "@/shared/utils/dateUtils";
 
 type Props = {
@@ -60,9 +62,17 @@ export const SupervisionEvidenceSection = ({
 
   const uploadMutation = useMutation({
     mutationFn: async (files: File[]) => {
+      // Todas a memoria y reducidas ya, a la vez: se suben de una en una, y para
+      // la última el archivo del móvil podría haber dejado de leerse (ver
+      // `prepareImage`). Reducir antes de validar: una foto de cámara de un
+      // móvil actual pasa de los 5 MB.
+      const prepared = await Promise.all(
+        files.map((file) => prepareImage(file)),
+      );
+
       // De una en una: el backend valida el tope en cada subida, y en paralelo
       // dos peticiones podrían pasarlo a la vez.
-      for (const file of files) {
+      for (const file of prepared) {
         const parsed = photoUploadSchema.safeParse({ file });
 
         if (!parsed.success) {
@@ -232,9 +242,11 @@ export const SupervisionEvidenceSection = ({
                 </>
               ) : (
                 <>
-                  <Camera className="h-6 w-6" />
+                  <ImagePlus className="h-6 w-6" />
                   <p className="mt-2 text-sm font-semibold">
-                    {evidence.length > 0 ? "Agregar más fotos" : "Agregar fotos"}
+                    {evidence.length > 0
+                      ? "Agregar más desde la galería"
+                      : "Elegir de la galería"}
                   </p>
                   <p className="mt-1 text-xs text-slate-400">
                     {remainingSlots === 0
@@ -254,6 +266,14 @@ export const SupervisionEvidenceSection = ({
               disabled={isBusy || remainingSlots === 0}
             />
           </label>
+        ) : null}
+
+        {editable ? (
+          <TakePhotoButton
+            className="mt-3"
+            onChange={handleFileChange}
+            disabled={isBusy || remainingSlots === 0}
+          />
         ) : null}
       </section>
 

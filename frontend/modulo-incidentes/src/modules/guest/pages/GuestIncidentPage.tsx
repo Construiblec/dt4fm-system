@@ -5,6 +5,7 @@ import { Navigate, useNavigate } from "react-router-dom";
 import { ErrorModal } from "@/shared/components/ErrorModal";
 import { LoadingModal } from "@/shared/components/LoadingModal";
 import { SuccessModal } from "@/shared/components/SuccessModal";
+import { TakePhotoButton } from "@/shared/components/TakePhotoButton";
 import { GuestBackHeader } from "../components/GuestBackHeader";
 import { GuestPageShell } from "../components/GuestPageShell";
 import { GuestCard } from "../components/GuestSection";
@@ -17,6 +18,10 @@ import {
   getGuestApiErrorMessage,
 } from "../services/guestPortalService";
 import { downscaleImage } from "@/shared/utils/downscaleImage";
+import {
+  describeImageError,
+  prepareImage,
+} from "@/shared/utils/prepareImage";
 
 const MAX_IMAGES = 6;
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
@@ -67,21 +72,38 @@ export const GuestIncidentPage = () => {
     return <Navigate to="/guest/dashboard" replace />;
   }
 
-  const addPhotos = (event: ChangeEvent<HTMLInputElement>) => {
-    const selected = Array.from(event.target.files ?? []);
-    event.target.value = "";
+  const addPhotos = async (event: ChangeEvent<HTMLInputElement>) => {
+    const input = event.target;
+    const selected = Array.from(input.files ?? []);
+    const room = Math.max(0, MAX_IMAGES - photos.length);
 
-    const room = MAX_IMAGES - photos.length;
+    // Copia a memoria al elegirlas, empezando ya: en el móvil el archivo del
+    // selector puede dejar de leerse en cuanto el sistema lo retoca, y la
+    // vista previa salía en blanco y el envío fallaba (ver `prepareImage`).
+    const results = await Promise.allSettled(
+      selected.slice(0, room).map((file) => prepareImage(file)),
+    );
+    input.value = "";
 
-    if (selected.length > room) {
+    const ready = results.flatMap((result) =>
+      result.status === "fulfilled" ? [result.value] : [],
+    );
+    const unreadable = results.find(
+      (result): result is PromiseRejectedResult => result.status === "rejected",
+    );
+
+    if (unreadable) {
+      setFormError(describeImageError(unreadable.reason));
+    } else if (selected.length > room) {
       setFormError(`Puedes adjuntar hasta ${MAX_IMAGES} fotos.`);
     } else {
       setFormError(null);
     }
 
+    // Funcional: mientras se leían, pudo entrar otra foto.
     setPhotos((current) => [
       ...current,
-      ...selected.slice(0, room).map((file) => ({
+      ...ready.slice(0, MAX_IMAGES - current.length).map((file) => ({
         file,
         preview: URL.createObjectURL(file),
       })),
@@ -227,6 +249,9 @@ export const GuestIncidentPage = () => {
                 </button>
               ) : null}
             </div>
+            {photos.length < MAX_IMAGES ? (
+              <TakePhotoButton className="mt-2" onChange={addPhotos} />
+            ) : null}
             <input
               ref={fileInput}
               type="file"

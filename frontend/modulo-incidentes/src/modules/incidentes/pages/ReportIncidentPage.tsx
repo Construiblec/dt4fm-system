@@ -22,6 +22,11 @@ import {
   type SearchableSelectOption,
 } from "@/shared/components/SearchableSelect";
 import { SuccessModal } from "@/shared/components/SuccessModal";
+import { TakePhotoButton } from "@/shared/components/TakePhotoButton";
+import {
+  describeImageError,
+  prepareImage,
+} from "@/shared/utils/prepareImage";
 import {
   clearSession,
   getHomeRoute,
@@ -351,11 +356,34 @@ export const ReportIncidentPage = () => {
     [images.length],
   );
 
-  const handleEvidenceChange = (event: ChangeEvent<HTMLInputElement>) => {
-    const selectedFiles = Array.from(event.target.files ?? []);
+  const handleEvidenceChange = async (event: ChangeEvent<HTMLInputElement>) => {
+    const input = event.target;
+    const picked = Array.from(input.files ?? []);
 
-    if (selectedFiles.length === 0) {
+    if (picked.length === 0) {
       return;
+    }
+
+    // Copia a memoria y reducci\u00f3n, todas a la vez y empezando ya: en el m\u00f3vil
+    // el archivo del selector puede dejar de leerse en cuanto el sistema lo
+    // retoca, y entonces la miniatura sal\u00eda en blanco y el env\u00edo fallaba
+    // (ver `prepareImage`).
+    const results = await Promise.allSettled(
+      picked.map((file) => prepareImage(file)),
+    );
+    // Despu\u00e9s de leer, no antes; se vac\u00eda para poder volver a elegir la misma.
+    input.value = "";
+
+    const selectedFiles = results.flatMap((result) =>
+      result.status === "fulfilled" ? [result.value] : [],
+    );
+    const unreadable = results.find(
+      (result): result is PromiseRejectedResult => result.status === "rejected",
+    );
+
+    // Las que s\u00ed se leyeron se a\u00f1aden igual.
+    if (unreadable) {
+      setError(describeImageError(unreadable.reason));
     }
 
     const invalidFile = selectedFiles.find(
@@ -364,7 +392,6 @@ export const ReportIncidentPage = () => {
 
     if (invalidFile) {
       setError("Cada imagen debe pesar m\u00e1ximo 5MB.");
-      event.target.value = "";
       return;
     }
 
@@ -372,10 +399,14 @@ export const ReportIncidentPage = () => {
       setError("Solo puede adjuntar hasta 6 im\u00e1genes.");
     }
 
-    const updatedImages = [...images, ...selectedFiles].slice(0, MAX_IMAGES);
+    if (selectedFiles.length === 0) {
+      return;
+    }
 
-    setImages(updatedImages);
-    event.target.value = "";
+    // Funcional: mientras se le\u00edan, pudo entrar otra foto.
+    setImages((current) =>
+      [...current, ...selectedFiles].slice(0, MAX_IMAGES),
+    );
   };
 
   const removeEvidence = (fileToRemove: File) => {
@@ -481,7 +512,15 @@ export const ReportIncidentPage = () => {
         return;
       }
 
-      setError("Intente nuevamente.");
+      // Con el código: sin él no había forma de saber desde el móvil si falló
+      // la red o el servidor.
+      setError(
+        axios.isAxiosError(error) && !error.response
+          ? "No se pudo enviar el reporte. Revisa la conexión e inténtalo de nuevo."
+          : axios.isAxiosError(error)
+            ? `Intente nuevamente. (Error ${error.response?.status})`
+            : "Intente nuevamente.",
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -765,7 +804,7 @@ export const ReportIncidentPage = () => {
 
             <label className="flex cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-white px-4 py-6 text-center">
               <span className="text-sm font-semibold text-slate-700">
-                Seleccionar im{"\u00e1"}genes
+                Elegir de la galer{"\u00ed"}a
               </span>
               <span className="mt-1 text-xs text-slate-400">
                 JPG, PNG o WEBP. M{"\u00e1"}ximo 6 im{"\u00e1"}genes.
@@ -779,6 +818,11 @@ export const ReportIncidentPage = () => {
                 disabled={remainingSlots === 0}
               />
             </label>
+
+            <TakePhotoButton
+              onChange={handleEvidenceChange}
+              disabled={remainingSlots === 0}
+            />
 
             {imagePreviews.length > 0 ? (
               <div className="grid grid-cols-3 gap-3">

@@ -64,7 +64,8 @@ Sin límite de longitud, cualquier frase larga que mencione una palabra clave se
 ```
 voiceCommands.ts   →  qué es un comando (función pura, sin navegador)
 voiceReminder.ts   →  cuándo toca recordar (función pura, sin navegador)
-useVoiceChecklist  →  el motor: habla, escucha, arma la conversación
+voiceAudio.ts      →  micrófono y voz: cuándo se abre, cuándo habla, cuándo se rinde
+useVoiceChecklist  →  el motor: arma la conversación sobre voiceAudio
 VoiceChecklistControl → lo que el operario ve y toca
 CleaningTaskChecklist → hospeda el hook, conecta con el store existente
 ```
@@ -75,13 +76,17 @@ CleaningTaskChecklist → hospeda el hook, conecta con el store existente
 | --- | --- |
 | `utils/voiceCommands.ts` | Diccionario de comandos, palabra de activación, todas las reglas de seguridad. Pura y testeada. |
 | `utils/voiceReminder.ts` | Regla de cuándo insistir con el recordatorio. Pura y testeada. |
-| `hooks/useVoiceChecklist.ts` | El bucle de conversación completo: habla (`SpeechSynthesisUtterance`), escucha (`SpeechRecognition`), decide granularidad, arma y cancela recordatorios. |
-| `components/VoiceChecklistControl.tsx` | Estado visible (escuchando / hablando / apagado), última frase entendida, en qué bloque/actividad va, encendido y apagado manual. |
+| `utils/voiceAudio.ts` | El micrófono y la voz, sin nada de la conversación: soltar el micrófono antes de hablar, elegir la voz, reabrir la escucha, pausar ante fallos. Recibe el navegador como dependencias y está testeado con dobles. |
+| `hooks/useVoiceChecklist.ts` | El bucle de conversación: decide qué decir y qué esperar oír, la granularidad, los recordatorios y el apagado al completar. Le pasa a `voiceAudio` el reconocedor y la voz del navegador. |
+| `components/VoiceChecklistControl.tsx` | Estado visible (escuchando / hablando / apagado / checklist completo), última frase entendida, en qué bloque/actividad va, avisos de pausa, encendido y apagado manual. |
 | `components/CleaningTaskChecklist.tsx` | Conecta el hook con las dos acciones del store (`setChecklistItems`, `updateChecklistItem`) y arranca el asistente automáticamente al montar. |
 
-### Por qué el diccionario y el recordatorio son funciones puras aparte
+### Por qué las decisiones viven fuera del hook
 
-El proyecto corre sus tests de frontend con `environment: 'node'` (sin jsdom), así que no hay forma de testear el hook completo, que depende de `SpeechRecognition` y `speechSynthesis`. Las dos piezas donde hay una decisión que se puede equivocar — *"¿esto es un comando?"* y *"¿toca avisar ahora?"* — se extrajeron a funciones puras sin ninguna dependencia de navegador, y son las que llevan la cobertura de tests real (138 tests entre las dos, más los del parser del checklist).
+El proyecto corre sus tests de frontend con `environment: 'node'` (sin jsdom), así que no hay forma de testear el hook completo. Las piezas donde hay algo que se puede equivocar se sacaron del hook para poder probarlas:
+
+- *"¿Esto es un comando?"* y *"¿toca avisar ahora?"* son funciones puras sin navegador (`voiceCommands`, `voiceReminder`).
+- *"¿Cuándo se abre el micrófono y cuándo se habla?"* (`voiceAudio`) depende de `SpeechRecognition` y `speechSynthesis`, pero los recibe como dependencias: en los tests se le pasan un reconocedor y una voz falsos, y el reloj falso de Vitest. Los fallos que tuvo en el campo fueron todos de orden y de tiempos, que es justo lo que esos tests fijan.
 
 ---
 
@@ -181,11 +186,30 @@ Operario:  "asistente, repite"  → repite solo lo que tiene entre manos:
                                   la actividad en curso ("no") o el
                                   nombre del bloque ("sí"). No reinicia
                                   el reloj ni cambia de modo.
+
+── al marcar lo último (por voz o con el dedo) ────────────
+Asistente: "Acabaste todo. Si no tienes novedades, finaliza la tarea."
+                              → se apaga solo: suelta el micrófono
+                                y la pantalla muestra "Checklist completo"
 ```
 
 ### Apagar el micrófono mientras habla
 
 `say()` siempre detiene el reconocimiento antes de hablar y lo reanuda al terminar. No es una optimización: casi todas las frases del asistente contienen la palabra "acabado" ("Di: asistente, acabado cuando finalices"), y si el teléfono se oyera a sí mismo se daría el trabajo por hecho solo.
+
+El orden importa, y cada paso corrige un fallo visto en Android (`voiceAudio.ts`):
+
+1. **Soltar el micrófono y esperar a que el reconocedor avise que lo soltó** (`abort()` y su `onend`, como máximo 400 ms). Una voz que arranca con el micrófono todavía abierto puede salir muda.
+2. **Cancelar lo anterior solo si algo suena.** Un `cancel()` de más llega tarde al motor de voz y se lleva la frase que se pide a continuación.
+3. **Respirar 250 ms** si se soltó el micrófono o se canceló algo, y recién entonces hablar.
+
+Además:
+
+- **Turnos.** Cada `say()` abre un turno; lo pendiente de uno anterior (el aviso de una frase cancelada, un temporizador) no hace nada. Sin esto, tocar un bloque mientras el asistente hablaba dejaba viva la lectura vieja: seguía hablando, ejecutaba su `onDone` y reabría el micrófono en mitad de la frase nueva.
+- **La frase en curso queda referenciada** mientras suena: Chrome puede liberarla de memoria a media lectura y entonces nunca avisa que terminó.
+- **La voz se elige** entre las del dispositivo (`pickSpanishVoice`): de España si la hay, si no cualquier otra en español, y la instalada antes que la de red. Pedir `es-ES` sin elegir voz falla en silencio en motores que no la tienen, como el propio de algunos Samsung.
+- **El respaldo crece con la frase** (`speechFallbackMs`: 3 s + 90 ms por carácter) y, si al cumplirse la voz sigue sonando, se espera más, hasta el doble. Con un respaldo fijo de 10 s una actividad larga se daba por dicha a media lectura y el micrófono se abría con el teléfono hablando.
+- **Si el navegador no deja hablar** (`not-allowed`: Chrome no deja hablar a una página que nadie tocó todavía, como cuando se recarga sola al volver a la app), el asistente se pausa con `voz-bloqueada`. Un toque en "Intentar de nuevo" lo arregla.
 
 ### Configuración del reconocedor
 
@@ -196,11 +220,25 @@ recognition.interimResults = true;
 
 `continuous: true` es obligatorio: con `false`, el reconocedor cierra la sesión de escucha en cuanto detecta una pausa, y en la prueba de campo eso hizo perder más de la mitad de lo que el operario decía — cerraba antes de terminar de procesar la transcripción. Con `interimResults: true` el hook actúa sobre resultados **parciales**, no solo sobre el resultado final (que en Chrome móvil suele tardar o no llegar).
 
+### Reabrir el micrófono
+
+En Android, Chrome cierra la escucha tras unos segundos de silencio aunque se pida `continuous`, y en muchos móviles suena un pitido cada vez que el micrófono se abre o se cierra. El asistente lo vuelve a abrir solo; cuándo, lo decide `afterSession` (`voiceAudio.ts`):
+
+- **Tras un silencio normal** (una sesión larga, o una en la que oyó algo): se reabre a los 0,3 s. Esperar más haría que el operario hablara sobre un micrófono cerrado.
+- **Tras cortes rápidos seguidos** (menos de 1,5 s sin oír nada, o un error `network`/`audio-capture`): se espacia — 0,3 s, 1 s y 3 s. Oír cualquier cosa vuelve a 0,3 s. Reabrir siempre a los 0,3 s era el bucle de encender y apagar con pitidos varias veces por segundo.
+- **Al 4.º corte seguido por `network` o `audio-capture`** el asistente se pausa con `sin-conexion` o `microfono-no-disponible` y lo avisa en pantalla, con "Intentar de nuevo". Los cortes sin un error claro solo se espacian y no pausan: pausar por ellos podría dejar sin asistente a un móvil que simplemente cierra rápido.
+- **`not-allowed` / `service-not-allowed`** pausan en el acto (`sin-microfono`), y **`language-not-supported`** también (`sin-soporte`).
+- **Con la página oculta** (pantalla apagada, otra app) el navegador corta la escucha: eso no cuenta como fallo ni se reintenta. Al volver a verse la página, se reabre con la cuenta a cero.
+
+Algún pitido mientras espera en silencio es de Android y no se puede quitar desde la web.
+
 ### Ciclo de vida y limpieza
 
-- El asistente **arranca automáticamente** al montar `CleaningTaskChecklist` (que solo existe mientras la tarea está en ejecución). No hace falta que el operario lo encienda.
+- El asistente **arranca automáticamente** al montar `CleaningTaskChecklist` (que solo existe mientras la tarea está en ejecución). No hace falta que el operario lo encienda. **Si al montar ya está todo marcado, no arranca**: no queda nada que guiar.
+- **Se apaga solo al completar el checklist**, por voz o con el dedo: dice "Acabaste todo. Si no tienes novedades, finaliza la tarea." y llama a `stop()` en lugar de volver a escuchar. Antes se quedaba escuchando (y pitando) hasta salir de la pantalla. El control muestra "Checklist completo" y oculta el botón de encender mientras siga todo marcado.
 - El pedido de permiso de micrófono lo dispara el propio navegador la primera vez que se llama a `recognition.start()` — no hay ningún diálogo propio de la app antes de eso.
-- Si el operario rechaza el permiso, o el navegador no soporta `SpeechRecognition`/`speechSynthesis`, el hook expone `failure: "sin-microfono" | "sin-soporte"` y dejo de intentar: el checklist sigue funcionando 100% por tap, sin ningún bloqueo.
+- `start()` llama a `unlockSpeechSynthesis()` (ver `speechUnlock.ts`): cuando viene del botón "Encender" o "Intentar de nuevo", corre dentro del toque, que es la única ocasión de destrabar la voz en iOS.
+- Si algo impide seguir, el hook expone `failure` y deja de intentar: `"sin-soporte"`, `"sin-microfono"`, `"sin-conexion"`, `"microfono-no-disponible"` o `"voz-bloqueada"`. Salvo `sin-soporte`, el aviso trae "Intentar de nuevo". El checklist sigue funcionando 100% por tap, sin ningún bloqueo.
 - Al desmontar la pantalla (`useEffect` de limpieza), se llama `stop()`: aborta el reconocimiento, cancela cualquier síntesis en curso y libera todos los temporizadores. Sin esto, el navegador seguiría mostrando el indicador de "grabando" sobre una pantalla que ya no existe.
 - El botón de apagar en `VoiceChecklistControl` llama al mismo `stop()`; volver a encenderlo es un nuevo `start()` limpio.
 
@@ -229,25 +267,31 @@ Las dos funciones de callback llaman a acciones del store **que ya existían** p
 
 ## 8. Testing
 
-138 tests en el módulo de checklist, de los cuales los relevantes a la voz son:
+Los tests relevantes a la voz:
 
 | Archivo | Qué cubre |
 | --- | --- |
 | `voiceCommands.test.ts` | Cada intención y sus variantes; palabra de activación (incluye el caso exacto del bug de campo: *"acabado" suelto → null*, *"asistente, acabado" → FIN*); tope de palabras; que las intenciones fuera de lo esperado se ignoren; que "listo" sea afirmación y nunca fin. |
 | `voiceReminder.test.ts` | Primer aviso vs. insistencia; `null` sin minutos; no se rompe con `NaN`/`Infinity`; redondeo de minutos decimales. |
+| `voiceAudio.test.ts` | Con un reconocedor y una voz falsos y el reloj de Vitest: que no hable hasta soltar el micrófono (o a los 400 ms); que solo cancele si algo suena, y respire antes de hablar; que una frase nueva anule la anterior (sin seguirla, sin su `onDone`, sin abrir el micrófono); que no abra el micrófono mientras la voz suena; las esperas al reabrir (0,3 / 1 / 3 s) y la pausa al 4.º corte por red o micrófono; la página oculta; la voz bloqueada; el apagado desde `onDone`; la elección de voz. |
 
-El motor (`useVoiceChecklist`) y el control visual no tienen test automatizado — dependen de `SpeechRecognition`/`speechSynthesis`, que no existen en el entorno de test (`environment: 'node'`, sin jsdom). Se verificaron manualmente en Chrome de escritorio y Chrome Android.
+La conversación (`useVoiceChecklist`) y el control visual no tienen test automatizado — son React sobre el navegador, y el entorno de test es `node`, sin jsdom. Se verifican a mano.
 
 ### Notas de verificación manual
 
-- **Brave no sirve**: no incluye la clave de la API de reconocimiento de voz de Google y falla siempre con error `network`. Probar en Chrome.
+- **Brave no sirve**: no incluye la clave de la API de reconocimiento de voz de Google y falla siempre con error `network` (ahora termina en el aviso "sin conexión"). Probar en Chrome.
 - El caso que el bug del "Dime" rompía — decir "asistente, acabado" de corrido, sin pausa — es el primero a reprobar ante cualquier cambio futuro en la ventana de activación.
 - Contestar "no" y confirmar que el check del bloque **no aparece** hasta cerrar la última actividad es la prueba de que se está escribiendo por actividad y no por bloque.
+- Tocar un bloque mientras el asistente habla: tiene que pasar limpio al siguiente, sin mezclar frases.
+- Modo avión mientras escucha: en unos segundos, "Asistente en pausa: sin conexión"; con internet de vuelta, "Intentar de nuevo" lo reanuda.
+- Marcar lo último: dice "Acabaste todo…", se apaga y no vuelve a pitar.
 
 ---
 
 ## 9. Limitaciones conocidas / fuera de alcance
 
 - **No hay reconocimiento en iOS Safari** de forma confiable — es una limitación del navegador, no de esta implementación. El asistente se degrada a `failure: "sin-soporte"` y el checklist sigue por tap.
+- **En iOS, una voz sin destrabar se descarta sin ningún aviso**: no hay error que permita pausar con `voz-bloqueada` como en Chrome. Se destraba con el toque de "Iniciar tarea", "Reanudar", "Encender" o "Intentar de nuevo".
+- **Los pitidos de Android al reabrir el micrófono tras un silencio** son del sistema y no se pueden quitar desde la web. Lo que sí se evita es el bucle rápido (ver "Reabrir el micrófono").
 - **Sin señal sonora de confirmación** en el camino "sí" (bloque). Si el ruido ambiente tapa el "asistente, acabado" y el operario no se da cuenta, es posible que lo repita y ese segundo intento caiga sobre el bloque siguiente. Mitigable a futuro con un sonido corto de confirmación; no implementado en esta versión.
 - **El pedido de permiso de micrófono es el del navegador**, sin una pantalla propia previa que explique para qué sirve antes de que aparezca. Se apoya en que el operario ya vio el aviso en la pantalla previa al inicio de la tarea (`CleaningTaskPreStart`, `showVoiceNotice`).

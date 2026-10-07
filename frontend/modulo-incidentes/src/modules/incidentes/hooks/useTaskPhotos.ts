@@ -4,6 +4,7 @@ import {
   deleteCleaningTaskAttachment,
   uploadCleaningTaskPhoto,
 } from "@/modules/incidentes/services/cleaningTaskExecutionService";
+import { prepareImage } from "@/shared/utils/prepareImage";
 
 /**
  * Alta y baja de fotos de evidencia.
@@ -23,9 +24,17 @@ export const useTaskPhotos = (taskId: number) => {
 
   const uploadMutation = useMutation({
     mutationFn: async (files: File[]) => {
+      // Todas a memoria y reducidas ya, a la vez: se suben de una en una, y para
+      // la última el archivo del móvil podría haber dejado de leerse (ver
+      // `prepareImage`). Reducir antes de validar: una foto de cámara de un
+      // móvil actual pasa de los 5 MB.
+      const prepared = await Promise.all(
+        files.map((file) => prepareImage(file)),
+      );
+
       // De una en una: OpenMAINT valida el tope de adjuntos en cada subida, y en
       // paralelo dos peticiones podrían pasarlo a la vez.
-      for (const file of files) {
+      for (const file of prepared) {
         const parsed = photoUploadSchema.safeParse({ file });
 
         if (!parsed.success) {
