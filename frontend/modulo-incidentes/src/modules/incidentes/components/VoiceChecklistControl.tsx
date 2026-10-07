@@ -18,8 +18,25 @@ type Props = {
   blockTitle: string | null;
   activityText: string | null;
   failure: VoiceFailure | null;
+  /** Todo marcado: el asistente ya no tiene nada que guiar. */
+  complete: boolean;
   onStart: () => void;
   onStop: () => void;
+};
+
+/**
+ * Por qué se pausó, dicho para el operario. Falta "sin-soporte" porque ese no
+ * tiene arreglo: no lleva botón para volver a intentar.
+ */
+const FAILURE_MESSAGES: Record<Exclude<VoiceFailure, "sin-soporte">, string> = {
+  "sin-microfono":
+    "No se pudo usar el micrófono. Puedes marcar el checklist con el dedo, o dar permiso y volver a intentar.",
+  "sin-conexion":
+    "Asistente en pausa: sin conexión. El reconocimiento de voz necesita internet. Puedes seguir marcando el checklist con el dedo.",
+  "microfono-no-disponible":
+    "Asistente en pausa: el micrófono no está disponible. Puede que otra app lo esté usando. Puedes seguir marcando el checklist con el dedo.",
+  "voz-bloqueada":
+    "Asistente en pausa: el teléfono no le dejó hablar. Toca «Intentar de nuevo» para activarlo.",
 };
 
 /**
@@ -42,6 +59,7 @@ export const VoiceChecklistControl = ({
   blockTitle,
   activityText,
   failure,
+  complete,
   onStart,
   onStop,
 }: Props) => {
@@ -54,13 +72,11 @@ export const VoiceChecklistControl = ({
     );
   }
 
-  if (failure === "sin-microfono") {
+  // Con todo marcado, la pausa ya no importa: se ve "Checklist completo".
+  if (failure && !complete) {
     return (
       <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-4">
-        <p className="text-sm text-amber-800">
-          No se pudo usar el micrófono. Puedes marcar el checklist con el dedo, o
-          dar permiso y volver a intentar.
-        </p>
+        <p className="text-sm text-amber-800">{FAILURE_MESSAGES[failure]}</p>
         <button
           type="button"
           onClick={onStart}
@@ -97,14 +113,14 @@ export const VoiceChecklistControl = ({
               }`}
             >
               {!active
-                ? "Asistente de voz apagado"
+                ? complete
+                  ? "Checklist completo"
+                  : "Asistente de voz apagado"
                 : phase === "hablando"
                   ? "Escucha las instrucciones"
-                  : phase === "listo"
-                    ? "Checklist completo"
-                    : awake
-                      ? "Te escucho, dime"
-                      : "Asistente en espera"}
+                  : awake
+                    ? "Te escucho, dime"
+                    : "Asistente en espera"}
             </p>
 
             {/* Lo que dice va en el idioma del operario, no en jerga de estado. */}
@@ -147,23 +163,29 @@ export const VoiceChecklistControl = ({
 
             {!active ? (
               <p className="mt-1 text-xs text-slate-500">
-                Puedes seguir marcando el checklist con el dedo.
+                {complete
+                  ? "Asistente de voz apagado. Ya puedes finalizar la tarea."
+                  : "Puedes seguir marcando el checklist con el dedo."}
               </p>
             ) : null}
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={active ? onStop : onStart}
-          className={`shrink-0 rounded-xl px-3 py-2 text-xs font-semibold transition ${
-            active
-              ? "border border-cyan-300 text-cyan-800 hover:bg-cyan-100"
-              : "bg-cyan-600 text-white hover:bg-cyan-700"
-          }`}
-        >
-          {active ? "Apagar" : "Encender"}
-        </button>
+        {/* Con todo marcado no hay nada que guiar: encenderlo solo lo haría
+            despedirse otra vez. Si se desmarca algo, el botón vuelve. */}
+        {active || !complete ? (
+          <button
+            type="button"
+            onClick={active ? onStop : onStart}
+            className={`shrink-0 rounded-xl px-3 py-2 text-xs font-semibold transition ${
+              active
+                ? "border border-cyan-300 text-cyan-800 hover:bg-cyan-100"
+                : "bg-cyan-600 text-white hover:bg-cyan-700"
+            }`}
+          >
+            {active ? "Apagar" : "Encender"}
+          </button>
+        ) : null}
       </div>
     </div>
   );
