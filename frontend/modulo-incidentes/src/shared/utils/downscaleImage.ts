@@ -21,26 +21,33 @@ export const downscaleImage = async (file: File): Promise<File> => {
 
   try {
     const bitmap = await createImageBitmap(file);
-    const scale = Math.min(
-      1,
-      MAX_DIMENSION / Math.max(bitmap.width, bitmap.height),
-    );
 
-    const canvas = document.createElement("canvas");
-    canvas.width = Math.round(bitmap.width * scale);
-    canvas.height = Math.round(bitmap.height * scale);
-    canvas.getContext("2d")?.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-    bitmap.close();
+    try {
+      const scale = Math.min(
+        1,
+        MAX_DIMENSION / Math.max(bitmap.width, bitmap.height),
+      );
 
-    const blob = await new Promise<Blob | null>((resolve) =>
-      canvas.toBlob(resolve, "image/jpeg", QUALITY),
-    );
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.round(bitmap.width * scale);
+      canvas.height = Math.round(bitmap.height * scale);
+      canvas.getContext("2d")?.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
 
-    if (!blob) return file;
+      const blob = await new Promise<Blob | null>((resolve) =>
+        canvas.toBlob(resolve, "image/jpeg", QUALITY),
+      );
 
-    return new File([blob], file.name.replace(/\.\w+$/, "") + ".jpg", {
-      type: "image/jpeg",
-    });
+      // Vacío no es una foto: mejor el original que una imagen en blanco.
+      if (!blob || blob.size === 0) return file;
+
+      return new File([blob], file.name.replace(/\.\w+$/, "") + ".jpg", {
+        type: "image/jpeg",
+      });
+    } finally {
+      // Después de codificar, no antes: hay navegadores que dibujan en diferido
+      // y necesitan el bitmap hasta que el canvas se convierte en archivo.
+      bitmap.close();
+    }
   } catch {
     return file;
   }

@@ -30,6 +30,10 @@ import { ErrorModal } from "@/shared/components/ErrorModal";
 import { LoadingModal } from "@/shared/components/LoadingModal";
 import { SuccessModal } from "@/shared/components/SuccessModal";
 import { TakePhotoButton } from "@/shared/components/TakePhotoButton";
+import {
+  describeImageError,
+  prepareImage,
+} from "@/shared/utils/prepareImage";
 
 import { formatDateTime as formatDate } from "@/shared/utils/dateUtils";
 
@@ -117,13 +121,25 @@ export const IncidentDetailPage = () => {
     ? getCorrectiveBlockedReason(statusCode)
     : null;
 
-  const handleResolutionImageChange = (
+  const handleResolutionImageChange = async (
     event: ChangeEvent<HTMLInputElement>,
   ) => {
-    const file = event.target.files?.[0] ?? null;
+    const input = event.target;
+    const file = input.files?.[0];
 
-    setResolutionImage(file);
-    event.target.value = "";
+    if (!file) return;
+
+    try {
+      // Copia a memoria y reducida al elegirla: en el móvil el archivo del
+      // selector puede dejar de leerse después (ver `prepareImage`), y reducida
+      // no choca con el límite de 5 MB de abajo.
+      setResolutionImage(await prepareImage(file));
+    } catch (error) {
+      setResolutionImage(null);
+      setErrorComplete(describeImageError(error));
+    } finally {
+      input.value = "";
+    }
   };
 
   const handleStart = async () => {
@@ -172,8 +188,13 @@ export const IncidentDetailPage = () => {
       await completeIncident(incident.id, resolutionNotes, resolutionImage);
 
       setSuccessComplete(true);
-    } catch {
-      setErrorComplete("No se pudo finalizar el incidente");
+    } catch (error) {
+      // `fetch` lanza TypeError cuando no hay respuesta: no es el servidor.
+      setErrorComplete(
+        error instanceof TypeError
+          ? "No se pudo enviar. Revisa la conexión e inténtalo de nuevo."
+          : "No se pudo finalizar el incidente",
+      );
     } finally {
       setIsCompleting(false);
     }
