@@ -23,7 +23,10 @@ import {
 } from "@/shared/components/SearchableSelect";
 import { SuccessModal } from "@/shared/components/SuccessModal";
 import { TakePhotoButton } from "@/shared/components/TakePhotoButton";
-import { downscaleImage } from "@/shared/utils/downscaleImage";
+import {
+  describeImageError,
+  prepareImage,
+} from "@/shared/utils/prepareImage";
 import {
   clearSession,
   getHomeRoute,
@@ -354,18 +357,34 @@ export const ReportIncidentPage = () => {
   );
 
   const handleEvidenceChange = async (event: ChangeEvent<HTMLInputElement>) => {
-    // Se copian antes de limpiar el campo, que se vac\u00eda para poder volver a
-    // elegir la misma foto.
-    const picked = Array.from(event.target.files ?? []);
-    event.target.value = "";
+    const input = event.target;
+    const picked = Array.from(input.files ?? []);
 
     if (picked.length === 0) {
       return;
     }
 
-    // Antes de validar: una foto de c\u00e1mara de un m\u00f3vil actual pasa de los
-    // 5 MB; reducida a 1920 px queda en unos cientos de KB.
-    const selectedFiles = await Promise.all(picked.map(downscaleImage));
+    // Copia a memoria y reducci\u00f3n, todas a la vez y empezando ya: en el m\u00f3vil
+    // el archivo del selector puede dejar de leerse en cuanto el sistema lo
+    // retoca, y entonces la miniatura sal\u00eda en blanco y el env\u00edo fallaba
+    // (ver `prepareImage`).
+    const results = await Promise.allSettled(
+      picked.map((file) => prepareImage(file)),
+    );
+    // Despu\u00e9s de leer, no antes; se vac\u00eda para poder volver a elegir la misma.
+    input.value = "";
+
+    const selectedFiles = results.flatMap((result) =>
+      result.status === "fulfilled" ? [result.value] : [],
+    );
+    const unreadable = results.find(
+      (result): result is PromiseRejectedResult => result.status === "rejected",
+    );
+
+    // Las que s\u00ed se leyeron se a\u00f1aden igual.
+    if (unreadable) {
+      setError(describeImageError(unreadable.reason));
+    }
 
     const invalidFile = selectedFiles.find(
       (file) => file.size > MAX_IMAGE_SIZE_BYTES,
@@ -380,7 +399,11 @@ export const ReportIncidentPage = () => {
       setError("Solo puede adjuntar hasta 6 im\u00e1genes.");
     }
 
-    // Funcional: mientras se reduc\u00edan, pudo entrar otra foto.
+    if (selectedFiles.length === 0) {
+      return;
+    }
+
+    // Funcional: mientras se le\u00edan, pudo entrar otra foto.
     setImages((current) =>
       [...current, ...selectedFiles].slice(0, MAX_IMAGES),
     );
@@ -489,7 +512,15 @@ export const ReportIncidentPage = () => {
         return;
       }
 
-      setError("Intente nuevamente.");
+      // Con el código: sin él no había forma de saber desde el móvil si falló
+      // la red o el servidor.
+      setError(
+        axios.isAxiosError(error) && !error.response
+          ? "No se pudo enviar el reporte. Revisa la conexión e inténtalo de nuevo."
+          : axios.isAxiosError(error)
+            ? `Intente nuevamente. (Error ${error.response?.status})`
+            : "Intente nuevamente.",
+      );
     } finally {
       setIsSubmitting(false);
     }
