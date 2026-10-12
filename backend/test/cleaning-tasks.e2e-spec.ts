@@ -311,6 +311,30 @@ describe('CleaningTasksController (e2e)', () => {
         .expect(200);
 
       expect(res.body.data.phase).toBe('Assigned');
+      expect(mocks.pushDispatch.notifyCleaningReopened).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: 777,
+          cleaningEmployeeId: 4567,
+          reason: 'Faltó limpiar la nevera',
+        }),
+      );
+    });
+
+    it('200 sin empleado: reabre pero no avisa a nadie', async () => {
+      mocks.cleaningTasksOpenmaint.getTaskById.mockResolvedValueOnce(
+        cleaningTaskResponse({ phase: PHASE_IDS.COMPLETED }),
+      );
+      mocks.cleaningTasksOpenmaint.updateTaskWithSession.mockResolvedValueOnce({
+        data: { _id: 777 },
+      });
+
+      await request(app.getHttpServer())
+        .patch('/cleaning-tasks/777/reopen')
+        .set('x-session-token', 'mock-session-token')
+        .send({})
+        .expect(200);
+
+      expect(mocks.pushDispatch.notifyCleaningReopened).not.toHaveBeenCalled();
     });
 
     it('400 al reabrir una tarea Assigned (no reabrible)', async () => {
