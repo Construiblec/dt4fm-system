@@ -57,4 +57,13 @@ export class GetAllCleaningTasksQueryDto {
   @Type(() => Number)
   @IsInt()
   employeeId?: number;
+
+  /** Orden del listado: 'newest' pone primero las recién creadas. */
+  @ApiPropertyOptional({
+    description: "Orden: 'newest' = recién creadas primero",
+    enum: ['newest'],
+  })
+  @IsOptional()
+  @IsIn(['newest'])
+  sort?: 'newest';
 }

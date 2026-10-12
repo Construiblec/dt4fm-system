@@ -32,12 +32,18 @@ import {
 } from '@nestjs/swagger';
 import { SessionRoleService } from '../../integrations/openmaint/session-role.service';
 import {
+  isCoordinatorRole,
+  isSupervisorOrCoordinatorRole,
+} from './constants/roles.constants';
+import {
   CleaningTasksService,
   isSupervisorRole,
 } from './cleaning-tasks.service';
 import { CancelTaskDto } from './dto/cancel-task.dto';
 import { CompleteTaskDto } from './dto/complete-task.dto';
 import { CreateCleaningTaskDto } from './dto/create-cleaning-task.dto';
+import { CreateManualCleaningTaskDto } from './dto/create-manual-cleaning-task.dto';
+import { SaveCleaningActivityDto } from './dto/save-cleaning-activity.dto';
 import { GetAllCleaningTasksQueryDto } from './dto/get-all-cleaning-tasks-query.dto';
 import { GetCleaningTasksQueryDto } from './dto/get-cleaning-tasks-query.dto';
 import { GetCheckoutsQueryDto } from './dto/get-checkouts-query.dto';
@@ -58,13 +64,15 @@ export class CleaningTasksController {
   // ─── Todas las tareas (supervisor) ─────────────────────────────────────────
 
   /**
-   * GET /cleaning-tasks/all?phase=Completed&date=2026-04-16&employeeId=123&limit=50&offset=0
-   * Devuelve todas las tareas de limpieza. Solo accesible por los roles
-   * supervisores (SuperUser / SupervisorLimpieza).
+   * GET /cleaning-tasks/all?phase=Completed&date=2026-04-16&employeeId=123&limit=50&offset=0&sort=newest
+   * Devuelve todas las tareas de limpieza. Solo accesible por supervisión
+   * (SuperUser / SupervisorLimpieza / AsistenteSL) y coordinación
+   * (SuperUser / Coordinador). `sort=newest` pone primero las recién creadas.
    */
   @Get('all')
   @ApiOperation({
-    summary: 'Obtener todas las tareas de limpieza (Supervisor)',
+    summary:
+      'Obtener todas las tareas de limpieza (Supervisión y Coordinación)',
   })
   @ApiHeader({
     name: 'x-session-token',
@@ -79,7 +87,7 @@ export class CleaningTasksController {
     @Headers('x-session-token') sessionToken: string,
   ) {
     this.requireSessionToken(sessionToken);
-    await this.requireSupervisorRole(sessionToken);
+    await this.requireSupervisorOrCoordinatorRole(sessionToken);
 
     return this.cleaningTasksService.getAllTasks(sessionToken, {
       limit: query.limit,
@@ -87,6 +95,7 @@ export class CleaningTasksController {
       phase: query.phase,
       date: query.date,
       employeeId: query.employeeId,
+      sort: query.sort,
     });
   }
 
@@ -166,6 +175,36 @@ export class CleaningTasksController {
     query: GetCheckoutsQueryDto,
   ) {
     return this.cleaningTasksService.getCheckouts(query);
+  }
+
+  /**
+   * GET /cleaning-tasks/checkouts/preview?dateFrom=...&dateTo=...
+   * Los checkouts de Hostaway del rango, cada uno con el estado de su limpieza
+   * (por crear, ya creada, checkout cambiado, ya no está en Hostaway).
+   */
+  @Get('checkouts/preview')
+  @ApiOperation({
+    summary:
+      'Vista previa de sincronización: checkouts de Hostaway cruzados con las limpiezas (Coordinación)',
+  })
+  @ApiHeader({
+    name: 'x-session-token',
+    description: 'Token de sesión del coordinador',
+    required: true,
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Checkouts con el estado de su limpieza.',
+  })
+  @ApiResponse({ status: 403, description: 'El rol no es de coordinación.' })
+  async previewCheckouts(
+    @Query(new ValidationPipe({ transform: true, whitelist: true }))
+    query: GetCheckoutsQueryDto,
+    @Headers('x-session-token') sessionToken: string,
+  ) {
+    this.requireSessionToken(sessionToken);
+    await this.requireCoordinatorRole(sessionToken);
+    return this.cleaningTasksService.previewCheckouts(query);
   }
 
   // ─── Sincronización Hostaway → OpenMAINT ──────────────────────────────────
@@ -282,6 +321,36 @@ export class CleaningTasksController {
     return this.cleaningTasksService.generateTasksFromCheckouts(body.checkouts);
   }
 
+  /**
+   * POST /cleaning-tasks/manual
+   * Crea una limpieza a mano (`Source: Manual`). Obligatorios: descripción y
+   * horario. Sin empleado queda en Pendientes.
+   */
+  @Post('manual')
+  @ApiOperation({ summary: 'Crear una limpieza manual (Coordinación)' })
+  @ApiHeader({
+    name: 'x-session-token',
+    description: 'Token de sesión del coordinador',
+    required: true,
+  })
+  @ApiResponse({ status: 201, description: 'Limpieza creada.' })
+  @ApiResponse({ status: 400, description: 'Datos inválidos.' })
+  @ApiResponse({ status: 403, description: 'El rol no es de coordinación.' })
+  async createManualCleaningTask(
+    @Body(new ValidationPipe({ transform: true }))
+    dto: CreateManualCleaningTaskDto,
+    @Headers('x-session-token') sessionToken: string,
+  ) {
+    this.requireSessionToken(sessionToken);
+    await this.requireCoordinatorRole(sessionToken);
+    return this.cleaningTasksService.createManualCleaningTask(dto);
+  }
+
+  /**
+   * PUT /cleaning-tasks/:id
+   * Supervisión edita todo; el coordinador solo lo que no empezó y nunca la
+   * fase ni los tiempos de ejecución.
+   */
   @Put(':id')
   @ApiOperation({
     summary: 'Actualizar campos de una tarea de limpieza por ID',
@@ -291,12 +360,131 @@ export class CleaningTasksController {
     description: 'ID de la tarea de limpieza',
     type: 'integer',
   })
+  @ApiHeader({
+    name: 'x-session-token',
+    description: 'Token de sesión (supervisión o coordinación)',
+    required: true,
+  })
   @ApiResponse({ status: 200, description: 'Tarea actualizada correctamente.' })
+  @ApiResponse({
+    status: 403,
+    description: 'Rol sin acceso o limpieza ya iniciada.',
+  })
   async updateCleaningTask(
     @Param('id', ParseIntPipe) id: number,
     @Body(new ValidationPipe({ transform: true })) dto: UpdateCleaningTaskDto,
+    @Headers('x-session-token') sessionToken: string,
   ) {
-    return this.cleaningTasksService.updateCleaningTask(id, dto);
+    this.requireSessionToken(sessionToken);
+    const role = await this.requireSupervisorOrCoordinatorRole(sessionToken);
+    return this.cleaningTasksService.updateCleaningTask(id, dto, role);
+  }
+
+  // ─── Coordinación: empleados y checklists ─────────────────────────────────
+
+  @Get('employees')
+  @ApiOperation({
+    summary:
+      'Empleados de limpieza que se pueden asignar, sin proveedores (Coordinación)',
+  })
+  @ApiHeader({
+    name: 'x-session-token',
+    description: 'Token de sesión del coordinador',
+    required: true,
+  })
+  async listCleaningEmployees(
+    @Headers('x-session-token') sessionToken: string,
+  ) {
+    this.requireSessionToken(sessionToken);
+    await this.requireCoordinatorRole(sessionToken);
+    return this.cleaningTasksService.listCleaningEmployees();
+  }
+
+  @Get('checklists')
+  @ApiOperation({ summary: 'Listar los checklists (Coordinación)' })
+  @ApiHeader({
+    name: 'x-session-token',
+    description: 'Token de sesión del coordinador',
+    required: true,
+  })
+  async listChecklists(@Headers('x-session-token') sessionToken: string) {
+    this.requireSessionToken(sessionToken);
+    await this.requireCoordinatorRole(sessionToken);
+    return this.cleaningTasksService.listChecklists();
+  }
+
+  @Get('checklists/:id')
+  @ApiOperation({ summary: 'Ficha de un checklist (Coordinación)' })
+  @ApiParam({ name: 'id', type: 'integer' })
+  @ApiHeader({ name: 'x-session-token', required: true })
+  async getChecklist(
+    @Param('id', ParseIntPipe) id: number,
+    @Headers('x-session-token') sessionToken: string,
+  ) {
+    this.requireSessionToken(sessionToken);
+    await this.requireCoordinatorRole(sessionToken);
+    return this.cleaningTasksService.getChecklist(id);
+  }
+
+  @Get('checklists/:id/template')
+  @ApiOperation({
+    summary: 'Descargar el archivo CSV de la plantilla (Coordinación)',
+  })
+  @ApiParam({ name: 'id', type: 'integer' })
+  @ApiHeader({ name: 'x-session-token', required: true })
+  async downloadChecklistTemplate(
+    @Param('id', ParseIntPipe) id: number,
+    @Headers('x-session-token') sessionToken: string,
+    @Res() res: Response,
+  ) {
+    this.requireSessionToken(sessionToken);
+    await this.requireCoordinatorRole(sessionToken);
+    const file = await this.cleaningTasksService.getChecklistTemplateFile(id);
+    res.setHeader('Content-Type', file.contentType);
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${file.fileName.replace(/"/g, '')}"`,
+    );
+    res.send(file.data);
+  }
+
+  @Post('checklists')
+  @UseInterceptors(FileInterceptor('plantilla'))
+  @ApiOperation({ summary: 'Crear un checklist (Coordinación)' })
+  @ApiConsumes('multipart/form-data')
+  @ApiHeader({ name: 'x-session-token', required: true })
+  @ApiResponse({ status: 201, description: 'Checklist creado.' })
+  async createChecklist(
+    @Body(new ValidationPipe({ transform: true })) dto: SaveCleaningActivityDto,
+    @UploadedFile()
+    file:
+      | { buffer: Buffer; originalname: string; mimetype: string }
+      | undefined,
+    @Headers('x-session-token') sessionToken: string,
+  ) {
+    this.requireSessionToken(sessionToken);
+    await this.requireCoordinatorRole(sessionToken);
+    return this.cleaningTasksService.saveChecklist(null, dto, file);
+  }
+
+  @Put('checklists/:id')
+  @UseInterceptors(FileInterceptor('plantilla'))
+  @ApiOperation({ summary: 'Editar un checklist (Coordinación)' })
+  @ApiConsumes('multipart/form-data')
+  @ApiParam({ name: 'id', type: 'integer' })
+  @ApiHeader({ name: 'x-session-token', required: true })
+  async updateChecklist(
+    @Param('id', ParseIntPipe) id: number,
+    @Body(new ValidationPipe({ transform: true })) dto: SaveCleaningActivityDto,
+    @UploadedFile()
+    file:
+      | { buffer: Buffer; originalname: string; mimetype: string }
+      | undefined,
+    @Headers('x-session-token') sessionToken: string,
+  ) {
+    this.requireSessionToken(sessionToken);
+    await this.requireCoordinatorRole(sessionToken);
+    return this.cleaningTasksService.saveChecklist(id, dto, file);
   }
 
   // ─── Detalle y transiciones de tarea (sesión del usuario) ─────────────────
@@ -344,7 +532,7 @@ export class CleaningTasksController {
     this.requireSessionToken(sessionToken);
 
     const role = await this.sessionRoleService.resolveRole(sessionToken);
-    const isSupervisor = isSupervisorRole(role ?? undefined);
+    const isSupervisor = isSupervisorOrCoordinatorRole(role ?? undefined);
 
     if (isSupervisor) {
       return this.cleaningTasksService.getTaskDetailAsSupervisor(
@@ -578,7 +766,7 @@ export class CleaningTasksController {
     @Headers('x-session-token') sessionToken: string,
   ) {
     this.requireSessionToken(sessionToken);
-    const role = await this.requireSupervisorRole(sessionToken);
+    const role = await this.requireSupervisorOrCoordinatorRole(sessionToken);
 
     return this.cleaningTasksService.cancelTask(
       taskId,
@@ -961,6 +1149,32 @@ export class CleaningTasksController {
     if (!isSupervisorRole(role ?? undefined)) {
       throw new ForbiddenException(
         'El rol no tiene acceso a esta acción de supervisión',
+      );
+    }
+
+    return role as string;
+  }
+
+  private async requireCoordinatorRole(sessionToken: string): Promise<string> {
+    const role = await this.sessionRoleService.resolveRole(sessionToken);
+
+    if (!isCoordinatorRole(role ?? undefined)) {
+      throw new ForbiddenException(
+        'El rol no tiene acceso a las acciones de coordinación',
+      );
+    }
+
+    return role as string;
+  }
+
+  private async requireSupervisorOrCoordinatorRole(
+    sessionToken: string,
+  ): Promise<string> {
+    const role = await this.sessionRoleService.resolveRole(sessionToken);
+
+    if (!isSupervisorOrCoordinatorRole(role ?? undefined)) {
+      throw new ForbiddenException(
+        'El rol no tiene acceso a esta acción de limpiezas',
       );
     }
 

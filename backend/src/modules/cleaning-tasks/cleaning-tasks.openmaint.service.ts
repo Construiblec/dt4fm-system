@@ -37,7 +37,22 @@ type CleaningTaskCard = {
   _Unit_description?: string;
   Employee?: number;
   _Employee_description?: string;
+  HostawayListingID?: string | null;
   CleaningChecklist?: number | null;
+  _CleaningChecklist_description?: string | null;
+};
+
+export type EmployeeCard = {
+  _id: number;
+  _type?: string;
+  Description?: string;
+  Team?: number | null;
+  _Team_description?: string | null;
+};
+
+export type UnitListingCard = {
+  _id: number;
+  HostawayListingID?: string | null;
 };
 
 type CleaningActivityCard = {
@@ -77,6 +92,8 @@ type UnitResponse = {
   success: boolean;
   data: UnitCard;
 };
+
+export type { CleaningActivityCard, CleaningTaskCard };
 
 export type AttachmentCard = {
   _id: string;
@@ -483,10 +500,12 @@ export class CleaningTasksOpenmaintService {
       phase?: string;
       date?: string;
       employeeId?: number;
+      /** 'newest': las recién creadas primero (por id descendente). */
+      sort?: 'newest';
     } = {},
   ): Promise<OpenmaintCardsResponse> {
     return this.executeWithRetry(async (sessionId) => {
-      const { limit = 50, offset = 0, phase, date, employeeId } = options;
+      const { limit = 50, offset = 0, phase, date, employeeId, sort } = options;
 
       const conditions: any[] = [];
 
@@ -533,7 +552,11 @@ export class CleaningTasksOpenmaintService {
         )}`;
       }
 
-      const path = `/classes/CleaningTask/cards?limit=${limit}&start=${offset}${filterParam}`;
+      const sortParam =
+        sort === 'newest'
+          ? `&sort=${encodeURIComponent(JSON.stringify([{ property: '_id', direction: 'DESC' }]))}`
+          : '';
+      const path = `/classes/CleaningTask/cards?limit=${limit}&start=${offset}${sortParam}${filterParam}`;
       return (await this.client.get(path, sessionId)) as OpenmaintCardsResponse;
     }, 'getAllTasks').catch((error) => {
       this.logger.error('Error al obtener todas las tareas:', error.message);
@@ -541,6 +564,212 @@ export class CleaningTasksOpenmaintService {
         'Error al obtener tareas de limpieza de OpenMAINT',
       );
     });
+  }
+
+  /**
+   * Tarjetas que vienen de Hostaway (tienen reserva), las más recientes primero.
+   * Es lo que necesita la vista previa de sincronización para cruzar cada
+   * checkout con su limpieza, sin depender de la fecha de checkout guardada
+   * (que es justo la que puede haber cambiado).
+   */
+  async getHostawayTasks(limit = 500): Promise<OpenmaintCardsResponse> {
+    return this.executeWithRetry(async (sessionId) => {
+      const filter = {
+        attribute: {
+          simple: { attribute: 'HostawayReservation', operator: 'isnotnull' },
+        },
+      };
+      const sort = [{ property: '_id', direction: 'DESC' }];
+      const path = `/classes/CleaningTask/cards?limit=${limit}&filter=${encodeURIComponent(
+        JSON.stringify(filter),
+      )}&sort=${encodeURIComponent(JSON.stringify(sort))}`;
+      return (await this.client.get(path, sessionId)) as OpenmaintCardsResponse;
+    }, 'getHostawayTasks').catch((error) => {
+      this.logger.error('Error al obtener tareas de Hostaway:', error.message);
+      throw new InternalServerErrorException(
+        'Error al obtener tareas de limpieza de OpenMAINT',
+      );
+    });
+  }
+
+  /**
+   * Empleados internos: los únicos que pueden ser `Employee` de una limpieza
+   * (la referencia apunta a `InternalEmployee`). Los proveedores quedan fuera
+   * por construcción. Sesión interna: es dato de referencia.
+   */
+  async listInternalEmployees(): Promise<{ data: EmployeeCard[] }> {
+    return this.executeWithRetry(async (sessionId) => {
+      return (await this.client.get(
+        '/classes/InternalEmployee/cards?limit=500',
+        sessionId,
+      )) as { data: EmployeeCard[] };
+    }, 'listInternalEmployees').catch((error) => {
+      this.logger.error('Error al listar empleados:', error.message);
+      throw new InternalServerErrorException(
+        'Error al consultar los empleados en OpenMAINT',
+      );
+    });
+  }
+
+  /**
+   * Unidades que tienen `HostawayListingID`. Con eso se sabe, para cada
+   * listing, si openMAINT va a poder vincular la unidad: ninguna (sin unidad),
+   * una (vínculo) o varias (ambiguo).
+   */
+  async listUnitsWithListing(): Promise<{ data: UnitListingCard[] }> {
+    return this.executeWithRetry(async (sessionId) => {
+      const filter = {
+        attribute: {
+          simple: { attribute: 'HostawayListingID', operator: 'isnotnull' },
+        },
+      };
+      return (await this.client.get(
+        `/classes/Unit/cards?limit=500&filter=${encodeURIComponent(JSON.stringify(filter))}`,
+        sessionId,
+      )) as { data: UnitListingCard[] };
+    }, 'listUnitsWithListing').catch((error) => {
+      this.logger.warn(
+        `No se pudieron leer los listings de las unidades: ${error.message}`,
+      );
+      return { data: [] as UnitListingCard[] };
+    });
+  }
+
+  async listCleaningActivities(): Promise<{ data: CleaningActivityCard[] }> {
+    return this.executeWithRetry(async (sessionId) => {
+      return (await this.client.get(
+        '/classes/CleaningActivity/cards?limit=200',
+        sessionId,
+      )) as { data: CleaningActivityCard[] };
+    }, 'listCleaningActivities').catch((error) => {
+      this.logger.error('Error al listar checklists:', error.message);
+      throw new InternalServerErrorException(
+        'Error al consultar los checklists en OpenMAINT',
+      );
+    });
+  }
+
+  async createCleaningActivity(
+    body: Record<string, unknown>,
+  ): Promise<CleaningActivityResponse> {
+    return this.executeWithRetry(async (sessionId) => {
+      return (await this.client.post(
+        '/classes/CleaningActivity/cards',
+        body,
+        sessionId,
+      )) as CleaningActivityResponse;
+    }, 'createCleaningActivity').catch((error) => {
+      this.logger.error('Error al crear checklist:', error.message);
+      throw new InternalServerErrorException(
+        'Error al crear el checklist en OpenMAINT',
+      );
+    });
+  }
+
+  async updateCleaningActivity(
+    activityId: number,
+    body: Record<string, unknown>,
+  ): Promise<CleaningActivityResponse> {
+    return this.executeWithRetry(async (sessionId) => {
+      return (await this.client.put(
+        `/classes/CleaningActivity/cards/${activityId}`,
+        body,
+        sessionId,
+      )) as CleaningActivityResponse;
+    }, 'updateCleaningActivity').catch((error) => {
+      this.logger.error(
+        `Error al editar checklist ${activityId}: ${error.message}`,
+      );
+      throw new InternalServerErrorException(
+        'Error al guardar el checklist en OpenMAINT',
+      );
+    });
+  }
+
+  /**
+   * Borra los adjuntos sueltos de un checklist que se llaman igual que el
+   * archivo por subir. Quedan así cuando una subida anterior falló a medias
+   * (el adjunto entró pero nunca se enlazó a `Plantilla`) y OpenMAINT rechaza
+   * un segundo archivo con el mismo nombre. Best-effort: nunca propaga.
+   */
+  async removeStaleActivityAttachments(
+    activityId: number,
+    fileName: string,
+  ): Promise<void> {
+    try {
+      const listed = (await this.executeWithRetry(
+        (sessionId) =>
+          this.client.get(
+            `/classes/CleaningActivity/cards/${activityId}/attachments`,
+            sessionId,
+          ),
+        'listActivityAttachments',
+      )) as { data?: Array<{ _id: string; name?: string }> } | undefined;
+
+      for (const attachment of listed?.data ?? []) {
+        if (attachment.name?.toLowerCase() !== fileName.toLowerCase()) continue;
+        await this.executeWithRetry(
+          (sessionId) =>
+            this.client.delete(
+              `/classes/CleaningActivity/cards/${activityId}/attachments/${encodeURIComponent(attachment._id)}`,
+              sessionId,
+            ),
+          'removeStaleActivityAttachment',
+        );
+      }
+    } catch (error) {
+      this.logger.warn(
+        `No se pudieron limpiar adjuntos sueltos del checklist ${activityId}: ${(error as Error)?.message}`,
+      );
+    }
+  }
+
+  /**
+   * Sube el archivo CSV de un checklist y devuelve el id del adjunto.
+   *
+   * Verificado contra la instancia (2026-10-12): subir el adjunto NO enlaza el
+   * atributo `Plantilla`; hay que guardar después ese id en la tarjeta
+   * (`PUT { Plantilla: id }`). Y el adjunto ya enlazado no se puede borrar ni
+   * reemplazar por el nombre ("file name conflict" / 500): se quita poniendo
+   * `Plantilla: null` en la tarjeta, que se lleva el archivo consigo.
+   */
+  async uploadActivityTemplate(
+    activityId: number,
+    file: { buffer: Buffer; originalname: string; mimetype: string },
+  ): Promise<string> {
+    const formData = new globalThis.FormData();
+    formData.append(
+      'attachment',
+      JSON.stringify({ fileName: file.originalname }),
+    );
+    formData.append(
+      'file',
+      new Blob([new Uint8Array(file.buffer)], { type: file.mimetype }),
+      file.originalname,
+    );
+
+    const response = await this.executeWithRetry(async (sessionId) => {
+      return (await this.client.postFormData(
+        `/classes/CleaningActivity/cards/${activityId}/attachments`,
+        formData,
+        sessionId,
+      )) as { data?: { _id?: string } } | undefined;
+    }, 'uploadActivityTemplate').catch((error) => {
+      this.logger.error(
+        `Error al subir la plantilla del checklist ${activityId}: ${error.message}`,
+      );
+      throw new InternalServerErrorException(
+        'Error al subir el archivo de la plantilla a OpenMAINT',
+      );
+    });
+
+    const attachmentId = response?.data?._id;
+    if (!attachmentId) {
+      throw new InternalServerErrorException(
+        'OpenMAINT no devolvió el id del archivo de la plantilla',
+      );
+    }
+    return attachmentId;
   }
 
   /**

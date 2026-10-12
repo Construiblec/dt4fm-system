@@ -27,6 +27,15 @@ export const createCleaningTasksOpenmaintServiceMock = () => ({
     fileName: 'mock.png',
   }),
   taskExistsByReservationId: jest.fn().mockResolvedValue(false),
+  getHostawayTasks: jest.fn().mockResolvedValue({ data: [] }),
+  listInternalEmployees: jest.fn().mockResolvedValue({ data: [] }),
+  listUnitsWithListing: jest.fn().mockResolvedValue({ data: [] }),
+  listCleaningActivities: jest.fn().mockResolvedValue({ data: [] }),
+  createCleaningActivity: jest.fn().mockResolvedValue({ data: { _id: 9100 } }),
+  updateCleaningActivity: jest.fn().mockResolvedValue({ data: { _id: 9100 } }),
+  uploadActivityTemplate: jest.fn().mockResolvedValue("att-1"),
+  removeStaleActivityAttachments: jest.fn().mockResolvedValue(undefined),
+  downloadActivityTemplate: jest.fn(),
 });
 
 export type CleaningTasksOpenmaintServiceMock = ReturnType<

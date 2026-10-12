@@ -8,7 +8,10 @@ import {
 import type { CleaningTask } from "@/modules/incidentes/types/CleaningTask";
 
 import { formatEmployeeName } from "@/shared/utils/nameUtils";
-import { formatDayMonth as formatDate, formatTime } from "@/shared/utils/dateUtils";
+import {
+  formatDayMonth as formatDate,
+  formatTime,
+} from "@/shared/utils/dateUtils";
 
 type Props = {
   task: CleaningTask;
@@ -41,25 +44,30 @@ export const SupervisorTaskCard = ({ task }: Props) => {
             {task.taskNumber || "Sin Número de Tarea"}
           </h3>
         </div>
-        <div className="flex flex-col items-end gap-1">
-          <span
-            className={`flex-shrink-0 ${badge}`}
-          >
-            {getCleaningPhaseLabel(task.phase)}
+        <span className="flex-shrink-0 rounded-md bg-slate-100 px-2 py-1 text-xs font-medium text-slate-600">
+          {formatDate(task.plannedStartTime)}
+        </span>
+      </div>
+
+      {/* Fase */}
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <span className={`flex-shrink-0 ${badge}`}>
+          {getCleaningPhaseLabel(task.phase)}
+        </span>
+        {isReopened && (
+          <span className="flex-shrink-0 rounded-md bg-rose-100 px-2 py-1 text-xs font-semibold text-rose-700">
+            Reabierta
           </span>
-          {isReopened && (
-            <span className="flex-shrink-0 rounded-md bg-rose-100 px-2 py-1 text-xs font-semibold text-rose-700">
-              Reabierta
-            </span>
-          )}
-        </div>
+        )}
       </div>
 
       {/* Body */}
       <div className="mt-3 space-y-1.5 text-sm text-slate-600">
         <div className="flex items-center gap-2">
           <MapPin className="h-4 w-4 flex-shrink-0 text-slate-400" />
-          <span className="truncate">{task.unit?.description ?? task.description}</span>
+          <span className="truncate">
+            {task.unit?.description ?? task.description}
+          </span>
         </div>
 
         <div className="flex items-center gap-2">
@@ -69,7 +77,7 @@ export const SupervisorTaskCard = ({ task }: Props) => {
 
         <div className="flex items-center gap-2">
           <CalendarDays className="h-4 w-4 flex-shrink-0 text-slate-400" />
-          <span>Planificada: {formatDate(task.plannedStartTime)}</span>
+          <span>Inicio planeado: {formatTime(task.plannedStartTime)}</span>
         </div>
 
         {task.actualStartTime && (
@@ -83,7 +91,6 @@ export const SupervisorTaskCard = ({ task }: Props) => {
             </span>
           </div>
         )}
-
       </div>
 
       {/* Footer — cualquier tarea puede abrirse en detalle */}

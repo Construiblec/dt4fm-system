@@ -1,5 +1,6 @@
 import { useState, useCallback } from "react";
 import { fetchAllCleaningTasks } from "@/modules/supervisor/services/supervisorService";
+import { sortTasksForSupervision } from "@/modules/incidentes/utils/sortCleaningTasks";
 import type { CleaningTask } from "@/modules/incidentes/types/CleaningTask";
 import type { GetAllCleaningTasksParams } from "@/modules/supervisor/types/SupervisorTask";
 
@@ -29,7 +30,8 @@ export const useSupervisorTasks = () => {
       const response = await fetchAllCleaningTasks(params);
       const allowedPhases = ["Completed", "Reviewed"];
       const filteredData = response.data.filter(t => allowedPhases.includes(t.phase));
-      setTasks(filteredData);
+      // Por revisar primero y revisadas al final; en cada sección, la más antigua arriba.
+      setTasks(sortTasksForSupervision(filteredData));
       setTotal(filteredData.length);
     } catch {
       setError("No se pudieron cargar las tareas");

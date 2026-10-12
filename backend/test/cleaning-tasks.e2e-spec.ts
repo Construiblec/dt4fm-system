@@ -6,6 +6,7 @@ import {
   TestAppMocks,
 } from './helpers/test-app';
 import {
+  cleaningTaskCard,
   cleaningTaskResponse,
   PHASE_IDS,
 } from './fixtures/cleaning-task.fixture';
@@ -593,6 +594,834 @@ describe('CleaningTasksController (e2e)', () => {
         ['op-1', 'execution'],
         ['sup-1', 'supervision'],
       ]);
+    });
+  });
+
+  describe('Coordinación', () => {
+    const asCoordinator = () =>
+      mocks.openmaint.getSession.mockResolvedValueOnce(
+        mockSession({ role: 'Coordinador' }),
+      );
+    const asOperator = () =>
+      mocks.openmaint.getSession.mockResolvedValueOnce(
+        mockSession({ role: 'MaintOffice' }),
+      );
+    const token = 'mock-session-token';
+
+    describe('GET /cleaning-tasks/all', () => {
+      it('200 para el coordinador y reenvía el orden "recién creadas"', async () => {
+        asCoordinator();
+
+        await request(app.getHttpServer())
+          .get('/cleaning-tasks/all?sort=newest&limit=500')
+          .set('x-session-token', token)
+          .expect(200);
+
+        expect(mocks.cleaningTasksOpenmaint.getAllTasks).toHaveBeenCalledWith(
+          expect.objectContaining({ sort: 'newest', limit: 500 }),
+        );
+      });
+
+      it('trae el listing de Hostaway y el checklist de cada limpieza', async () => {
+        asCoordinator();
+        const card = {
+          ...cleaningTaskCard({ phase: PHASE_IDS.ASSIGNED }),
+          HostawayListingID: '412101',
+          CleaningChecklist: 9001,
+          _CleaningChecklist_description: 'Checkout estándar',
+        };
+        mocks.cleaningTasksOpenmaint.getAllTasks.mockResolvedValueOnce({
+          data: [card],
+          meta: { total: 1 },
+        });
+
+        const res = await request(app.getHttpServer())
+          .get('/cleaning-tasks/all')
+          .set('x-session-token', token)
+          .expect(200);
+
+        expect(res.body.data[0]).toMatchObject({
+          hostawayListingId: '412101',
+          checklist: { id: 9001, description: 'Checkout estándar' },
+          employee: null,
+        });
+      });
+    });
+
+    describe('PUT /cleaning-tasks/:id', () => {
+      const put = (body: object) =>
+        request(app.getHttpServer())
+          .put('/cleaning-tasks/777')
+          .set('x-session-token', token)
+          .send(body);
+
+      it('401 sin sesión (antes era público)', async () => {
+        await request(app.getHttpServer())
+          .put('/cleaning-tasks/777')
+          .send({ observations: 'x' })
+          .expect(401);
+      });
+
+      it('403 con un rol de operario', async () => {
+        asOperator();
+        await put({ observations: 'x' }).expect(403);
+        expect(
+          mocks.cleaningTasksOpenmaint.updateCleaningTask,
+        ).not.toHaveBeenCalled();
+      });
+
+      it('200: el coordinador completa unidad, checklist, horario, empleado y descripción', async () => {
+        asCoordinator();
+        mocks.cleaningTasksOpenmaint.getTaskByIdWithSession.mockResolvedValue(
+          cleaningTaskResponse({ phase: PHASE_IDS.ASSIGNED }),
+        );
+
+        const res = await put({
+          description: ' Limpieza - Apto 310 ',
+          checkoutDate: '2026-10-09',
+          unitId: 5110,
+          cleaningChecklistId: 9001,
+          plannedStartTime: '2026-10-09T15:00:00.000Z',
+          plannedEndTime: '2026-10-09T16:30:00.000Z',
+          employeeId: 7004,
+          observations: 'Avisar a recepción',
+        }).expect(200);
+
+        expect(res.body.notified).toBe(7004);
+        expect(
+          mocks.cleaningTasksOpenmaint.updateCleaningTask,
+        ).toHaveBeenCalledWith(
+          777,
+          expect.objectContaining({
+            Description: 'Limpieza - Apto 310',
+            CheckoutDate: '2026-10-09',
+            Unit: 5110,
+            CleaningChecklist: 9001,
+            Employee: 7004,
+            PlannedStartTime: '2026-10-09T15:00:00.000Z',
+            PlannedEndTime: '2026-10-09T16:30:00.000Z',
+            Observations: 'Avisar a recepción',
+          }),
+        );
+      });
+
+      it('null borra la unidad, el checklist y las observaciones', async () => {
+        asCoordinator();
+        mocks.cleaningTasksOpenmaint.getTaskByIdWithSession.mockResolvedValue(
+          cleaningTaskResponse({ phase: PHASE_IDS.ASSIGNED }),
+        );
+
+        await put({
+          unitId: null,
+          cleaningChecklistId: null,
+          observations: null,
+        }).expect(200);
+
+        expect(
+          mocks.cleaningTasksOpenmaint.updateCleaningTask,
+        ).toHaveBeenCalledWith(777, {
+          Unit: null,
+          CleaningChecklist: null,
+          Observations: null,
+        });
+      });
+
+      it('400 si el fin no es posterior al inicio', async () => {
+        asCoordinator();
+        mocks.cleaningTasksOpenmaint.getTaskByIdWithSession.mockResolvedValue(
+          cleaningTaskResponse({ phase: PHASE_IDS.ASSIGNED }),
+        );
+
+        await put({
+          plannedStartTime: '2026-10-09T16:00:00.000Z',
+          plannedEndTime: '2026-10-09T15:00:00.000Z',
+        }).expect(400);
+      });
+
+      it('403: el coordinador no edita una limpieza que ya empezó', async () => {
+        asCoordinator();
+        mocks.cleaningTasksOpenmaint.getTaskByIdWithSession.mockResolvedValue(
+          cleaningTaskResponse({
+            phase: PHASE_IDS.IN_EXECUTION,
+            actualStartTime: '2026-10-08T14:02:00Z',
+          }),
+        );
+
+        await put({ observations: 'x' }).expect(403);
+        expect(
+          mocks.cleaningTasksOpenmaint.updateCleaningTask,
+        ).not.toHaveBeenCalled();
+      });
+
+      it('403: tampoco una reabierta (Assigned con inicio anterior)', async () => {
+        asCoordinator();
+        mocks.cleaningTasksOpenmaint.getTaskByIdWithSession.mockResolvedValue(
+          cleaningTaskResponse({
+            phase: PHASE_IDS.ASSIGNED,
+            actualStartTime: '2026-10-07T14:02:00Z',
+          }),
+        );
+
+        await put({ observations: 'x' }).expect(403);
+      });
+
+      it('403: el coordinador no puede cambiar la fase ni los tiempos', async () => {
+        asCoordinator();
+        await put({ phase: 'Completed' }).expect(403);
+        asCoordinator();
+        await put({ executionTime: 90 }).expect(403);
+        expect(
+          mocks.cleaningTasksOpenmaint.getTaskByIdWithSession,
+        ).not.toHaveBeenCalled();
+      });
+
+      it('200: supervisión sigue pudiendo corregir la fase sin pasar por la regla del coordinador', async () => {
+        await put({ phase: 'Assigned' }).expect(200);
+        expect(
+          mocks.cleaningTasksOpenmaint.getTaskByIdWithSession,
+        ).not.toHaveBeenCalled();
+      });
+
+      it('400 si no hay nada que actualizar', async () => {
+        await put({}).expect(400);
+      });
+    });
+
+    describe('POST /cleaning-tasks/manual', () => {
+      const body = {
+        description: ' Limpieza profunda - Pradera, Suite I41 ',
+        plannedStartTime: '2026-10-09T14:00:00.000Z',
+        plannedEndTime: '2026-10-09T16:30:00.000Z',
+      };
+      const post = (payload: object) =>
+        request(app.getHttpServer())
+          .post('/cleaning-tasks/manual')
+          .set('x-session-token', token)
+          .send(payload);
+
+      it('401 sin sesión', async () => {
+        await request(app.getHttpServer())
+          .post('/cleaning-tasks/manual')
+          .send(body)
+          .expect(401);
+      });
+
+      it('403 para supervisión: crear no es de su rol', async () => {
+        await post(body).expect(403);
+      });
+
+      it('201: nace con Source Manual y fase Asignada, sin empleado ni unidad', async () => {
+        asCoordinator();
+        mocks.cleaningTasksOpenmaint.createCleaningTask.mockResolvedValueOnce({
+          data: { _id: 888, TaskNumber: 'CT.2026.1234' },
+        });
+
+        const res = await post(body).expect(201);
+
+        expect(res.body).toMatchObject({ created: true, taskId: 888 });
+        const sent =
+          mocks.cleaningTasksOpenmaint.createCleaningTask.mock.calls[0][0];
+        expect(sent).toMatchObject({
+          Source: 'Manual',
+          phase: 'Assigned',
+          Description: 'Limpieza profunda - Pradera, Suite I41',
+          PlannedStartTime: body.plannedStartTime,
+          PlannedEndTime: body.plannedEndTime,
+        });
+        expect(sent).not.toHaveProperty('Employee');
+        expect(sent).not.toHaveProperty('Unit');
+        expect(sent).not.toHaveProperty('HostawayReservation');
+        expect(sent.TaskNumber).toMatch(/^CT\.\d{4}\.\d{4}$/);
+        expect(sent.GeneratedDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      });
+
+      it('201 con todo: unidad, empleado, checklist y observaciones', async () => {
+        asCoordinator();
+        await post({
+          ...body,
+          unitId: 5901,
+          employeeId: 7006,
+          cleaningChecklistId: 9002,
+          observations: 'Pedido del propietario',
+        }).expect(201);
+
+        expect(
+          mocks.cleaningTasksOpenmaint.createCleaningTask,
+        ).toHaveBeenCalledWith(
+          expect.objectContaining({
+            Unit: 5901,
+            Employee: 7006,
+            CleaningChecklist: 9002,
+            Observations: 'Pedido del propietario',
+          }),
+        );
+      });
+
+      it('400 sin descripción', async () => {
+        // La validación del cuerpo corre antes de resolver el rol: no se encola sesión.
+        await post({ ...body, description: undefined }).expect(400);
+      });
+
+      it('400 sin horario', async () => {
+        // La validación del cuerpo corre antes de resolver el rol: no se encola sesión.
+        await post({ description: 'x' }).expect(400);
+      });
+
+      it('400 si el fin no es posterior al inicio', async () => {
+        asCoordinator();
+        await post({
+          ...body,
+          plannedEndTime: body.plannedStartTime,
+        }).expect(400);
+        expect(
+          mocks.cleaningTasksOpenmaint.createCleaningTask,
+        ).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('PATCH /:taskId/cancel con el rol coordinador', () => {
+      it('200: cancela una limpieza que no empezó, por la sesión interna', async () => {
+        asCoordinator();
+        mocks.cleaningTasksOpenmaint.getTaskById.mockResolvedValueOnce(
+          cleaningTaskResponse({ phase: PHASE_IDS.ASSIGNED }),
+        );
+
+        await request(app.getHttpServer())
+          .patch('/cleaning-tasks/777/cancel')
+          .set('x-session-token', token)
+          .send({ reason: 'La reserva se canceló en Hostaway.' })
+          .expect(200);
+
+        expect(
+          mocks.cleaningTasksOpenmaint.updateCleaningTask,
+        ).toHaveBeenCalledWith(777, {
+          phase: PHASE_IDS.CANCELLED,
+          Notes: 'La reserva se canceló en Hostaway.',
+        });
+        expect(
+          mocks.cleaningTasksOpenmaint.updateTaskWithSession,
+        ).not.toHaveBeenCalled();
+      });
+
+      it('403: no cancela una limpieza en ejecución', async () => {
+        asCoordinator();
+        mocks.cleaningTasksOpenmaint.getTaskById.mockResolvedValueOnce(
+          cleaningTaskResponse({
+            phase: PHASE_IDS.IN_EXECUTION,
+            actualStartTime: '2026-10-08T14:02:00Z',
+          }),
+        );
+
+        await request(app.getHttpServer())
+          .patch('/cleaning-tasks/777/cancel')
+          .set('x-session-token', token)
+          .send({ reason: 'x' })
+          .expect(403);
+      });
+
+      it('supervisión sigue cancelando una en ejecución', async () => {
+        mocks.cleaningTasksOpenmaint.getTaskById.mockResolvedValueOnce(
+          cleaningTaskResponse({ phase: PHASE_IDS.IN_EXECUTION }),
+        );
+
+        await request(app.getHttpServer())
+          .patch('/cleaning-tasks/777/cancel')
+          .set('x-session-token', token)
+          .send({ reason: 'Ya no aplica' })
+          .expect(200);
+      });
+    });
+
+    describe('GET /cleaning-tasks/employees', () => {
+      it('lista solo empleados internos con su equipo', async () => {
+        asCoordinator();
+        mocks.cleaningTasksOpenmaint.listInternalEmployees.mockResolvedValueOnce(
+          {
+            data: [
+              {
+                _id: 7001,
+                Description: 'maria.lopez',
+                Team: 801,
+                _Team_description: 'Limpieza Torres A-B',
+              },
+              { _id: 7007, Description: 'diego.mora', Team: null },
+            ],
+          },
+        );
+
+        const res = await request(app.getHttpServer())
+          .get('/cleaning-tasks/employees')
+          .set('x-session-token', token)
+          .expect(200);
+
+        expect(res.body.data).toEqual([
+          {
+            id: 7001,
+            name: 'maria.lopez',
+            team: { id: 801, name: 'Limpieza Torres A-B' },
+          },
+          { id: 7007, name: 'diego.mora', team: null },
+        ]);
+      });
+
+      it('403 para supervisión', async () => {
+        await request(app.getHttpServer())
+          .get('/cleaning-tasks/employees')
+          .set('x-session-token', token)
+          .expect(403);
+      });
+    });
+
+    describe('Checklists', () => {
+      const card = {
+        _id: 9003,
+        Code: 'CHK-REP',
+        Description: 'Repaso entre estancias cortas.',
+        NombrePlantilla: 'Repaso rápido',
+        Detalle: 'Dormitorio,Estirar la cama\nBaño,Limpiar inodoro\n',
+        Plantilla: null,
+      };
+
+      it('GET lista: usa el Detalle cuando no hay archivo', async () => {
+        asCoordinator();
+        mocks.cleaningTasksOpenmaint.listCleaningActivities.mockResolvedValueOnce(
+          { data: [card] },
+        );
+
+        const res = await request(app.getHttpServer())
+          .get('/cleaning-tasks/checklists')
+          .set('x-session-token', token)
+          .expect(200);
+
+        expect(res.body.data[0]).toMatchObject({
+          id: 9003,
+          templateName: 'Repaso rápido',
+          plantilla: null,
+          source: 'detalle',
+          activities: ['Dormitorio,Estirar la cama', 'Baño,Limpiar inodoro'],
+        });
+      });
+
+      it('GET lista: lee el archivo CSV y dice su codificación', async () => {
+        asCoordinator();
+        mocks.cleaningTasksOpenmaint.listCleaningActivities.mockResolvedValueOnce(
+          {
+            data: [
+              {
+                ...card,
+                Detalle: 'se ignora',
+                Plantilla: 'att-9',
+                _Plantilla_FileName: 'repaso.csv',
+              },
+            ],
+          },
+        );
+        mocks.cleaningTasksOpenmaint.downloadActivityTemplate.mockResolvedValueOnce(
+          {
+            data: Buffer.from('Titulo;Actividad;Minutos\nBaño;Lavar;5\n'),
+            contentType: 'text/csv',
+            fileName: 'repaso.csv',
+          },
+        );
+
+        const res = await request(app.getHttpServer())
+          .get('/cleaning-tasks/checklists')
+          .set('x-session-token', token)
+          .expect(200);
+
+        expect(res.body.data[0]).toMatchObject({
+          source: 'archivo',
+          plantilla: { fileName: 'repaso.csv', readable: true },
+        });
+        expect(res.body.data[0].activities).toContain('Baño;Lavar;5');
+      });
+
+      it('GET lista: 403 para supervisión', async () => {
+        await request(app.getHttpServer())
+          .get('/cleaning-tasks/checklists')
+          .set('x-session-token', token)
+          .expect(403);
+      });
+
+      it('POST crea con Detalle (sin archivo)', async () => {
+        asCoordinator();
+
+        const res = await request(app.getHttpServer())
+          .post('/cleaning-tasks/checklists')
+          .set('x-session-token', token)
+          .field('templateName', 'Repaso rápido')
+          .field('description', 'Entre estancias cortas')
+          .field('code', 'CHK-REP')
+          .field('detalle', 'Baño,Limpiar inodoro,5')
+          .expect(201);
+
+        expect(res.body).toMatchObject({
+          saved: true,
+          created: true,
+          id: 9100,
+        });
+        expect(
+          mocks.cleaningTasksOpenmaint.createCleaningActivity,
+        ).toHaveBeenCalledWith({
+          NombrePlantilla: 'Repaso rápido',
+          Description: 'Entre estancias cortas',
+          Code: 'CHK-REP',
+          Detalle: 'Baño,Limpiar inodoro,5',
+        });
+        expect(
+          mocks.cleaningTasksOpenmaint.uploadActivityTemplate,
+        ).not.toHaveBeenCalled();
+      });
+
+      it('POST con archivo CSV: lo sube a la plantilla', async () => {
+        asCoordinator();
+
+        await request(app.getHttpServer())
+          .post('/cleaning-tasks/checklists')
+          .set('x-session-token', token)
+          .field('templateName', 'Profunda')
+          .field('description', 'A fondo')
+          .attach(
+            'plantilla',
+            Buffer.from('Titulo;Actividad;Minutos\nBaño;Lavar;5\n'),
+            {
+              filename: 'profunda.csv',
+              contentType: 'text/csv',
+            },
+          )
+          .expect(201);
+
+        expect(
+          mocks.cleaningTasksOpenmaint.uploadActivityTemplate,
+        ).toHaveBeenCalledWith(
+          9100,
+          expect.objectContaining({ originalname: 'profunda.csv' }),
+        );
+      });
+
+      it('POST rechaza un .xlsx disfrazado de CSV', async () => {
+        asCoordinator();
+
+        const res = await request(app.getHttpServer())
+          .post('/cleaning-tasks/checklists')
+          .set('x-session-token', token)
+          .field('templateName', 'Profunda')
+          .field('description', 'A fondo')
+          .attach('plantilla', Buffer.from([0x50, 0x4b, 0x03, 0x04, 0x00]), {
+            filename: 'profunda.csv',
+            contentType: 'text/csv',
+          })
+          .expect(400);
+
+        expect(res.body.message).toMatch(/xlsx/);
+        expect(
+          mocks.cleaningTasksOpenmaint.createCleaningActivity,
+        ).not.toHaveBeenCalled();
+      });
+
+      it('POST 400 sin nombre, sin descripción o sin contenido', async () => {
+        // El cuerpo inválido se rechaza antes de resolver el rol.
+        await request(app.getHttpServer())
+          .post('/cleaning-tasks/checklists')
+          .set('x-session-token', token)
+          .field('description', 'x')
+          .field('detalle', 'a,b')
+          .expect(400);
+        await request(app.getHttpServer())
+          .post('/cleaning-tasks/checklists')
+          .set('x-session-token', token)
+          .field('templateName', 'x')
+          .field('detalle', 'a,b')
+          .expect(400);
+        asCoordinator();
+        await request(app.getHttpServer())
+          .post('/cleaning-tasks/checklists')
+          .set('x-session-token', token)
+          .field('templateName', 'x')
+          .field('description', 'x')
+          .expect(400);
+      });
+
+      it('PUT reemplaza el archivo anterior', async () => {
+        asCoordinator();
+        mocks.cleaningTasksOpenmaint.getCleaningActivity.mockResolvedValueOnce({
+          data: { ...card, Plantilla: 'att-viejo' },
+        });
+
+        await request(app.getHttpServer())
+          .put('/cleaning-tasks/checklists/9003')
+          .set('x-session-token', token)
+          .field('templateName', 'Repaso rápido')
+          .field('description', 'Entre estancias cortas')
+          .attach('plantilla', Buffer.from('Titulo;Actividad\nBaño;Lavar\n'), {
+            filename: 'nuevo.csv',
+            contentType: 'text/csv',
+          })
+          .expect(200);
+
+        expect(
+          mocks.cleaningTasksOpenmaint.updateCleaningActivity,
+        ).toHaveBeenCalledWith(
+          9003,
+          expect.objectContaining({
+            NombrePlantilla: 'Repaso rápido',
+            Plantilla: null,
+          }),
+        );
+        expect(
+          mocks.cleaningTasksOpenmaint.updateCleaningActivity,
+        ).toHaveBeenCalledWith(9003, { Plantilla: 'att-1' });
+        expect(
+          mocks.cleaningTasksOpenmaint.uploadActivityTemplate,
+        ).toHaveBeenCalledWith(
+          9003,
+          expect.objectContaining({ originalname: 'nuevo.csv' }),
+        );
+      });
+
+      it('PUT con removeTemplate quita el archivo y deja el Detalle', async () => {
+        asCoordinator();
+        mocks.cleaningTasksOpenmaint.getCleaningActivity.mockResolvedValueOnce({
+          data: { ...card, Plantilla: 'att-viejo' },
+        });
+
+        await request(app.getHttpServer())
+          .put('/cleaning-tasks/checklists/9003')
+          .set('x-session-token', token)
+          .field('templateName', 'Repaso rápido')
+          .field('description', 'Entre estancias cortas')
+          .field('detalle', 'Baño,Limpiar')
+          .field('removeTemplate', 'true')
+          .expect(200);
+
+        expect(
+          mocks.cleaningTasksOpenmaint.updateCleaningActivity,
+        ).toHaveBeenCalledWith(
+          9003,
+          expect.objectContaining({ Plantilla: null }),
+        );
+        expect(
+          mocks.cleaningTasksOpenmaint.uploadActivityTemplate,
+        ).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('GET /cleaning-tasks/checkouts/preview', () => {
+      const hostaway = (
+        reservationId: string,
+        listingId: string,
+        checkoutDate: string,
+      ) => ({
+        reservationId,
+        listingId,
+        listingName: `Listing ${listingId}`,
+        checkoutDate,
+        checkoutTime: 11,
+        guestName: 'No se usa',
+      });
+      const taskCard = (
+        id: number,
+        reservation: string,
+        checkoutDate: string,
+        extra: object = {},
+      ) => ({
+        ...cleaningTaskCard({ id, phase: PHASE_IDS.ASSIGNED }),
+        HostawayReservation: reservation,
+        HostawayListingID: '412101',
+        CheckoutDate: checkoutDate,
+        Description: 'Limpieza - Listing 412101',
+        ...extra,
+      });
+
+      it('403 para supervisión', async () => {
+        await request(app.getHttpServer())
+          .get(
+            '/cleaning-tasks/checkouts/preview?dateFrom=2026-10-08&dateTo=2026-10-10',
+          )
+          .set('x-session-token', token)
+          .expect(403);
+      });
+
+      it('clasifica por crear, ya creada, checkout cambiado y huérfana', async () => {
+        asCoordinator();
+        mocks.hostaway.getCheckouts
+          // 1ª llamada: el rango pedido
+          .mockResolvedValueOnce({
+            result: [
+              hostaway('R1', '412101', '2026-10-08'), // sin limpieza
+              hostaway('R2', '412101', '2026-10-08'), // ya creada
+              hostaway('R3', '412101', '2026-10-09'), // la limpieza dice otro día
+            ],
+          })
+          // 2ª llamada: la ventana ancha, para distinguir cambio de huérfana
+          .mockResolvedValueOnce({
+            result: [hostaway('R5', '412102', '2026-10-30')],
+          });
+        mocks.cleaningTasksOpenmaint.getHostawayTasks.mockResolvedValueOnce({
+          data: [
+            taskCard(1, 'R2', '2026-10-08'),
+            taskCard(2, 'R3', '2026-10-08'),
+            taskCard(3, 'R4', '2026-10-09'), // ya no está en Hostaway
+            taskCard(4, 'R5', '2026-10-09'), // se movió al 30
+          ],
+        });
+        mocks.cleaningTasksOpenmaint.listUnitsWithListing.mockResolvedValueOnce(
+          {
+            data: [
+              { _id: 1, HostawayListingID: '412101' },
+              { _id: 2, HostawayListingID: '412102' },
+              { _id: 3, HostawayListingID: '412102' },
+            ],
+          },
+        );
+
+        const res = await request(app.getHttpServer())
+          .get(
+            '/cleaning-tasks/checkouts/preview?dateFrom=2026-10-08&dateTo=2026-10-10',
+          )
+          .set('x-session-token', token)
+          .expect(200);
+
+        const byReservation = Object.fromEntries(
+          res.body.rows.map((r: { reservationId: string }) => [
+            r.reservationId,
+            r,
+          ]),
+        );
+        expect(byReservation.R1).toMatchObject({
+          status: 'por-crear',
+          task: null,
+          unitMatch: 'ok',
+        });
+        expect(byReservation.R2).toMatchObject({ status: 'creada' });
+        expect(byReservation.R2.task.id).toBe(1);
+        expect(byReservation.R3).toMatchObject({
+          status: 'cambio',
+          checkoutDate: '2026-10-08',
+          hostawayCheckoutDate: '2026-10-09',
+        });
+        expect(byReservation.R4).toMatchObject({
+          status: 'huerfana',
+          hostawayCheckoutDate: null,
+          checkoutDate: '2026-10-09',
+        });
+        expect(byReservation.R5).toMatchObject({
+          status: 'cambio',
+          hostawayCheckoutDate: '2026-10-30',
+          unitMatch: 'ambiguous',
+        });
+        expect(res.body.count).toBe(5);
+      });
+
+      it('no consulta la ventana ancha si no hay limpiezas sueltas', async () => {
+        asCoordinator();
+        mocks.hostaway.getCheckouts.mockResolvedValueOnce({
+          result: [hostaway('R1', '412101', '2026-10-08')],
+        });
+
+        await request(app.getHttpServer())
+          .get(
+            '/cleaning-tasks/checkouts/preview?dateFrom=2026-10-08&dateTo=2026-10-08',
+          )
+          .set('x-session-token', token)
+          .expect(200);
+
+        expect(mocks.hostaway.getCheckouts).toHaveBeenCalledTimes(1);
+      });
+
+      it('una limpieza cancelada no se marca como huérfana otra vez', async () => {
+        asCoordinator();
+        mocks.hostaway.getCheckouts.mockResolvedValueOnce({ result: [] });
+        mocks.cleaningTasksOpenmaint.getHostawayTasks.mockResolvedValueOnce({
+          data: [
+            {
+              ...taskCard(9, 'R9', '2026-10-08'),
+              _phase_description: 'Cancelled',
+            },
+          ],
+        });
+
+        const res = await request(app.getHttpServer())
+          .get(
+            '/cleaning-tasks/checkouts/preview?dateFrom=2026-10-08&dateTo=2026-10-08',
+          )
+          .set('x-session-token', token)
+          .expect(200);
+
+        expect(res.body.rows).toEqual([]);
+      });
+    });
+
+    describe('Sincronización', () => {
+      it('envía HostawayListingID al crear y reporta qué reservas fallaron', async () => {
+        mocks.hostaway.getCheckouts.mockResolvedValueOnce({
+          result: [
+            {
+              reservationId: 'R1',
+              listingId: '412101',
+              listingName: 'Apto 101',
+              checkoutDate: '2026-10-08',
+              checkoutTime: 11,
+              guestName: 'x',
+            },
+            {
+              reservationId: 'R2',
+              listingId: '412102',
+              listingName: 'Apto 102',
+              checkoutDate: '2026-10-08',
+              checkoutTime: '12:00',
+              guestName: 'x',
+            },
+          ],
+        });
+        mocks.cleaningTasksOpenmaint.createCleaningTask
+          .mockResolvedValueOnce({ data: { _id: 1, TaskNumber: 'CT.1' } })
+          .mockRejectedValueOnce(new Error('openMAINT no respondió'));
+
+        const res = await request(app.getHttpServer())
+          .post('/cleaning-tasks/sync')
+          .send({ dateFrom: '2026-10-08', dateTo: '2026-10-08' })
+          .expect(201);
+
+        expect(res.body).toMatchObject({ total: 2, created: 1, failed: 1 });
+        expect(res.body.errors).toEqual([
+          expect.objectContaining({
+            reservationId: 'R2',
+            listingName: 'Apto 102',
+          }),
+        ]);
+        const first =
+          mocks.cleaningTasksOpenmaint.createCleaningTask.mock.calls[0][0];
+        expect(first).toMatchObject({
+          HostawayListingID: '412101',
+          HostawayReservation: 'R1',
+          CheckoutDate: '2026-10-08',
+          Source: 'Hostaway',
+        });
+      });
+
+      it('los números de tarea de una misma tanda no se repiten', async () => {
+        const result = Array.from({ length: 6 }, (_, i) => ({
+          reservationId: `R${i}`,
+          listingId: '412101',
+          listingName: 'Apto 101',
+          checkoutDate: '2026-10-08',
+          checkoutTime: 11,
+          guestName: 'x',
+        }));
+        mocks.hostaway.getCheckouts.mockResolvedValueOnce({ result });
+
+        await request(app.getHttpServer())
+          .post('/cleaning-tasks/sync')
+          .send({ dateFrom: '2026-10-08', dateTo: '2026-10-08' })
+          .expect(201);
+
+        const numbers =
+          mocks.cleaningTasksOpenmaint.createCleaningTask.mock.calls.map(
+            (c) => c[0].TaskNumber,
+          );
+        expect(new Set(numbers).size).toBe(6);
+      });
     });
   });
 });
