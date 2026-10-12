@@ -17,6 +17,7 @@ import { MaintenanceCard } from "@/shared/components/MaintenanceCard";
 import { useListPagination } from "@/modules/incidentes/hooks/useListPagination";
 import { useMyPreventiveMaintenances } from "@/modules/incidentes/hooks/useMyPreventiveMaintenances";
 import { getMyIncidents } from "@/modules/incidentes/services/incidentsService";
+import { sortTasksForOperator } from "@/modules/incidentes/utils/sortCleaningTasks";
 import { fetchMyCleaningTasks } from "@/modules/incidentes/services/cleaningTasksService";
 import type { Incident } from "@/modules/incidentes/types/Incident";
 import type { CleaningTask } from "@/modules/incidentes/types/CleaningTask";
@@ -205,11 +206,14 @@ export const DashboardPage = () => {
       maintenance.statusCode === preventiveStatusFilter,
   );
 
-  const filteredCleaningTasks = cleaningTasks.filter((task) => {
-    const allowedPhases = ["Assigned", "InExecution", "Completed"];
-    if (!allowedPhases.includes(task.phase)) return false;
-    return phaseFilter === "ALL" || task.phase === phaseFilter;
-  });
+  // En ejecución o en pausa primero; después, de la más reciente a la más antigua.
+  const filteredCleaningTasks = sortTasksForOperator(
+    cleaningTasks.filter((task) => {
+      const allowedPhases = ["Assigned", "InExecution", "Completed"];
+      if (!allowedPhases.includes(task.phase)) return false;
+      return phaseFilter === "ALL" || task.phase === phaseFilter;
+    }),
+  );
 
   // ── Paginación ─────────────────────────────────────────────────────────────
   const maintenancePagination = useListPagination(
