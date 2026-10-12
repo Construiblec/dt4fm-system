@@ -129,6 +129,35 @@ describe("parseCleaningChecklist — comas sin entrecomillar", () => {
   });
 });
 
+describe("parseCleaningChecklist — celda de minutos vacía", () => {
+  it("no deja el separador pegado al final del texto (lo que Excel escribe con la celda en blanco)", () => {
+    const [section] = parseCleaningChecklist([
+      "Baño;Lavar la cortina;",
+      "Baño;Descalcificar grifería;15",
+    ]);
+
+    expect(section.items.map((item) => item.text)).toEqual([
+      "Lavar la cortina",
+      "Descalcificar grifería",
+    ]);
+    expect(section.items[0].minutes).toBeNull();
+    expect(section.items[1].minutes).toBe(15);
+  });
+
+  it("con coma pasa lo mismo", () => {
+    const [section] = parseCleaningChecklist(["Baño,Lavar la cortina,"]);
+
+    expect(section.items[0].text).toBe("Lavar la cortina");
+  });
+
+  it("sigue uniendo el texto cuando hay una coma sin entrecomillar y los minutos están", () => {
+    const [section] = parseCleaningChecklist(["Baño,Frotar paredes, azulejos,8"]);
+
+    expect(section.items[0].text).toBe("Frotar paredes, azulejos");
+    expect(section.items[0].minutes).toBe(8);
+  });
+});
+
 describe("parseCleaningChecklist — cabecera", () => {
   it("descarta la cabecera cuando está presente", () => {
     const sections = parseCleaningChecklist([

@@ -31,6 +31,17 @@ import { OwnerProfilePage } from "@/modules/owners/pages/OwnerProfilePage";
 import { GuestDashboardPage } from "@/modules/guest/pages/GuestDashboardPage";
 import { GuestIncidentPage } from "@/modules/guest/pages/GuestIncidentPage";
 import { GuestShortLinkPage } from "@/modules/guest/pages/GuestShortLinkPage";
+import { CoordinatorLayout } from "@/modules/coordinador/layout/CoordinatorLayout";
+import { PanelPage } from "@/modules/coordinador/pages/PanelPage";
+import { PendientesPage } from "@/modules/coordinador/pages/PendientesPage";
+import { LimpiezasPage } from "@/modules/coordinador/pages/LimpiezasPage";
+import { SincronizacionPage } from "@/modules/coordinador/pages/SincronizacionPage";
+import { PerfilPage } from "@/modules/coordinador/pages/PerfilPage";
+import { NuevaPage } from "@/modules/coordinador/pages/NuevaPage";
+import {
+  ChecklistEditorPage,
+  ChecklistsPage,
+} from "@/modules/coordinador/pages/ChecklistsPage";
 import { OwnerReservationDetailPage } from "@/modules/owners/pages/reservation/OwnerReservationDetailPage";
 
 export const router = createBrowserRouter([
@@ -43,7 +54,10 @@ export const router = createBrowserRouter([
   { path: "/dashboard", element: <DashboardPage /> },
   { path: "/cuenta", element: <AccountPage /> },
   { path: "/notificaciones", element: <NotificationsPage /> },
-  { path: "/cleaning-tasks/:id/execute", element: <CleaningTaskExecutionPage /> },
+  {
+    path: "/cleaning-tasks/:id/execute",
+    element: <CleaningTaskExecutionPage />,
+  },
   { path: "/visitor-form", element: <VisitorFormPage /> },
   { path: "/report-incident", element: <ReportIncidentPage /> },
   { path: "/incidents/:id", element: <IncidentDetailPage /> },
@@ -88,6 +102,29 @@ export const router = createBrowserRouter([
         <AsistenteSLTaskDetailPage />
       </RequireRole>
     ),
+  },
+  // ── Coordinador de limpiezas ──────────────────────────────────────────────
+  // Vista de escritorio con su propio layout (menú lateral); la ficha de una
+  // limpieza se abre como panel con `?limpieza=ID`.
+  {
+    path: "/coordinador",
+    element: (
+      <RequireRole roles={["Coordinador", "SuperUser"]}>
+        <CoordinatorLayout />
+      </RequireRole>
+    ),
+    children: [
+      { index: true, element: <PanelPage /> },
+      { path: "pendientes", element: <PendientesPage /> },
+      { path: "limpiezas", element: <LimpiezasPage /> },
+      { path: "agenda", element: <LimpiezasPage /> },
+      { path: "sincronizacion", element: <SincronizacionPage /> },
+      { path: "nueva", element: <NuevaPage /> },
+      { path: "checklists", element: <ChecklistsPage /> },
+      { path: "checklists/nuevo", element: <ChecklistEditorPage /> },
+      { path: "checklists/:id", element: <ChecklistEditorPage /> },
+      { path: "perfil", element: <PerfilPage /> },
+    ],
   },
   // ── Supervisión de mantenimiento ──────────────────────────────────────────
   {

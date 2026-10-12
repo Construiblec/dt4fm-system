@@ -49,7 +49,7 @@ const capitalizeFirstLetter = (value: string) =>
   value ? value.charAt(0).toUpperCase() + value.slice(1) : value;
 
 /** Minúsculas y sin tildes. Solo para comparar, nunca para mostrar. */
-const normalize = (value: string) =>
+export const normalize = (value: string) =>
   value
     .toLowerCase()
     .normalize("NFD")
@@ -84,15 +84,18 @@ const HEADER_ACTIVITY_CELLS = new Set([
  * coincidan las dos primeras celdas: así una actividad que por casualidad se
  * llame "Actividad" no puede desaparecer del checklist sin que nadie lo note.
  */
-const isHeaderRow = (fields: string[]) =>
+export const isHeaderRow = (fields: string[]) =>
   HEADER_TITLE_CELLS.has(normalize(fields[0] ?? "")) &&
   HEADER_ACTIVITY_CELLS.has(normalize(fields[1] ?? ""));
 
 /** Separadores que puede traer la plantilla (ver `detectDelimiter`). */
-type Delimiter = "," | ";";
+export type Delimiter = "," | ";";
 
 /** Parte UNA línea CSV respetando comillas. */
-const splitCsvLine = (line: string, delimiter: Delimiter): string[] => {
+export const splitCsvLine = (
+  line: string,
+  delimiter: Delimiter,
+): string[] => {
   const fields: string[] = [];
   let field = "";
   let inQuotes = false;
@@ -154,7 +157,7 @@ const splitCsvLine = (line: string, delimiter: Delimiter): string[] => {
  *
  * Ante un empate total gana la coma, que es el formato documentado.
  */
-const detectDelimiter = (activities: string[]): Delimiter => {
+export const detectDelimiter = (activities: string[]): Delimiter => {
   const score = (delimiter: Delimiter) =>
     activities.reduce(
       (totals, line) => {
@@ -184,7 +187,7 @@ const detectDelimiter = (activities: string[]): Delimiter => {
 };
 
 /** `"3"` → 3, `"2,5"` → 2.5, `"5 min"` / `""` / `"dos"` / `"-1"` → null. */
-const parseMinutes = (raw: string): number | null => {
+export const parseMinutes = (raw: string): number | null => {
   // La coma decimal aparece cuando la plantilla se edita en una hoja de cálculo
   // en español; solo llega entera hasta acá si venía entrecomillada.
   const normalized = raw.replace(",", ".").trim();
@@ -219,9 +222,16 @@ const toRow = (fields: string[], delimiter: Delimiter): ParsedRow | null => {
 
   const minutes =
     fields.length >= 3 ? parseMinutes(fields[fields.length - 1]) : null;
+  // La celda de minutos vacía (`Baño;Lavar cortina;`, lo que Excel escribe
+  // siempre que la celda queda en blanco) no es parte de la actividad: sin esto
+  // el texto quedaba como "Lavar cortina;".
+  const emptyMinutesCell =
+    fields.length >= 3 && fields[fields.length - 1] === "";
   // Se reúne con el mismo separador que las partió, para devolver el texto tal
   // como estaba escrito.
-  const text = (minutes !== null ? fields.slice(1, -1) : fields.slice(1))
+  const text = (
+    minutes !== null || emptyMinutesCell ? fields.slice(1, -1) : fields.slice(1)
+  )
     .join(`${delimiter} `)
     .trim();
 

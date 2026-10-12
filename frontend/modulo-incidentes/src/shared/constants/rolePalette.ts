@@ -1,4 +1,5 @@
 import {
+  CalendarCheck,
   HardHat,
   Home,
   KeyRound,
@@ -107,6 +108,23 @@ export const ROLE_VIEWS: Record<string, RoleView> = {
     ring: "border-fuchsia-600",
     solid: "bg-fuchsia-600",
     homeRoute: "/asistente-sl",
+  },
+  /**
+   * Coordinación de limpiezas: sincroniza con Hostaway, completa las pendientes
+   * y arma la agenda. Es una vista de escritorio, sin barra inferior. El índigo
+   * es provisional, a la espera de que producto lo valide.
+   */
+  Coordinador: {
+    name: "Coordinador de Limpiezas",
+    short: "Coordinación",
+    desc: "Sincronización, agenda y checklists",
+    icon: CalendarCheck,
+    dot: "bg-indigo-600",
+    text: "text-indigo-700",
+    soft: "bg-indigo-50",
+    ring: "border-indigo-600",
+    solid: "bg-indigo-600",
+    homeRoute: "/coordinador",
   },
   Propietarios: {
     name: "Residente",
