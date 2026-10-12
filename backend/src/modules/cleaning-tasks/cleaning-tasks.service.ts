@@ -1232,6 +1232,10 @@ export class CleaningTasksService {
       body,
       sessionToken,
     );
+    // El operario se entera de que tiene que volver; no bloquea la respuesta.
+    if (task.Employee) {
+      void this.notifyCleaningReopened(task, taskId, reason, sessionToken);
+    }
     return {
       success: true,
       data: {
@@ -2252,6 +2256,47 @@ export class CleaningTasksService {
     } catch (error) {
       this.logger.warn(
         `No se pudo notificar el fin de la limpieza ${taskId}: ` +
+          `${(error as Error)?.message}`,
+      );
+    }
+  }
+
+  /**
+   * Avisa al operario que su limpieza fue reabierta. Sin unidad, la ubicación sale
+   * de la descripción ("Limpieza - R315" → "R315") en vez de "ubicación no
+   * especificada". Best-effort: nunca propaga.
+   */
+  private async notifyCleaningReopened(
+    task: {
+      Employee?: number | null;
+      Unit?: number | null;
+      _Unit_description?: string | null;
+      Description?: string | null;
+    },
+    taskId: number,
+    reason: string | undefined,
+    sessionToken: string,
+  ) {
+    if (!task.Employee) return;
+    try {
+      const unit = task.Unit
+        ? await this.fetchUnitInfo(task.Unit, sessionToken)
+        : null;
+
+      await this.pushDispatch.notifyCleaningReopened({
+        id: taskId,
+        cleaningEmployeeId: task.Employee,
+        unitName:
+          task._Unit_description ??
+          unit?.description ??
+          task.Description?.replace(/^Limpieza - /, '') ??
+          null,
+        buildingName: unit?.building,
+        reason: reason || null,
+      });
+    } catch (error) {
+      this.logger.warn(
+        `No se pudo notificar la reapertura de la limpieza ${taskId}: ` +
           `${(error as Error)?.message}`,
       );
     }

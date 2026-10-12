@@ -8,6 +8,7 @@ import {
   Megaphone,
   PauseCircle,
   PlayCircle,
+  RotateCcw,
   Wrench,
   type LucideIcon,
 } from "lucide-react";
@@ -81,6 +82,12 @@ export const NOTIFICATION_STYLES: Record<string, NotificationStyle> = {
     icon: CheckCircle2,
     text: "text-emerald-700",
     soft: "bg-emerald-50",
+  },
+  // Mismo rose que la insignia "Reabierta" de las tarjetas.
+  "cleaning.reopened": {
+    icon: RotateCcw,
+    text: "text-rose-700",
+    soft: "bg-rose-50",
   },
 };
 

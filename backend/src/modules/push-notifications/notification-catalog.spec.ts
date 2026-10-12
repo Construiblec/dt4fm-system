@@ -1,4 +1,8 @@
-import { correctiveOpened, joinLocation } from './notification-catalog';
+import {
+  cleaningReopened,
+  correctiveOpened,
+  joinLocation,
+} from './notification-catalog';
 
 describe('joinLocation', () => {
   it('separa los segmentos con "·" y no con guion', () => {
@@ -55,5 +59,43 @@ describe('correctiveOpened', () => {
     expect(message.body).toBe(
       'Sistema IoT ha reportado un problema en Calefón 1 · Inglaterra',
     );
+  });
+});
+
+describe('cleaningReopened', () => {
+  it('avisa al operario con el motivo y abre su vista de la tarea', () => {
+    const message = cleaningReopened({
+      id: 777,
+      location: joinLocation('R315 - Estudio 15', 'R - República'),
+      reason: 'Faltó limpiar la nevera',
+    });
+
+    expect(message.type).toBe('cleaning.reopened');
+    expect(message.title).toBe('Reabierta: Limpieza');
+    expect(message.body).toBe(
+      'Supervisión reabrió tu limpieza en Estudio 15 · República: «Faltó limpiar la nevera»',
+    );
+    expect(message.deepLink).toBe('/cleaning-tasks/777/execute');
+  });
+
+  it('sin motivo no deja dos puntos colgando', () => {
+    const message = cleaningReopened({
+      id: 777,
+      location: 'R315',
+      reason: '  ',
+    });
+
+    expect(message.body).toBe('Supervisión reabrió tu limpieza en R315');
+  });
+
+  it('recorta un motivo largo', () => {
+    const message = cleaningReopened({
+      id: 777,
+      location: 'R315',
+      reason: 'x'.repeat(300),
+    });
+
+    expect(message.body).toMatch(/…»$/);
+    expect(message.body.length).toBeLessThan(160);
   });
 });

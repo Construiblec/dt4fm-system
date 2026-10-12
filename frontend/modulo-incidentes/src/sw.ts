@@ -54,8 +54,12 @@ self.addEventListener('push', (event) => {
       badge: '/pwa-64x64.png',
       // Agrupa por entidad: un reaviso sustituye al anterior en vez de apilarse.
       tag: payload.tag,
+      // Sin esto, el que sustituye a otro con la misma etiqueta (un "Reabierta"
+      // sobre la "Asignada" de esa tarea) entra en silencio, sin sonar ni vibrar.
+      // La lib de TypeScript no tipa `renotify`, de ahí el cast.
+      renotify: Boolean(payload.tag),
       data: { deepLink: payload.deepLink ?? null, type: payload.type },
-    }),
+    } as NotificationOptions & { renotify?: boolean }),
   );
 });
 

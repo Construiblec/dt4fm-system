@@ -7,6 +7,7 @@ import {
   cleaningAssigned,
   cleaningCompleted,
   cleaningDelayed,
+  cleaningReopened,
   correctiveAssigned,
   correctiveCompleted,
   correctiveOpened,
@@ -191,6 +192,24 @@ export class PushDispatchService {
       });
 
       await this.toRoles(CLEANING_SUPERVISOR_ROLES, message);
+    });
+  }
+
+  async notifyCleaningReopened(
+    input: Location & {
+      id: string | number;
+      cleaningEmployeeId: number;
+      reason?: string | null;
+    },
+  ): Promise<void> {
+    await this.safe(async () => {
+      const message = cleaningReopened({
+        id: input.id,
+        location: this.formatLocation(input),
+        reason: input.reason,
+      });
+
+      await this.toCleaningEmployee(input.cleaningEmployeeId, message);
     });
   }
 

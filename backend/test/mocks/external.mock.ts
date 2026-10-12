@@ -88,6 +88,7 @@ export const createPushDispatchServiceMock = () => ({
   notifyCleaningAssigned: jest.fn().mockResolvedValue(undefined),
   notifyCleaningDelayed: jest.fn().mockResolvedValue(undefined),
   notifyCleaningCompleted: jest.fn().mockResolvedValue(undefined),
+  notifyCleaningReopened: jest.fn().mockResolvedValue(undefined),
   claimDispatch: jest.fn().mockResolvedValue(true),
 });
 
