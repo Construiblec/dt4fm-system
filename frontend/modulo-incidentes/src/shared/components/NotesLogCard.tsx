@@ -16,14 +16,14 @@ export type LogEntry = {
 
 type Props = {
   entries: LogEntry[] | null | undefined;
-  /** El detalle del supervisor usa títulos más pequeños y sin icono. */
+  /** El detalle del supervisor usa títulos más pequeños. */
   variant?: "operator" | "supervisor";
 };
 
 const STEP_LABELS: Record<string, string> = {
   CM02: "Asignación",
   CM03: "Ejecución",
-  CM05: "Revisión de cierre",
+  CM05: "Revisión de mantenimiento",
   CM07: "Gestión",
 };
 
@@ -35,7 +35,7 @@ const stepLabel = (entry: LogEntry) => {
   const label =
     (entry.stepCode && STEP_LABELS[entry.stepCode]) || entry.step || "Nota";
 
-  return entry.isRejection ? `${label} · Rechazado` : label;
+  return entry.isRejection ? "Reapertura de mantenimiento" : label;
 };
 
 /** Notas del proceso en orden cronológico. Sin notas no se pinta nada. */
@@ -48,9 +48,9 @@ export const NotesLogCard = ({ entries, variant = "operator" }: Props) => {
     <section className="rounded-3xl bg-white p-5 shadow-sm">
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
-          {isOperator ? (
-            <ClipboardList className="h-5 w-5 text-slate-500" />
-          ) : null}
+          <ClipboardList
+            className={`text-slate-500 ${isOperator ? "h-5 w-5" : "h-4 w-4"}`}
+          />
           <h2
             className={
               isOperator
@@ -58,7 +58,7 @@ export const NotesLogCard = ({ entries, variant = "operator" }: Props) => {
                 : "text-sm font-bold text-slate-900"
             }
           >
-            Bitácora de notas
+            Historial de notas
           </h2>
         </div>
         <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600">
