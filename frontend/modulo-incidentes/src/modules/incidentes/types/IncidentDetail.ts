@@ -1,3 +1,5 @@
+import type { LogEntry } from "@/shared/components/NotesLogCard";
+
 export type IncidentDetail = {
   id: number;
   number: string;
@@ -15,5 +17,7 @@ export type IncidentDetail = {
   reportNotes: string | null;
   /** La nota del último paso del flujo. */
   notes: string | null;
+  /** Notas posteriores a la apertura, en orden cronológico. */
+  log?: LogEntry[];
   images: string[];
 };

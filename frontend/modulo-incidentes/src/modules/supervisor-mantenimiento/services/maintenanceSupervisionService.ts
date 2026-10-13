@@ -202,11 +202,16 @@ export const updateAssignee = async (
   id: number,
   assigneeId: number,
   teamId?: number,
+  notes?: string,
 ): Promise<MaintenanceResponse> => {
   try {
     const { data } = await api.put<MaintenanceResponse>(
       `/maintenance-supervision/${kind}/${id}/assignee`,
-      { assigneeId, ...(teamId !== undefined ? { teamId } : {}) },
+      {
+        assigneeId,
+        ...(teamId !== undefined ? { teamId } : {}),
+        ...(notes ? { notes } : {}),
+      },
       { headers: getAuthHeaders() },
     );
     return data;

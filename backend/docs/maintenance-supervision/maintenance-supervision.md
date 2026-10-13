@@ -344,7 +344,7 @@ Base `/maintenance-supervision`. Cabeceras: `authorization` (sesión openMAINT) 
 | POST | `/corrective/:id/reject` | `CM02-Reject`; motivo obligatorio |
 | POST | `/preventive/:id/assign` | `PM01-Advance`; **solo Assignee** |
 | POST | `/preventive/:id/resume` | `PM04-Advance`; solo desde Suspensión (§5 bis) |
-| PUT | `/:kind/:id/assignee` | Sin mover el flujo. Acepta `teamId` donde `Team` es escribible. En preventivo suspendido va por `PM04-Return` (§5 bis) |
+| PUT | `/:kind/:id/assignee` | Sin mover el flujo. Acepta `teamId` donde `Team` es escribible. En correctivo en Ejecución acepta `notes`: con nota se usa `CM03-Return` (384552), que es lo único que deja la entrada en la bitácora — un `saveFields` con `ProcessNotes` no registra nada (comprobado el 2026-10-13 sobre `CM.2026.0210`) — y después se restablece `ExecStartDate`. En preventivo suspendido va por `PM04-Return` (§5 bis) |
 | POST | `/corrective/:id/review` | `CM05-Advance` / `CM05-Back` |
 | PUT | `/:kind/:id/planned-start` | `ExpExecStartDate`; solo en CM02 / PM02 |
 

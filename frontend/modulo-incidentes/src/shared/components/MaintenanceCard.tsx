@@ -197,7 +197,7 @@ export const MaintenanceCard = ({
           ) : (
             <div className="flex items-center gap-2 font-medium text-amber-700">
               <UserRoundX className="h-4 w-4 shrink-0" />
-              <span>Sin cesionario</span>
+              <span>Sin responsable</span>
             </div>
           )
         ) : null}

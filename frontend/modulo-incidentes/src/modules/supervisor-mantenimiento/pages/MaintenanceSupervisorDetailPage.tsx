@@ -38,6 +38,8 @@ import type {
   SupervisedMaintenance,
 } from "@/modules/supervisor-mantenimiento/types/SupervisedMaintenance";
 
+import { NotesLogCard } from "@/shared/components/NotesLogCard";
+import { ReportDetailCard } from "@/shared/components/ReportDetailCard";
 import { formatMediumDateTime } from "@/shared/utils/dateUtils";
 
 const formatDateTime = (value: string | null) =>
@@ -262,9 +264,8 @@ export const MaintenanceSupervisorDetailPage = () => {
                     <span className="font-semibold">
                       Asignado, aún sin iniciar.
                     </span>{" "}
-                    En openMAINT el proceso ya avanzó a Ejecución al asignarlo,
-                    pero la app no da por iniciado el trabajo ni muestra hora de
-                    inicio hasta que el técnico lo arranque.
+                    El trabajo no se da por iniciado ni muestra hora de inicio
+                    hasta que el técnico lo arranque.
                   </p>
                 </div>
               ) : null}
@@ -282,7 +283,7 @@ export const MaintenanceSupervisorDetailPage = () => {
                       ? `Se suspendió por: ${maintenance.suspensionReason}.`
                       : "Está detenido a la espera de poder continuar."}{" "}
                     Al reanudarlo vuelve a ejecución y{" "}
-                    {maintenance.assignee?.name ?? "el cesionario"} puede
+                    {maintenance.assignee?.name ?? "el responsable"} puede
                     retomar el checklist donde lo dejó.
                   </p>
 
@@ -326,7 +327,7 @@ export const MaintenanceSupervisorDetailPage = () => {
                   <p className="mt-2 text-sm text-slate-500">
                     El trabajo terminó y espera tu visto bueno. Apruébalo, o
                     devuélvelo a asignación para que{" "}
-                    {maintenance.assignee?.name ?? "el cesionario"} lo repita.
+                    {maintenance.assignee?.name ?? "el responsable"} lo repita.
                   </p>
 
                   <div className="mt-4 grid grid-cols-2 gap-3">
@@ -380,16 +381,12 @@ export const MaintenanceSupervisorDetailPage = () => {
                 </div>
               </section>
 
-              {maintenance.reportNotes ? (
-                <section className="rounded-3xl bg-white p-5 shadow-sm">
-                  <h2 className="mb-3 text-sm font-bold text-slate-900">
-                    Detalle del reporte
-                  </h2>
-                  <p className="whitespace-pre-line text-sm leading-6 text-slate-600">
-                    {maintenance.reportNotes}
-                  </p>
-                </section>
-              ) : null}
+              <ReportDetailCard
+                notes={maintenance.reportNotes}
+                variant="supervisor"
+              />
+
+              <NotesLogCard entries={maintenance.log} variant="supervisor" />
 
               <section className="rounded-3xl bg-white p-5 shadow-sm">
                 <h2 className="mb-3 text-sm font-bold text-slate-900">
@@ -460,14 +457,16 @@ export const MaintenanceSupervisorDetailPage = () => {
                 ) : null}
               </section>
 
-              <MaintenanceEvidence
-                images={evidence}
-                loading={evidenceLoading}
-              />
+              {evidenceLoading || evidence.length > 0 ? (
+                <MaintenanceEvidence
+                  images={evidence}
+                  loading={evidenceLoading}
+                />
+              ) : null}
 
               <section className="rounded-3xl bg-white p-5 shadow-sm">
                 <h2 className="mb-3 text-sm font-bold text-slate-900">
-                  Cesionario y equipo
+                  Responsable y equipo
                 </h2>
                 <div className="space-y-2">
                   <InfoRow
@@ -476,8 +475,8 @@ export const MaintenanceSupervisorDetailPage = () => {
                     highlight={maintenance.team ? undefined : "text-amber-700"}
                   />
                   <InfoRow
-                    label="Cesionario"
-                    value={maintenance.assignee?.name ?? "Sin cesionario"}
+                    label="Responsable"
+                    value={maintenance.assignee?.name ?? "Sin responsable"}
                     highlight={
                       maintenance.assignee ? undefined : "text-amber-700"
                     }
@@ -501,7 +500,7 @@ export const MaintenanceSupervisorDetailPage = () => {
                         disabled={faltaPlanificar}
                         className="w-full rounded-2xl bg-brand px-4 py-4 text-sm font-semibold text-white transition hover:bg-brand-hover disabled:cursor-not-allowed disabled:bg-slate-300 disabled:hover:bg-slate-300"
                       >
-                        Asignar cesionario
+                        Asignar responsable
                       </button>
 
                       {faltaPlanificar ? (
@@ -516,8 +515,8 @@ export const MaintenanceSupervisorDetailPage = () => {
                               Falta la fecha y hora de inicio previsto
                             </strong>
                             , por eso no se puede asignar todavía. Toca aquí
-                            para fijarla — después de asignar, openMAINT ya no
-                            deja ponerla.
+                            para fijarla — después de asignar ya no se puede
+                            cambiar.
                           </span>
                         </button>
                       ) : null}
@@ -530,7 +529,7 @@ export const MaintenanceSupervisorDetailPage = () => {
                       onClick={() => setModal("reassign")}
                       className="w-full rounded-2xl bg-brand px-4 py-4 text-sm font-semibold text-white transition hover:bg-brand-hover"
                     >
-                      Reasignar cesionario
+                      Reasignar responsable
                     </button>
                   ) : null}
 
@@ -559,8 +558,8 @@ export const MaintenanceSupervisorDetailPage = () => {
             applyUpdate(
               updated,
               modal === "assign"
-                ? `Asignado a ${updated.assignee?.name ?? "el cesionario"}.`
-                : `Reasignado a ${updated.assignee?.name ?? "el cesionario"}.`,
+                ? `Asignado a ${updated.assignee?.name ?? "el responsable"}.`
+                : `Reasignado a ${updated.assignee?.name ?? "el responsable"}.`,
             )
           }
         />
@@ -602,7 +601,7 @@ export const MaintenanceSupervisorDetailPage = () => {
         <NotesReasonModal
           title="Rechazar cierre"
           subtitle={maintenance.number ?? undefined}
-          warning="Vuelve a Asignación con el mismo cesionario y equipo para que se repita el trabajo; no se cierra ni vuelve a planificarse."
+          warning="Vuelve a Asignación con el mismo responsable y equipo para que se repita el trabajo; no se cierra ni vuelve a planificarse."
           tone="neutral"
           confirmLabel="Rechazar"
           placeholder="Explica qué falta o qué no quedó bien…"

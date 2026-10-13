@@ -28,6 +28,8 @@ import {
 import { PILL_SHAPE } from "@/shared/constants/statusPalette";
 import { ErrorModal } from "@/shared/components/ErrorModal";
 import { LoadingModal } from "@/shared/components/LoadingModal";
+import { NotesLogCard } from "@/shared/components/NotesLogCard";
+import { ReportDetailCard } from "@/shared/components/ReportDetailCard";
 import { SuccessModal } from "@/shared/components/SuccessModal";
 import { TakePhotoButton } from "@/shared/components/TakePhotoButton";
 import {
@@ -329,50 +331,20 @@ export const IncidentDetailPage = () => {
                 </section>
               ) : null}
 
-              {incident.reportNotes ? (
-                <section className="rounded-3xl bg-white p-5 shadow-sm">
-                  <h2 className="text-base font-semibold text-slate-900">
-                    Detalle del reporte
-                  </h2>
-                  <p className="mt-3 whitespace-pre-line text-sm leading-6 text-slate-600">
-                    {incident.reportNotes}
-                  </p>
-                </section>
-              ) : null}
+              <ReportDetailCard notes={incident.reportNotes} />
 
-              {/* Mientras nadie más escriba, la última nota es la del reporte. */}
-              {incident.notes !== null &&
-              incident.notes !== incident.reportNotes ? (
-                <section className="rounded-3xl bg-white p-5 shadow-sm">
-                  <h2 className="text-base font-semibold text-slate-900">
-                    Última nota
-                  </h2>
-                  <p className="mt-3 whitespace-pre-line text-sm leading-6 text-slate-600">
-                    {incident.notes}
-                  </p>
-                </section>
-              ) : null}
+              <NotesLogCard entries={incident.log} />
 
               {isAssigned ? (
-                <section className="rounded-3xl bg-white p-5 shadow-sm">
-                  <h2 className="text-base font-semibold text-slate-900">
-                    Trabajo asignado
-                  </h2>
-                  <p className="mt-2 text-sm leading-6 text-slate-600">
-                    Pulsa «Iniciar trabajo» al empezar. Desde ese momento se
-                    cuenta la duración, y hasta entonces no se puede finalizar.
-                  </p>
-
-                  <button
-                    type="button"
-                    onClick={handleStart}
-                    disabled={isStarting}
-                    className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl bg-brand px-4 py-4 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-hover focus:outline-none focus:ring-4 focus:ring-brand/30 disabled:opacity-60"
-                  >
-                    <Play className="h-4 w-4" />
-                    {isStarting ? "Iniciando..." : "Iniciar trabajo"}
-                  </button>
-                </section>
+                <button
+                  type="button"
+                  onClick={handleStart}
+                  disabled={isStarting}
+                  className="flex w-full items-center justify-center gap-2 rounded-2xl bg-brand px-4 py-4 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-hover focus:outline-none focus:ring-4 focus:ring-brand/30 disabled:opacity-60"
+                >
+                  <Play className="h-4 w-4" />
+                  {isStarting ? "Iniciando..." : "Iniciar Mantenimiento"}
+                </button>
               ) : null}
 
               {!isAssigned && !isInExecution ? (

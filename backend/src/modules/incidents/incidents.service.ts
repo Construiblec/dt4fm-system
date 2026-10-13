@@ -6,6 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import {
+  extractRegisterLog,
   extractRegisterNotes,
   extractReportNotes,
 } from '../../common/utils/openmaint-register.util';
@@ -304,6 +305,11 @@ export class IncidentsService {
       // Lo que escribió quien reportó; `notes` es la nota del último paso.
       reportNotes: extractReportNotes(incident.Register ?? null),
       notes: extractRegisterNotes(incident.Register ?? null),
+      // Notas posteriores a la apertura: asignación, ejecución, rechazo…
+      log: extractRegisterLog(
+        incident.Register ?? null,
+        incident._ProcessStatus_code,
+      ),
       requesterName: incident._Requester_description ?? null,
       assigneeName: incident._Assignee_description ?? null,
       unit: incident._Unit_description ?? null,
