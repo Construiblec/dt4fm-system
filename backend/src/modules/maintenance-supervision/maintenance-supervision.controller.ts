@@ -247,6 +247,7 @@ export class MaintenanceSupervisionController {
       id,
       dto.assigneeId,
       dto.teamId,
+      dto.notes,
     );
   }
 

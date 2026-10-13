@@ -68,6 +68,8 @@ export const AssignAssigneeModal = ({
     maintenance.team?.id ?? null,
   );
   const [assigneeId, setAssigneeId] = useState<number | null>(null);
+  // Solo correctivos: su flujo es el que anexa la nota a la bitácora.
+  const [notes, setNotes] = useState("");
 
   useEffect(() => {
     const load = async () => {
@@ -176,6 +178,8 @@ export const AssignAssigneeModal = ({
   const handleSubmit = async () => {
     if (assigneeId === null) return;
 
+    const note = isCorrective && notes.trim() ? notes.trim() : undefined;
+
     try {
       setSaving(true);
       setError(null);
@@ -188,12 +192,14 @@ export const AssignAssigneeModal = ({
             // Solo viaja si el paso admite cambiarlo; si no, el backend lo
             // descartaría igual.
             teamEditable && teamId !== null ? teamId : undefined,
+            note,
           )
         : await assignMaintenance(maintenance.kind, maintenance.id, {
             assigneeId,
             // En preventivo el backend lo ignora: `Team` no es escribible en
             // ningún paso de su flujo.
             ...(teamEditable && teamId !== null ? { teamId } : {}),
+            ...(note ? { notes: note } : {}),
             // El inicio previsto no viaja aquí: se fija en «Planificar inicio
             // de ejecución», que es el único sitio donde se pone. Tenerlo
             // también en este modal daba dos formularios para el mismo dato.
@@ -212,7 +218,7 @@ export const AssignAssigneeModal = ({
       <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-xl">
         <div className="space-y-1">
           <h2 className="text-lg font-bold text-slate-900">
-            {isReassign ? "Reasignar cesionario" : "Asignar cesionario"}
+            {isReassign ? "Reasignar responsable" : "Asignar responsable"}
           </h2>
           <p className="text-sm text-slate-500">
             {maintenance.number ?? ""}
@@ -257,8 +263,8 @@ export const AssignAssigneeModal = ({
                     <Lock className="h-4 w-4 shrink-0 text-slate-400" />
                   </div>
                   <p className="mt-1.5 text-xs text-slate-400">
-                    Con el trabajo ya despachado openMAINT no deja cambiar de
-                    equipo; solo la persona dentro de él.
+                    Con el trabajo ya despachado no se puede cambiar de equipo;
+                    solo la persona dentro de él.
                   </p>
                 </div>
               ) : (
@@ -282,7 +288,7 @@ export const AssignAssigneeModal = ({
                 </div>
               ) : (
                 <div>
-                  {label(isReassign ? "Nuevo cesionario" : "Cesionario")}
+                  {label(isReassign ? "Nuevo responsable" : "Responsable")}
                   <select
                     value={assigneeId ?? ""}
                     onChange={(event) =>
@@ -313,38 +319,53 @@ export const AssignAssigneeModal = ({
                 </div>
               )}
 
+              {isCorrective && !blockedBySupplier ? (
+                <div>
+                  <div className="flex items-baseline justify-between gap-2">
+                    {label(
+                      isReassign ? "Motivo del cambio" : "Nota para el equipo",
+                    )}
+                    <span className="text-xs text-slate-400">Opcional</span>
+                  </div>
+                  <textarea
+                    rows={3}
+                    value={notes}
+                    onChange={(event) => setNotes(event.target.value)}
+                    placeholder={
+                      isReassign
+                        ? "Por qué cambia de persona e indicaciones para quien lo recibe…"
+                        : "Indicaciones para quien hará el trabajo…"
+                    }
+                    className="w-full resize-none rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-brand focus:ring-4 focus:ring-brand/20"
+                  />
+                  <p className="mt-1.5 text-xs text-slate-400">
+                    {isReassign
+                      ? "Queda registrado en la bitácora del proceso."
+                      : "Queda registrada en la bitácora del proceso."}
+                  </p>
+                </div>
+              ) : null}
+
               {faltaPlanificar ? (
                 <div className="flex items-start gap-2 rounded-xl bg-amber-50 p-3 text-xs text-amber-800">
                   <Info className="h-4 w-4 shrink-0" />
                   <p>
                     Falta el <strong>inicio previsto</strong>. Cierra esto y
                     fíjalo en «Planificar inicio de ejecución»: después de
-                    asignar, openMAINT ya no deja ponerlo.
+                    asignar ya no se puede cambiar.
                   </p>
                 </div>
               ) : null}
 
-              {isCorrective && !isReassign ? (
-                <div className="flex items-start gap-2 rounded-xl bg-amber-50 p-3 text-xs text-amber-800">
-                  <Info className="h-4 w-4 shrink-0" />
-                  <p>
-                    Al asignar, openMAINT lleva el correctivo a{" "}
-                    <strong>Ejecución</strong>. La app lo mostrará como{" "}
-                    <strong>Asignado</strong> y sin hora de inicio hasta que el
-                    técnico lo arranque.
-                  </p>
-                </div>
-              ) : null}
-
-              {/* Devuelto desde la revisión: vuelve con cesionario puesto */}
+              {/* Devuelto desde la revisión: vuelve con responsable puesto */}
               {isCorrective && !isReassign && maintenance.assignee ? (
                 <div className="flex items-start gap-2 rounded-xl bg-slate-50 p-3 text-xs text-slate-600">
                   <Info className="h-4 w-4 shrink-0" />
                   <p>
                     Venía asignado a{" "}
                     <strong>{maintenance.assignee.name}</strong>; puedes
-                    dejárselo o elegir a otra persona. Al devolverlo, openMAINT
-                    borró las horas de inicio y fin del intento anterior.
+                    dejárselo o elegir a otra persona. Las horas de inicio y
+                    fin del intento anterior se borraron.
                   </p>
                 </div>
               ) : null}

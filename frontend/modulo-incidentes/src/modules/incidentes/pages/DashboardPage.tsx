@@ -430,7 +430,7 @@ export const DashboardPage = () => {
                                 }
                                 disabledReason={
                                   isSuspended
-                                    ? "Se reanuda desde OpenMAINT"
+                                    ? "Pendiente de reanudación"
                                     : null
                                 }
                               />

@@ -74,9 +74,19 @@ Se extrae el contenido de:
 
 <span data-block="notes">
 
-Se limpia HTML → texto plano
+Se limpia HTML → texto plano, conservando los saltos de línea
 
-Se retorna la última nota registrada
+Se retorna:
+
+- `reportNotes`: la nota de la apertura (lo que escribió quien reportó).
+- `notes`: la última nota registrada.
+- `log`: las notas posteriores a la apertura, en orden cronológico. Cada una
+  trae `at` (fecha y hora local de openMAINT, sin zona), `stepCode`, `step`,
+  `author`, `role`, `note` e `isRejection` (el supervisor devolvió el trabajo a
+  asignación con esa nota). Los pasos sin nota no aparecen.
+
+Cada entrada de la bitácora es un `<div class="opm_register_entry">` con los
+bloques `date`, `time`, `step`, `userrole`, `userdescr`, `username` y `notes`.
 
 ⚠️ Consideraciones
 

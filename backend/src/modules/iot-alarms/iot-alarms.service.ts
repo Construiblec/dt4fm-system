@@ -8,6 +8,7 @@ import { ConfigService } from '@nestjs/config';
 import { OpenmaintServiceSession } from '../../integrations/openmaint/openmaint.service-session';
 import { PushDispatchService } from '../push-notifications/push-dispatch.service';
 import {
+  IOT_KNOWN_FIELDS,
   IOT_REQUESTER_LABEL,
   IOT_SUBJECT_PREFIX,
   SHORT_DESCR_MAX,
@@ -153,15 +154,26 @@ export class IotAlarmsService {
   }
 
   /**
-   * Vuelca el cuerpo crudo recibido: es lo único que explica al técnico por qué
-   * se abrió el trabajo, y los campos de medición varían según la alarma.
+   * Nota legible del reporte: una línea `Etiqueta: valor.` por dato, que la app
+   * pinta como filas. El cuerpo crudo completo queda en el log.
    */
   private buildNotes(
     dto: CreateIotAlarmDto,
     rawPayload: unknown,
     lookup: AssetLookup,
   ): string {
-    const lines = [`Alarma automática registrada por ${IOT_REQUESTER_LABEL}.`];
+    const payload =
+      rawPayload && typeof rawPayload === 'object'
+        ? (rawPayload as Record<string, unknown>)
+        : {};
+
+    const sentence = (text: string) => `${text.trim().replace(/[.\s]+$/, '')}.`;
+
+    const lines = [
+      sentence(
+        `Alarma automática del ${IOT_REQUESTER_LABEL}: ${dto.message?.trim() || dto.event}`,
+      ),
+    ];
 
     if (lookup.outcome === 'missing') {
       lines.push(
@@ -175,18 +187,45 @@ export class IotAlarmsService {
       );
     }
 
-    lines.push('', 'Datos recibidos del servidor IoT:');
+    // Lo que no es un campo conocido es la medición, que varía según la alarma.
+    const readings = Object.entries(payload)
+      .filter(([key]) => !IOT_KNOWN_FIELDS.includes(key))
+      .map(([key, value]) => `${this.formatValue(value)} ${key}`);
 
-    const payload =
-      rawPayload && typeof rawPayload === 'object'
-        ? (rawPayload as Record<string, unknown>)
-        : {};
-
-    for (const [key, value] of Object.entries(payload)) {
-      lines.push(`  ${key}: ${this.formatValue(value)}`);
+    if (readings.length > 0) {
+      lines.push(sentence(`Lectura: ${readings.join(', ')}`));
     }
 
+    lines.push(
+      sentence(
+        `Equipo: ${dto.assetCode}${dto.device ? ` (sensor ${dto.device})` : ''}`,
+      ),
+    );
+
+    // Con el activo resuelto la ubicación ya va en el correctivo.
+    const place = [payload.building, payload.place]
+      .filter((value) => typeof value === 'string' && value.trim())
+      .join(' · ');
+
+    if (lookup.outcome !== 'found' && place) {
+      lines.push(sentence(`Ubicación: ${place}`));
+    }
+
+    lines.push(
+      sentence(`Detectada: ${this.formatTimestamp(dto.timestamp)}`),
+      sentence(`Evento: ${dto.event}`),
+    );
+
     return lines.join('\n');
+  }
+
+  /** Hora tal como la marcó la Pi, sin convertir de zona. */
+  private formatTimestamp(timestamp: string): string {
+    const parts = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(timestamp);
+
+    return parts
+      ? `${parts[3]}/${parts[2]}/${parts[1]} ${parts[4]}:${parts[5]}`
+      : timestamp;
   }
 
   private formatValue(value: unknown): string {

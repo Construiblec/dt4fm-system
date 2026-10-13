@@ -7,7 +7,11 @@ import {
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
-import { extractReportNotes } from '../../common/utils/openmaint-register.util';
+import {
+  extractRegisterLog,
+  extractReportNotes,
+  RegisterLogEntry,
+} from '../../common/utils/openmaint-register.util';
 import { OpenmaintService } from '../../integrations/openmaint/openmaint.service';
 import {
   PM_ACTIONS,
@@ -84,6 +88,8 @@ export type SupervisedMaintenance = {
    * bitácora. Solo correctivos.
    */
   reportNotes?: string | null;
+  /** Notas posteriores a la apertura, en orden cronológico. Solo correctivos. */
+  log?: RegisterLogEntry[];
 };
 
 export type Assignee = {
@@ -402,7 +408,7 @@ export class MaintenanceSupervisionService {
         this.corrective.advance(sessionId, id, {
           activityId: this.requireActivityId(card._tasklist, id),
           action: CM_ACTIONS.ASSIGN,
-          notes: dto.notes ?? null,
+          notes: dto.notes?.trim() || null,
           fields,
         }),
       'Error al asignar el correctivo en OpenMAINT',
@@ -658,6 +664,7 @@ export class MaintenanceSupervisionService {
     id: number,
     assigneeId: number,
     teamId?: number,
+    notes?: string,
   ) {
     const nextAssignee = await this.findAssignee(sessionId, assigneeId);
 
@@ -704,6 +711,11 @@ export class MaintenanceSupervisionService {
 
       if (nuevoEquipo !== undefined) {
         fields.Team = nuevoEquipo;
+      }
+
+      // Guardar con nota deja una entrada en la bitácora aunque el flujo no avance.
+      if (notes?.trim()) {
+        fields.ProcessNotes = notes.trim();
       }
 
       await this.call(
@@ -939,6 +951,10 @@ export class MaintenanceSupervisionService {
       execEndDate: card.ExecEndDate ?? null,
       reportNotes: extractReportNotes(
         card.Register ?? card._Register_html ?? null,
+      ),
+      log: extractRegisterLog(
+        card.Register ?? card._Register_html ?? null,
+        card._ProcessStatus_code,
       ),
     };
   }

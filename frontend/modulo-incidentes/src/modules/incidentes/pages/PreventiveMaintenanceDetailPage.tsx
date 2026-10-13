@@ -567,7 +567,7 @@ export const PreventiveMaintenanceDetailPage = () => {
         <ConfirmModal
           open={documentToDelete !== null}
           title="Eliminar documento"
-          message={`¿Seguro que deseas eliminar "${documentToDelete?.fileName ?? ""}"? Se quitará de la tarjeta del mantenimiento en OpenMAINT.`}
+          message={`¿Seguro que deseas eliminar "${documentToDelete?.fileName ?? ""}"? Se quitará del mantenimiento.`}
           onConfirm={() => {
             if (documentToDelete) {
               void handleDelete(documentToDelete);
@@ -586,7 +586,7 @@ export const PreventiveMaintenanceDetailPage = () => {
         <ConfirmModal
           open={showConfirmModal}
           title="Confirmar acción"
-          message="¿Está seguro que desea finalizar este mantenimiento preventivo? El checklist se guardará en OpenMAINT y no podrá modificarse."
+          message="¿Está seguro que desea finalizar este mantenimiento preventivo? El checklist se guardará y no podrá modificarse."
           onConfirm={() => void handleConfirmComplete()}
           onCancel={() => setShowConfirmModal(false)}
         />

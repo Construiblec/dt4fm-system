@@ -136,13 +136,16 @@ describe('IotAlarmsService', () => {
       });
     });
 
-    it('conserva en las notas los campos que el DTO no declara', async () => {
+    it('escribe la nota como líneas legibles, con la medición que el DTO no declara', async () => {
       await service.handle(dto, rawPayload);
 
-      const notes = String(sentFields().ProcessNotes);
+      const notes = String(sentFields().ProcessNotes).split('\n');
 
-      expect(notes).toContain('psi: 78');
-      expect(notes).toContain('place: Area comunal');
+      expect(notes[0]).toMatch(/^Alarma automática del Sistema IoT: .+\.$/);
+      expect(notes).toContain('Lectura: 78 psi.');
+      expect(notes).toContain(`Evento: ${dto.event}.`);
+      // La ubicación ya va en el correctivo cuando el activo se resuelve.
+      expect(notes.join('\n')).not.toContain('Ubicación:');
     });
   });
 
@@ -157,6 +160,10 @@ describe('IotAlarmsService', () => {
       expect(fields).not.toHaveProperty('Asset');
       expect(fields).not.toHaveProperty('Floor');
       expect(String(fields.ProcessNotes)).toContain('no existe ningún activo');
+      // Sin activo, la ubicación que mandó la Pi es la única pista.
+      expect(String(fields.ProcessNotes)).toContain(
+        'Ubicación: Pradera · Area comunal.',
+      );
       expect(result.assetResolved).toBe(false);
     });
 

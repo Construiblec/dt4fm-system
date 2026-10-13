@@ -1,3 +1,5 @@
+import type { LogEntry } from "@/shared/components/NotesLogCard";
+
 /** Tipo de mantenimiento; también es el segmento de ruta y del endpoint. */
 export type MaintenanceKind = "corrective" | "preventive";
 
@@ -38,6 +40,8 @@ export type SupervisedMaintenance = {
   suspensionReason?: string | null;
   /** Lo que escribió quien reportó la novedad. Solo correctivos. */
   reportNotes?: string | null;
+  /** Notas posteriores a la apertura, en orden cronológico. Solo correctivos. */
+  log?: LogEntry[];
 };
 
 export type Assignee = {

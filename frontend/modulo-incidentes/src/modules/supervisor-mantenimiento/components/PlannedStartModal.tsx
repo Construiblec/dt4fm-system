@@ -117,7 +117,7 @@ export const PlannedStartModal = ({
               <p>
                 Fíjala <strong>antes de asignar</strong>: es el único sitio
                 donde se pone, y al asignar el correctivo pasa a Ejecución y
-                openMAINT bloquea el campo.
+                el campo queda bloqueado.
               </p>
             </div>
           ) : null}
