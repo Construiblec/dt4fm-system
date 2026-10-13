@@ -266,6 +266,31 @@ describe('CleaningTasksController (e2e)', () => {
         .expect(200);
 
       expect(res.body.data.phase).toBe('Reviewed');
+      expect(mocks.pushDispatch.notifyCleaningReopened).not.toHaveBeenCalled();
+    });
+
+    it('200: rechazar reabre la tarea y avisa al operario', async () => {
+      mocks.cleaningTasksOpenmaint.getTaskById.mockResolvedValueOnce(
+        cleaningTaskResponse({ phase: PHASE_IDS.COMPLETED, employee: 4567 }),
+      );
+      mocks.cleaningTasksOpenmaint.updateTaskWithSession.mockResolvedValueOnce({
+        data: { _id: 777 },
+      });
+
+      const res = await request(app.getHttpServer())
+        .patch('/cleaning-tasks/777/review')
+        .set('x-session-token', 'mock-session-token')
+        .send({ approved: false, reviewComments: 'Quedó sucio el baño' })
+        .expect(200);
+
+      expect(res.body.data.phase).toBe('Assigned');
+      expect(mocks.pushDispatch.notifyCleaningReopened).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: 777,
+          cleaningEmployeeId: 4567,
+          reason: 'Quedó sucio el baño',
+        }),
+      );
     });
 
     it('403 si el rol no es supervisor', async () => {
