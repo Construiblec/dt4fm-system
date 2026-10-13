@@ -8,7 +8,7 @@ import "@/shared/pwa/installPromptStore";
 // Antes del primer render: la PWA que se abre con una sesión caducada debe ir
 // al login, no pintar pantallas vacías esperando a la primera llamada.
 import "@/shared/auth/sessionWatch";
-import { UpdateAppToast } from "@/shared/components/UpdateAppToast";
+import { AutoUpdate } from "@/shared/components/AutoUpdate";
 import "./index.css";
 
 const queryClient = new QueryClient();
@@ -18,8 +18,9 @@ createRoot(document.getElementById("root")!).render(
     <QueryClientProvider client={queryClient}>
       <RouterProvider router={router} />
       {/* Fuera del router: es quien registra el service worker y no puede
-          depender de que una pagina use AppLayout. */}
-      <UpdateAppToast />
+          depender de que una pagina use AppLayout. Aplica sola cada versión
+          nueva en un momento seguro (ver AutoUpdate). */}
+      <AutoUpdate />
     </QueryClientProvider>
   </StrictMode>,
 );

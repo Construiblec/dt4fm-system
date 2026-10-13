@@ -10,9 +10,12 @@ export default defineConfig(({ mode }) => ({
   plugins: [
     react(),
     VitePWA({
-      // 'prompt': el SW nuevo espera a que el usuario acepte. Con 'autoUpdate'
-      // la pagina se recarga sola y un operario a mitad de un checklist pierde
-      // las fotos que aun no subio.
+      // 'prompt': el SW nuevo espera hasta que alguien lo active. Ya no es el
+      // usuario con un botón: AutoUpdate lo activa en un momento seguro (al
+      // abrir, al volver o al cambiar de pantalla, nunca en una pantalla con
+      // fotos o formularios). Con 'autoUpdate' la página se recargaría en
+      // cualquier momento y un operario a mitad de un checklist perdería las
+      // fotos que aún no subió.
       registerType: 'prompt',
       // El registro lo hace useServiceWorkerUpdate, no un script inyectado.
       injectRegister: null,
