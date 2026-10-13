@@ -68,8 +68,13 @@ export const AssignAssigneeModal = ({
     maintenance.team?.id ?? null,
   );
   const [assigneeId, setAssigneeId] = useState<number | null>(null);
-  // Solo correctivos: su flujo es el que anexa la nota a la bitácora.
   const [notes, setNotes] = useState("");
+  // La nota solo llega a la bitácora al asignar un correctivo o al cambiar de
+  // persona con el trabajo ya despachado.
+  const canAddNote =
+    isCorrective &&
+    (!isReassign ||
+      ["Assigned", "Execution"].includes(maintenance.statusCode ?? ""));
 
   useEffect(() => {
     const load = async () => {
@@ -178,7 +183,7 @@ export const AssignAssigneeModal = ({
   const handleSubmit = async () => {
     if (assigneeId === null) return;
 
-    const note = isCorrective && notes.trim() ? notes.trim() : undefined;
+    const note = canAddNote && notes.trim() ? notes.trim() : undefined;
 
     try {
       setSaving(true);
@@ -319,7 +324,7 @@ export const AssignAssigneeModal = ({
                 </div>
               )}
 
-              {isCorrective && !blockedBySupplier ? (
+              {canAddNote && !blockedBySupplier ? (
                 <div>
                   <div className="flex items-baseline justify-between gap-2">
                     {label(

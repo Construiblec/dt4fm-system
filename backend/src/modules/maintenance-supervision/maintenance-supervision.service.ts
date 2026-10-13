@@ -457,7 +457,27 @@ export class MaintenanceSupervisionService {
     id: number,
     assigned: CorrectiveMaintCard,
   ): Promise<CorrectiveMaintCard> {
-    if (!assigned.ExecStartDate) {
+    return this.restoreExecStart(sessionId, id, assigned, null);
+  }
+
+  /**
+   * Deja `ExecStartDate` como estaba antes de una acción que vuelve a entrar en
+   * Ejecución, porque OpenMAINT lo rellena por su cuenta al hacerlo.
+   */
+  private async restoreExecStart(
+    sessionId: string,
+    id: number,
+    assigned: CorrectiveMaintCard,
+    previous: string | null,
+  ): Promise<CorrectiveMaintCard> {
+    const current = assigned.ExecStartDate ?? null;
+    const unchanged =
+      current === previous ||
+      (current !== null &&
+        previous !== null &&
+        new Date(current).getTime() === new Date(previous).getTime());
+
+    if (unchanged) {
       return assigned;
     }
 
@@ -471,14 +491,14 @@ export class MaintenanceSupervisionService {
 
       await this.corrective.saveFields(sessionId, id, {
         activityId,
-        fields: { ExecStartDate: null },
+        fields: { ExecStartDate: previous },
       });
 
       return (await this.corrective.findById(sessionId, id)).data ?? assigned;
     } catch (error) {
       this.logger.warn(
-        `No se pudo vaciar ExecStartDate del correctivo ${id}: se mostrará como ` +
-          `«Execution» en vez de «Assigned». ${(error as Error)?.message ?? ''}`,
+        `No se pudo restablecer ExecStartDate del correctivo ${id}: el estado ` +
+          `«Assigned»/«Execution» puede no coincidir. ${(error as Error)?.message ?? ''}`,
       );
 
       return assigned;
@@ -713,9 +733,38 @@ export class MaintenanceSupervisionService {
         fields.Team = nuevoEquipo;
       }
 
-      // Guardar con nota deja una entrada en la bitácora aunque el flujo no avance.
-      if (notes?.trim()) {
-        fields.ProcessNotes = notes.trim();
+      const note = notes?.trim();
+
+      // Con nota se usa `CM03-Return`, la acción del flujo para cambiar de
+      // persona sin salir de Ejecución: un guardado no deja nada en la bitácora.
+      if (note && card.ProcessStatus === CM_STATUS_IDS.EXECUTION) {
+        await this.call(
+          () =>
+            this.corrective.advance(sessionId, id, {
+              activityId: this.requireActivityId(card._tasklist, id),
+              action: CM_ACTIONS.CHANGE_ASSIGNEE,
+              notes: note,
+              fields,
+            }),
+          'Error al reasignar el correctivo en OpenMAINT',
+        );
+
+        const returned = await this.assertCorrectiveReached(
+          sessionId,
+          id,
+          CM_STATUS_IDS.EXECUTION,
+          'OpenMAINT aceptó la petición pero no aplicó la reasignación del correctivo',
+        );
+
+        // Volver a entrar en Ejecución no debe tocar el inicio que ya había.
+        const kept = await this.restoreExecStart(
+          sessionId,
+          id,
+          returned,
+          card.ExecStartDate ?? null,
+        );
+
+        return { success: true, data: this.toCorrective(kept) };
       }
 
       await this.call(
