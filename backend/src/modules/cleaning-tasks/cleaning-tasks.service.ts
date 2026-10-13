@@ -1175,6 +1175,12 @@ export class CleaningTasksService {
       body,
       sessionToken,
     );
+    // Rechazar en la revisión también reabre la tarea (es el camino habitual:
+    // "Reabrir" solo se ofrece sobre una tarea ya revisada), así que el
+    // operario recibe el mismo aviso, con el comentario como motivo.
+    if (!dto.approved && task.Employee) {
+      void this.notifyCleaningReopened(task, taskId, comments, sessionToken);
+    }
     return {
       success: true,
       data: {
