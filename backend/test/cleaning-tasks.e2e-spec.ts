@@ -1293,19 +1293,25 @@ describe('CleaningTasksController (e2e)', () => {
 
       it('clasifica por crear, ya creada, checkout cambiado y huérfana', async () => {
         asCoordinator();
-        mocks.hostaway.getCheckouts
-          // 1ª llamada: el rango pedido
-          .mockResolvedValueOnce({
-            result: [
-              hostaway('R1', '412101', '2026-10-08'), // sin limpieza
-              hostaway('R2', '412101', '2026-10-08'), // ya creada
-              hostaway('R3', '412101', '2026-10-09'), // la limpieza dice otro día
-            ],
-          })
-          // 2ª llamada: la ventana ancha, para distinguir cambio de huérfana
-          .mockResolvedValueOnce({
-            result: [hostaway('R5', '412102', '2026-10-30')],
-          });
+        mocks.hostaway.getCheckouts.mockResolvedValueOnce({
+          result: [
+            hostaway('R1', '412101', '2026-10-08'), // sin limpieza
+            hostaway('R2', '412101', '2026-10-08'), // ya creada
+            hostaway('R3', '412101', '2026-10-09'), // la limpieza dice otro día
+          ],
+        });
+        // Las limpiezas sueltas se consultan una por una: R5 se movió al 30, R4 ya no está.
+        mocks.hostaway.getReservationCheckout.mockImplementation(
+          async (id: string) =>
+            id === 'R5'
+              ? {
+                  reservationId: 'R5',
+                  listingId: '412102',
+                  listingName: 'Listing 412102',
+                  checkoutDate: '2026-10-30',
+                }
+              : null,
+        );
         mocks.cleaningTasksOpenmaint.getHostawayTasks.mockResolvedValueOnce({
           data: [
             taskCard(1, 'R2', '2026-10-08'),
@@ -1360,9 +1366,11 @@ describe('CleaningTasksController (e2e)', () => {
           unitMatch: 'ambiguous',
         });
         expect(res.body.count).toBe(5);
+        expect(mocks.hostaway.getCheckouts).toHaveBeenCalledTimes(1);
+        expect(mocks.hostaway.getReservationCheckout).toHaveBeenCalledTimes(2);
       });
 
-      it('no consulta la ventana ancha si no hay limpiezas sueltas', async () => {
+      it('no consulta reservas sueltas si no hay limpiezas sueltas', async () => {
         asCoordinator();
         mocks.hostaway.getCheckouts.mockResolvedValueOnce({
           result: [hostaway('R1', '412101', '2026-10-08')],
@@ -1376,6 +1384,7 @@ describe('CleaningTasksController (e2e)', () => {
           .expect(200);
 
         expect(mocks.hostaway.getCheckouts).toHaveBeenCalledTimes(1);
+        expect(mocks.hostaway.getReservationCheckout).not.toHaveBeenCalled();
       });
 
       it('una limpieza cancelada no se marca como huérfana otra vez', async () => {

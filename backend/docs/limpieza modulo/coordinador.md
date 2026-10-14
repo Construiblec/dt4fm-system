@@ -72,7 +72,9 @@ Cada fila trae un `status`:
 | `cambio` | La limpieza dice otro checkout que Hostaway |
 | `huerfana` | La limpieza existe pero la reserva ya no está en Hostaway (normalmente, cancelada). El backend la devuelve, pero la pantalla no la muestra: al coordinador solo le sirve saber si el checkout cambió |
 
-y `unitMatch`: `ok`, `none` (el listing no tiene unidad) o `ambiguous` (dos unidades con el mismo `HostawayListingID`; la limpieza se crea sin unidad). Las huérfanas se buscan en una ventana de ±45 días, solo si hay limpiezas sueltas; las canceladas se excluyen.
+y `unitMatch`: `ok`, `none` (el listing no tiene unidad) o `ambiguous` (dos unidades con el mismo `HostawayListingID`; la limpieza se crea sin unidad). Para las limpiezas sueltas (su reserva no vino en el rango) se consulta cada reserva por su id en Hostaway (`GET /v1/reservations/{id}`, de a 5): si sigue activa con otra fecha es `cambio`; si no existe o está cancelada, `huerfana`. Las limpiezas canceladas se excluyen.
+
+**Rendimiento (14/10/2026).** Los checkouts se piden a Hostaway con `departureStartDate` / `departureEndDate`, que Hostaway sí aplica. Antes se mandaba `checkOutDateFrom/To`, que ignora: había que recorrer 2.500 reservas en 25 páginas (~25-40 s) y, con rangos de varios días, el tope de páginas dejaba checkouts fuera. Ahora un día tarda ~0,4 s en Hostaway y la vista previa completa ~2-3 s (antes ~25 s, o ~50 s con limpiezas sueltas).
 
 ---
 
