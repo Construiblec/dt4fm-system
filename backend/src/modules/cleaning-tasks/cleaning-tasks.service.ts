@@ -2123,15 +2123,24 @@ export class CleaningTasksService {
       description: act.Description ?? null,
       templateName: act.NombrePlantilla ?? null,
       detalle: act.Detalle ?? '',
-      plantilla: act.Plantilla
+      plantilla: act._plantillaRota
         ? {
-            fileName: act._Plantilla_FileName ?? null,
-            size: act._Plantilla_Size ?? null,
-            encoding: content.encoding,
-            readable: content.source === 'archivo',
-            error: content.fileError,
+            fileName: null,
+            size: null,
+            encoding: null,
+            readable: false,
+            error:
+              'el archivo ya no existe en openMAINT; sube uno nuevo o quítalo',
           }
-        : null,
+        : act.Plantilla
+          ? {
+              fileName: act._Plantilla_FileName ?? null,
+              size: act._Plantilla_Size ?? null,
+              encoding: content.encoding,
+              readable: content.source === 'archivo',
+              error: content.fileError,
+            }
+          : null,
       activities: content.rows,
       source: content.source,
     };
@@ -2216,7 +2225,12 @@ export class CleaningTasksService {
       previousAttachment = current.data.Plantilla?.trim() || null;
       // Poner `Plantilla: null` quita el archivo anterior; es la única forma de
       // reemplazarlo sin chocar por el nombre del archivo.
-      if (previousAttachment && (file || dto.removeTemplate))
+      // Una referencia a un archivo que ya no existe también se limpia: es lo
+      // que deja la tarjeta ilegible para openMAINT.
+      if (
+        current.data._plantillaRota ||
+        (previousAttachment && (file || dto.removeTemplate))
+      )
         body.Plantilla = null;
       await this.openmaintService.updateCleaningActivity(id, body);
     }
