@@ -39,6 +39,7 @@ export const createHostawayServiceMock = () => ({
   getReservationsByArrivalDate: jest.fn().mockResolvedValue([]),
   getReservationsForAccess: jest.fn().mockResolvedValue([]),
   getCheckoutsByDate: jest.fn().mockResolvedValue({ result: [] }),
+  getReservationCheckout: jest.fn().mockResolvedValue(null),
   findConversationByReservation: jest
     .fn()
     .mockResolvedValue({ id: 900000, reservationId: null, channelId: null }),
