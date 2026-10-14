@@ -601,7 +601,7 @@ export const MaintenanceSupervisorDetailPage = () => {
         <NotesReasonModal
           title="Rechazar cierre"
           subtitle={maintenance.number ?? undefined}
-          warning="Vuelve a Asignación con el mismo responsable y equipo para que se repita el trabajo; no se cierra ni vuelve a planificarse."
+          warning="Vuelve a «Nueva» con el mismo responsable y equipo para que se repita el trabajo; no se cierra ni vuelve a planificarse."
           tone="neutral"
           confirmLabel="Rechazar"
           placeholder="Explica qué falta o qué no quedó bien…"

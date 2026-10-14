@@ -46,6 +46,29 @@ export const PRIORITY_BADGE_CLASSES: Record<PriorityCode, string> = {
   Low: "bg-emerald-100 text-emerald-700",
 };
 
+/** Punto de la píldora de la tarjeta; tonos que no se confunden con los estados. */
+export const PRIORITY_DOT_CLASSES: Record<PriorityCode, string> = {
+  Critical: "bg-red-900",
+  High: "bg-red-600",
+  Medium: "bg-amber-600",
+  Low: "bg-emerald-500",
+};
+
+/** En femenino, para concordar con «prioridad»: «Alta», «Prioridad alta». */
+export const PRIORITY_ADJECTIVES: Record<PriorityCode, string> = {
+  Critical: "Crítica",
+  High: "Alta",
+  Medium: "Media",
+  Low: "Baja",
+};
+
+export const PRIORITY_PHRASES = Object.fromEntries(
+  PRIORITY_ORDER.map((code) => [
+    code,
+    `Prioridad ${PRIORITY_ADJECTIVES[code].toLowerCase()}`,
+  ]),
+) as Record<PriorityCode, string>;
+
 /** Versión con anillo, para las cabeceras de detalle. */
 export const PRIORITY_PILL_CLASSES: Record<PriorityCode, string> = {
   Critical: "bg-red-50 text-red-700 ring-red-200",

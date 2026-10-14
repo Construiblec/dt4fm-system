@@ -7,8 +7,12 @@ import { ListStateMessage } from "@/modules/incidentes/components/ListStateMessa
 import { SupervisionFilters } from "@/modules/supervisor-mantenimiento/components/SupervisionFilters";
 import { useSupervisedMaintenances } from "@/modules/supervisor-mantenimiento/hooks/useSupervisedMaintenances";
 import type { MaintenanceKind } from "@/modules/supervisor-mantenimiento/types/SupervisedMaintenance";
-import { toCardData } from "@/modules/supervisor-mantenimiento/utils/toMaintenanceCard";
+import {
+  toCardData,
+  toCorrectiveCardData,
+} from "@/modules/supervisor-mantenimiento/utils/toMaintenanceCard";
 import { AppHeader } from "@/shared/components/AppHeader";
+import { CorrectiveCard } from "@/shared/components/CorrectiveCard";
 import { MaintenanceCard } from "@/shared/components/MaintenanceCard";
 import { Pagination } from "@/shared/components/Pagination";
 
@@ -129,20 +133,29 @@ export const MaintenanceSupervisorDashboardPage = () => {
 
             {!loading && !error && items.length > 0 ? (
               <>
-                <div className="space-y-4">
+                <ul role="list" className="space-y-4">
                   {items.map((maintenance) => (
-                    <MaintenanceCard
-                      key={`${maintenance.kind}-${maintenance.id}`}
-                      maintenance={toCardData(maintenance)}
-                      showAssignee
-                      onOpen={() =>
-                        navigate(
-                          `/supervisor-mantenimiento/${maintenance.kind}/${maintenance.id}`,
-                        )
-                      }
-                    />
+                    <li key={`${maintenance.kind}-${maintenance.id}`}>
+                      {maintenance.kind === "corrective" ? (
+                        <CorrectiveCard
+                          data={toCorrectiveCardData(maintenance)}
+                          perspective="supervisor"
+                          to={`/supervisor-mantenimiento/corrective/${maintenance.id}`}
+                        />
+                      ) : (
+                        <MaintenanceCard
+                          maintenance={toCardData(maintenance)}
+                          showAssignee
+                          onOpen={() =>
+                            navigate(
+                              `/supervisor-mantenimiento/${maintenance.kind}/${maintenance.id}`,
+                            )
+                          }
+                        />
+                      )}
+                    </li>
                   ))}
-                </div>
+                </ul>
 
                 <Pagination
                   currentPage={page}

@@ -13,6 +13,7 @@ import {
 import { CleaningFilters } from "@/modules/incidentes/components/CleaningFilters";
 import { PreventiveFilters } from "@/modules/incidentes/components/PreventiveFilters";
 import { getCorrectiveBlockedReason } from "@/modules/incidentes/constants/correctiveStatus";
+import { CorrectiveCard } from "@/shared/components/CorrectiveCard";
 import { MaintenanceCard } from "@/shared/components/MaintenanceCard";
 import { useListPagination } from "@/modules/incidentes/hooks/useListPagination";
 import { useMyPreventiveMaintenances } from "@/modules/incidentes/hooks/useMyPreventiveMaintenances";
@@ -330,37 +331,44 @@ export const DashboardPage = () => {
 
                     {!loading && !error && filteredIncidents.length > 0 ? (
                       <>
-                        <div className="space-y-4">
+                        <ul role="list" className="space-y-4">
                           {maintenancePagination.pageItems.map((incident) => (
-                            <MaintenanceCard
-                              key={incident.id}
-                              maintenance={{
-                                id: incident.id,
-                                kind: "corrective",
-                                number: incident.number,
-                                subject: incident.building,
-                                statusCode: incident.statusCode,
-                                status: incident.status,
-                                site: incident.building,
-                                target: incident.location,
-                                assignee: null,
-                                priorityCode: incident.priority,
-                                openingDate: incident.createdAt,
-                                plannedStart: incident.plannedStart,
-                                dueDate: null,
-                                isOverdue: false,
-                              }}
-                              onOpen={() =>
-                                navigate(`/incidents/${incident.id}`)
-                              }
-                              // El técnico solo entra a lo que está en ejecución;
-                              // el motivo se ajusta al estado real de la tarea.
-                              disabledReason={getCorrectiveBlockedReason(
-                                incident.statusCode,
-                              )}
-                            />
+                            <li key={incident.id}>
+                              <CorrectiveCard
+                                data={{
+                                  id: incident.id,
+                                  number: incident.number,
+                                  subject: incident.subject ?? incident.location,
+                                  statusCode: incident.statusCode,
+                                  status: incident.status,
+                                  site: incident.building,
+                                  floor: incident.floor ?? null,
+                                  area: incident.area ?? null,
+                                  reporter: null,
+                                  assignee: null,
+                                  priorityCode:
+                                    incident.priorityCode ?? incident.priority,
+                                  openingDate: incident.createdAt,
+                                  plannedStart: incident.plannedStart,
+                                  execStartDate: incident.execStartDate ?? null,
+                                  execEndDate: incident.execEndDate ?? null,
+                                }}
+                                perspective="operator"
+                                to={`/incidents/${incident.id}`}
+                                actionLabel={
+                                  incident.statusCode === "Execution"
+                                    ? "Continuar"
+                                    : "Ver detalle"
+                                }
+                                // El técnico solo entra a lo que está en ejecución;
+                                // el motivo se ajusta al estado real de la tarea.
+                                disabledReason={getCorrectiveBlockedReason(
+                                  incident.statusCode,
+                                )}
+                              />
+                            </li>
                           ))}
-                        </div>
+                        </ul>
                         <Pagination
                           currentPage={maintenancePagination.page}
                           totalPages={maintenancePagination.totalPages}
@@ -409,7 +417,6 @@ export const DashboardPage = () => {
                                 key={maintenance.id}
                                 maintenance={{
                                   id: maintenance.id,
-                                  kind: "preventive",
                                   number: maintenance.number,
                                   subject: maintenance.subject,
                                   statusCode: maintenance.statusCode,

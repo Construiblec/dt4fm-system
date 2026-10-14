@@ -27,12 +27,12 @@ attachSessionRenewal(incidentsApi, "authorization");
 
 export type CreateIncidentPayload = {
   buildingId: string;
-  floorArea: string;
+  /** Breve descripción: título de la tarjeta */
+  shortDescription: string;
   /** Ubicación estructurada; se omite lo que el usuario no haya elegido */
   floorId?: number | null;
   unitId?: number | null;
   commonAreaId?: number | null;
-  priority: number;
   notes: string;
   images?: File[];
 };
@@ -49,11 +49,10 @@ type GetMyIncidentsResponse = {
 
 export const createIncident = async ({
   buildingId,
-  floorArea,
+  shortDescription,
   floorId,
   unitId,
   commonAreaId,
-  priority,
   notes,
   images = [],
 }: CreateIncidentPayload): Promise<CreateIncidentResponse> => {
@@ -68,8 +67,8 @@ export const createIncident = async ({
 
   const formData = new FormData();
   formData.append("buildingId", buildingId);
-  formData.append("floorArea", floorArea);
-  formData.append("priority", String(Number(priority)));
+  // Sin prioridad: la fija el supervisor al asignar.
+  formData.append("shortDescription", shortDescription);
   formData.append("notes", notes);
 
   // Nunca enviar cadenas vacías: el DTO las convertiría en 0 y fallaría el @Min(1)

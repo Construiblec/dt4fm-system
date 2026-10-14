@@ -19,6 +19,28 @@ export const formatDuration = (milliseconds: number): string => {
   return `${seconds}s`;
 };
 
+/** Duración entre dos instantes: «2 h 25 min», «50 min», «1 d 3 h». `null` si no hay ambos. */
+export const formatElapsed = (
+  start: string | null | undefined,
+  end: string | null | undefined,
+): string | null => {
+  if (!start || !end) return null;
+  const ms = new Date(end).getTime() - new Date(start).getTime();
+  if (!Number.isFinite(ms) || ms < 0) return null;
+
+  const total = Math.round(ms / 60_000);
+  const days = Math.floor(total / 1440);
+  const hours = Math.floor((total % 1440) / 60);
+  const minutes = total % 60;
+  const parts = [
+    days ? `${days} d` : "",
+    hours ? `${hours} h` : "",
+    minutes || total === 0 ? `${minutes} min` : "",
+  ].filter(Boolean);
+
+  return parts.join(" ");
+};
+
 // ── Formateo de fechas (DD/MM/YYYY, español) ─────────────────────────────────
 
 const LOCALE = "es-EC";

@@ -221,10 +221,10 @@ export class IncidentsController {
           description: 'ID del edificio',
           example: 3456,
         },
-        floorArea: {
+        shortDescription: {
           type: 'string',
-          description: 'Área o piso',
-          example: 'Piso 2',
+          description: 'Breve descripción (título de la tarjeta, máx. 80)',
+          example: 'Tomacorriente sin energía',
         },
         notes: {
           type: 'string',
@@ -233,8 +233,9 @@ export class IncidentsController {
         },
         priority: {
           type: 'integer',
-          description: 'Prioridad (1-Alta, 2-Media, 3-Baja)',
-          example: 2,
+          description:
+            'ID de prioridad; opcional, la fija el supervisor al asignar',
+          example: 119,
         },
         images: {
           type: 'array',
@@ -242,7 +243,7 @@ export class IncidentsController {
           description: 'Imágenes del incidente (máx 6)',
         },
       },
-      required: ['buildingId', 'floorArea', 'priority', 'notes'],
+      required: ['buildingId', 'shortDescription', 'notes'],
     },
   })
   @ApiResponse({ status: 201, description: 'Incidencia creada con éxito' })

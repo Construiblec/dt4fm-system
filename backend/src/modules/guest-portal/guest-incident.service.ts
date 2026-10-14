@@ -16,7 +16,7 @@ import {
   IncidentsService,
   UploadedImage,
 } from '../incidents/incidents.service';
-import { CM_PRIORITY_IDS } from '../maintenance-supervision/constants/corrective-maint.constants';
+import { SHORT_DESCRIPTION_MAX } from '../incidents/dto/create-incident.dto';
 import { RateLimiterService } from '../password-recovery/rate-limiter.service';
 import { CreateGuestIncidentDto } from './dto/create-guest-incident.dto';
 import { GuestLocationService } from './guest-location.service';
@@ -89,8 +89,7 @@ export class GuestIncidentService {
           buildingId: guest.buildingId!,
           ...(floorId ? { floorId } : {}),
           ...(guest.openmaintUnitId ? { unitId: guest.openmaintUnitId } : {}),
-          priority: CM_PRIORITY_IDS.MEDIUM,
-          floorArea: this.shortDescription(unitName, guest, dto.location),
+          shortDescription: this.shortDescription(dto),
           notes: this.notes(guest, unitName, dto),
         },
         images,
@@ -160,15 +159,12 @@ export class GuestIncidentService {
     return value;
   }
 
-  private shortDescription(
-    unitName: string | null,
-    guest: GuestPortalData,
-    location?: string,
-  ): string {
-    const unit = unitName ?? `listing ${guest.listingId}`;
-    const where = location ? ` - ${this.clean(location)}` : '';
+  /** El título es lo que escribió el huésped; la unidad ya viaja en `Unit`. */
+  private shortDescription(dto: CreateGuestIncidentDto): string {
+    const title = this.clean(dto.title ?? '');
+    const fallback = this.clean(dto.description).split(/\r?\n/)[0];
 
-    return `Huésped - ${unit}${where}`.slice(0, 255);
+    return (title || fallback).slice(0, SHORT_DESCRIPTION_MAX);
   }
 
   private notes(
