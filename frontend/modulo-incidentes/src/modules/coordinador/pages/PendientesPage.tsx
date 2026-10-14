@@ -4,7 +4,7 @@ import { CircleCheck, RefreshCw, Search } from "lucide-react";
 import { describeApiError } from "../services/coordinadorService";
 import { useCoordTasks } from "../hooks/useCoordData";
 import { useNow } from "../hooks/useNow";
-import { addDays, formatDate, relativeDay, todayYmd } from "../domain/dates";
+import { formatDate, relativeDay, todayYmd } from "../domain/dates";
 import { isPending, taskDate } from "../domain/tasks";
 import { SourceBadge } from "../components/taskBits";
 import { matchesSearch, unitLabel } from "../components/taskLabels";
@@ -26,20 +26,16 @@ import { compareBy, cx, inputClass, useSort } from "../components/uiUtils";
 import { useOpenTask } from "../layout/useOpenTask";
 import type { CoordTask } from "../types/Coordinador";
 
-type Range = "todas" | "hasta-hoy" | "semana";
+type Range = "hoy" | "todas";
 
 const RANGES: { value: Range; label: string }[] = [
+  { value: "hoy", label: "Hoy" },
   { value: "todas", label: "Todas" },
-  { value: "hasta-hoy", label: "Hasta hoy" },
-  { value: "semana", label: "Próximos 7 días" },
 ];
 
-const inRange = (task: CoordTask, range: Range, today: string): boolean => {
-  const date = taskDate(task);
-  if (range === "hasta-hoy") return date <= today;
-  if (range === "semana") return date >= today && date <= addDays(today, 7);
-  return true;
-};
+/** "Hoy": checkout (o, si no tiene, fecha planificada) de hoy. */
+const inRange = (task: CoordTask, range: Range, today: string): boolean =>
+  range === "todas" || taskDate(task) === today;
 
 /** Lo que le falta a la limpieza para quedar asignada. */
 const Missing = ({ task }: { task: CoordTask }) => (
@@ -60,6 +56,7 @@ export const PendientesPage = () => {
   const tasksQ = useCoordTasks();
   const [q, setQ] = useState("");
   const [range, setRange] = useState<Range>("todas");
+  // Sin columna "Creada", pero el orden inicial sigue siendo "recién creadas primero".
   const [sort, onSort] = useSort({ key: "creada", dir: "desc" });
 
   const pending = useMemo(
@@ -155,7 +152,7 @@ export const PendientesPage = () => {
                 icon={RefreshCw}
                 onClick={() => navigate("/coordinador/sincronizacion")}
               >
-                Ir a sincronización
+                Crear limpiezas
               </Button>
             }
           >
@@ -172,12 +169,6 @@ export const PendientesPage = () => {
             <table className="min-w-full text-sm">
               <thead className="bg-slate-50">
                 <tr>
-                  <SortHeader
-                    label="Creada"
-                    sortKey="creada"
-                    sort={sort}
-                    onSort={onSort}
-                  />
                   <SortHeader
                     label="Checkout"
                     sortKey="checkout"
@@ -209,14 +200,6 @@ export const PendientesPage = () => {
                       key={t.id}
                       className="border-t border-slate-100 hover:bg-slate-50"
                     >
-                      <td className={cx(TD, "whitespace-nowrap")}>
-                        <p className="text-slate-900">
-                          {relativeDay(t.generatedDate, today)}
-                        </p>
-                        <p className="text-xs tabular-nums text-slate-500">
-                          {formatDate(t.generatedDate)}
-                        </p>
-                      </td>
                       <td className={cx(TD, "whitespace-nowrap")}>
                         <p className="text-slate-900">
                           {relativeDay(date, today)}
