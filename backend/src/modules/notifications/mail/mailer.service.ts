@@ -29,12 +29,15 @@ export interface BulkSendSummary {
  *
  * Variables de entorno:
  *   MAIL_THROTTLE_MS  pausa en milisegundos entre cada envío (defecto 200)
+ *   MAIL_REDIRECT_TO  si está, todo correo se entrega a ese buzón (entornos
+ *                     de prueba: nunca le escriben a una persona real)
  */
 @Injectable()
 export class MailerService {
   private readonly logger = new Logger(MailerService.name);
   private readonly throttleMs: number;
   private readonly historialEnabled: boolean;
+  private readonly redirectTo: string | null;
 
   /**
    * Sesión de servicio con openMAINT cacheada para registrar en HistorialEmail.
@@ -57,18 +60,46 @@ export class MailerService {
     this.historialEnabled =
       (this.configService.get<string>('HISTORIAL_EMAIL_ENABLED') ?? 'true') !==
       'false';
+    this.redirectTo =
+      this.configService.get<string>('MAIL_REDIRECT_TO')?.trim() || null;
+    if (this.redirectTo) {
+      this.logger.warn(
+        `MAIL_REDIRECT_TO activo: todo correo se entrega a ${this.redirectTo}`,
+      );
+    }
   }
 
   /** Envía un único mensaje y registra el envío exitoso en HistorialEmail. */
   async sendOne(message: MailMessage): Promise<MailSendResult> {
-    const result = await this.provider.send(message);
+    const outgoing = this.applyRedirect(message);
+    const result = await this.provider.send(outgoing);
 
     if (result.success) {
       // Best-effort: el registro NO debe afectar el resultado del envío.
-      await this.recordHistorialEmail(message);
+      // Se registra lo que de verdad salió, no a quién iba dirigido.
+      await this.recordHistorialEmail(outgoing);
     }
 
-    return result;
+    // Quien llama cruza los resultados con sus destinatarios: con o sin
+    // redirección, recibe de vuelta el destinatario que pidió.
+    return { ...result, to: message.to };
+  }
+
+  /**
+   * Con MAIL_REDIRECT_TO el mensaje sale hacia ese buzón y el asunto conserva
+   * a quién iba dirigido. Es la red de seguridad de los entornos de prueba:
+   * los schedulers y avisos se pueden ejercitar sin escribirle a nadie real.
+   */
+  private applyRedirect(message: MailMessage): MailMessage {
+    if (!this.redirectTo) {
+      return message;
+    }
+
+    return {
+      ...message,
+      to: this.redirectTo,
+      subject: `[Para: ${message.to}] ${message.subject}`,
+    };
   }
 
   /**
