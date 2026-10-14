@@ -6,14 +6,13 @@ import {
   Download,
   FileSpreadsheet,
   ListChecks,
-  Paperclip,
   Pencil,
   Plus,
   Save,
   Trash2,
   Upload,
 } from "lucide-react";
-import type { Checklist, CoordTask } from "../types/Coordinador";
+import type { Checklist } from "../types/Coordinador";
 import {
   describeApiError,
   downloadChecklistTemplate,
@@ -24,7 +23,6 @@ import {
 import {
   COORD_KEY,
   useChecklists,
-  useCoordTasks,
   useInvalidateCoord,
 } from "../hooks/useCoordData";
 import {
@@ -60,16 +58,6 @@ import {
 import { cx, inputClass } from "../components/uiUtils";
 import { useCoordFlash } from "../layout/flash";
 
-/** Limpiezas que todavía usarían el checklist: no empezadas, en ejecución o en pausa. */
-const inUse = (tasks: CoordTask[], checklistId: number) =>
-  tasks.filter(
-    (t) =>
-      t.checklist?.id === checklistId &&
-      (t.phase === "InExecution" ||
-        (t.phase === "Assigned" && !t.actualStartTime) ||
-        t.isPaused),
-  ).length;
-
 const MinutesCell = ({ summary }: { summary: ChecklistSummary }) => {
   if (summary.minutes === null) {
     return (
@@ -99,7 +87,6 @@ const downloadExample = () =>
 export const ChecklistsPage = () => {
   const navigate = useNavigate();
   const checklistsQ = useChecklists();
-  const tasksQ = useCoordTasks();
 
   const items = useMemo(
     () =>
@@ -164,9 +151,6 @@ export const ChecklistsPage = () => {
                   <th scope="col" className={TH}>
                     Nombre de checklist
                   </th>
-                  <th scope="col" className={TH}>
-                    Código
-                  </th>
                   <th scope="col" className={cx(TH, "text-right")}>
                     Secciones
                   </th>
@@ -177,19 +161,12 @@ export const ChecklistsPage = () => {
                     Tiempo estimado
                   </th>
                   <th scope="col" className={TH}>
-                    Plantilla
-                  </th>
-                  <th scope="col" className={TH}>
-                    En uso
-                  </th>
-                  <th scope="col" className={TH}>
                     <span className="sr-only">Acción</span>
                   </th>
                 </tr>
               </thead>
               <tbody>
                 {items.map(({ checklist: c, summary }) => {
-                  const using = tasksQ.data ? inUse(tasksQ.data, c.id) : null;
                   return (
                     <tr
                       key={c.id}
@@ -213,9 +190,6 @@ export const ChecklistsPage = () => {
                           </p>
                         ) : null}
                       </td>
-                      <td className={cx(TD, "font-mono text-slate-700")}>
-                        {c.code || "—"}
-                      </td>
                       <td className={cx(TD, "text-right tabular-nums")}>
                         {summary.sectionCount}
                       </td>
@@ -224,35 +198,6 @@ export const ChecklistsPage = () => {
                       </td>
                       <td className={TD}>
                         <MinutesCell summary={summary} />
-                      </td>
-                      <td className={TD}>
-                        {c.plantilla ? (
-                          <>
-                            <span className="inline-flex items-center gap-1.5 text-slate-700">
-                              <Paperclip
-                                className="h-3.5 w-3.5 text-slate-400"
-                                aria-hidden="true"
-                              />
-                              {c.plantilla.fileName}
-                            </span>
-                            <p className="text-xs text-slate-500">
-                              {c.plantilla.readable
-                                ? (ENCODING_LABELS[
-                                    c.plantilla.encoding ?? ""
-                                  ] ?? "Archivo legible")
-                                : "No se pudo leer: se usa el Detalle"}
-                            </p>
-                          </>
-                        ) : (
-                          <span className="text-slate-500">Solo Detalle</span>
-                        )}
-                      </td>
-                      <td className={cx(TD, "tabular-nums text-slate-700")}>
-                        {using ? (
-                          `${using} ${using === 1 ? "limpieza" : "limpiezas"}`
-                        ) : (
-                          <span className="text-slate-400">—</span>
-                        )}
                       </td>
                       <td className={cx(TD, "text-right")}>
                         <Button
@@ -406,7 +351,8 @@ const ChecklistForm = ({ initial }: { initial: Checklist | null }) => {
     }
   };
 
-  const fileName = upload?.file.name ?? existing?.fileName ?? "plantilla.csv";
+  const fileName =
+    upload?.file.name ?? existing?.fileName ?? "Archivo perdido en openMAINT";
   const fileSize = upload ? upload.size : (existing?.size ?? null);
   const fileEncoding = upload ? upload.encoding : (existing?.encoding ?? null);
 
@@ -488,7 +434,7 @@ const ChecklistForm = ({ initial }: { initial: Checklist | null }) => {
                           .join(" · ")}
                       </p>
                     </div>
-                    {!upload && existing ? (
+                    {!upload && existing?.fileName ? (
                       <Button
                         size="sm"
                         icon={Download}

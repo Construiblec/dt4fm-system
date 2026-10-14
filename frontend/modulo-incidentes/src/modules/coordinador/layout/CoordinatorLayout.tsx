@@ -4,7 +4,6 @@ import {
   CalendarCheck,
   CalendarDays,
   Inbox,
-  LayoutDashboard,
   ListChecks,
   ChevronsUpDown,
   LogOut,
@@ -36,13 +35,6 @@ import { usePendingCount } from "../hooks/useCoordData";
  */
 
 const NAV = [
-  {
-    to: "/coordinador",
-    label: "Panel",
-    icon: LayoutDashboard,
-    match: ["/coordinador"],
-    end: true,
-  },
   {
     to: "/coordinador/pendientes",
     label: "Pendientes",
