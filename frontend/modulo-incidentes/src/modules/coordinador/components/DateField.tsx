@@ -10,6 +10,10 @@ type Props = {
   value: string;
   onChange: (ymd: string) => void;
   invalid?: boolean;
+  /** Ancho del campo; por defecto el justo para la fecha. En formularios, "w-full". */
+  width?: string;
+  /** Para cuando no hay una etiqueta visible que apunte al campo. */
+  ariaLabel?: string;
 };
 
 /**
@@ -18,7 +22,14 @@ type Props = {
  * de cambiarlo, así que aquí se escribe en un texto y el calendario es el del
  * navegador, abierto desde el botón.
  */
-export const DateField = ({ id, value, onChange, invalid }: Props) => {
+export const DateField = ({
+  id,
+  value,
+  onChange,
+  invalid,
+  width = "w-40",
+  ariaLabel,
+}: Props) => {
   const pickerRef = useRef<HTMLInputElement>(null);
   // Lo que se está escribiendo; null = mostrar el valor.
   const [draft, setDraft] = useState<string | null>(null);
@@ -36,15 +47,19 @@ export const DateField = ({ id, value, onChange, invalid }: Props) => {
   };
 
   return (
-    <div className="relative">
+    <div className={cx("relative", width)}>
       <input
         id={id}
+        aria-label={ariaLabel}
         type="text"
         inputMode="numeric"
         placeholder="dd/mm/aaaa"
         maxLength={10}
         autoComplete="off"
-        className={inputClass(invalid || incomplete, "w-40 pr-10 tabular-nums")}
+        className={inputClass(
+          invalid || incomplete,
+          "w-full pr-10 tabular-nums",
+        )}
         value={text}
         onChange={(e) => {
           const masked = maskDmy(e.target.value);

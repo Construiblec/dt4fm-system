@@ -59,6 +59,7 @@ import {
 } from "../components/ui";
 import { compareBy, cx, inputClass, useSort } from "../components/uiUtils";
 import { useOpenTask } from "../layout/useOpenTask";
+import { DateField } from "../components/DateField";
 
 type StatusKey = keyof typeof STATUS;
 
@@ -114,10 +115,7 @@ const TableView = ({
 
   const base = useMemo(
     () =>
-      tasks.filter(
-        (t) =>
-          inDateFilter(t, dates, today) && matchesSearch(t, q),
-      ),
+      tasks.filter((t) => inDateFilter(t, dates, today) && matchesSearch(t, q)),
     [tasks, dates, today, q],
   );
 
@@ -618,16 +616,12 @@ const AgendaView = ({
             aria-label="Día siguiente"
             onClick={() => setDay(addDays(day, 1))}
           />
-          <input
-            type="date"
-            aria-label="Día"
-            className={inputClass(false, "w-auto")}
+          <DateField
+            id="agenda-dia"
+            ariaLabel="Día"
             value={day}
-            onChange={(e) => e.target.value && setDay(e.target.value)}
+            onChange={setDay}
           />
-          <p className="text-sm font-semibold text-slate-900">
-            {formatDate(day)}
-          </p>
         </div>
       </div>
 
@@ -884,11 +878,7 @@ export const LimpiezasPage = () => {
           nowMs={nowMs}
         />
       ) : (
-        <TableView
-          tasks={tasksQ.data}
-          today={today}
-          nowMs={nowMs}
-        />
+        <TableView tasks={tasksQ.data} today={today} nowMs={nowMs} />
       )}
     </div>
   );
