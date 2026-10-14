@@ -33,8 +33,8 @@ import {
   todayYmd,
 } from "../domain/dates";
 import { canEdit, isPending } from "../domain/tasks";
-import { StatusBadges } from "../components/taskBits";
 import { Modal } from "../components/overlays";
+import { DateField } from "../components/DateField";
 import {
   Button,
   Card,
@@ -49,9 +49,8 @@ import {
   Skeleton,
   TD,
   TH,
-  FOCUS,
 } from "../components/ui";
-import { cx, inputClass } from "../components/uiUtils";
+import { cx } from "../components/uiUtils";
 import { useCoordFlash } from "../layout/flash";
 import { useOpenTask } from "../layout/useOpenTask";
 
@@ -350,10 +349,7 @@ export const SincronizacionPage = () => {
     <div className="space-y-6">
       <PageHeader title="Creación automática de tareas de limpiezas" />
 
-      <Card
-        title="Crear limpiezas de un día"
-        subtitle="Crea una limpieza por cada checkout del día. Las reservas que ya tienen limpieza se omiten."
-      >
+      <Card title="Crear limpiezas de un día">
         <div className="space-y-4">
           <div className="flex flex-wrap items-center gap-3">
             <Button
@@ -385,27 +381,25 @@ export const SincronizacionPage = () => {
 
       <Card
         title="Próximas limpiezas"
-        subtitle="Revisa los checkouts de un rango y crea una limpieza suelta cuando haga falta."
+        subtitle="Revisa los checkouts de un rango."
         bodyClass=""
       >
         <div className="space-y-4 px-5 py-4">
           <div className="flex flex-wrap items-end gap-3">
             <Field label="Inicio" htmlFor="rango-inicio">
-              <input
+              <DateField
                 id="rango-inicio"
-                type="date"
-                className={inputClass(Boolean(rangeError))}
                 value={from}
-                onChange={(e) => setFrom(e.target.value)}
+                onChange={setFrom}
+                invalid={Boolean(rangeError)}
               />
             </Field>
             <Field label="Fin" htmlFor="rango-fin">
-              <input
+              <DateField
                 id="rango-fin"
-                type="date"
-                className={inputClass(Boolean(rangeError))}
                 value={to}
-                onChange={(e) => setTo(e.target.value)}
+                onChange={setTo}
+                invalid={Boolean(rangeError)}
               />
             </Field>
             <Button icon={Search} onClick={showPreview}>
@@ -468,16 +462,10 @@ export const SincronizacionPage = () => {
                     Checkout
                   </th>
                   <th scope="col" className={TH}>
-                    Listing
-                  </th>
-                  <th scope="col" className={TH}>
-                    Reserva
+                    Unidad
                   </th>
                   <th scope="col" className={TH}>
                     Estado
-                  </th>
-                  <th scope="col" className={TH}>
-                    Limpieza
                   </th>
                   <th scope="col" className={TH}>
                     <span className="sr-only">Acción</span>
@@ -508,9 +496,6 @@ export const SincronizacionPage = () => {
                           {r.listingName}
                         </p>
                         <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
-                          <span className="font-mono">
-                            listing {r.listingId}
-                          </span>
                           {r.unitMatch === "none" ? (
                             <Chip
                               icon={Link2Off}
@@ -528,30 +513,8 @@ export const SincronizacionPage = () => {
                           ) : null}
                         </div>
                       </td>
-                      <td className={cx(TD, "font-mono text-slate-700")}>
-                        {r.reservationId}
-                      </td>
                       <td className={TD}>
                         <Chip tone={chip.tone}>{chip.label}</Chip>
-                      </td>
-                      <td className={TD}>
-                        {r.task ? (
-                          <div className="flex flex-col items-start gap-1">
-                            <button
-                              type="button"
-                              className={cx(
-                                "font-mono font-semibold text-brand hover:underline",
-                                FOCUS,
-                              )}
-                              onClick={() => open(r.task!.id)}
-                            >
-                              {r.task.taskNumber}
-                            </button>
-                            <StatusBadges task={r.task} nowMs={nowMs} />
-                          </div>
-                        ) : (
-                          <span className="text-slate-400">—</span>
-                        )}
                       </td>
                       <td className={cx(TD, "text-right")}>
                         {createdTasks[r.reservationId] ||

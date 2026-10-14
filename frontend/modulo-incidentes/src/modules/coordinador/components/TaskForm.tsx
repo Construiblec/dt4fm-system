@@ -28,6 +28,7 @@ import {
   ChecklistSummaryLine,
   EmployeeSelect,
 } from "./pickers";
+import { DateField } from "./DateField";
 import { employeeName } from "./taskLabels";
 import { Button, Field, InlineAlert } from "./ui";
 import { inputClass } from "./uiUtils";
@@ -256,12 +257,12 @@ export const TaskForm = ({
               error={errors.checkoutDate}
               hint="Corrígela si la reserva cambió en Hostaway."
             >
-              <input
+              <DateField
                 id="f-checkout"
-                type="date"
-                className={inputClass(errors.checkoutDate)}
+                width="w-full"
+                invalid={Boolean(errors.checkoutDate)}
                 value={checkoutDate}
-                onChange={(e) => setCheckoutDate(e.target.value)}
+                onChange={setCheckoutDate}
               />
             </Field>
             <div className="space-y-1.5 text-sm">
@@ -301,12 +302,12 @@ export const TaskForm = ({
       <section className="space-y-4 rounded-2xl bg-white p-4 shadow-sm">
         <div className="grid gap-4 sm:grid-cols-3">
           <Field label="Fecha" htmlFor="f-fecha" required error={errors.date}>
-            <input
+            <DateField
               id="f-fecha"
-              type="date"
-              className={inputClass(errors.date)}
+              width="w-full"
+              invalid={Boolean(errors.date)}
               value={date}
-              onChange={(e) => setDate(e.target.value)}
+              onChange={setDate}
             />
           </Field>
           <Field

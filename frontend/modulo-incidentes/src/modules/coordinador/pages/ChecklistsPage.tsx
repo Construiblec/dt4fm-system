@@ -219,12 +219,6 @@ export const ChecklistsPage = () => {
           </div>
         )}
       </Card>
-
-      <InlineAlert tone="neutral" title="Minutos y recordatorios">
-        El asistente de voz del empleado avisa cuando se cumplen los minutos de
-        cada actividad. Si una actividad no tiene minutos, no hay recordatorio
-        para ella.
-      </InlineAlert>
     </div>
   );
 };
