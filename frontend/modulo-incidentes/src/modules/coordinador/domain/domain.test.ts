@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 import type { CoordTask } from "../types/Coordinador";
 import {
   formatDate,
+  maskDmy,
+  parseDmy,
+  toDmy,
   addDays,
   diffDays,
   formatDuration,
@@ -89,6 +92,17 @@ describe("fechas de Guayaquil", () => {
     expect(relativeDay("2026-10-09", "2026-10-08")).toBe("mañana");
     expect(relativeDay("2026-10-07", "2026-10-08")).toBe("ayer");
     expect(relativeDay("2026-10-12", "2026-10-08")).toBe("12/10/2026");
+  });
+
+  it("el campo de fecha lee y escribe dd/mm/aaaa", () => {
+    expect(toDmy("2026-10-14")).toBe("14/10/2026");
+    expect(toDmy("")).toBe("");
+    expect(maskDmy("1410")).toBe("14/10");
+    expect(maskDmy("14102026")).toBe("14/10/2026");
+    expect(maskDmy("14/10/20269")).toBe("14/10/2026");
+    expect(parseDmy("14/10/2026")).toBe("2026-10-14");
+    expect(parseDmy("31/02/2026")).toBeNull();
+    expect(parseDmy("14/10")).toBeNull();
   });
 
   it("formatea rangos y duraciones", () => {

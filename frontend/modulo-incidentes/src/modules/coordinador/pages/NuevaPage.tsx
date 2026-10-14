@@ -19,7 +19,6 @@ import { employeeName } from "../components/taskLabels";
 import {
   Button,
   Card,
-  Chip,
   InlineAlert,
   PageHeader,
   Skeleton,
@@ -70,10 +69,7 @@ export const NuevaPage = () => {
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
-      <PageHeader
-        title="Nueva limpieza"
-        subtitle="Para limpiezas que no vienen de Hostaway: limpiezas profundas, repasos o pedidos del propietario."
-      />
+      <PageHeader title="Nueva limpieza" />
 
       {created ? (
         <Card>
@@ -118,10 +114,6 @@ export const NuevaPage = () => {
         </Card>
       ) : (
         <div className="space-y-4">
-          <div className="flex flex-wrap items-center gap-2 rounded-2xl bg-white px-4 py-3 text-sm shadow-sm">
-            <span className="text-slate-600">La tarjeta se crea con</span>
-            <Chip tone="outline">Origen: Manual</Chip>
-          </div>
           {ready ? (
             <TaskForm
               key={formKey}

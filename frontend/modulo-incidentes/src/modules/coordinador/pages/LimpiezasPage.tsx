@@ -99,20 +99,16 @@ const inDateFilter = (
 
 const TableView = ({
   tasks,
-  employees,
   today,
   nowMs,
 }: {
   tasks: CoordTask[];
-  employees: EmployeeOption[];
   today: string;
   nowMs: number;
 }) => {
   const { open } = useOpenTask();
   const [q, setQ] = useState("");
   const [statuses, setStatuses] = useState<StatusKey[]>(STATUS_ORDER);
-  const [source, setSource] = useState("todos");
-  const [employeeId, setEmployeeId] = useState("");
   const [dates, setDates] = useState<DateFilter>("todas");
   const [sort, onSort] = useSort({ key: "creada", dir: "desc" });
 
@@ -120,15 +116,9 @@ const TableView = ({
     () =>
       tasks.filter(
         (t) =>
-          inDateFilter(t, dates, today) &&
-          (source === "todos" || t.source === source) &&
-          (!employeeId ||
-            (employeeId === "sin"
-              ? !t.employee
-              : String(t.employee?.id) === employeeId)) &&
-          matchesSearch(t, q),
+          inDateFilter(t, dates, today) && matchesSearch(t, q),
       ),
-    [tasks, dates, today, source, employeeId, q],
+    [tasks, dates, today, q],
   );
 
   const statusCount = useMemo(() => {
@@ -190,30 +180,6 @@ const TableView = ({
           {DATE_FILTERS.map((f) => (
             <option key={f.value} value={f.value}>
               {f.label}
-            </option>
-          ))}
-        </select>
-        <select
-          aria-label="Origen"
-          className={inputClass(false, "w-auto")}
-          value={source}
-          onChange={(e) => setSource(e.target.value)}
-        >
-          <option value="todos">Todos los orígenes</option>
-          <option value="Hostaway">Hostaway</option>
-          <option value="Manual">Manual</option>
-        </select>
-        <select
-          aria-label="Empleado"
-          className={inputClass(false, "w-auto")}
-          value={employeeId}
-          onChange={(e) => setEmployeeId(e.target.value)}
-        >
-          <option value="">Todos los empleados</option>
-          <option value="sin">Sin empleado</option>
-          {employees.map((e) => (
-            <option key={e.id} value={String(e.id)}>
-              {formatPersonName(e.name)}
             </option>
           ))}
         </select>
@@ -920,7 +886,6 @@ export const LimpiezasPage = () => {
       ) : (
         <TableView
           tasks={tasksQ.data}
-          employees={employeesQ.data}
           today={today}
           nowMs={nowMs}
         />
