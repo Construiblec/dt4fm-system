@@ -13,7 +13,7 @@ import {
   useEmployees,
   useInvalidateCoord,
 } from "../hooks/useCoordData";
-import { formatDayShort, formatRange, ymdOf } from "../domain/dates";
+import { formatDate, formatRange, ymdOf } from "../domain/dates";
 import { TaskForm, type TaskFormContext } from "../components/TaskForm";
 import { employeeName } from "../components/taskLabels";
 import {
@@ -83,7 +83,7 @@ export const NuevaPage = () => {
               title={`Limpieza ${created.taskNumber} creada.`}
             >
               {created.employee && created.startIso
-                ? `Asignada a ${employeeName(created.employee)} · ${formatDayShort(ymdOf(created.startIso))}, ${formatRange(created.startIso, created.endIso)}.`
+                ? `Asignada a ${employeeName(created.employee)} · ${formatDate(ymdOf(created.startIso))}, ${formatRange(created.startIso, created.endIso)}.`
                 : "Quedó en Pendientes porque no tiene empleado."}
             </InlineAlert>
             <div className="flex flex-wrap gap-2">

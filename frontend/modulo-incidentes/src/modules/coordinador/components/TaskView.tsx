@@ -11,7 +11,6 @@ import {
 import type { CoordTaskDetail, EmployeeOption } from "../types/Coordinador";
 import {
   formatDate,
-  formatDayShort,
   formatDuration,
   formatTime,
   relativeDay,
@@ -115,7 +114,7 @@ const TeamLog = ({ text }: { text: string | null }) => {
                 {meta.label}
                 {entry.time ? (
                   <span className="ml-1 font-normal tabular-nums text-slate-500">
-                    {formatDayShort(entry.date)} · {entry.time}
+                    {formatDate(entry.date)} · {entry.time}
                   </span>
                 ) : null}
                 {entry.carryMinutes != null ? (
@@ -230,7 +229,7 @@ export const TaskView = ({
     ? [
         {
           label: "Inicio real",
-          value: `${formatDayShort(ymdOf(task.actualStartTime))} · ${formatTime(task.actualStartTime)}`,
+          value: `${formatDate(ymdOf(task.actualStartTime))} · ${formatTime(task.actualStartTime)}`,
         },
         {
           label: "Fin real",
