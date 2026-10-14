@@ -1,8 +1,8 @@
 import {
+  BadGatewayException,
   Injectable,
   Logger,
   ServiceUnavailableException,
-  UnauthorizedException,
 } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
@@ -173,9 +173,12 @@ export class HostawayService {
     }>;
     const safeMessage = this.buildSafeErrorMessage(finalError);
 
+    // 502 y no 401: el que falla es el backend frente a Hostaway, no la sesión
+    // del usuario. Un 401 aquí lo leía el frontend como "sesión caducada" y
+    // mandaba al login a alguien con la sesión perfectamente válida.
     if (finalError?.response?.status === 401) {
-      throw new UnauthorizedException(
-        `Hostaway rechazo las credenciales OAuth` +
+      throw new BadGatewayException(
+        `Hostaway rechazó las credenciales del servidor (HOSTAWAY_CLIENT_ID / HOSTAWAY_CLIENT_SECRET)` +
           (safeMessage ? ` (${safeMessage})` : ''),
       );
     }

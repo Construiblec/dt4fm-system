@@ -189,6 +189,29 @@ export const getRoleView = (role?: string | null): RoleView => {
   return ROLE_VIEWS[role] ?? FALLBACK_VIEW;
 };
 
+/** Primer tramo de la ruta: "/supervisor-cav/autorizaciones?x=1" → "supervisor-cav". */
+const areaOf = (path: string) => path.split(/[?#]/)[0].split("/")[1] ?? "";
+
+/**
+ * Zonas propias de cada vista (el primer tramo de su `homeRoute`). Lo que no
+ * está aquí —notificaciones, cuenta, la ficha de una tarea— es común a todas.
+ */
+const ROLE_AREAS = new Set(
+  [...Object.values(ROLE_VIEWS), EXECUTION_VIEW].map((view) =>
+    areaOf(view.homeRoute),
+  ),
+);
+
+/**
+ * ¿Sirve este destino pendiente (el de antes de un 401) para el rol con el que
+ * se entra? La pantalla de otro rol no: quien vuelve a entrar como supervisor no
+ * debe aterrizar en la coordinación solo porque fue lo último que tenía abierto.
+ */
+export const fitsRole = (path: string, role?: string | null): boolean => {
+  const area = areaOf(path);
+  return !ROLE_AREAS.has(area) || area === areaOf(getRoleView(role).homeRoute);
+};
+
 export type SelectableRole = RoleView & { code: string };
 
 /**
