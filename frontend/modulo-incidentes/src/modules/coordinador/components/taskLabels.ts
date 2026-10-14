@@ -1,6 +1,6 @@
 import type { CoordEmployee, CoordTask, CoordUnit } from "../types/Coordinador";
 import {
-  formatDayShort,
+  formatDate,
   formatPersonName,
   formatRange,
   ymdOf,
@@ -21,7 +21,7 @@ export const placeLabel = (task: CoordTask): string => {
 
 export const plannedLabel = (task: CoordTask): string => {
   if (!task.plannedStartTime) return "Sin horario";
-  return `${formatDayShort(ymdOf(task.plannedStartTime))} · ${formatRange(task.plannedStartTime, task.plannedEndTime)}`;
+  return `${formatDate(ymdOf(task.plannedStartTime))} · ${formatRange(task.plannedStartTime, task.plannedEndTime)}`;
 };
 
 /** Búsqueda sin mayúsculas ni tildes, palabra por palabra. */

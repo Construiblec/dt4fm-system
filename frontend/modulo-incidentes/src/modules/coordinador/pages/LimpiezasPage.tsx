@@ -16,9 +16,8 @@ import { useCoordTasks, useEmployees } from "../hooks/useCoordData";
 import { useNow } from "../hooks/useNow";
 import {
   addDays,
-  formatDayShort,
+  formatDate,
   formatDuration,
-  formatLongDate,
   formatPersonName,
   formatRange,
   hmOf,
@@ -348,7 +347,7 @@ const TableView = ({
                       )}
                     >
                       {t.checkoutDate ? (
-                        formatDayShort(t.checkoutDate)
+                        formatDate(t.checkoutDate)
                       ) : (
                         <span className="text-slate-400">—</span>
                       )}
@@ -661,7 +660,7 @@ const AgendaView = ({
             onChange={(e) => e.target.value && setDay(e.target.value)}
           />
           <p className="text-sm font-semibold text-slate-900">
-            {formatLongDate(day)}
+            {formatDate(day)}
           </p>
         </div>
       </div>

@@ -29,7 +29,6 @@ import {
   addDays,
   diffDays,
   formatDate,
-  formatDayShort,
   relativeDay,
   todayYmd,
 } from "../domain/dates";
@@ -496,12 +495,11 @@ export const SincronizacionPage = () => {
                     >
                       <td className={cx(TD, "whitespace-nowrap")}>
                         <p className="font-medium tabular-nums text-slate-900">
-                          {formatDayShort(shownDate)}
+                          {formatDate(shownDate)}
                         </p>
                         {r.status === "cambio" && r.task ? (
                           <p className="text-xs text-amber-700">
-                            La limpieza dice{" "}
-                            {formatDayShort(r.task.checkoutDate)}
+                            La limpieza dice {formatDate(r.task.checkoutDate)}
                           </p>
                         ) : null}
                       </td>
