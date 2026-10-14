@@ -92,10 +92,36 @@ describe('MaintenanceSupervisionController (e2e)', () => {
       const res = await request(app.getHttpServer())
         .post('/maintenance-supervision/corrective/12345/assign')
         .set('authorization', 'mock-session-id')
-        .send({ assigneeId: 1456396, plannedStart: '2026-08-25T09:00:00.000Z' })
+        .send({
+          assigneeId: 1456396,
+          plannedStart: '2026-08-25T09:00:00.000Z',
+          priority: 'Medium',
+        })
         .expect(201);
 
       expect(res.body.success).toBe(true);
+      expect(mocks.correctiveOpenmaint.advance).toHaveBeenCalledWith(
+        'mock-session-id',
+        12345,
+        expect.objectContaining({
+          fields: expect.objectContaining({ Priority: 119 }),
+        }),
+      );
+    });
+
+    it('400 sin prioridad ni en el body ni en la tarjeta', async () => {
+      mocks.correctiveOpenmaint.findWithTasklist.mockResolvedValueOnce(
+        correctiveResponse({
+          status: CM_STATUS_IDS.ASSIGNMENT,
+          priority: null,
+        }),
+      );
+
+      await request(app.getHttpServer())
+        .post('/maintenance-supervision/corrective/12345/assign')
+        .set('authorization', 'mock-session-id')
+        .send({ assigneeId: 1456396, plannedStart: '2026-08-25T09:00:00.000Z' })
+        .expect(400);
     });
 
     it('400 sin fecha prevista ni en el body ni en la tarjeta', async () => {

@@ -2,6 +2,9 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { IsInt, IsOptional, IsString, MaxLength, Min } from 'class-validator';
 
+/** Límite del título que ve el supervisor en la tarjeta. */
+export const SHORT_DESCRIPTION_MAX = 80;
+
 export class CreateIncidentDto {
   @ApiProperty({ description: 'ID del edificio', example: 3456 })
   @Type(() => Number)
@@ -9,14 +12,26 @@ export class CreateIncidentDto {
   @Min(1)
   buildingId: number;
 
-  @ApiProperty({
-    description: 'Área o piso de la incidencia',
+  @ApiPropertyOptional({
+    description:
+      'Breve descripción de la incidencia; es el título de la tarjeta',
+    example: 'Fuga de agua bajo el lavamanos',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(SHORT_DESCRIPTION_MAX)
+  shortDescription?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Obsoleto: planta y área compuestas. Solo se usa como título si no llega `shortDescription`',
     example: 'Piso 2 - Hall de entrada',
   })
+  @IsOptional()
   @IsString()
   // ShortDescr es una columna de 255 en CMDBuild
   @MaxLength(255)
-  floorArea: string;
+  floorArea?: string;
 
   @ApiPropertyOptional({
     description: 'ID de la planta en OpenMAINT (clase Floor)',
@@ -48,15 +63,16 @@ export class CreateIncidentDto {
   @Min(1)
   commonAreaId?: number;
 
-  @ApiProperty({
+  @ApiPropertyOptional({
     description:
-      'Prioridad de la incidencia (ej. 1 = Alta, 2 = Media, 3 = Baja)',
-    example: 2,
+      'ID del lookup de prioridad. Opcional: la fija el supervisor al asignar',
+    example: 119,
   })
+  @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(1)
-  priority: number;
+  priority?: number;
 
   @ApiProperty({
     description: 'Descripción o notas adicionales del incidente',

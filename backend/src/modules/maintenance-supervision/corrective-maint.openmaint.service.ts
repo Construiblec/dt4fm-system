@@ -139,9 +139,10 @@ export class CorrectiveMaintOpenmaintService {
     sessionId: string,
     { limit, offset, statusIds, assigned }: FindAllOptions,
   ): Promise<CorrectiveMaintCardsResponse> {
+    // Sin `onlyGridAttrs`: la tarjeta necesita planta, área, fin real y la nota
+    // de reporte, que no están entre las columnas de la rejilla.
     const params = new URLSearchParams({
       include_tasklist: 'false',
-      onlyGridAttrs: 'true',
       start: String(offset),
       limit: String(limit),
       sort: JSON.stringify([{ property: 'Sorting', direction: 'DESC' }]),

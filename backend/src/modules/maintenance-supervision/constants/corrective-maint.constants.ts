@@ -152,6 +152,12 @@ export const CM_PRIORITY_CODES: Record<number, string> = {
   [CM_PRIORITY_IDS.LOW]: 'Low',
 };
 
+/** Nombre estable → ID del lookup, para escribir la prioridad al asignar. */
+export const CM_PRIORITY_CODE_TO_ID: Record<string, number> =
+  Object.fromEntries(
+    Object.entries(CM_PRIORITY_CODES).map(([id, code]) => [code, Number(id)]),
+  );
+
 /**
  * Estados en los que `ExpExecStartDate` es escribible. Fuera de aquí OpenMAINT
  * acepta el PUT pero descarta el atributo en silencio.

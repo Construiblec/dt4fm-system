@@ -105,7 +105,7 @@ export class IotAlarmsService {
       Type: rule.processType,
       Priority: rule.priority,
       Site: site,
-      ShortDescr: this.buildSubject(dto, asset),
+      ShortDescr: this.buildSubject(dto),
       ProcessNotes: this.buildNotes(dto, rawPayload, lookup),
       ...(asset?._id ? { Asset: asset._id } : {}),
       ...(asset?.Floor ? { Floor: asset.Floor } : {}),
@@ -139,18 +139,11 @@ export class IotAlarmsService {
     });
   }
 
-  private buildSubject(
-    dto: CreateIotAlarmDto,
-    asset: AssetCard | null,
-  ): string {
+  /** Solo el mensaje: la ubicación ya viaja en Site/Floor y el equipo en la nota. */
+  private buildSubject(dto: CreateIotAlarmDto): string {
     const detail = dto.message?.trim() || dto.event;
-    // Sin activo resuelto se muestra el código recibido, para no perder la pista.
-    const target = asset?.Description ?? dto.assetCode;
 
-    return `${IOT_SUBJECT_PREFIX} ${detail} - ${target}`.slice(
-      0,
-      SHORT_DESCR_MAX,
-    );
+    return `${IOT_SUBJECT_PREFIX} ${detail}`.slice(0, SHORT_DESCR_MAX);
   }
 
   /**

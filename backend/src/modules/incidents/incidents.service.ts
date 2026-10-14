@@ -10,9 +10,11 @@ import {
   extractRegisterNotes,
   extractReportNotes,
 } from '../../common/utils/openmaint-register.util';
+import { resolveReporter } from '../../common/utils/corrective-reporter.util';
 import { OpenmaintService } from '../../integrations/openmaint/openmaint.service';
 import {
   CM_DERIVED_ASSIGNED,
+  CM_PRIORITY_CODES,
   resolveCorrectiveStatus,
 } from '../maintenance-supervision/constants/corrective-maint.constants';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -40,6 +42,11 @@ type OpenmaintIncidentListItem = {
   ExpExecStartDate?: string | null;
   /** Inicio real. Vacío mientras el técnico no haya arrancado el trabajo. */
   ExecStartDate?: string | null;
+  ExecEndDate?: string | null;
+  Priority?: number | null;
+  _Floor_description?: string | null;
+  _Unit_description?: string | null;
+  _CommonArea_description?: string | null;
 };
 
 type OpenmaintIncidentListResponse = {
@@ -67,6 +74,7 @@ type OpenmaintIncidentDetail = {
   _Assignee_description?: string | null;
   _Unit_description?: string | null;
   _Floor_description?: string | null;
+  _CommonArea_description?: string | null;
   /** Equipo sobre el que se abrió; hoy solo lo rellenan las alarmas IoT. */
   _Asset_description?: string | null;
 };
@@ -311,8 +319,13 @@ export class IncidentsService {
         incident._ProcessStatus_code,
       ),
       requesterName: incident._Requester_description ?? null,
+      reporter: resolveReporter(
+        extractReportNotes(incident.Register ?? null),
+        incident._Requester_description,
+      ),
       assigneeName: incident._Assignee_description ?? null,
       unit: incident._Unit_description ?? null,
+      commonArea: incident._CommonArea_description ?? null,
       floor: incident._Floor_description ?? null,
       asset: incident._Asset_description ?? null,
       images,
@@ -337,8 +350,14 @@ export class IncidentsService {
       incidents: (response.data ?? []).map((incident) => ({
         id: incident._id,
         number: incident.Number,
+        subject: incident.ShortDescr ?? null,
+        /** Obsoleto: igual a `subject`, se mantiene por compatibilidad. */
         location: incident.ShortDescr,
         priority: incident._Priority_description_translation,
+        priorityCode:
+          incident.Priority != null
+            ? (CM_PRIORITY_CODES[incident.Priority] ?? null)
+            : null,
         // El código estable es el que debe gobernar la lógica del front.
         // `_ProcessStatus_description_translation` viaja traducido según el
         // idioma de la sesión, así que solo sirve como etiqueta visible.
@@ -352,6 +371,13 @@ export class IncidentsService {
         building: incident._Site_description,
         createdAt: incident.OpeningDate,
         plannedStart: incident.ExpExecStartDate ?? null,
+        execStartDate: incident.ExecStartDate ?? null,
+        execEndDate: incident.ExecEndDate ?? null,
+        floor: incident._Floor_description ?? null,
+        area:
+          incident._Unit_description ??
+          incident._CommonArea_description ??
+          null,
       })),
     };
   }
@@ -362,6 +388,10 @@ export class IncidentsService {
     dto: CreateIncidentDto,
     images: UploadedImage[] = [],
   ) {
+    if (!(dto.shortDescription ?? dto.floorArea ?? '').trim()) {
+      throw new BadRequestException('La breve descripción es obligatoria');
+    }
+
     const incidentResponse =
       await this.openmaintService.createCorrectiveMaintIncident(
         {
@@ -369,11 +399,12 @@ export class IncidentsService {
           _activity: 'CM01-Opening',
           _advance: true,
           OpeningDate: new Date().toISOString(),
-          ShortDescr: dto.floorArea,
+          ShortDescr: (dto.shortDescription ?? dto.floorArea ?? '').trim(),
           ProcessNotes: dto.notes,
           Requester: employeeId,
           Type: 268288,
-          Priority: dto.priority,
+          // Sin prioridad la fija el supervisor al asignar.
+          ...(dto.priority ? { Priority: dto.priority } : {}),
           Site: dto.buildingId,
           // Solo se envían si el usuario los eligió; son opcionales en OpenMAINT
           ...(dto.floorId ? { Floor: dto.floorId } : {}),

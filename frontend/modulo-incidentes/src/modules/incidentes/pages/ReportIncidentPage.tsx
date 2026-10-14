@@ -33,42 +33,12 @@ import {
   isVisitorSession,
 } from "@/shared/auth/session";
 import { ArrowLeft } from "lucide-react";
-import { PRIORITY_IDS, PRIORITY_LABELS } from "@/shared/constants/priority";
 import { rememberReturnTo } from "@/shared/auth/returnTo";
 
-/**
- * Etiquetas en masculino, igual que el resto de la app y que lo que devuelve
- * openMAINT. Antes aquí se decía «Alta/Media/Baja» y el usuario reportaba una
- * incidencia «Alta» para leer después «Prioridad Alto» en la tarjeta.
- *
- * Los IDs son los del lookup `COMMON - Priority`; `Crítico` (117) existe pero
- * no se ofrece al reportar, es de uso interno.
- */
-const priorities = [
-  {
-    id: PRIORITY_IDS.Low,
-    label: PRIORITY_LABELS.Low,
-    baseClassName:
-      "border-emerald-200 bg-emerald-50 text-emerald-700 hover:border-emerald-300",
-    activeClassName: "border-emerald-500 bg-emerald-500 text-white",
-  },
-  {
-    id: PRIORITY_IDS.Medium,
-    label: PRIORITY_LABELS.Medium,
-    baseClassName:
-      "border-amber-200 bg-amber-50 text-amber-700 hover:border-amber-300",
-    activeClassName: "border-amber-500 bg-amber-500 text-white",
-  },
-  {
-    id: PRIORITY_IDS.High,
-    label: PRIORITY_LABELS.High,
-    baseClassName:
-      "border-orange-200 bg-orange-50 text-orange-700 hover:border-orange-300",
-    activeClassName: "border-orange-500 bg-orange-500 text-white",
-  },
-] as const;
 
 type FormValues = {
+  /** Breve descripción: es el título de la tarjeta */
+  title: string;
   building: string;
   /** "" | String(floor.id) */
   floorId: string;
@@ -86,10 +56,9 @@ const MAX_IMAGE_SIZE_BYTES = 50 * 1024 * 1024;
 
 const OTHER_AREA_VALUE = "__other__";
 
+const MAX_TITLE_LENGTH = 80;
 const MAX_AREA_OTHER_LENGTH = 80;
 const MAX_FREE_AREA_LENGTH = 120;
-/** ShortDescr es una columna de 255 en CMDBuild; 200 deja margen y mantiene legible el asunto del correo */
-const MAX_FLOOR_AREA_LENGTH = 200;
 
 const FIELD_CLASSES =
   "w-full rounded-2xl border border-slate-200 bg-white px-4 py-4 text-sm text-slate-900 outline-none transition focus:border-brand focus:ring-4 focus:ring-brand/20";
@@ -103,9 +72,6 @@ export const ReportIncidentPage = () => {
   );
   const [error, setError] = useState<string | null>(null);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
-  const [selectedPriority, setSelectedPriority] = useState<
-    (typeof priorities)[number]
-  >(priorities[1]);
   const [images, setImages] = useState<File[]>([]);
   const [locations, setLocations] = useState<BuildingLocations | null>(null);
   const [locationsLoading, setLocationsLoading] = useState(false);
@@ -121,6 +87,7 @@ export const ReportIncidentPage = () => {
     formState: { errors },
   } = useForm<FormValues>({
     defaultValues: {
+      title: "",
       building: "",
       floorId: "",
       areaId: "",
@@ -323,34 +290,6 @@ export const ReportIncidentPage = () => {
     return {};
   };
 
-  const composeFloorArea = (values: FormValues): string => {
-    if (!hasFloors) {
-      return values.freeArea.trim();
-    }
-
-    let areaLabel = "";
-
-    if (values.areaId === OTHER_AREA_VALUE) {
-      areaLabel = values.areaOther.trim();
-    } else if (values.areaId) {
-      const pool = [
-        ...(selectedFloor?.areas ?? []),
-        ...(locations?.unassignedAreas ?? []),
-      ];
-
-      areaLabel =
-        pool
-          .find((area) => `${area.kind}:${area.id}` === values.areaId)
-          ?.label.trim() ?? "";
-    }
-
-    return [selectedFloor?.label.trim() ?? "", areaLabel]
-      .filter(Boolean)
-      .join(" - ")
-      .replace(/\s+/g, " ")
-      .slice(0, MAX_FLOOR_AREA_LENGTH);
-  };
-
   const remainingSlots = useMemo(
     () => MAX_IMAGES - images.length,
     [images.length],
@@ -440,6 +379,11 @@ export const ReportIncidentPage = () => {
   const composeNotes = (values: FormValues): string => {
     const blocks: string[] = [values.description.trim()];
 
+    // Sin plantas registradas el texto libre es la única pista de dónde es.
+    if (!hasFloors && values.freeArea.trim()) {
+      blocks.push(`Ubicación indicada: ${values.freeArea.trim()}`);
+    }
+
     if (values.areaId === OTHER_AREA_VALUE && values.areaOther.trim()) {
       blocks.push(`Área indicada: ${values.areaOther.trim()}`);
     }
@@ -464,11 +408,6 @@ export const ReportIncidentPage = () => {
       return;
     }
 
-    if (!Number.isInteger(Number(selectedPriority.id))) {
-      setError("La prioridad seleccionada no es v\u00e1lida.");
-      return;
-    }
-
     if (images.length > MAX_IMAGES) {
       setError("Solo puede adjuntar hasta 6 im\u00e1genes.");
       return;
@@ -489,11 +428,10 @@ export const ReportIncidentPage = () => {
 
       const response = await createIncident({
         buildingId: values.building,
-        floorArea: composeFloorArea(values),
+        shortDescription: values.title.trim(),
         floorId,
         unitId,
         commonAreaId,
-        priority: Number(selectedPriority.id),
         notes,
         images,
       });
@@ -573,6 +511,42 @@ export const ReportIncidentPage = () => {
           }}
           className="space-y-5 px-4 py-5"
         >
+          <section className="space-y-2">
+            <label
+              htmlFor="title"
+              className="text-sm font-semibold text-slate-700"
+            >
+              Breve descripción
+            </label>
+            <input
+              id="title"
+              type="text"
+              maxLength={MAX_TITLE_LENGTH}
+              placeholder="Ej. Fuga de agua bajo el lavamanos"
+              autoComplete="off"
+              aria-invalid={Boolean(errors.title) || undefined}
+              aria-describedby={`title-hint${errors.title ? " title-error" : ""}`}
+              className={FIELD_CLASSES}
+              {...register("title", {
+                validate: (value) =>
+                  value.trim().length > 0 || "Escriba una breve descripción.",
+              })}
+            />
+            <p id="title-hint" className="text-xs text-slate-500">
+              Es el título que verá el equipo de mantenimiento (máx.{" "}
+              {MAX_TITLE_LENGTH} caracteres).
+            </p>
+            {errors.title ? (
+              <p
+                id="title-error"
+                role="alert"
+                className="text-xs font-medium text-red-600"
+              >
+                {errors.title.message}
+              </p>
+            ) : null}
+          </section>
+
           <section className="space-y-2">
             <label
               htmlFor="building"
@@ -756,39 +730,17 @@ export const ReportIncidentPage = () => {
             </>
           )}
 
-          <section className="space-y-3">
-            <p className="text-sm font-semibold text-slate-700">
-              Nivel de prioridad
-            </p>
-            <div className="grid grid-cols-3 gap-2">
-              {priorities.map((priority) => {
-                const isActive = selectedPriority.id === priority.id;
-
-                return (
-                  <button
-                    key={priority.id}
-                    type="button"
-                    onClick={() => setSelectedPriority(priority)}
-                    className={`rounded-2xl border px-3 py-3 text-sm font-semibold transition ${isActive ? priority.activeClassName : priority.baseClassName}`}
-                  >
-                    {priority.label}
-                  </button>
-                );
-              })}
-            </div>
-          </section>
-
           <section className="space-y-2">
             <label
               htmlFor="description"
               className="text-sm font-semibold text-slate-700"
             >
-              Descripci{"\u00f3"}n
+              Detalle
             </label>
             <textarea
               id="description"
               rows={5}
-              placeholder={"Coloca una breve descripci\u00f3n del incidente"}
+              placeholder="Cuenta con más detalle qué pasa y desde cuándo"
               className="w-full resize-none rounded-2xl border border-slate-200 bg-white px-4 py-4 text-sm text-slate-900 outline-none transition focus:border-brand focus:ring-4 focus:ring-brand/20"
               {...register("description")}
             />

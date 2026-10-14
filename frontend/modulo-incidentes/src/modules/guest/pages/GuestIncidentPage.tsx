@@ -35,6 +35,7 @@ export const GuestIncidentPage = () => {
   const portal = useGuestPortal(token);
   const fileInput = useRef<HTMLInputElement>(null);
 
+  const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [location, setLocation] = useState("");
   const [photos, setPhotos] = useState<Photo[]>([]);
@@ -120,6 +121,11 @@ export const GuestIncidentPage = () => {
   const submit = async (event: FormEvent) => {
     event.preventDefault();
 
+    if (!title.trim()) {
+      setFormError("Escribe en pocas palabras qué pasa.");
+      return;
+    }
+
     if (!description.trim()) {
       setFormError("Cuéntanos qué está pasando.");
       return;
@@ -139,6 +145,7 @@ export const GuestIncidentPage = () => {
       }
 
       const result = await createGuestIncident(token, {
+        title: title.trim(),
         description: description.trim(),
         location: location.trim() || undefined,
         images,
@@ -179,10 +186,29 @@ export const GuestIncidentPage = () => {
         <GuestCard className="flex flex-col gap-5">
           <div className="space-y-2">
             <label
+              htmlFor="guest-incident-title"
+              className="text-sm font-medium text-slate-700"
+            >
+              En pocas palabras, ¿qué pasa?
+            </label>
+            <input
+              id="guest-incident-title"
+              type="text"
+              maxLength={80}
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="Por ejemplo: sin agua caliente"
+              autoComplete="off"
+              className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-base text-slate-900 outline-none transition focus:border-brand focus:ring-4 focus:ring-brand/20"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <label
               htmlFor="guest-incident-description"
               className="text-sm font-medium text-slate-700"
             >
-              ¿Qué está pasando?
+              Cuéntanos más
             </label>
             <textarea
               id="guest-incident-description"
@@ -264,7 +290,10 @@ export const GuestIncidentPage = () => {
         </GuestCard>
 
         {formError ? (
-          <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+          <p
+            role="alert"
+            className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700"
+          >
             {formError}
           </p>
         ) : null}

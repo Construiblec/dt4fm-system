@@ -18,6 +18,8 @@ export interface CorrectiveCardOptions {
   assignee?: number | null;
   team?: number | null;
   expExecStartDate?: string | null;
+  /** ID del lookup de prioridad; al crear ya no se fija */
+  priority?: number | null;
   number?: string;
   taskId?: string;
   register?: string;
@@ -48,6 +50,7 @@ export const correctiveCard = (opts: CorrectiveCardOptions) => ({
   Team: opts.team ?? null,
   ShortDescr: 'Mock incident location',
   _Site_description: 'Mock Building',
+  Priority: opts.priority ?? null,
   _Priority_description: 'Alta',
   OpeningDate: new Date().toISOString(),
   Register: opts.register ?? '<span data-block="notes">Mock notes</span>',

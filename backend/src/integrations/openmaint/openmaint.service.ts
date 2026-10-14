@@ -56,7 +56,8 @@ type OpenmaintCreateIncidentBody = {
   ProcessNotes: string;
   Requester: number;
   Type: number;
-  Priority: number;
+  /** Opcional: la fija el supervisor al asignar. */
+  Priority?: number;
   Site: number;
   // Ubicación fina: opcionales en CorrectiveMaint, se omiten si no se eligieron
   Floor?: number;
@@ -177,7 +178,8 @@ export class OpenmaintService {
     };
 
     const encodedFilter = encodeURIComponent(JSON.stringify(searchFilter));
-    const path = `/processes/CorrectiveMaint/instances?include_tasklist=false&onlyGridAttrs=true&start=0&limit=50&sort=${encodedSort}&filter=${encodedFilter}`;
+    // Atributos completos: la tarjeta usa planta, área y fin real.
+    const path = `/processes/CorrectiveMaint/instances?include_tasklist=false&start=0&limit=50&sort=${encodedSort}&filter=${encodedFilter}`;
 
     try {
       return await this.client.get(path, sessionId);

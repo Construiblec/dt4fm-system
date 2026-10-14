@@ -12,6 +12,10 @@ import {
   extractReportNotes,
   RegisterLogEntry,
 } from '../../common/utils/openmaint-register.util';
+import {
+  CorrectiveReporter,
+  resolveReporter,
+} from '../../common/utils/corrective-reporter.util';
 import { OpenmaintService } from '../../integrations/openmaint/openmaint.service';
 import {
   PM_ACTIONS,
@@ -30,6 +34,7 @@ import {
   CM_PENDING_REVIEW_STATUS,
   CM_PLANNED_START_WRITABLE_STATUS,
   CM_PRIORITY_CODES,
+  CM_PRIORITY_CODE_TO_ID,
   CM_STATUS_IDS,
   CM_STATUS_NAME_TO_ID,
   CM_TEAM_WRITABLE_STATUS,
@@ -59,6 +64,12 @@ export type SupervisedMaintenance = {
   status: string | null;
   isClosed: boolean;
   site: string | null;
+  /** Planta. Solo correctivos */
+  floor?: string | null;
+  /** Unidad o área común. Solo correctivos */
+  area?: string | null;
+  /** Quien reportó; huésped, visitante e IoT con su nombre real. Solo correctivos */
+  reporter?: CorrectiveReporter | null;
   assignee: { id: number; name: string } | null;
   team: { id: number; name: string } | null;
   /**
@@ -393,7 +404,18 @@ export class MaintenanceSupervisionService {
       );
     }
 
+    // Al crear ya no se pide prioridad: la decide el supervisor aquí.
+    if (!dto.priority && card.Priority == null) {
+      throw new BadRequestException(
+        'Hay que fijar la prioridad antes de asignar el correctivo',
+      );
+    }
+
     const fields: Record<string, unknown> = { Assignee: dto.assigneeId };
+
+    if (dto.priority) {
+      fields.Priority = CM_PRIORITY_CODE_TO_ID[dto.priority];
+    }
 
     if (dto.teamId !== undefined) {
       fields.Team = dto.teamId;
@@ -435,6 +457,12 @@ export class MaintenanceSupervisionService {
       id,
       updated,
     );
+
+    if (dto.priority && assigned.Priority !== fields.Priority) {
+      this.logger.warn(
+        `OpenMAINT no guardó la prioridad ${dto.priority} del correctivo ${id} al asignar`,
+      );
+    }
 
     return { success: true, data: this.toCorrective(assigned) };
   }
@@ -973,6 +1001,8 @@ export class MaintenanceSupervisionService {
   private toCorrective(card: CorrectiveMaintCard): SupervisedMaintenance {
     const isClosed = (card._FlowStatus_code ?? '').startsWith('closed');
     const dueDate = card.DueExecEndDate ?? null;
+    const register = card.Register ?? card._Register_html ?? null;
+    const reportNotes = extractReportNotes(register);
 
     return {
       id: card._id,
@@ -989,6 +1019,9 @@ export class MaintenanceSupervisionService {
         null,
       isClosed,
       site: card._Site_description ?? null,
+      floor: card._Floor_description ?? null,
+      area: card._Unit_description ?? card._CommonArea_description ?? null,
+      reporter: resolveReporter(reportNotes, card._Requester_description),
       assignee: this.toRef(card.Assignee, card._Assignee_description),
       team: this.toRef(card.Team, card._Team_description),
       priority: this.toPriority(card),
@@ -998,13 +1031,8 @@ export class MaintenanceSupervisionService {
       isOverdue: this.isOverdue(dueDate, isClosed),
       execStartDate: card.ExecStartDate ?? null,
       execEndDate: card.ExecEndDate ?? null,
-      reportNotes: extractReportNotes(
-        card.Register ?? card._Register_html ?? null,
-      ),
-      log: extractRegisterLog(
-        card.Register ?? card._Register_html ?? null,
-        card._ProcessStatus_code,
-      ),
+      reportNotes,
+      log: extractRegisterLog(register, card._ProcessStatus_code),
     };
   }
 

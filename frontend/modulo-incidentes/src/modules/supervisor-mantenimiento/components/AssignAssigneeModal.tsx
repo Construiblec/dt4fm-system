@@ -11,6 +11,13 @@ import type {
   SupervisedMaintenance,
 } from "@/modules/supervisor-mantenimiento/types/SupervisedMaintenance";
 import { getEmployeeId } from "@/shared/auth/session";
+import {
+  PRIORITY_ADJECTIVES,
+  PRIORITY_DOT_CLASSES,
+  PRIORITY_ORDER,
+  toPriorityCode,
+  type PriorityCode,
+} from "@/shared/constants/priority";
 
 type Props = {
   maintenance: SupervisedMaintenance;
@@ -69,6 +76,11 @@ export const AssignAssigneeModal = ({
   );
   const [assigneeId, setAssigneeId] = useState<number | null>(null);
   const [notes, setNotes] = useState("");
+  // Al reportar ya no se pide prioridad: la decide el supervisor al asignar.
+  const asksPriority = isCorrective && !isReassign;
+  const [priority, setPriority] = useState<PriorityCode | null>(
+    toPriorityCode(maintenance.priority?.code),
+  );
   // La nota solo llega a la bitácora al asignar un correctivo o al cambiar de
   // persona con el trabajo ya despachado.
   const canAddNote =
@@ -156,10 +168,13 @@ export const AssignAssigneeModal = ({
    */
   const faltaEquipo = teamEditable && teamId === null;
 
+  const faltaPrioridad = asksPriority && priority === null;
+
   const canSubmit =
     !saving &&
     !blockedBySupplier &&
     !faltaPlanificar &&
+    !faltaPrioridad &&
     !faltaEquipo &&
     assigneeId !== null;
 
@@ -174,7 +189,9 @@ export const AssignAssigneeModal = ({
     ? null
     : faltaPlanificar
       ? "Falta fijar el inicio previsto."
-      : faltaEquipo
+      : faltaPrioridad
+        ? "Elige la prioridad."
+        : faltaEquipo
         ? "Elige el equipo de trabajo."
         : assigneeId === null
           ? "Elige a la persona que se hará cargo."
@@ -205,6 +222,7 @@ export const AssignAssigneeModal = ({
             // ningún paso de su flujo.
             ...(teamEditable && teamId !== null ? { teamId } : {}),
             ...(note ? { notes: note } : {}),
+            ...(asksPriority && priority ? { priority } : {}),
             // El inicio previsto no viaja aquí: se fija en «Planificar inicio
             // de ejecución», que es el único sitio donde se pone. Tenerlo
             // también en este modal daba dos formularios para el mismo dato.
@@ -236,6 +254,36 @@ export const AssignAssigneeModal = ({
             <p className="text-sm text-slate-500">Cargando empleados...</p>
           ) : (
             <>
+              {asksPriority ? (
+                <fieldset>
+                  <legend className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Prioridad
+                  </legend>
+                  <div className="grid grid-cols-2 gap-2">
+                    {[...PRIORITY_ORDER].reverse().map((code) => (
+                      <label
+                        key={code}
+                        className="flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 transition has-[:checked]:border-brand has-[:checked]:bg-brand/5 has-[:checked]:font-semibold has-[:focus-visible]:ring-4 has-[:focus-visible]:ring-brand/20"
+                      >
+                        <input
+                          type="radio"
+                          name="priority"
+                          value={code}
+                          checked={priority === code}
+                          onChange={() => setPriority(code)}
+                          className="sr-only"
+                        />
+                        <span
+                          aria-hidden="true"
+                          className={`h-2.5 w-2.5 shrink-0 rounded-full ${PRIORITY_DOT_CLASSES[code]}`}
+                        />
+                        {PRIORITY_ADJECTIVES[code]}
+                      </label>
+                    ))}
+                  </div>
+                </fieldset>
+              ) : null}
+
               {/* El equipo se edita donde el paso lo permita, no según el modo */}
               {teamEditable ? (
                 <div>

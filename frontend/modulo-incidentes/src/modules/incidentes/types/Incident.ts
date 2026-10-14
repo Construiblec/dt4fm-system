@@ -14,4 +14,13 @@ export type Incident = {
   createdAt: string;
   /** `ExpExecStartDate`: cuándo se planificó empezar. */
   plannedStart: string | null;
+  /** Breve descripción; `location` es el mismo dato con su nombre antiguo. */
+  subject?: string | null;
+  /** Código estable (`Critical|High|Medium|Low`) */
+  priorityCode?: string | null;
+  execStartDate?: string | null;
+  execEndDate?: string | null;
+  floor?: string | null;
+  /** Unidad o área común */
+  area?: string | null;
 };

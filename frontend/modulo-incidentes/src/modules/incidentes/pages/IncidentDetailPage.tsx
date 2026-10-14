@@ -256,7 +256,7 @@ export const IncidentDetailPage = () => {
                       Datos del reporte
                     </p>
                     <h2 className="mt-2 text-lg font-semibold text-slate-900">
-                      {incident.building}
+                      {incident.location || incident.building}
                     </h2>
                   </div>
 
@@ -283,8 +283,12 @@ export const IncidentDetailPage = () => {
                   <div className="flex items-start gap-3">
                     <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
                     <div>
-                      <p className="font-medium text-slate-900">Piso / Area</p>
-                      <p>{incident.location}</p>
+                      <p className="font-medium text-slate-900">Piso / Área</p>
+                      <p>
+                        {[incident.floor, incident.unit ?? incident.commonArea]
+                          .filter(Boolean)
+                          .join(" · ") || "Sin especificar"}
+                      </p>
                     </div>
                   </div>
 

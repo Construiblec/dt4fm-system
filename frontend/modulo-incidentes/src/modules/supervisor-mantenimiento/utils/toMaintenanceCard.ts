@@ -1,4 +1,5 @@
 import type { SupervisedMaintenance } from "@/modules/supervisor-mantenimiento/types/SupervisedMaintenance";
+import type { CorrectiveCardData } from "@/shared/components/CorrectiveCard";
 import type { MaintenanceCardData } from "@/shared/components/MaintenanceCard";
 
 /**
@@ -10,7 +11,6 @@ export const toCardData = (
   maintenance: SupervisedMaintenance,
 ): MaintenanceCardData => ({
   id: maintenance.id,
-  kind: maintenance.kind,
   number: maintenance.number,
   subject: maintenance.subject,
   statusCode: maintenance.statusCode,
@@ -25,4 +25,24 @@ export const toCardData = (
   plannedStart: maintenance.plannedStart,
   dueDate: maintenance.dueDate,
   isOverdue: maintenance.isOverdue,
+});
+
+export const toCorrectiveCardData = (
+  maintenance: SupervisedMaintenance,
+): CorrectiveCardData => ({
+  id: maintenance.id,
+  number: maintenance.number,
+  subject: maintenance.subject,
+  statusCode: maintenance.statusCode,
+  status: maintenance.status,
+  site: maintenance.site,
+  floor: maintenance.floor ?? null,
+  area: maintenance.area ?? null,
+  reporter: maintenance.reporter ?? null,
+  assignee: maintenance.assignee?.name ?? null,
+  priorityCode: maintenance.priority?.code ?? null,
+  openingDate: maintenance.openingDate,
+  plannedStart: maintenance.plannedStart,
+  execStartDate: maintenance.execStartDate,
+  execEndDate: maintenance.execEndDate,
 });

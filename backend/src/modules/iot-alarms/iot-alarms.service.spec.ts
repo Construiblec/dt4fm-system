@@ -183,14 +183,13 @@ describe('IotAlarmsService', () => {
       );
     });
 
-    it('usa el código recibido en el asunto para no perder la pista', async () => {
+    it('deja el código recibido en la nota y no en el asunto', async () => {
       openmaint.findAssetByCode.mockResolvedValue({ outcome: 'missing' });
 
       await service.handle(dto, rawPayload);
 
-      expect(sentFields().ShortDescr).toBe(
-        '[IoT] Presion baja en tanque GLP - CAL 01',
-      );
+      expect(sentFields().ShortDescr).toBe('[IoT] Presion baja en tanque GLP');
+      expect(String(sentFields().ProcessNotes)).toContain('CAL 01');
     });
   });
 
@@ -198,9 +197,7 @@ describe('IotAlarmsService', () => {
     it('cae al tipo de evento cuando la alarma no trae mensaje', async () => {
       await service.handle({ ...dto, message: undefined }, rawPayload);
 
-      expect(sentFields().ShortDescr).toBe(
-        '[IoT] GLP1_LOW_PRESSURE - CAL 01 - Calefón 1',
-      );
+      expect(sentFields().ShortDescr).toBe('[IoT] GLP1_LOW_PRESSURE');
     });
 
     it('trunca a los 255 caracteres de la columna de CMDBuild', async () => {
