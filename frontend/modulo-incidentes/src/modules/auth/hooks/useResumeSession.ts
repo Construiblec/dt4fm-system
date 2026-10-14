@@ -3,6 +3,7 @@ import axios from "axios";
 import { useLocation, useNavigate } from "react-router-dom";
 import { checkSession } from "@/services/api";
 import { consumeReturnTo } from "@/shared/auth/returnTo";
+import { fitsRole } from "@/shared/constants/rolePalette";
 import {
   getHomeRoute,
   hasActiveSession,
@@ -58,9 +59,11 @@ export const useResumeSession = () => {
         }
 
         const { username, role } = getSession();
-        navigate(consumeReturnTo(username) ?? getHomeRoute(role), {
-          replace: true,
-        });
+        const pending = consumeReturnTo(username);
+        navigate(
+          pending && fitsRole(pending, role) ? pending : getHomeRoute(role),
+          { replace: true },
+        );
       });
 
     return () => {
