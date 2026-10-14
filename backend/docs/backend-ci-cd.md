@@ -95,17 +95,19 @@ Cada servicio tiene su propia instancia de openMAINT y su propia rama de Neon, a
 | `APP_BASE_URL` | URL del frontend de producción | URL del frontend de desarrollo |
 | `PASSWORD_RESET_SECRET` | Un secreto propio | Otro distinto, para que un enlace de pruebas no valga en producción |
 | `ENABLE_DOCS` | `false` | `true` |
-| `HOSTAWAY_USE_MOCK` | `false` | `true`, salvo que se esté probando la integración real |
-| `INCIDENT_NOTIFICATION_EMAIL` | Buzón real | Buzón de pruebas |
+| `CONTIFICO_USE_MOCK` | `false` | `true`, y sin `CONTIFICO_API_KEY` ni `CONTIFICO_POS_TOKEN`: cada documento que Contifico acepta es una factura real |
+| `MAIL_REDIRECT_TO` | Vacía | Buzón de pruebas: todo correo sale hacia él, con el destinatario original en el asunto |
+| `HOSTAWAY_USE_MOCK` | `false` | `false` también: la sincronización de tareas de limpieza necesita las reservas reales. La entrega del enlace del huésped por Hostaway está limitada a la reserva de prueba ([guest-stay.service.ts](../src/modules/access-control/guest-stay.service.ts)), un filtro temporal del piloto |
+| `INCIDENT_NOTIFICATION_EMAIL` | Buzón institucional | Buzón de pruebas |
 | `CORS_ALLOWED_ORIGINS` | Solo el dominio de Vercel de producción | El de staging (+ `localhost:5173` para desarrollar contra el backend remoto) |
 
 **`PORT` no se define.** Render la inyecta y [`main.ts`](../src/main.ts) la lee con 3000 como respaldo; fijarla a mano rompe el enrutado de Render.
 
-Antes de encender en desarrollo los schedulers que envían correo (`PAYMENTS_*`, `MEETING_REMINDER_*`, `BILLING_*`), conviene revisar qué direcciones tiene la instancia de openMAINT de desarrollo: si son copias de las reales, escribirán a personas reales.
+La instancia de openMAINT de desarrollo guarda direcciones que pueden ser copias de las reales. Por eso, en desarrollo, los schedulers que envían correo (`PAYMENTS_*`, `MEETING_REMINDER_*`) quedan apagados, y solo se encienden para probarlos con `MAIL_REDIRECT_TO` definida. El de facturación (`BILLING_*`), solo con `CONTIFICO_USE_MOCK=true`.
 
 #### Las comunes
 
-El resto es igual en ambos servicios: `VAPID_SUBJECT`, `CALENDAR_TIMEZONE`, `MAIL_PROVIDER` y la configuración SMTP o Resend, `MAIL_THROTTLE_MS`, `HISTORIAL_EMAIL_ENABLED`, `OPENMAINT_TEMPLATE_CLASS` y las credenciales de Hostaway. Las de Contifico también, pero conviene confirmar que `CONTIFICO_BASE_URL` apunte a un entorno de pruebas en desarrollo: es facturación real.
+El resto es igual en ambos servicios: `VAPID_SUBJECT`, `CALENDAR_TIMEZONE`, `MAIL_PROVIDER` y la configuración SMTP o Resend, `MAIL_THROTTLE_MS`, `HISTORIAL_EMAIL_ENABLED`, `OPENMAINT_TEMPLATE_CLASS` y las credenciales de Hostaway. Las de Contifico solo existen en producción.
 
 A continuación, el detalle de cada variable:
 

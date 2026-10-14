@@ -96,6 +96,10 @@ process.env.SMTP_PORT ??= '2525';
 process.env.SMTP_USER ??= 'mock-user';
 process.env.SMTP_PASSWORD ??= 'mock-password';
 process.env.HISTORIAL_EMAIL_ENABLED = 'false';
+// `=` y no `??=`: el .env de desarrollo la define para no escribirle a nadie
+// real, y heredada cambiaría los destinatarios que la suite de notifications
+// comprueba en el proveedor mockeado.
+process.env.MAIL_REDIRECT_TO = '';
 
 process.env.CALENDAR_TIMEZONE ??= 'America/Guayaquil';
 process.env.PORT ??= '0';
