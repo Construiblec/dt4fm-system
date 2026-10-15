@@ -174,7 +174,6 @@ export const CorrectiveCard = ({
   actionLabel = "Ver detalle",
 }: Props) => {
   const code = data.statusCode ?? "";
-  const isNew = NEW_STATUSES.has(code);
   const canOpen = Boolean(to) && !disabledReason;
 
   // Correctivo sin fecha límite: va atrasado si debía haber empezado y no lo hizo.
@@ -184,7 +183,8 @@ export const CorrectiveCard = ({
   const lateMs = mayBeLate ? now - plannedMs : 0;
   const isLate = lateMs > 0;
 
-  const priority = isNew ? null : toPriorityCode(data.priorityCode);
+  // Sin prioridad no hay píldora: puede faltar si quien reportó no la fijó.
+  const priority = toPriorityCode(data.priorityCode);
   const title = data.subject?.trim() || "Sin descripción";
 
   return (
@@ -202,10 +202,10 @@ export const CorrectiveCard = ({
 
       <div className="space-y-2.5 py-3 pl-[18px] pr-3.5">
         <div className="flex items-center justify-between gap-2">
-          <p className="text-xs font-bold leading-[1.4] tracking-wide text-slate-600">
+          <p className="text-xs font-bold leading-[1.4] tracking-[0.4px] text-slate-600">
             {data.number ?? "Correctivo"}
           </p>
-          <span className={`shrink-0 leading-[1.4] ${getCorrectiveStatusPill(code)}`}>
+          <span className={`shrink-0 leading-[1.4] ${getCorrectiveStatusPill(code)} !px-2.5`}>
             <span className="sr-only">Estado: </span>
             {getCorrectiveStatusLabel(data.statusCode, data.status)}
           </span>

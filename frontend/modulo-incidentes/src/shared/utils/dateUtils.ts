@@ -83,7 +83,8 @@ export const formatDayMonthYearTime = (
   const d = parseCivil(value);
   if (!d) return fallback;
   const h = d.getHours();
-  return `${dayMonthYear(d)}, ${h % 12 || 12}:${pad(d.getMinutes())} ${h < 12 ? "a. m." : "p. m."}`;
+  // Espacios de no separación: «p. m.» nunca se parte en dos líneas.
+  return `${dayMonthYear(d)}, ${h % 12 || 12}:${pad(d.getMinutes())}\u00a0${h < 12 ? "a.\u00a0m." : "p.\u00a0m."}`;
 };
 
 /**

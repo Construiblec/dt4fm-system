@@ -33,6 +33,7 @@ export type CreateIncidentPayload = {
   floorId?: number | null;
   unitId?: number | null;
   commonAreaId?: number | null;
+  priority: number;
   notes: string;
   images?: File[];
 };
@@ -53,6 +54,7 @@ export const createIncident = async ({
   floorId,
   unitId,
   commonAreaId,
+  priority,
   notes,
   images = [],
 }: CreateIncidentPayload): Promise<CreateIncidentResponse> => {
@@ -67,8 +69,8 @@ export const createIncident = async ({
 
   const formData = new FormData();
   formData.append("buildingId", buildingId);
-  // Sin prioridad: la fija el supervisor al asignar.
   formData.append("shortDescription", shortDescription);
+  formData.append("priority", String(Number(priority)));
   formData.append("notes", notes);
 
   // Nunca enviar cadenas vacías: el DTO las convertiría en 0 y fallaría el @Min(1)

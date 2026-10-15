@@ -24,8 +24,8 @@ describe("formatElapsed", () => {
 
 describe("formatDayMonthYearTime", () => {
   it("usa «7 oct 2026» sin depender del navegador", () => {
-    expect(formatDayMonthYearTime("2026-10-07T14:05:00")).toBe("7 oct 2026, 2:05 p. m.");
-    expect(formatDayMonthYearTime("2026-10-07T00:30:00")).toBe("7 oct 2026, 12:30 a. m.");
+    expect(formatDayMonthYearTime("2026-10-07T14:05:00")).toBe("7 oct 2026, 2:05\u00a0p.\u00a0m.");
+    expect(formatDayMonthYearTime("2026-10-07T00:30:00")).toBe("7 oct 2026, 12:30\u00a0a.\u00a0m.");
     expect(formatDayMonthYear("2026-01-15T09:00:00")).toBe("15 ene 2026");
     // Una fecha sin hora es día civil, no medianoche UTC.
     expect(formatDayMonthYear("2026-10-14")).toBe("14 oct 2026");

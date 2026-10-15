@@ -9,6 +9,8 @@ import "@/shared/pwa/installPromptStore";
 // al login, no pintar pantallas vacías esperando a la primera llamada.
 import "@/shared/auth/sessionWatch";
 import { AutoUpdate } from "@/shared/components/AutoUpdate";
+// Fuente propia: sin ella cada dispositivo pinta la suya (Segoe UI, la del móvil…).
+import "@fontsource-variable/roboto";
 import "./index.css";
 
 const queryClient = new QueryClient();

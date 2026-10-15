@@ -34,6 +34,35 @@ import {
 } from "@/shared/auth/session";
 import { ArrowLeft } from "lucide-react";
 import { rememberReturnTo } from "@/shared/auth/returnTo";
+import { PRIORITY_ADJECTIVES, PRIORITY_IDS } from "@/shared/constants/priority";
+
+/**
+ * IDs del lookup `COMMON - Priority`. `Crítica` (117) existe pero no se ofrece
+ * al reportar: es de uso interno. Etiquetas en femenino, como en la tarjeta.
+ */
+const priorities = [
+  {
+    id: PRIORITY_IDS.Low,
+    label: PRIORITY_ADJECTIVES.Low,
+    baseClassName:
+      "border-emerald-200 bg-emerald-50 text-emerald-700 hover:border-emerald-300",
+    activeClassName: "border-emerald-500 bg-emerald-500 text-white",
+  },
+  {
+    id: PRIORITY_IDS.Medium,
+    label: PRIORITY_ADJECTIVES.Medium,
+    baseClassName:
+      "border-amber-200 bg-amber-50 text-amber-700 hover:border-amber-300",
+    activeClassName: "border-amber-500 bg-amber-500 text-white",
+  },
+  {
+    id: PRIORITY_IDS.High,
+    label: PRIORITY_ADJECTIVES.High,
+    baseClassName:
+      "border-orange-200 bg-orange-50 text-orange-700 hover:border-orange-300",
+    activeClassName: "border-orange-500 bg-orange-500 text-white",
+  },
+] as const;
 
 
 type FormValues = {
@@ -72,6 +101,9 @@ export const ReportIncidentPage = () => {
   );
   const [error, setError] = useState<string | null>(null);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [selectedPriority, setSelectedPriority] = useState<
+    (typeof priorities)[number]
+  >(priorities[1]);
   const [images, setImages] = useState<File[]>([]);
   const [locations, setLocations] = useState<BuildingLocations | null>(null);
   const [locationsLoading, setLocationsLoading] = useState(false);
@@ -432,6 +464,7 @@ export const ReportIncidentPage = () => {
         floorId,
         unitId,
         commonAreaId,
+        priority: Number(selectedPriority.id),
         notes,
         images,
       });
@@ -729,6 +762,36 @@ export const ReportIncidentPage = () => {
               </section>
             </>
           )}
+
+          <section className="space-y-3">
+            <p
+              id="priority-label"
+              className="text-sm font-semibold text-slate-700"
+            >
+              Nivel de prioridad
+            </p>
+            <div
+              role="group"
+              aria-labelledby="priority-label"
+              className="grid grid-cols-3 gap-2"
+            >
+              {priorities.map((priority) => {
+                const isActive = selectedPriority.id === priority.id;
+
+                return (
+                  <button
+                    key={priority.id}
+                    type="button"
+                    aria-pressed={isActive}
+                    onClick={() => setSelectedPriority(priority)}
+                    className={`rounded-2xl border px-3 py-3 text-sm font-semibold transition ${isActive ? priority.activeClassName : priority.baseClassName}`}
+                  >
+                    {priority.label}
+                  </button>
+                );
+              })}
+            </div>
+          </section>
 
           <section className="space-y-2">
             <label
