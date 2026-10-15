@@ -40,11 +40,11 @@ import type {
 
 import { NotesLogCard } from "@/shared/components/NotesLogCard";
 import { ReportDetailCard } from "@/shared/components/ReportDetailCard";
-import { formatMediumDateTime } from "@/shared/utils/dateUtils";
+import { formatDayMonthYearTime } from "@/shared/utils/dateUtils";
 import { formatPlace } from "@/shared/utils/locationLabel";
 
 const formatDateTime = (value: string | null) =>
-  formatMediumDateTime(value, "—");
+  formatDayMonthYearTime(value, "—");
 
 type RowProps = { label: string; value: string | null; highlight?: string };
 

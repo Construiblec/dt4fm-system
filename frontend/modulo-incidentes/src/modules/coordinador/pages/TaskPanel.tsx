@@ -21,7 +21,7 @@ import {
 import { useNow } from "../hooks/useNow";
 import { canEdit, isPending, STATUS, statusKey } from "../domain/tasks";
 import {
-  formatDayShort,
+  formatDate,
   formatRange,
   relativeDay,
   todayYmd,
@@ -146,7 +146,7 @@ const PanelBody = ({ task }: { task: CoordTaskDetail }) => {
       if (context.employee && context.startIso && context.endIso) {
         flash(
           "success",
-          `${task.taskNumber} asignada a ${employeeName(context.employee)} · ${formatDayShort(ymdOf(context.startIso))}, ${formatRange(context.startIso, context.endIso)}.`,
+          `${task.taskNumber} asignada a ${employeeName(context.employee)} · ${formatDate(ymdOf(context.startIso))}, ${formatRange(context.startIso, context.endIso)}.`,
         );
       } else {
         const missing = [

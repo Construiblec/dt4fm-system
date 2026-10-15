@@ -7,31 +7,6 @@
 const OFFSET_MS = 5 * 60 * 60 * 1000;
 const OFFSET = "-05:00";
 
-const WEEKDAYS_SHORT = ["dom", "lun", "mar", "mié", "jue", "vie", "sáb"];
-const WEEKDAYS = [
-  "domingo",
-  "lunes",
-  "martes",
-  "miércoles",
-  "jueves",
-  "viernes",
-  "sábado",
-];
-const MONTHS = [
-  "enero",
-  "febrero",
-  "marzo",
-  "abril",
-  "mayo",
-  "junio",
-  "julio",
-  "agosto",
-  "septiembre",
-  "octubre",
-  "noviembre",
-  "diciembre",
-];
-
 const pad2 = (n: number) => String(n).padStart(2, "0");
 
 /** Fecha de hoy en Guayaquil, YYYY-MM-DD. */
@@ -85,7 +60,6 @@ const parts = (ymd: string) => {
     y: d.getUTCFullYear(),
     m: d.getUTCMonth(),
     d: d.getUTCDate(),
-    w: d.getUTCDay(),
   };
 };
 
@@ -96,20 +70,38 @@ export const formatDate = (ymd: string | null | undefined): string => {
   return `${pad2(p.d)}/${pad2(p.m + 1)}/${p.y}`;
 };
 
-/** mié 30/09 */
-export const formatDayShort = (ymd: string | null | undefined): string => {
-  if (!ymd) return "—";
-  const p = parts(ymd);
-  return `${WEEKDAYS_SHORT[p.w]} ${pad2(p.d)}/${pad2(p.m + 1)}`;
+// ─── Campo de fecha dd/mm/aaaa ──────────────────────────────────────────────
+// El `<input type="date">` nativo muestra la fecha en el formato del idioma del
+// navegador (mm/dd/aaaa en uno en inglés). El campo propio escribe y lee
+// dd/mm/aaaa y guarda YYYY-MM-DD, como el resto.
+
+/** `2026-10-14` → `14/10/2026`; vacío si no hay fecha. */
+export const toDmy = (ymd: string | null | undefined): string =>
+  ymd ? formatDate(ymd) : "";
+
+/** Pone las barras mientras se escribe: `1410` → `14/10`, `14102026` → `14/10/2026`. */
+export const maskDmy = (text: string): string => {
+  const digits = text.replace(/\D/g, "").slice(0, 8);
+  return [digits.slice(0, 2), digits.slice(2, 4), digits.slice(4, 8)]
+    .filter(Boolean)
+    .join("/");
 };
 
-/** miércoles 30 de septiembre de 2026 */
-export const formatLongDate = (ymd: string): string => {
-  const p = parts(ymd);
-  return `${WEEKDAYS[p.w]} ${p.d} de ${MONTHS[p.m]} de ${p.y}`;
+/** `14/10/2026` → `2026-10-14`. `null` si está incompleta o el día no existe (31/02). */
+export const parseDmy = (text: string): string | null => {
+  const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(text.trim());
+  if (!m) return null;
+  const [, dd, mm, yyyy] = m;
+  const ymd = `${yyyy}-${mm}-${dd}`;
+  const d = new Date(`${ymd}T12:00:00Z`);
+  return !Number.isNaN(d.getTime()) &&
+    d.getUTCDate() === Number(dd) &&
+    d.getUTCMonth() + 1 === Number(mm)
+    ? ymd
+    : null;
 };
 
-/** "hoy", "mañana", "ayer" o "mié 30/09". */
+/** "hoy", "mañana", "ayer" o "30/09/2026". */
 export const relativeDay = (
   ymd: string | null | undefined,
   today: string,
@@ -119,7 +111,7 @@ export const relativeDay = (
   if (diff === 0) return "hoy";
   if (diff === 1) return "mañana";
   if (diff === -1) return "ayer";
-  return formatDayShort(ymd);
+  return formatDate(ymd);
 };
 
 export const formatTime = (iso: string | null | undefined): string =>

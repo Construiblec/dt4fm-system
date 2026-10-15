@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { CoordTask } from "../types/Coordinador";
 import {
+  formatDate,
+  maskDmy,
+  parseDmy,
+  toDmy,
   addDays,
   diffDays,
-  formatDayShort,
   formatDuration,
-  formatLongDate,
   formatRange,
   hmOf,
   isoAt,
@@ -84,13 +86,23 @@ describe("fechas de Guayaquil", () => {
     expect(diffDays("2026-10-08", "2026-10-15")).toBe(7);
   });
 
-  it("formatea en español", () => {
-    expect(formatLongDate("2026-10-08")).toBe("jueves 8 de octubre de 2026");
-    expect(formatDayShort("2026-10-08")).toBe("jue 08/10");
+  it("formatea en dd/mm/aaaa y mantiene hoy, mañana y ayer", () => {
+    expect(formatDate("2026-10-08")).toBe("08/10/2026");
     expect(relativeDay("2026-10-08", "2026-10-08")).toBe("hoy");
     expect(relativeDay("2026-10-09", "2026-10-08")).toBe("mañana");
     expect(relativeDay("2026-10-07", "2026-10-08")).toBe("ayer");
-    expect(relativeDay("2026-10-12", "2026-10-08")).toBe("lun 12/10");
+    expect(relativeDay("2026-10-12", "2026-10-08")).toBe("12/10/2026");
+  });
+
+  it("el campo de fecha lee y escribe dd/mm/aaaa", () => {
+    expect(toDmy("2026-10-14")).toBe("14/10/2026");
+    expect(toDmy("")).toBe("");
+    expect(maskDmy("1410")).toBe("14/10");
+    expect(maskDmy("14102026")).toBe("14/10/2026");
+    expect(maskDmy("14/10/20269")).toBe("14/10/2026");
+    expect(parseDmy("14/10/2026")).toBe("2026-10-14");
+    expect(parseDmy("31/02/2026")).toBeNull();
+    expect(parseDmy("14/10")).toBeNull();
   });
 
   it("formatea rangos y duraciones", () => {

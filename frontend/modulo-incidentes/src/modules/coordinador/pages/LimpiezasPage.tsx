@@ -16,9 +16,8 @@ import { useCoordTasks, useEmployees } from "../hooks/useCoordData";
 import { useNow } from "../hooks/useNow";
 import {
   addDays,
-  formatDayShort,
+  formatDate,
   formatDuration,
-  formatLongDate,
   formatPersonName,
   formatRange,
   hmOf,
@@ -60,6 +59,7 @@ import {
 } from "../components/ui";
 import { compareBy, cx, inputClass, useSort } from "../components/uiUtils";
 import { useOpenTask } from "../layout/useOpenTask";
+import { DateField } from "../components/DateField";
 
 type StatusKey = keyof typeof STATUS;
 
@@ -100,36 +100,23 @@ const inDateFilter = (
 
 const TableView = ({
   tasks,
-  employees,
   today,
   nowMs,
 }: {
   tasks: CoordTask[];
-  employees: EmployeeOption[];
   today: string;
   nowMs: number;
 }) => {
   const { open } = useOpenTask();
   const [q, setQ] = useState("");
   const [statuses, setStatuses] = useState<StatusKey[]>(STATUS_ORDER);
-  const [source, setSource] = useState("todos");
-  const [employeeId, setEmployeeId] = useState("");
   const [dates, setDates] = useState<DateFilter>("todas");
   const [sort, onSort] = useSort({ key: "creada", dir: "desc" });
 
   const base = useMemo(
     () =>
-      tasks.filter(
-        (t) =>
-          inDateFilter(t, dates, today) &&
-          (source === "todos" || t.source === source) &&
-          (!employeeId ||
-            (employeeId === "sin"
-              ? !t.employee
-              : String(t.employee?.id) === employeeId)) &&
-          matchesSearch(t, q),
-      ),
-    [tasks, dates, today, source, employeeId, q],
+      tasks.filter((t) => inDateFilter(t, dates, today) && matchesSearch(t, q)),
+    [tasks, dates, today, q],
   );
 
   const statusCount = useMemo(() => {
@@ -191,30 +178,6 @@ const TableView = ({
           {DATE_FILTERS.map((f) => (
             <option key={f.value} value={f.value}>
               {f.label}
-            </option>
-          ))}
-        </select>
-        <select
-          aria-label="Origen"
-          className={inputClass(false, "w-auto")}
-          value={source}
-          onChange={(e) => setSource(e.target.value)}
-        >
-          <option value="todos">Todos los orígenes</option>
-          <option value="Hostaway">Hostaway</option>
-          <option value="Manual">Manual</option>
-        </select>
-        <select
-          aria-label="Empleado"
-          className={inputClass(false, "w-auto")}
-          value={employeeId}
-          onChange={(e) => setEmployeeId(e.target.value)}
-        >
-          <option value="">Todos los empleados</option>
-          <option value="sin">Sin empleado</option>
-          {employees.map((e) => (
-            <option key={e.id} value={String(e.id)}>
-              {formatPersonName(e.name)}
             </option>
           ))}
         </select>
@@ -348,7 +311,7 @@ const TableView = ({
                       )}
                     >
                       {t.checkoutDate ? (
-                        formatDayShort(t.checkoutDate)
+                        formatDate(t.checkoutDate)
                       ) : (
                         <span className="text-slate-400">—</span>
                       )}
@@ -653,16 +616,12 @@ const AgendaView = ({
             aria-label="Día siguiente"
             onClick={() => setDay(addDays(day, 1))}
           />
-          <input
-            type="date"
-            aria-label="Día"
-            className={inputClass(false, "w-auto")}
+          <DateField
+            id="agenda-dia"
+            ariaLabel="Día"
             value={day}
-            onChange={(e) => e.target.value && setDay(e.target.value)}
+            onChange={setDay}
           />
-          <p className="text-sm font-semibold text-slate-900">
-            {formatLongDate(day)}
-          </p>
         </div>
       </div>
 
@@ -919,12 +878,7 @@ export const LimpiezasPage = () => {
           nowMs={nowMs}
         />
       ) : (
-        <TableView
-          tasks={tasksQ.data}
-          employees={employeesQ.data}
-          today={today}
-          nowMs={nowMs}
-        />
+        <TableView tasks={tasksQ.data} today={today} nowMs={nowMs} />
       )}
     </div>
   );

@@ -279,12 +279,6 @@ const MAX_CHECKOUT_RANGE_DAYS = 92;
 const guayaquilToday = (): string =>
   new Date().toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' });
 
-const addDaysYmd = (ymd: string, days: number): string => {
-  const d = new Date(`${ymd}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + days);
-  return d.toISOString().split('T')[0];
-};
-
 /**
  * Número de tarea: CT.<año>.<últimos 4 dígitos del reloj>. Las tarjetas de una
  * sincronización se crean en paralelo y comparten milisegundo, así que el
@@ -1967,7 +1961,7 @@ export class CleaningTasksService {
     const inRange = new Set(base.checkouts.map((c) => c.reservationId));
 
     // Limpiezas del rango cuya reserva no vino en la consulta: o se movió de
-    // fecha o desapareció. Se distingue mirando una ventana más ancha.
+    // fecha o desapareció. Se pregunta a Hostaway por cada una (son pocas).
     const stray = tasks.filter(
       (t) =>
         t.HostawayReservation &&
@@ -1981,23 +1975,26 @@ export class CleaningTasksService {
       string,
       { checkoutDate: string; listingName: string; listingId: string }
     >();
-    if (stray.length > 0) {
-      try {
-        const wide = await this.hostawayService.getCheckouts(
-          addDaysYmd(dateFrom, -45),
-          addDaysYmd(dateTo, 45),
-        );
-        for (const r of wide.result) {
-          moved.set(String(r.reservationId), {
+    // Antes se volvía a pedir a Hostaway una ventana de ±45 días, que era otra
+    // pasada larga; ahora solo las reservas que faltan, de a 5.
+    for (let i = 0; i < stray.length; i += 5) {
+      const found = await Promise.all(
+        stray
+          .slice(i, i + 5)
+          .map((t) =>
+            this.hostawayService.getReservationCheckout(
+              t.HostawayReservation as string,
+            ),
+          ),
+      );
+      for (const r of found) {
+        if (r) {
+          moved.set(r.reservationId, {
             checkoutDate: r.checkoutDate,
             listingName: r.listingName,
-            listingId: String(r.listingId),
+            listingId: r.listingId,
           });
         }
-      } catch (error) {
-        this.logger.warn(
-          `No se pudo ampliar la consulta de Hostaway para detectar cambios: ${(error as Error)?.message}`,
-        );
       }
     }
 
@@ -2123,15 +2120,24 @@ export class CleaningTasksService {
       description: act.Description ?? null,
       templateName: act.NombrePlantilla ?? null,
       detalle: act.Detalle ?? '',
-      plantilla: act.Plantilla
+      plantilla: act._plantillaRota
         ? {
-            fileName: act._Plantilla_FileName ?? null,
-            size: act._Plantilla_Size ?? null,
-            encoding: content.encoding,
-            readable: content.source === 'archivo',
-            error: content.fileError,
+            fileName: null,
+            size: null,
+            encoding: null,
+            readable: false,
+            error:
+              'el archivo ya no existe en openMAINT; sube uno nuevo o quítalo',
           }
-        : null,
+        : act.Plantilla
+          ? {
+              fileName: act._Plantilla_FileName ?? null,
+              size: act._Plantilla_Size ?? null,
+              encoding: content.encoding,
+              readable: content.source === 'archivo',
+              error: content.fileError,
+            }
+          : null,
       activities: content.rows,
       source: content.source,
     };
@@ -2216,7 +2222,12 @@ export class CleaningTasksService {
       previousAttachment = current.data.Plantilla?.trim() || null;
       // Poner `Plantilla: null` quita el archivo anterior; es la única forma de
       // reemplazarlo sin chocar por el nombre del archivo.
-      if (previousAttachment && (file || dto.removeTemplate))
+      // Una referencia a un archivo que ya no existe también se limpia: es lo
+      // que deja la tarjeta ilegible para openMAINT.
+      if (
+        current.data._plantillaRota ||
+        (previousAttachment && (file || dto.removeTemplate))
+      )
         body.Plantilla = null;
       await this.openmaintService.updateCleaningActivity(id, body);
     }

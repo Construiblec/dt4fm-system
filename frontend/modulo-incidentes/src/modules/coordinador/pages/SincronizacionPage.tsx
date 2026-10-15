@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useMutation } from "@tanstack/react-query";
 import {
   CalendarCheck,
@@ -29,12 +29,12 @@ import {
   addDays,
   diffDays,
   formatDate,
-  formatDayShort,
+  relativeDay,
   todayYmd,
 } from "../domain/dates";
 import { canEdit, isPending } from "../domain/tasks";
-import { StatusBadges } from "../components/taskBits";
 import { Modal } from "../components/overlays";
+import { DateField } from "../components/DateField";
 import {
   Button,
   Card,
@@ -49,21 +49,26 @@ import {
   Skeleton,
   TD,
   TH,
-  FOCUS,
 } from "../components/ui";
-import { cx, inputClass } from "../components/uiUtils";
+import { cx } from "../components/uiUtils";
 import { useCoordFlash } from "../layout/flash";
 import { useOpenTask } from "../layout/useOpenTask";
 
+/** Lo que se muestra. Las "huérfanas" (la reserva ya no sale en Hostaway) no le sirven al coordinador. */
+type ShownStatus = Exclude<CheckoutStatus, "huerfana">;
+
 const STATUS_CHIP: Record<
-  CheckoutStatus,
-  { tone: "blue" | "slate" | "amber" | "red"; label: string }
+  ShownStatus,
+  { tone: "blue" | "slate" | "amber"; label: string }
 > = {
   "por-crear": { tone: "blue", label: "Por crear" },
   creada: { tone: "slate", label: "Ya creada" },
   cambio: { tone: "amber", label: "Checkout cambió" },
-  huerfana: { tone: "red", label: "Ya no está en Hostaway" },
 };
+
+const isShown = (
+  row: CheckoutRow,
+): row is CheckoutRow & { status: ShownStatus } => row.status !== "huerfana";
 
 const MAX_RANGE_DAYS = 92;
 
@@ -82,7 +87,7 @@ const resultMessage = (result: SyncResult, single: boolean) => {
   if (result.failed > 0) {
     return {
       tone: "error" as const,
-      text: "Sincronización completada con errores.",
+      text: "Se crearon las limpiezas, pero algunas reservas fallaron.",
     };
   }
   if (result.total === 0) {
@@ -101,16 +106,23 @@ const resultMessage = (result: SyncResult, single: boolean) => {
   }
   return {
     tone: "success" as const,
-    text: "Sincronización completada correctamente.",
+    text: "Limpiezas creadas correctamente.",
   };
 };
 
 type RunState = {
+  /** Día que se está creando o que se creó (YYYY-MM-DD). */
+  day: string | null;
   running: boolean;
   result: SyncResult | null;
   error: string | null;
 };
-const IDLE: RunState = { running: false, result: null, error: null };
+const IDLE: RunState = {
+  day: null,
+  running: false,
+  result: null,
+  error: null,
+};
 
 const SyncOutcome = ({
   state,
@@ -123,7 +135,7 @@ const SyncOutcome = ({
 
   if (state.error) {
     return (
-      <InlineAlert tone="error" title="No se pudo sincronizar.">
+      <InlineAlert tone="error" title="No se pudieron crear las limpiezas.">
         {state.error}
       </InlineAlert>
     );
@@ -194,27 +206,30 @@ const SyncOutcome = ({
 
 const ConfirmModal = ({
   day,
+  label,
   onCancel,
   onConfirm,
 }: {
   day: string;
+  /** "hoy" o "mañana". */
+  label: string;
   onCancel: () => void;
   onConfirm: () => void;
 }) => (
   <Modal
-    title="Confirmar sincronización"
+    title={`Crear limpiezas de ${label}`}
     onClose={onCancel}
     footer={
       <>
         <Button onClick={onCancel}>Cancelar</Button>
         <Button variant="primary" icon={RefreshCw} onClick={onConfirm}>
-          Sincronizar
+          Crear limpiezas
         </Button>
       </>
     }
   >
     <p>
-      {`¿Deseas generar las tareas de limpieza de los checkouts del ${formatDate(day)}? Las tareas duplicadas se omitirán automáticamente.`}
+      {`¿Deseas crear las tareas de limpieza de los checkouts de ${label} (${formatDate(day)})? Las reservas que ya tienen limpieza se omiten.`}
     </p>
   </Modal>
 );
@@ -224,13 +239,12 @@ const PAGE_SIZE = 10;
 type Filter = "todos" | "por-crear" | "creada";
 
 /**
- * Sincronización con Hostaway: reemplaza la página ExtJS de openMAINT.
- * Sincroniza un día, y muestra el estado de cada reserva de un rango antes de
- * crear una limpieza suelta.
+ * Creación automática de las limpiezas a partir de los checkouts de Hostaway
+ * (reemplaza la página ExtJS de openMAINT): las de hoy o las de mañana de una
+ * vez, y la revisión de un rango con el estado de cada reserva para crear una
+ * limpieza suelta.
  */
 export const SincronizacionPage = () => {
-  const location = useLocation();
-  const navigate = useNavigate();
   const { open } = useOpenTask();
   const nowMs = useNow();
   const today = todayYmd(nowMs);
@@ -238,12 +252,9 @@ export const SincronizacionPage = () => {
   const flash = useCoordFlash((s) => s.show);
   const tasksQ = useCoordTasks();
 
-  const [day, setDay] = useState(today);
+  const tomorrow = addDays(today, 1);
   const [dayState, setDayState] = useState<RunState>(IDLE);
-  const [confirm, setConfirm] = useState(
-    () =>
-      (location.state as { intent?: string } | null)?.intent === "sync-today",
-  );
+  const [confirmDay, setConfirmDay] = useState<string | null>(null);
   const [from, setFrom] = useState(today);
   const [to, setTo] = useState(addDays(today, 7));
   const [query, setQuery] = useState({ from: today, to: addDays(today, 7) });
@@ -254,16 +265,9 @@ export const SincronizacionPage = () => {
   // Limpiezas recién creadas desde esta lista: ofrecen "Completar" sin esperar a que Hostaway se vuelva a consultar.
   const [createdTasks, setCreatedTasks] = useState<Record<string, number>>({});
 
-  // "Sincronizar hoy" del panel llega con un estado de navegación de un solo uso.
-  useEffect(() => {
-    if ((location.state as { intent?: string } | null)?.intent) {
-      navigate(location.pathname, { replace: true, state: null });
-    }
-  }, [location.pathname, location.state, navigate]);
-
   const previewQ = useCheckoutPreview(query.from, query.to);
 
-  const rows = previewQ.data?.rows ?? [];
+  const rows = (previewQ.data?.rows ?? []).filter(isShown);
   const counts = {
     todos: rows.length,
     "por-crear": rows.filter((r) => r.status === "por-crear").length,
@@ -281,23 +285,25 @@ export const SincronizacionPage = () => {
 
   const syncMutation = useMutation({
     mutationFn: (date: string) => syncRange(date, date),
-    onSuccess: async (result) => {
-      setDayState({ running: false, result, error: null });
+    onSuccess: async (result, date) => {
+      setDayState({ day: date, running: false, result, error: null });
       await invalidate();
     },
-    onError: (error) =>
+    onError: (error, date) =>
       setDayState({
+        day: date,
         running: false,
         result: null,
         error: describeApiError(error, "Intenta de nuevo."),
       }),
   });
 
-  const runSync = () => {
-    setDayState({ running: true, result: null, error: null });
-    setConfirm(false);
-    syncMutation.mutate(day);
+  const runSync = (date: string) => {
+    setDayState({ day: date, running: true, result: null, error: null });
+    setConfirmDay(null);
+    syncMutation.mutate(date);
   };
+  const dayLabel = (date: string) => relativeDay(date, today);
 
   const createOne = async (row: CheckoutRow) => {
     setCreating(row.reservationId);
@@ -341,41 +347,33 @@ export const SincronizacionPage = () => {
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="Sincronización con Hostaway"
-        subtitle="Crea las limpiezas a partir de los checkouts de Hostaway. Reemplaza la página de sincronización de openMAINT."
-      />
+      <PageHeader title="Creación automática de tareas de limpiezas" />
 
-      <Card
-        title="Sincronizar un día"
-        subtitle="Crea una limpieza por cada checkout del día elegido. Las reservas que ya tienen limpieza se omiten."
-      >
+      <Card title="Crear limpiezas de un día">
         <div className="space-y-4">
-          <div className="flex flex-wrap items-end gap-3">
-            <Field label="Día" htmlFor="dia-sync">
-              <input
-                id="dia-sync"
-                type="date"
-                className={inputClass(!day)}
-                value={day}
-                onChange={(e) => setDay(e.target.value)}
-              />
-            </Field>
+          <div className="flex flex-wrap items-center gap-3">
             <Button
               variant="primary"
               icon={RefreshCw}
-              loading={dayState.running}
-              disabled={busy || !day}
-              onClick={() => setConfirm(true)}
+              loading={dayState.running && dayState.day === today}
+              disabled={busy}
+              onClick={() => setConfirmDay(today)}
             >
-              {dayState.running ? "Sincronizando…" : "Sincronizar"}
+              Crear limpiezas de hoy
+            </Button>
+            <Button
+              icon={RefreshCw}
+              loading={dayState.running && dayState.day === tomorrow}
+              disabled={busy}
+              onClick={() => setConfirmDay(tomorrow)}
+            >
+              Crear limpiezas de mañana
             </Button>
           </div>
-          {day && day < today ? (
-            <InlineAlert tone="warning">
-              Es un día pasado: se crearán limpiezas de checkouts que ya
-              ocurrieron.
-            </InlineAlert>
+          {dayState.day && !dayState.running ? (
+            <p className="text-sm font-semibold text-slate-700">
+              {`Resultado de ${dayLabel(dayState.day)} (${formatDate(dayState.day)})`}
+            </p>
           ) : null}
           <SyncOutcome state={dayState} single />
         </div>
@@ -383,27 +381,25 @@ export const SincronizacionPage = () => {
 
       <Card
         title="Próximas limpiezas"
-        subtitle="Revisa los checkouts de un rango y crea una limpieza suelta cuando haga falta."
+        subtitle="Revisa los checkouts de un rango."
         bodyClass=""
       >
         <div className="space-y-4 px-5 py-4">
           <div className="flex flex-wrap items-end gap-3">
             <Field label="Inicio" htmlFor="rango-inicio">
-              <input
+              <DateField
                 id="rango-inicio"
-                type="date"
-                className={inputClass(Boolean(rangeError))}
                 value={from}
-                onChange={(e) => setFrom(e.target.value)}
+                onChange={setFrom}
+                invalid={Boolean(rangeError)}
               />
             </Field>
             <Field label="Fin" htmlFor="rango-fin">
-              <input
+              <DateField
                 id="rango-fin"
-                type="date"
-                className={inputClass(Boolean(rangeError))}
                 value={to}
-                onChange={(e) => setTo(e.target.value)}
+                onChange={setTo}
+                invalid={Boolean(rangeError)}
               />
             </Field>
             <Button icon={Search} onClick={showPreview}>
@@ -466,16 +462,10 @@ export const SincronizacionPage = () => {
                     Checkout
                   </th>
                   <th scope="col" className={TH}>
-                    Listing
-                  </th>
-                  <th scope="col" className={TH}>
-                    Reserva
+                    Unidad
                   </th>
                   <th scope="col" className={TH}>
                     Estado
-                  </th>
-                  <th scope="col" className={TH}>
-                    Limpieza
                   </th>
                   <th scope="col" className={TH}>
                     <span className="sr-only">Acción</span>
@@ -493,16 +483,11 @@ export const SincronizacionPage = () => {
                     >
                       <td className={cx(TD, "whitespace-nowrap")}>
                         <p className="font-medium tabular-nums text-slate-900">
-                          {formatDayShort(shownDate)}
+                          {formatDate(shownDate)}
                         </p>
                         {r.status === "cambio" && r.task ? (
                           <p className="text-xs text-amber-700">
-                            La limpieza dice{" "}
-                            {formatDayShort(r.task.checkoutDate)}
-                          </p>
-                        ) : r.status === "huerfana" ? (
-                          <p className="text-xs text-red-700">
-                            Limpieza del {formatDayShort(r.checkoutDate)}
+                            La limpieza dice {formatDate(r.task.checkoutDate)}
                           </p>
                         ) : null}
                       </td>
@@ -511,9 +496,6 @@ export const SincronizacionPage = () => {
                           {r.listingName}
                         </p>
                         <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
-                          <span className="font-mono">
-                            listing {r.listingId}
-                          </span>
                           {r.unitMatch === "none" ? (
                             <Chip
                               icon={Link2Off}
@@ -531,30 +513,8 @@ export const SincronizacionPage = () => {
                           ) : null}
                         </div>
                       </td>
-                      <td className={cx(TD, "font-mono text-slate-700")}>
-                        {r.reservationId}
-                      </td>
                       <td className={TD}>
                         <Chip tone={chip.tone}>{chip.label}</Chip>
-                      </td>
-                      <td className={TD}>
-                        {r.task ? (
-                          <div className="flex flex-col items-start gap-1">
-                            <button
-                              type="button"
-                              className={cx(
-                                "font-mono font-semibold text-brand hover:underline",
-                                FOCUS,
-                              )}
-                              onClick={() => open(r.task!.id)}
-                            >
-                              {r.task.taskNumber}
-                            </button>
-                            <StatusBadges task={r.task} nowMs={nowMs} />
-                          </div>
-                        ) : (
-                          <span className="text-slate-400">—</span>
-                        )}
                       </td>
                       <td className={cx(TD, "text-right")}>
                         {createdTasks[r.reservationId] ||
@@ -594,10 +554,6 @@ export const SincronizacionPage = () => {
                           >
                             Corregir fecha
                           </Button>
-                        ) : r.status === "huerfana" && r.task ? (
-                          <Button size="sm" onClick={() => open(r.task!.id)}>
-                            Revisar
-                          </Button>
                         ) : null}
                       </td>
                     </tr>
@@ -625,11 +581,12 @@ export const SincronizacionPage = () => {
         ) : null}
       </Card>
 
-      {confirm ? (
+      {confirmDay ? (
         <ConfirmModal
-          day={day}
-          onCancel={() => setConfirm(false)}
-          onConfirm={runSync}
+          day={confirmDay}
+          label={dayLabel(confirmDay)}
+          onCancel={() => setConfirmDay(null)}
+          onConfirm={() => runSync(confirmDay)}
         />
       ) : null}
     </div>

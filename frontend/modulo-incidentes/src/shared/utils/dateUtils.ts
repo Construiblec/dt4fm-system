@@ -47,37 +47,59 @@ const LOCALE = "es-EC";
 
 const pad = (n: number) => String(n).padStart(2, "0");
 
+/** Una fecha sin hora: `2026-10-14`. */
+const YMD = /^(\d{4})-(\d{2})-(\d{2})$/;
+
 /**
- * Meses y hora se arman a mano: `toLocaleString("es-EC", { dateStyle: "medium" })`
- * da «7 oct 2026» en Chrome pero «7/10/2026» en navegadores Gecko (Firefox, Zen).
+ * Meses y hora a mano: `toLocaleString("es-EC", { dateStyle: "medium" })` da
+ * «7 oct 2026» en Chrome pero «7/10/2026» en navegadores Gecko (Firefox, Zen).
  */
 const MONTHS_SHORT = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
 
-const parse = (value: string | null | undefined): Date | null => {
+const parseCivil = (value: string | null | undefined): Date | null => {
   if (!value) return null;
-  const d = new Date(value);
+  const ymd = YMD.exec(value);
+  const d = ymd ? new Date(+ymd[1], +ymd[2] - 1, +ymd[3]) : new Date(value);
   return Number.isNaN(d.getTime()) ? null : d;
 };
 
-/** «7 oct 2026» */
 const dayMonthYear = (d: Date) =>
   `${d.getDate()} ${MONTHS_SHORT[d.getMonth()]} ${d.getFullYear()}`;
 
-/** «2:05 p. m.» */
-const time12 = (d: Date) => {
+/** «7 oct 2026». Lo usan las vistas de mantenimiento correctivo. */
+export const formatDayMonthYear = (
+  value: string | null | undefined,
+  fallback = "—",
+): string => {
+  const d = parseCivil(value);
+  return d ? dayMonthYear(d) : fallback;
+};
+
+/** «7 oct 2026, 2:05 p. m.». Lo usan las vistas de mantenimiento correctivo. */
+export const formatDayMonthYearTime = (
+  value: string | null | undefined,
+  fallback = "—",
+): string => {
+  const d = parseCivil(value);
+  if (!d) return fallback;
   const h = d.getHours();
-  return `${h % 12 || 12}:${pad(d.getMinutes())} ${h < 12 ? "a. m." : "p. m."}`;
+  return `${dayMonthYear(d)}, ${h % 12 || 12}:${pad(d.getMinutes())} ${h < 12 ? "a. m." : "p. m."}`;
 };
 
 /**
- * Formatea una fecha ISO a "DD/MM/YYYY".
+ * Formatea una fecha a "DD/MM/YYYY", el formato de todas las fechas de la app.
  * Devuelve el `fallback` cuando el valor es nulo, vacío o inválido.
+ *
+ * Una fecha sin hora (`2026-10-14`) se toma como día civil: `new Date()` la
+ * leería como medianoche UTC y en Ecuador (UTC−5) mostraría el día anterior.
  */
 export const formatDate = (
   value: string | null | undefined,
   fallback = "—",
 ): string => {
   if (!value) return fallback;
+  const ymd = YMD.exec(value);
+  if (ymd) return `${ymd[3]}/${ymd[2]}/${ymd[1]}`;
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return fallback;
   return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`;
@@ -96,41 +118,23 @@ export const formatDateTime = (
   return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 };
 
-/**
- * Fecha corta legible: "24 ago 2026" — usando el locale para los nombres de
- * meses en español, con orden día-mes-año.
- */
+/** "DD/MM/YYYY". (Antes "24 ago 2026"; todas las fechas se muestran así.) */
 export const formatShortDate = (
   value: string | null | undefined,
   fallback = "Sin fecha",
-): string => {
-  const d = parse(value);
-  return d ? dayMonthYear(d) : fallback;
-};
+): string => formatDate(value, fallback);
 
-/**
- * Fecha corta sin año: "24 ago".
- */
+/** "DD/MM/YYYY". (Antes "24 ago", sin año.) */
 export const formatDayMonth = (
   value: string | null | undefined,
   fallback = "—",
-): string => {
-  const d = parse(value);
-  return d ? `${d.getDate()} ${MONTHS_SHORT[d.getMonth()]}` : fallback;
-};
+): string => formatDate(value, fallback);
 
-/**
- * Día y hora cortos: "24 ago, 09:30".
- */
+/** "DD/MM/YYYY HH:mm". (Antes "24 ago, 09:30".) */
 export const formatDayMonthTime = (
   value: string | null | undefined,
   fallback = "—",
-): string => {
-  const d = parse(value);
-  return d
-    ? `${d.getDate()} ${MONTHS_SHORT[d.getMonth()]}, ${pad(d.getHours())}:${pad(d.getMinutes())}`
-    : fallback;
-};
+): string => formatDateTime(value, fallback);
 
 /**
  * Solo la hora: "09:30".
@@ -161,34 +165,23 @@ export const formatMonthYear = (
   return d.toLocaleString(LOCALE, { month: "long", year: "numeric" });
 };
 
-/**
- * Fecha con estilo medium de Intl: "24 ago 2026" — idéntico a
- * `dateStyle: "medium"` con locale `es-EC`.
- */
+/** "DD/MM/YYYY". (Antes "24 ago 2026".) */
 export const formatMediumDate = (
   value: string | null | undefined,
   fallback = "—",
-): string => {
-  const d = parse(value);
-  return d ? dayMonthYear(d) : fallback;
-};
+): string => formatDate(value, fallback);
 
-/**
- * Fecha-hora con estilo medium + short: "24 ago 2026, 09:30".
- */
+/** "DD/MM/YYYY HH:mm". (Antes "24 ago 2026, 09:30".) */
 export const formatMediumDateTime = (
   value: string | null | undefined,
   fallback = "—",
-): string => {
-  const d = parse(value);
-  return d ? `${dayMonthYear(d)}, ${time12(d)}` : fallback;
-};
+): string => formatDateTime(value, fallback);
 
 /**
- * Antigüedad en lenguaje corriente: "hace 5 min", "ayer", "12 ago".
+ * Antigüedad en lenguaje corriente: "hace 5 min", "ayer", "12/08/2026".
  *
  * A partir de una semana deja de contar y muestra la fecha: "hace 23 días" no
- * dice nada que "12 ago" no diga mejor.
+ * dice nada que "12/08/2026" no diga mejor.
  */
 export const formatRelativeTime = (
   value: string | null | undefined,

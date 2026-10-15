@@ -23,7 +23,7 @@ import {
   toPriorityCode,
 } from "@/shared/constants/priority";
 import { LATE_START_STYLE } from "@/shared/constants/statusPalette";
-import { formatElapsed, formatMediumDateTime } from "@/shared/utils/dateUtils";
+import { formatElapsed, formatDayMonthYearTime } from "@/shared/utils/dateUtils";
 import { formatPlace } from "@/shared/utils/locationLabel";
 
 export type ReporterKind = "staff" | "guest" | "visitor" | "iot";
@@ -107,7 +107,7 @@ const dateField = (
 ): Field => ({
   icon,
   label,
-  value: formatMediumDateTime(value, "Sin fecha"),
+  value: formatDayMonthYearTime(value, "Sin fecha"),
   dateTime: value ?? undefined,
 });
 

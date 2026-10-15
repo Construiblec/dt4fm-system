@@ -32,7 +32,6 @@ import { GuestDashboardPage } from "@/modules/guest/pages/GuestDashboardPage";
 import { GuestIncidentPage } from "@/modules/guest/pages/GuestIncidentPage";
 import { GuestShortLinkPage } from "@/modules/guest/pages/GuestShortLinkPage";
 import { CoordinatorLayout } from "@/modules/coordinador/layout/CoordinatorLayout";
-import { PanelPage } from "@/modules/coordinador/pages/PanelPage";
 import { PendientesPage } from "@/modules/coordinador/pages/PendientesPage";
 import { LimpiezasPage } from "@/modules/coordinador/pages/LimpiezasPage";
 import { SincronizacionPage } from "@/modules/coordinador/pages/SincronizacionPage";
@@ -114,7 +113,8 @@ export const router = createBrowserRouter([
       </RequireRole>
     ),
     children: [
-      { index: true, element: <PanelPage /> },
+      // Sin panel del día: la pantalla principal es Limpiezas.
+      { index: true, element: <Navigate to="limpiezas" replace /> },
       { path: "pendientes", element: <PendientesPage /> },
       { path: "limpiezas", element: <LimpiezasPage /> },
       { path: "agenda", element: <LimpiezasPage /> },

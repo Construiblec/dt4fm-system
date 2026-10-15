@@ -70,9 +70,11 @@ Cada fila trae un `status`:
 | `por-crear` | La reserva no tiene limpieza |
 | `creada` | Ya tiene limpieza |
 | `cambio` | La limpieza dice otro checkout que Hostaway |
-| `huerfana` | La limpieza existe pero la reserva ya no está en Hostaway (o cambió de rango) |
+| `huerfana` | La limpieza existe pero la reserva ya no está en Hostaway (normalmente, cancelada). El backend la devuelve, pero la pantalla no la muestra: al coordinador solo le sirve saber si el checkout cambió |
 
-y `unitMatch`: `ok`, `none` (el listing no tiene unidad) o `ambiguous` (dos unidades con el mismo `HostawayListingID`; la limpieza se crea sin unidad). Las huérfanas se buscan en una ventana de ±45 días, solo si hay limpiezas sueltas; las canceladas se excluyen.
+y `unitMatch`: `ok`, `none` (el listing no tiene unidad) o `ambiguous` (dos unidades con el mismo `HostawayListingID`; la limpieza se crea sin unidad). Para las limpiezas sueltas (su reserva no vino en el rango) se consulta cada reserva por su id en Hostaway (`GET /v1/reservations/{id}`, de a 5): si sigue activa con otra fecha es `cambio`; si no existe o está cancelada, `huerfana`. Las limpiezas canceladas se excluyen.
+
+**Rendimiento (14/10/2026).** Los checkouts se piden a Hostaway con `departureStartDate` / `departureEndDate`, que Hostaway sí aplica. Antes se mandaba `checkOutDateFrom/To`, que ignora: había que recorrer 2.500 reservas en 25 páginas (~25-40 s) y, con rangos de varios días, el tope de páginas dejaba checkouts fuera. Ahora un día tarda ~0,4 s en Hostaway y la vista previa completa ~2-3 s (antes ~25 s, o ~50 s con limpiezas sueltas).
 
 ---
 
@@ -103,10 +105,10 @@ Módulo `frontend/modulo-incidentes/src/modules/coordinador/`, solo escritorio.
 
 | Ruta | Pantalla |
 |---|---|
-| `/coordinador` | Panel del día: indicadores y checkouts de hoy |
+| `/coordinador` | Redirige a Limpiezas, que es la pantalla principal (el panel del día se quitó) |
 | `/coordinador/pendientes` | Limpiezas sin empleado o sin horario |
 | `/coordinador/limpiezas` · `/agenda` | Tabla con filtros y agenda del día por empleado |
-| `/coordinador/sincronizacion` | Un día o un rango, vista previa con estados |
+| `/coordinador/sincronizacion` | Creación automática: limpiezas de hoy o de mañana, y vista previa de un rango con estados y "Crear limpieza" por reserva |
 | `/coordinador/checklists`, `/nuevo`, `/:id` | Lista y editor con subida de CSV y vista previa |
 | `/coordinador/nueva` | Limpieza manual |
 

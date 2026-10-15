@@ -37,7 +37,7 @@ import {
   prepareImage,
 } from "@/shared/utils/prepareImage";
 
-import { formatMediumDateTime as formatDate } from "@/shared/utils/dateUtils";
+import { formatDayMonthYearTime as formatDate } from "@/shared/utils/dateUtils";
 import { withoutCode } from "@/shared/utils/locationLabel";
 
 export const IncidentDetailPage = () => {

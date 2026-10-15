@@ -6,7 +6,7 @@ import { VisitorInfoModal } from "@/modules/auth/components/VisitorInfoModal";
 import { toSession } from "@/modules/auth/hooks/useRoleSwitch";
 import { getHomeRoute } from "@/shared/auth/session";
 import { consumeReturnTo } from "@/shared/auth/returnTo";
-import { getSelectableRoles } from "@/shared/constants/rolePalette";
+import { fitsRole, getSelectableRoles } from "@/shared/constants/rolePalette";
 import { requestPersistentStorage } from "@/shared/pwa/persistentStorage";
 import { login } from "@/services/api";
 import { useSessionStore } from "@/store/sessionStore";
@@ -63,8 +63,11 @@ export const LoginForm = () => {
 
       // Tras un 401 vuelve a donde iba; si no, al dashboard de su rol. Los
       // roles no contemplados caen en el de operario, como antes.
+      const pending = consumeReturnTo(response.username);
       navigate(
-        consumeReturnTo(response.username) ?? getHomeRoute(response.role),
+        pending && fitsRole(pending, response.role)
+          ? pending
+          : getHomeRoute(response.role),
       );
     } catch {
       // El backend ya distingue credenciales de caída del servicio, pero al
