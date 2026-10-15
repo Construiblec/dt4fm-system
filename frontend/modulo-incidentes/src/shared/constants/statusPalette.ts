@@ -31,7 +31,7 @@ type LevelStyle = {
   pill: string;
   /** Borde izquierdo de la tarjeta */
   border: string;
-  /** Franja superior de la tarjeta de correctivo */
+  /** Franja lateral izquierda de la tarjeta de correctivo */
   bar: string;
 };
 

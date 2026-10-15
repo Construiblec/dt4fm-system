@@ -48,6 +48,28 @@ const LOCALE = "es-EC";
 const pad = (n: number) => String(n).padStart(2, "0");
 
 /**
+ * Meses y hora se arman a mano: `toLocaleString("es-EC", { dateStyle: "medium" })`
+ * da «7 oct 2026» en Chrome pero «7/10/2026» en navegadores Gecko (Firefox, Zen).
+ */
+const MONTHS_SHORT = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+
+const parse = (value: string | null | undefined): Date | null => {
+  if (!value) return null;
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? null : d;
+};
+
+/** «7 oct 2026» */
+const dayMonthYear = (d: Date) =>
+  `${d.getDate()} ${MONTHS_SHORT[d.getMonth()]} ${d.getFullYear()}`;
+
+/** «2:05 p. m.» */
+const time12 = (d: Date) => {
+  const h = d.getHours();
+  return `${h % 12 || 12}:${pad(d.getMinutes())} ${h < 12 ? "a. m." : "p. m."}`;
+};
+
+/**
  * Formatea una fecha ISO a "DD/MM/YYYY".
  * Devuelve el `fallback` cuando el valor es nulo, vacío o inválido.
  */
@@ -82,14 +104,8 @@ export const formatShortDate = (
   value: string | null | undefined,
   fallback = "Sin fecha",
 ): string => {
-  if (!value) return fallback;
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return fallback;
-  return d.toLocaleDateString(LOCALE, {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
+  const d = parse(value);
+  return d ? dayMonthYear(d) : fallback;
 };
 
 /**
@@ -99,13 +115,8 @@ export const formatDayMonth = (
   value: string | null | undefined,
   fallback = "—",
 ): string => {
-  if (!value) return fallback;
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return fallback;
-  return d.toLocaleDateString(LOCALE, {
-    day: "numeric",
-    month: "short",
-  });
+  const d = parse(value);
+  return d ? `${d.getDate()} ${MONTHS_SHORT[d.getMonth()]}` : fallback;
 };
 
 /**
@@ -115,15 +126,10 @@ export const formatDayMonthTime = (
   value: string | null | undefined,
   fallback = "—",
 ): string => {
-  if (!value) return fallback;
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return fallback;
-  return d.toLocaleString(LOCALE, {
-    day: "numeric",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  const d = parse(value);
+  return d
+    ? `${d.getDate()} ${MONTHS_SHORT[d.getMonth()]}, ${pad(d.getHours())}:${pad(d.getMinutes())}`
+    : fallback;
 };
 
 /**
@@ -163,10 +169,8 @@ export const formatMediumDate = (
   value: string | null | undefined,
   fallback = "—",
 ): string => {
-  if (!value) return fallback;
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return fallback;
-  return d.toLocaleDateString(LOCALE, { dateStyle: "medium" });
+  const d = parse(value);
+  return d ? dayMonthYear(d) : fallback;
 };
 
 /**
@@ -176,13 +180,8 @@ export const formatMediumDateTime = (
   value: string | null | undefined,
   fallback = "—",
 ): string => {
-  if (!value) return fallback;
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return fallback;
-  return d.toLocaleString(LOCALE, {
-    dateStyle: "medium",
-    timeStyle: "short",
-  });
+  const d = parse(value);
+  return d ? `${dayMonthYear(d)}, ${time12(d)}` : fallback;
 };
 
 /**
