@@ -51,6 +51,42 @@ const pad = (n: number) => String(n).padStart(2, "0");
 const YMD = /^(\d{4})-(\d{2})-(\d{2})$/;
 
 /**
+ * Meses y hora a mano: `toLocaleString("es-EC", { dateStyle: "medium" })` da
+ * «7 oct 2026» en Chrome pero «7/10/2026» en navegadores Gecko (Firefox, Zen).
+ */
+const MONTHS_SHORT = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+
+const parseCivil = (value: string | null | undefined): Date | null => {
+  if (!value) return null;
+  const ymd = YMD.exec(value);
+  const d = ymd ? new Date(+ymd[1], +ymd[2] - 1, +ymd[3]) : new Date(value);
+  return Number.isNaN(d.getTime()) ? null : d;
+};
+
+const dayMonthYear = (d: Date) =>
+  `${d.getDate()} ${MONTHS_SHORT[d.getMonth()]} ${d.getFullYear()}`;
+
+/** «7 oct 2026». Lo usan las vistas de mantenimiento correctivo. */
+export const formatDayMonthYear = (
+  value: string | null | undefined,
+  fallback = "—",
+): string => {
+  const d = parseCivil(value);
+  return d ? dayMonthYear(d) : fallback;
+};
+
+/** «7 oct 2026, 2:05 p. m.». Lo usan las vistas de mantenimiento correctivo. */
+export const formatDayMonthYearTime = (
+  value: string | null | undefined,
+  fallback = "—",
+): string => {
+  const d = parseCivil(value);
+  if (!d) return fallback;
+  const h = d.getHours();
+  return `${dayMonthYear(d)}, ${h % 12 || 12}:${pad(d.getMinutes())} ${h < 12 ? "a. m." : "p. m."}`;
+};
+
+/**
  * Formatea una fecha a "DD/MM/YYYY", el formato de todas las fechas de la app.
  * Devuelve el `fallback` cuando el valor es nulo, vacío o inválido.
  *

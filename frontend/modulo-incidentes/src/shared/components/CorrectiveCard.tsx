@@ -23,7 +23,8 @@ import {
   toPriorityCode,
 } from "@/shared/constants/priority";
 import { LATE_START_STYLE } from "@/shared/constants/statusPalette";
-import { formatElapsed, formatMediumDateTime } from "@/shared/utils/dateUtils";
+import { formatElapsed, formatDayMonthYearTime } from "@/shared/utils/dateUtils";
+import { formatPlace } from "@/shared/utils/locationLabel";
 
 export type ReporterKind = "staff" | "guest" | "visitor" | "iot";
 
@@ -76,8 +77,7 @@ const REPORTER_SUFFIX: Partial<Record<ReporterKind, string>> = {
 };
 
 const locationOf = (data: CorrectiveCardData) =>
-  [data.site, data.area ?? data.floor].filter(Boolean).join(" · ") ||
-  "Sin ubicación";
+  formatPlace(data.site, data.area, data.floor) ?? "Sin ubicación";
 
 /** Atraso en unidades gruesas: «35 min», «18 h», «2 d 4 h». */
 const formatLate = (ms: number) => {
@@ -107,7 +107,7 @@ const dateField = (
 ): Field => ({
   icon,
   label,
-  value: formatMediumDateTime(value, "Sin fecha"),
+  value: formatDayMonthYearTime(value, "Sin fecha"),
   dateTime: value ?? undefined,
 });
 
@@ -197,10 +197,10 @@ export const CorrectiveCard = ({
     >
       <div
         aria-hidden="true"
-        className={`h-1 ${isLate ? LATE_START_STYLE.bar : getCorrectiveStatusBar(code)}`}
+        className={`absolute inset-y-0 left-0 w-1 ${isLate ? LATE_START_STYLE.bar : getCorrectiveStatusBar(code)}`}
       />
 
-      <div className="space-y-2.5 px-3.5 py-3">
+      <div className="space-y-2.5 py-3 pl-[18px] pr-3.5">
         <div className="flex items-center justify-between gap-2">
           <p className="text-xs font-bold leading-[1.4] tracking-wide text-slate-600">
             {data.number ?? "Correctivo"}

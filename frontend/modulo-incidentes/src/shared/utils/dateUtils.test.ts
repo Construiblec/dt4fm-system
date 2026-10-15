@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatElapsed } from "./dateUtils";
+import { formatDayMonthYear, formatDayMonthYearTime, formatElapsed } from "./dateUtils";
 
 const at = (hhmm: string, day = 12) => `2026-10-${day}T${hhmm}:00`;
 
@@ -19,5 +19,20 @@ describe("formatElapsed", () => {
   it("devuelve null sin fin o con el fin antes del inicio", () => {
     expect(formatElapsed(at("09:00"), null)).toBeNull();
     expect(formatElapsed(at("10:00"), at("09:00"))).toBeNull();
+  });
+});
+
+describe("formatDayMonthYearTime", () => {
+  it("usa «7 oct 2026» sin depender del navegador", () => {
+    expect(formatDayMonthYearTime("2026-10-07T14:05:00")).toBe("7 oct 2026, 2:05 p. m.");
+    expect(formatDayMonthYearTime("2026-10-07T00:30:00")).toBe("7 oct 2026, 12:30 a. m.");
+    expect(formatDayMonthYear("2026-01-15T09:00:00")).toBe("15 ene 2026");
+    // Una fecha sin hora es día civil, no medianoche UTC.
+    expect(formatDayMonthYear("2026-10-14")).toBe("14 oct 2026");
+  });
+
+  it("devuelve el texto de respaldo sin fecha válida", () => {
+    expect(formatDayMonthYearTime(null, "Sin fecha")).toBe("Sin fecha");
+    expect(formatDayMonthYearTime("x", "—")).toBe("—");
   });
 });

@@ -40,10 +40,11 @@ import type {
 
 import { NotesLogCard } from "@/shared/components/NotesLogCard";
 import { ReportDetailCard } from "@/shared/components/ReportDetailCard";
-import { formatMediumDateTime } from "@/shared/utils/dateUtils";
+import { formatDayMonthYearTime } from "@/shared/utils/dateUtils";
+import { formatPlace } from "@/shared/utils/locationLabel";
 
 const formatDateTime = (value: string | null) =>
-  formatMediumDateTime(value, "—");
+  formatDayMonthYearTime(value, "—");
 
 type RowProps = { label: string; value: string | null; highlight?: string };
 
@@ -377,7 +378,10 @@ export const MaintenanceSupervisorDetailPage = () => {
                 <div className="space-y-2">
                   <InfoRow label="Número" value={maintenance.number} />
                   <InfoRow label="Descripción" value={maintenance.subject} />
-                  <InfoRow label="Sitio" value={maintenance.site} />
+                  <InfoRow
+                    label="Ubicación"
+                    value={formatPlace(maintenance.site, maintenance.area, maintenance.floor)}
+                  />
                 </div>
               </section>
 

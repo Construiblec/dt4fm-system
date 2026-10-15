@@ -37,7 +37,8 @@ import {
   prepareImage,
 } from "@/shared/utils/prepareImage";
 
-import { formatDateTime as formatDate } from "@/shared/utils/dateUtils";
+import { formatDayMonthYearTime as formatDate } from "@/shared/utils/dateUtils";
+import { withoutCode } from "@/shared/utils/locationLabel";
 
 export const IncidentDetailPage = () => {
   const navigate = useNavigate();
@@ -256,7 +257,7 @@ export const IncidentDetailPage = () => {
                       Datos del reporte
                     </p>
                     <h2 className="mt-2 text-lg font-semibold text-slate-900">
-                      {incident.location || incident.building}
+                      {incident.location || withoutCode(incident.building)}
                     </h2>
                   </div>
 
@@ -276,7 +277,7 @@ export const IncidentDetailPage = () => {
                     <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
                     <div>
                       <p className="font-medium text-slate-900">Sitio</p>
-                      <p>{incident.building}</p>
+                      <p>{withoutCode(incident.building) ?? "Sin edificio"}</p>
                     </div>
                   </div>
 
@@ -286,6 +287,7 @@ export const IncidentDetailPage = () => {
                       <p className="font-medium text-slate-900">Piso / Área</p>
                       <p>
                         {[incident.floor, incident.unit ?? incident.commonArea]
+                          .map(withoutCode)
                           .filter(Boolean)
                           .join(" · ") || "Sin especificar"}
                       </p>
