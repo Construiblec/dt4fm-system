@@ -47,6 +47,8 @@ type OpenmaintIncidentListItem = {
   _Floor_description?: string | null;
   _Unit_description?: string | null;
   _CommonArea_description?: string | null;
+  /** Inicio de la versión vigente de la tarjeta: la última vez que cambió. */
+  _beginDate?: string | null;
 };
 
 type OpenmaintIncidentListResponse = {
@@ -346,41 +348,62 @@ export class IncidentsService {
       );
     }
 
+    return { incidents: (response.data ?? []).map(this.toListItem) };
+  }
+
+  /** Correctivos que abrió el empleado, para que siga en qué van. */
+  async getReportedIncidents(employeeId: number, sessionId: string) {
+    let response: OpenmaintIncidentListResponse;
+
+    try {
+      response = (await this.openmaintService.getIncidentsByRequester(
+        sessionId,
+        employeeId,
+      )) as OpenmaintIncidentListResponse;
+    } catch {
+      throw new BadGatewayException(
+        'Error al consultar incidentes en OpenMAINT',
+      );
+    }
+
     return {
       incidents: (response.data ?? []).map((incident) => ({
-        id: incident._id,
-        number: incident.Number,
-        subject: incident.ShortDescr ?? null,
-        /** Obsoleto: igual a `subject`, se mantiene por compatibilidad. */
-        location: incident.ShortDescr,
-        priority: incident._Priority_description_translation,
-        priorityCode:
-          incident.Priority != null
-            ? (CM_PRIORITY_CODES[incident.Priority] ?? null)
-            : null,
-        // El código estable es el que debe gobernar la lógica del front.
-        // `_ProcessStatus_description_translation` viaja traducido según el
-        // idioma de la sesión, así que solo sirve como etiqueta visible.
-        // Se deriva con la misma regla que usa el supervisor, para que los dos
-        // roles vean el mismo estado: «Asignado» mientras no haya inicio real.
-        statusCode: resolveCorrectiveStatus(
-          incident._ProcessStatus_code,
-          incident.ExecStartDate,
-        ),
-        status: incident._ProcessStatus_description_translation,
-        building: incident._Site_description,
-        createdAt: incident.OpeningDate,
-        plannedStart: incident.ExpExecStartDate ?? null,
-        execStartDate: incident.ExecStartDate ?? null,
-        execEndDate: incident.ExecEndDate ?? null,
-        floor: incident._Floor_description ?? null,
-        area:
-          incident._Unit_description ??
-          incident._CommonArea_description ??
-          null,
+        ...this.toListItem(incident),
+        updatedAt: incident._beginDate ?? null,
       })),
     };
   }
+
+  private readonly toListItem = (incident: OpenmaintIncidentListItem) => ({
+    id: incident._id,
+    number: incident.Number,
+    subject: incident.ShortDescr ?? null,
+    /** Obsoleto: igual a `subject`, se mantiene por compatibilidad. */
+    location: incident.ShortDescr,
+    priority: incident._Priority_description_translation,
+    priorityCode:
+      incident.Priority != null
+        ? (CM_PRIORITY_CODES[incident.Priority] ?? null)
+        : null,
+    // El código estable es el que debe gobernar la lógica del front.
+    // `_ProcessStatus_description_translation` viaja traducido según el
+    // idioma de la sesión, así que solo sirve como etiqueta visible.
+    // Se deriva con la misma regla que usa el supervisor, para que los dos
+    // roles vean el mismo estado: «Asignado» mientras no haya inicio real.
+    statusCode: resolveCorrectiveStatus(
+      incident._ProcessStatus_code,
+      incident.ExecStartDate,
+    ),
+    status: incident._ProcessStatus_description_translation,
+    building: incident._Site_description,
+    createdAt: incident.OpeningDate,
+    plannedStart: incident.ExpExecStartDate ?? null,
+    execStartDate: incident.ExecStartDate ?? null,
+    execEndDate: incident.ExecEndDate ?? null,
+    floor: incident._Floor_description ?? null,
+    area:
+      incident._Unit_description ?? incident._CommonArea_description ?? null,
+  });
 
   async createIncident(
     sessionId: string,

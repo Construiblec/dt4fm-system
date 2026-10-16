@@ -26,6 +26,7 @@ import {
   type DoorPhase,
 } from "@/modules/supervisor-cav/types/Door";
 import { AppHeader } from "@/shared/components/AppHeader";
+import { FloatingReportButton } from "@/modules/incidentes/components/FloatingReportButton";
 import { formatRelativeTime } from "@/shared/utils/dateUtils";
 
 // La barrera no tiene sensor: los textos hablan de pulsos, nunca de posición.
@@ -358,6 +359,7 @@ export const RemoteDoorsPage = () => {
             ) : null}
           </div>
         </section>
+        <FloatingReportButton />
       </main>
     </AppLayout>
   );

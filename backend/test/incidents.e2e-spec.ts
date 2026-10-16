@@ -229,4 +229,31 @@ describe('IncidentsController (e2e)', () => {
         .expect(400);
     });
   });
+
+  describe('GET /incidents/reported', () => {
+    it('devuelve los reportes del empleado con su estado estable', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/incidents/reported')
+        .set('authorization', 'mock-session-id')
+        .set('x-employee-id', '999')
+        .expect(200);
+
+      expect(mocks.openmaint.getIncidentsByRequester).toHaveBeenCalledWith(
+        'mock-session-id',
+        999,
+      );
+      expect(res.body.incidents[0]).toMatchObject({
+        id: 12346,
+        statusCode: 'Assignment',
+      });
+      expect(res.body.incidents[0].updatedAt).toEqual(expect.any(String));
+    });
+
+    it('400 sin x-employee-id', async () => {
+      await request(app.getHttpServer())
+        .get('/incidents/reported')
+        .set('authorization', 'mock-session-id')
+        .expect(400);
+    });
+  });
 });

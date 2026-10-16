@@ -7,6 +7,7 @@ import { CameraViewer } from "@/modules/supervisor-cav/components/CameraViewer";
 import { useCameras } from "@/modules/supervisor-cav/hooks/useCameras";
 import { useLiveCamera } from "@/modules/supervisor-cav/hooks/useLiveCamera";
 import { AppHeader } from "@/shared/components/AppHeader";
+import { FloatingReportButton } from "@/modules/incidentes/components/FloatingReportButton";
 
 export const LiveCamerasPage = () => {
   const { overview, loading, error, reload } = useCameras();
@@ -173,6 +174,7 @@ export const LiveCamerasPage = () => {
             ) : null}
           </div>
         </section>
+        <FloatingReportButton />
       </main>
     </AppLayout>
   );

@@ -13,6 +13,8 @@ import { IncidentDetailPage } from "@/modules/incidentes/pages/IncidentDetailPag
 import { PastPreventiveMaintenancePage } from "@/modules/incidentes/pages/PastPreventiveMaintenancePage";
 import { PreventiveMaintenanceDetailPage } from "@/modules/incidentes/pages/PreventiveMaintenanceDetailPage";
 import { ReportIncidentPage } from "@/modules/incidentes/pages/ReportIncidentPage";
+import { MyReportsPage } from "@/modules/incidentes/pages/MyReportsPage";
+import { MyReportDetailPage } from "@/modules/incidentes/pages/MyReportDetailPage";
 import { SupervisorDashboardPage } from "@/modules/supervisor/pages/SupervisorDashboardPage";
 import { SupervisorTaskDetailPage } from "@/modules/supervisor/pages/SupervisorTaskDetailPage";
 import { AsistenteSLDashboardPage } from "@/modules/asistente-sl/pages/AsistenteSLDashboardPage";
@@ -69,6 +71,9 @@ export const router = createBrowserRouter([
     element: <PastPreventiveMaintenancePage />,
   },
   { path: "/reportar-incidente", element: <ReportIncidentPage /> },
+  // Lo que reportó cada usuario; el backend filtra por su empleado.
+  { path: "/mis-reportes", element: <MyReportsPage /> },
+  { path: "/mis-reportes/:id", element: <MyReportDetailPage /> },
   {
     path: "/supervisor",
     element: (

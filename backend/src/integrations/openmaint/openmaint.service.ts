@@ -159,18 +159,31 @@ export class OpenmaintService {
   }
 
   async getIncidentsByAssignee(sessionId: string, employeeId: number) {
+    return this.getIncidentsBy(sessionId, 'Assignee', employeeId, 'Sorting');
+  }
+
+  async getIncidentsByRequester(sessionId: string, employeeId: number) {
+    return this.getIncidentsBy(
+      sessionId,
+      'Requester',
+      employeeId,
+      'OpeningDate',
+    );
+  }
+
+  private async getIncidentsBy(
+    sessionId: string,
+    attribute: 'Assignee' | 'Requester',
+    employeeId: number,
+    sortBy: string,
+  ) {
     const encodedSort = encodeURIComponent(
-      JSON.stringify([
-        {
-          property: 'Sorting',
-          direction: 'DESC',
-        },
-      ]),
+      JSON.stringify([{ property: sortBy, direction: 'DESC' }]),
     );
     const searchFilter = {
       attribute: {
         simple: {
-          attribute: 'Assignee',
+          attribute,
           operator: 'equal',
           value: [employeeId],
         },

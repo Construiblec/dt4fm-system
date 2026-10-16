@@ -18,6 +18,7 @@ const SAFE_PATHS = new Set([
   // Comunes
   "/notificaciones",
   "/cuenta",
+  "/mis-reportes",
   // Inicio de cada rol
   "/dashboard",
   "/supervisor",
