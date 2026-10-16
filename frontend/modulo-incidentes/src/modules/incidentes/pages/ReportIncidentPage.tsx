@@ -35,6 +35,7 @@ import {
 import { ArrowLeft } from "lucide-react";
 import { rememberReturnTo } from "@/shared/auth/returnTo";
 import { PRIORITY_ADJECTIVES, PRIORITY_IDS } from "@/shared/constants/priority";
+import { useInvalidateReportedIncidents } from "@/modules/incidentes/hooks/useReportedIncidents";
 
 /**
  * IDs del lookup `COMMON - Priority`. `Crítica` (117) existe pero no se ofrece
@@ -94,6 +95,7 @@ const FIELD_CLASSES =
 
 export const ReportIncidentPage = () => {
   const navigate = useNavigate();
+  const invalidateReported = useInvalidateReportedIncidents();
   const [buildings, setBuildings] = useState<Building[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successData, setSuccessData] = useState<CreateIncidentResponse | null>(
@@ -470,6 +472,7 @@ export const ReportIncidentPage = () => {
       });
 
       setSuccessData(response);
+      void invalidateReported();
       console.log("incidente enviado");
     } catch (error) {
       if (axios.isAxiosError(error) && error.response?.status === 401) {

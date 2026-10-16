@@ -74,6 +74,42 @@ export class IncidentsController {
     return this.incidentsService.getMyIncidents(employeeId, sessionId);
   }
 
+  @Get('reported')
+  @ApiOperation({
+    summary: 'Obtener las incidencias que reportó el empleado autenticado',
+  })
+  @ApiHeader({
+    name: 'authorization',
+    description: 'Token de sesión de OpenMAINT',
+    required: true,
+  })
+  @ApiHeader({
+    name: 'x-employee-id',
+    description: 'ID del empleado que reportó',
+    required: true,
+  })
+  @ApiResponse({ status: 200, description: 'Lista de reportes del empleado' })
+  @ApiResponse({
+    status: 400,
+    description: 'Parámetros de cabecera faltantes o inválidos',
+  })
+  async getReportedIncidents(
+    @Headers('authorization') sessionId: string,
+    @Headers('x-employee-id') employeeIdHeader: string,
+  ) {
+    const employeeId = Number(employeeIdHeader);
+
+    if (!sessionId) {
+      throw new BadRequestException('Authorization header is required');
+    }
+
+    if (!Number.isInteger(employeeId) || employeeId <= 0) {
+      throw new BadRequestException('x-employee-id header is required');
+    }
+
+    return this.incidentsService.getReportedIncidents(employeeId, sessionId);
+  }
+
   @Post(':id/start')
   @ApiOperation({
     summary: 'Registrar el inicio real del trabajo de una incidencia',

@@ -14,6 +14,7 @@ describe("isSafeToUpdate", () => {
       "/supervisor-mantenimiento",
       "/notificaciones",
       "/cuenta",
+      "/mis-reportes",
       "/coordinador",
       "/coordinador/pendientes",
     ]) {

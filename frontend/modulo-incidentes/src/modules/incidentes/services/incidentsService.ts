@@ -127,3 +127,38 @@ export const getMyIncidents = async (): Promise<Incident[]> => {
     throw error;
   }
 };
+
+export type ReportedIncident = Incident & {
+  /** Última vez que cambió el correctivo. */
+  updatedAt?: string | null;
+};
+
+/** Correctivos que abrió el usuario, del más reciente al más antiguo. */
+export const getReportedIncidents = async (): Promise<ReportedIncident[]> => {
+  const sessionId = localStorage.getItem("sessionId");
+  const employeeId = getEmployeeId();
+
+  if (employeeId === null) {
+    throw new MissingEmployeeError();
+  }
+
+  try {
+    const { data } = await incidentsApi.get<{ incidents: ReportedIncident[] }>(
+      "/incidents/reported",
+      {
+        headers: {
+          Authorization: sessionId ?? "",
+          "x-employee-id": employeeId,
+        },
+      },
+    );
+
+    return data.incidents;
+  } catch (error) {
+    if (axios.isAxiosError(error) && error.response?.status === 401) {
+      redirectToLogin();
+    }
+
+    throw error;
+  }
+};
