@@ -96,6 +96,8 @@ export const corsOptions: CorsOptions = {
   credentials: true,
   methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
   // Sin esto cada preflight se repite: la auditoría midió 4 de 353-480 ms en
-  // un solo login (H-3). 24 h es el techo que respeta Chrome.
+  // un solo login (H-3). 24 h es el techo de Firefox; Chrome lo recorta a 2 h
+  // y Safari —todo navegador de iPhone, la PWA incluida— a 10 min. La caché va
+  // por URL exacta: la primera petición a cada ruta paga su preflight igual.
   maxAge: 86400,
 };
