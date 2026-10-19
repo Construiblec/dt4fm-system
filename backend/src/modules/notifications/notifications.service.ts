@@ -6,6 +6,7 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { describeError } from '../../common/logging/describe-error.util';
 import { escapeHtml } from '../../common/utils/html-escape.util';
 import { OpenmaintAuthService } from '../../integrations/openmaint/openmaint.auth.service';
 import { OpenmaintClient } from '../../integrations/openmaint/openmaint.client';
@@ -270,7 +271,9 @@ export class NotificationsService {
       );
       await this.mailerService.sendBulk(messages);
     } catch (error) {
-      this.logger.error(`Error enviando incidente #${incidentNumber}`, error);
+      this.logger.error(
+        `No se pudo enviar el correo del incidente #${incidentNumber} — ${describeError(error)}`,
+      );
     }
   }
 
@@ -317,7 +320,9 @@ export class NotificationsService {
       );
       await this.mailerService.sendBulk(messages);
     } catch (error) {
-      this.logger.error(`Error enviando incidente #${incidentNumber}`, error);
+      this.logger.error(
+        `No se pudo enviar el correo de cierre del incidente #${incidentNumber} — ${describeError(error)}`,
+      );
     }
   }
 
@@ -380,10 +385,9 @@ export class NotificationsService {
       return response.data;
     } catch (error) {
       if (error instanceof NotFoundException) throw error;
-      this.logger.error('Error al obtener la plantilla de openMAINT', {
-        status: error?.response?.status,
-        data: JSON.stringify(error?.response?.data),
-      });
+      this.logger.error(
+        `No se pudo leer la plantilla ${templateId} de openMAINT — ${describeError(error)}`,
+      );
       throw new InternalServerErrorException(
         'No se pudo obtener la plantilla seleccionada',
       );

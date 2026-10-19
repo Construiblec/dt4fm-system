@@ -198,7 +198,6 @@ export class IncidentsController {
     if (!sessionId) {
       throw new BadRequestException('Authorization header is required');
     }
-    console.log('complete incident');
     return this.incidentsService.completeIncident(id, sessionId, dto, file);
   }
 

@@ -39,7 +39,7 @@ export class HostawaySyncSchedulerService
     }
 
     this.scheduleNextRun();
-    this.logger.log('Scheduler diario Hostaway → OpenMAINT iniciado ✅');
+    this.logger.log('Scheduler diario Hostaway → openMAINT iniciado');
   }
 
   onModuleDestroy() {

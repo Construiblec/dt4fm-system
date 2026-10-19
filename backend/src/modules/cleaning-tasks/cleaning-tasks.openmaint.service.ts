@@ -3,6 +3,7 @@ import {
   InternalServerErrorException,
   Logger,
 } from '@nestjs/common';
+import { describeError } from '../../common/logging/describe-error.util';
 import { OpenmaintClient } from '../../integrations/openmaint/openmaint.client';
 import { CleaningTasksSessionService } from './cleaning-tasks.session.service';
 import {
@@ -179,7 +180,7 @@ export class CleaningTasksOpenmaintService {
       // Si es error 401, refrescar sesión y reintentar UNA vez
       if (error.response?.status === 401 || error.status === 401) {
         this.logger.warn(
-          `⚠️ Error 401 en ${operationName}, refrescando sesión y reintentando...`,
+          `401 en ${operationName}: se renueva la sesión de servicio y se reintenta`,
         );
 
         // Forzar refresco de sesión
@@ -214,7 +215,9 @@ export class CleaningTasksOpenmaintService {
 
       return (await this.client.get(path, sessionId)) as OpenmaintCardsResponse;
     }, 'getCleaningTasks').catch((error) => {
-      this.logger.error('Error al obtener tareas de limpieza:', error.message);
+      this.logger.error(
+        `Error al obtener tareas de limpieza — ${describeError(error)}`,
+      );
       throw new InternalServerErrorException(
         'Error al obtener tareas de limpieza de OpenMAINT',
       );
@@ -231,7 +234,7 @@ export class CleaningTasksOpenmaintService {
         sessionId,
       )) as OpenmaintCardResponse;
     }, 'createCleaningTask').catch((error) => {
-      this.logger.error('Error al crear tarea:', error.message);
+      this.logger.error(`Error al crear tarea — ${describeError(error)}`);
       throw new InternalServerErrorException(
         `Error al crear tarea de limpieza en OpenMAINT: ${error.message}`,
       );
@@ -249,7 +252,7 @@ export class CleaningTasksOpenmaintService {
         sessionId,
       )) as OpenmaintCardResponse;
     }, 'updateCleaningTask').catch((error) => {
-      this.logger.error('Error al actualizar tarea:', error.message);
+      this.logger.error(`Error al actualizar tarea — ${describeError(error)}`);
       throw new InternalServerErrorException(
         'Error al actualizar tarea de limpieza en OpenMAINT',
       );
@@ -283,7 +286,9 @@ export class CleaningTasksOpenmaintService {
     return this.executeWithRetry(async (sessionId) => {
       return (await this.client.get(path, sessionId)) as OpenmaintCardsResponse;
     }, 'getTasksByEmployee').catch((error) => {
-      this.logger.error('Error al obtener tareas del empleado:', error.message);
+      this.logger.error(
+        `Error al obtener tareas del empleado — ${describeError(error)}`,
+      );
       throw new InternalServerErrorException(
         'Error al obtener tareas de limpieza de OpenMAINT',
       );
@@ -303,7 +308,9 @@ export class CleaningTasksOpenmaintService {
         sessionToken,
       )) as OpenmaintCardResponse;
     } catch (error) {
-      this.logger.error(`Error al obtener tarea ${taskId}:`, error.message);
+      this.logger.error(
+        `Error al obtener tarea ${taskId} — ${describeError(error)}`,
+      );
       throw new InternalServerErrorException(
         `Error al obtener tarea ${taskId} de OpenMAINT`,
       );
@@ -346,15 +353,14 @@ export class CleaningTasksOpenmaintService {
       const basic = await this.findBasicActivity(activityId).catch(() => null);
       if (basic) {
         this.logger.warn(
-          `CleaningActivity ${activityId}: no se pudo leer completa (${(error as Error)?.message}); ` +
+          `CleaningActivity ${activityId}: no se pudo leer completa (${describeError(error)}); ` +
             'se usa sin el archivo de Plantilla, que probablemente ya no existe en el DMS.',
         );
         return { success: true, data: basic };
       }
 
       this.logger.error(
-        `Error al obtener CleaningActivity ${activityId}:`,
-        (error as Error)?.message,
+        `Error al obtener CleaningActivity ${activityId} — ${describeError(error)}`,
       );
       throw new InternalServerErrorException(
         `Error al obtener CleaningActivity ${activityId} de OpenMAINT`,
@@ -425,7 +431,9 @@ export class CleaningTasksOpenmaintService {
         sessionId,
       )) as UnitResponse;
     }, 'getUnitById').catch((error) => {
-      this.logger.error(`Error al obtener Unit ${unitId}:`, error.message);
+      this.logger.error(
+        `Error al obtener Unit ${unitId} — ${describeError(error)}`,
+      );
       throw new InternalServerErrorException(
         `Error al obtener Unit ${unitId} de OpenMAINT`,
       );
@@ -447,7 +455,9 @@ export class CleaningTasksOpenmaintService {
         sessionToken,
       )) as OpenmaintCardResponse;
     } catch (error) {
-      this.logger.error(`Error al actualizar tarea ${taskId}:`, error.message);
+      this.logger.error(
+        `Error al actualizar tarea ${taskId} — ${describeError(error)}`,
+      );
       throw new InternalServerErrorException(
         `Error al actualizar tarea ${taskId} en OpenMAINT`,
       );
@@ -468,8 +478,7 @@ export class CleaningTasksOpenmaintService {
       )) as OpenmaintAttachmentsResponse;
     } catch (error) {
       this.logger.error(
-        `Error al obtener attachments de tarea ${taskId}:`,
-        error.message,
+        `Error al obtener attachments de tarea ${taskId} — ${describeError(error)}`,
       );
       throw new InternalServerErrorException(
         'Error al obtener attachments de OpenMAINT',
@@ -492,8 +501,7 @@ export class CleaningTasksOpenmaintService {
       );
     } catch (error) {
       this.logger.error(
-        `Error al borrar attachment ${attachmentId} de tarea ${taskId}:`,
-        error.message,
+        `Error al borrar attachment ${attachmentId} de tarea ${taskId} — ${describeError(error)}`,
       );
       throw new InternalServerErrorException(
         'Error al borrar archivo en OpenMAINT',
@@ -543,8 +551,7 @@ export class CleaningTasksOpenmaintService {
       )) as { data?: AttachmentCard } | undefined;
     } catch (error) {
       this.logger.error(
-        `Error al subir attachment a tarea ${taskId}:`,
-        error.message,
+        `Error al subir attachment a tarea ${taskId} — ${describeError(error)}`,
       );
       throw new InternalServerErrorException(
         'Error al subir archivo a OpenMAINT',
@@ -623,7 +630,9 @@ export class CleaningTasksOpenmaintService {
       const path = `/classes/CleaningTask/cards?limit=${limit}&start=${offset}${sortParam}${filterParam}`;
       return (await this.client.get(path, sessionId)) as OpenmaintCardsResponse;
     }, 'getAllTasks').catch((error) => {
-      this.logger.error('Error al obtener todas las tareas:', error.message);
+      this.logger.error(
+        `Error al obtener todas las tareas — ${describeError(error)}`,
+      );
       throw new InternalServerErrorException(
         'Error al obtener tareas de limpieza de OpenMAINT',
       );
@@ -649,7 +658,9 @@ export class CleaningTasksOpenmaintService {
       )}&sort=${encodeURIComponent(JSON.stringify(sort))}`;
       return (await this.client.get(path, sessionId)) as OpenmaintCardsResponse;
     }, 'getHostawayTasks').catch((error) => {
-      this.logger.error('Error al obtener tareas de Hostaway:', error.message);
+      this.logger.error(
+        `Error al obtener tareas de Hostaway — ${describeError(error)}`,
+      );
       throw new InternalServerErrorException(
         'Error al obtener tareas de limpieza de OpenMAINT',
       );
@@ -668,7 +679,7 @@ export class CleaningTasksOpenmaintService {
         sessionId,
       )) as { data: EmployeeCard[] };
     }, 'listInternalEmployees').catch((error) => {
-      this.logger.error('Error al listar empleados:', error.message);
+      this.logger.error(`Error al listar empleados — ${describeError(error)}`);
       throw new InternalServerErrorException(
         'Error al consultar los empleados en OpenMAINT',
       );
@@ -693,7 +704,7 @@ export class CleaningTasksOpenmaintService {
       )) as { data: UnitListingCard[] };
     }, 'listUnitsWithListing').catch((error) => {
       this.logger.warn(
-        `No se pudieron leer los listings de las unidades: ${error.message}`,
+        `No se pudieron leer los listings de las unidades: ${describeError(error)}`,
       );
       return { data: [] as UnitListingCard[] };
     });
@@ -709,7 +720,7 @@ export class CleaningTasksOpenmaintService {
       }, 'listCleaningActivities');
     } catch (error) {
       this.logger.warn(
-        `No se pudo listar los checklists completos (${(error as Error)?.message}); ` +
+        `No se pudo listar los checklists completos (${describeError(error)}); ` +
           'se arman uno por uno para aislar el que tenga el archivo de Plantilla roto.',
       );
     }
@@ -756,10 +767,7 @@ export class CleaningTasksOpenmaintService {
       }
       return { data };
     } catch (error) {
-      this.logger.error(
-        'Error al listar checklists:',
-        (error as Error)?.message,
-      );
+      this.logger.error(`Error al listar checklists — ${describeError(error)}`);
       throw new InternalServerErrorException(
         'Error al consultar los checklists en OpenMAINT',
       );
@@ -776,7 +784,7 @@ export class CleaningTasksOpenmaintService {
         sessionId,
       )) as CleaningActivityResponse;
     }, 'createCleaningActivity').catch((error) => {
-      this.logger.error('Error al crear checklist:', error.message);
+      this.logger.error(`Error al crear checklist — ${describeError(error)}`);
       throw new InternalServerErrorException(
         'Error al crear el checklist en OpenMAINT',
       );
@@ -795,7 +803,7 @@ export class CleaningTasksOpenmaintService {
       )) as CleaningActivityResponse;
     }, 'updateCleaningActivity').catch((error) => {
       this.logger.error(
-        `Error al editar checklist ${activityId}: ${error.message}`,
+        `Error al editar checklist ${activityId}: ${describeError(error)}`,
       );
       throw new InternalServerErrorException(
         'Error al guardar el checklist en OpenMAINT',
@@ -836,7 +844,7 @@ export class CleaningTasksOpenmaintService {
       }
     } catch (error) {
       this.logger.warn(
-        `No se pudieron limpiar adjuntos sueltos del checklist ${activityId}: ${(error as Error)?.message}`,
+        `No se pudieron limpiar adjuntos sueltos del checklist ${activityId}: ${describeError(error)}`,
       );
     }
   }
@@ -873,7 +881,7 @@ export class CleaningTasksOpenmaintService {
       )) as { data?: { _id?: string } } | undefined;
     }, 'uploadActivityTemplate').catch((error) => {
       this.logger.error(
-        `Error al subir la plantilla del checklist ${activityId}: ${error.message}`,
+        `Error al subir la plantilla del checklist ${activityId}: ${describeError(error)}`,
       );
       throw new InternalServerErrorException(
         'Error al subir el archivo de la plantilla a OpenMAINT',
@@ -903,8 +911,7 @@ export class CleaningTasksOpenmaintService {
       return response;
     } catch (error) {
       this.logger.error(
-        `Error al descargar attachment ${attachmentId}:`,
-        error.message,
+        `Error al descargar attachment ${attachmentId} — ${describeError(error)}`,
       );
       throw new InternalServerErrorException(
         'Error al descargar el archivo desde OpenMAINT',
@@ -934,7 +941,9 @@ export class CleaningTasksOpenmaintService {
         return (response.data?.length ?? 0) > 0;
       }, 'taskExistsByReservationId');
     } catch (error) {
-      this.logger.error('Error al verificar duplicados:', error.message);
+      this.logger.error(
+        `Error al verificar duplicados — ${describeError(error)}`,
+      );
       return false;
     }
   }

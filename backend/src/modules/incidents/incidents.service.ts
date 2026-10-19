@@ -3,8 +3,10 @@ import {
   BadGatewayException,
   Injectable,
   InternalServerErrorException,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { describeError } from '../../common/logging/describe-error.util';
 import {
   extractRegisterLog,
   extractRegisterNotes,
@@ -115,6 +117,8 @@ type OpenmaintIncidentTaskContextData = {
 
 @Injectable()
 export class IncidentsService {
+  private readonly logger = new Logger(IncidentsService.name);
+
   constructor(
     private readonly openmaintService: OpenmaintService,
     private readonly notificationsService: NotificationsService,
@@ -221,16 +225,17 @@ export class IncidentsService {
       try {
         await this.uploadAttachment(id, file, sessionId);
       } catch (error) {
-        console.error('Error al subir evidencia de cierre a OpenMAINT', error);
+        this.logger.error(
+          `Correctivo ${id}: no se pudo subir la evidencia de cierre — ${describeError(error)}`,
+        );
       }
     }
 
     // Enviar notificación de cierre en segundo plano
     this.sendIncidentFinishedNotificationInBackground(id, sessionId).catch(
       (err) => {
-        console.error(
-          'Error enviando notificación de incidente finalizado:',
-          err,
+        this.logger.error(
+          `Correctivo ${id}: no se pudo iniciar el aviso de cierre — ${describeError(err)}`,
         );
       },
     );
@@ -475,9 +480,8 @@ export class IncidentsService {
       dto,
       sessionId,
     ).catch((err) => {
-      console.error(
-        'Error no controlado al iniciar la notificación del incidente:',
-        err,
+      this.logger.error(
+        `Correctivo ${incidentId}: no se pudo iniciar el aviso de creación — ${describeError(err)}`,
       );
     });
 
@@ -534,9 +538,8 @@ export class IncidentsService {
         buildingName: incidentDetail?.building,
       });
     } catch (error) {
-      console.error(
-        'Error al enviar la notificación del incidente en segundo plano:',
-        error,
+      this.logger.error(
+        `Correctivo ${incidentId}: no se pudo enviar el aviso de creación — ${describeError(error)}`,
       );
     }
   }
@@ -581,9 +584,8 @@ export class IncidentsService {
         buildingName: incidentDetail?.building,
       });
     } catch (error) {
-      console.error(
-        'Error al enviar la notificación de incidente finalizado en segundo plano:',
-        error,
+      this.logger.error(
+        `Correctivo ${incidentId}: no se pudo enviar el aviso de cierre — ${describeError(error)}`,
       );
     }
   }
