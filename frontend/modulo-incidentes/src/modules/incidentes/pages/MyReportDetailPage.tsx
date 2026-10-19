@@ -39,15 +39,10 @@ type TimelineStep = {
   state: StepState;
 };
 
-const lastEntry = (log: LogEntry[], stepCode: string, withNote = false) =>
+const lastEntry = (log: LogEntry[], stepCode: string) =>
   [...log]
     .reverse()
-    .find(
-      (entry) =>
-        entry.stepCode === stepCode &&
-        !entry.isRejection &&
-        (!withNote || entry.note.trim()),
-    ) ?? null;
+    .find((entry) => entry.stepCode === stepCode && !entry.isRejection) ?? null;
 
 const buildTimeline = (
   detail: IncidentDetail,
@@ -203,7 +198,6 @@ export const MyReportDetailPage = () => {
   const status = toReporterStep(detail?.statusCode ?? listItem?.statusCode);
   const tone = REPORTER_TONES[status.tone];
   const log = detail?.log ?? [];
-  const resolution = lastEntry(log, "CM03", true)?.note ?? null;
   const reason = status.step < 0 ? log[log.length - 1]?.note || null : null;
   const place = detail
     ? formatPlace(
@@ -276,18 +270,6 @@ export const MyReportDetailPage = () => {
                   </p>
                 </div>
               </section>
-
-              {status.step === 3 && resolution ? (
-                <section className="space-y-2 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
-                  <h2 className="flex items-center gap-2 text-[15px] font-bold text-emerald-800">
-                    <Check className="h-4 w-4" strokeWidth={3} />
-                    Cómo se resolvió
-                  </h2>
-                  <p className="text-sm leading-relaxed text-emerald-800">
-                    {resolution}
-                  </p>
-                </section>
-              ) : null}
 
               {status.step < 0 ? (
                 <section className="space-y-2 rounded-2xl border border-rose-200 bg-rose-50 p-4">
