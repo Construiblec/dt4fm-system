@@ -2,6 +2,8 @@ import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 
 import { AppModule } from '../../src/app.module';
+import { AppLogger } from '../../src/common/logging/app-logger';
+import { setupLogging } from '../../src/common/logging/setup-logging';
 import { validationPipeOptions } from '../../src/config/validation.config';
 
 import { OpenmaintClient } from '../../src/integrations/openmaint/openmaint.client';
@@ -194,7 +196,10 @@ export async function createTestApp(
 
   const moduleFixture: TestingModule = await builder.compile();
 
-  const app = moduleFixture.createNestApplication();
+  // Mismo logger, `rid` y filtro de errores que `main.ts`, para que las E2E
+  // prueben lo que corre en Render. El nivel lo fija `setup-env.ts`.
+  const app = moduleFixture.createNestApplication({ logger: new AppLogger() });
+  setupLogging(app);
   app.useGlobalPipes(new ValidationPipe(validationPipeOptions));
   await app.init();
 
