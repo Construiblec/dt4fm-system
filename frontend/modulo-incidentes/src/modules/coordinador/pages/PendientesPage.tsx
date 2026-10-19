@@ -15,6 +15,7 @@ import {
   EmptyState,
   ErrorState,
   PageHeader,
+  Pagination,
   Segmented,
   Skeleton,
   SortHeader,
@@ -37,6 +38,8 @@ const RANGES: { value: Range; label: string }[] = [
 const inRange = (task: CoordTask, range: Range, today: string): boolean =>
   range === "todas" || taskDate(task) === today;
 
+const PAGE_SIZE = 20;
+
 /** Lo que le falta a la limpieza para quedar asignada. */
 const Missing = ({ task }: { task: CoordTask }) => (
   <span className="flex flex-wrap gap-1.5">
@@ -58,6 +61,21 @@ export const PendientesPage = () => {
   const [range, setRange] = useState<Range>("todas");
   // Sin columna "Creada", pero el orden inicial sigue siendo "recién creadas primero".
   const [sort, onSort] = useSort({ key: "creada", dir: "desc" });
+  const [page, setPage] = useState(1);
+
+  // Buscar, cambiar Hoy/Todas u ordenar vuelve a la primera página.
+  const changeQuery = (next: string) => {
+    setQ(next);
+    setPage(1);
+  };
+  const changeRange = (next: Range) => {
+    setRange(next);
+    setPage(1);
+  };
+  const changeSort = (key: string) => {
+    onSort(key);
+    setPage(1);
+  };
 
   const pending = useMemo(
     () => (tasksQ.data ?? []).filter(isPending),
@@ -89,6 +107,13 @@ export const PendientesPage = () => {
     [pending, range, today, q, sort],
   );
 
+  const pages = Math.max(1, Math.ceil(visible.length / PAGE_SIZE));
+  const currentPage = Math.min(page, pages);
+  const pageRows = visible.slice(
+    (currentPage - 1) * PAGE_SIZE,
+    currentPage * PAGE_SIZE,
+  );
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -102,7 +127,7 @@ export const PendientesPage = () => {
             ) : null}
           </>
         }
-        subtitle="Limpiezas sin empleado o sin horario. Las recién creadas aparecen primero."
+        subtitle="Limpiezas sin empleado o sin horario."
       />
 
       <div className="flex flex-wrap items-center gap-3">
@@ -120,13 +145,13 @@ export const PendientesPage = () => {
             className={inputClass(false, "pl-9")}
             placeholder="Buscar por número, unidad, listing o reserva"
             value={q}
-            onChange={(e) => setQ(e.target.value)}
+            onChange={(e) => changeQuery(e.target.value)}
           />
         </label>
         <Segmented<Range>
           label="Filtrar por fecha de checkout"
           value={range}
-          onChange={setRange}
+          onChange={changeRange}
           options={RANGES.map((r) => ({
             ...r,
             count: tasksQ.data ? counts[r.value] : null,
@@ -173,13 +198,13 @@ export const PendientesPage = () => {
                     label="Checkout"
                     sortKey="checkout"
                     sort={sort}
-                    onSort={onSort}
+                    onSort={changeSort}
                   />
                   <SortHeader
                     label="Limpieza"
                     sortKey="limpieza"
                     sort={sort}
-                    onSort={onSort}
+                    onSort={changeSort}
                   />
                   <th scope="col" className={TH}>
                     Unidad
@@ -193,7 +218,7 @@ export const PendientesPage = () => {
                 </tr>
               </thead>
               <tbody>
-                {visible.map((t) => {
+                {pageRows.map((t) => {
                   const date = taskDate(t);
                   return (
                     <tr
@@ -274,6 +299,13 @@ export const PendientesPage = () => {
             </table>
           </div>
         )}
+        <Pagination
+          page={currentPage}
+          pageSize={PAGE_SIZE}
+          total={visible.length}
+          onPage={setPage}
+          noun="limpiezas"
+        />
       </Card>
     </div>
   );

@@ -30,6 +30,19 @@ export const diffDays = (fromYmd: string, toYmd: string): number =>
 export const isoAt = (ymd: string, hhmm: string): string =>
   `${ymd}T${hhmm}:00${OFFSET}`;
 
+/**
+ * Si dos ISO son el mismo instante. openMAINT devuelve las horas en UTC (`…Z`)
+ * y el formulario las arma con `-05:00`: comparar el texto las daría siempre por
+ * distintas.
+ */
+export const sameInstant = (
+  a: string | null | undefined,
+  b: string | null | undefined,
+): boolean => {
+  if (!a || !b) return !a && !b;
+  return Date.parse(a) === Date.parse(b);
+};
+
 /** Fecha (Guayaquil) de un instante ISO. */
 export const ymdOf = (iso: string | null | undefined): string | null => {
   if (!iso) return null;
@@ -99,6 +112,31 @@ export const parseDmy = (text: string): string | null => {
     d.getUTCMonth() + 1 === Number(mm)
     ? ymd
     : null;
+};
+
+// ─── Campo de hora hh:mm (24 h) ─────────────────────────────────────────────
+// El `<input type="time">` nativo usa el reloj del idioma del navegador, y el
+// español de Ecuador es de 12 h (a. m./p. m.): sin elegir a. m. o p. m. el
+// campo queda vacío. El campo propio escribe y lee siempre 24 h.
+
+/**
+ * Pone los dos puntos mientras se escribe: `1430` → `14:30`. Una hora que
+ * empieza en 3-9 solo puede tener un dígito, así que lleva el cero delante:
+ * `8` → `08`, `830` → `08:30`.
+ */
+export const maskHm = (text: string): string => {
+  let digits = text.replace(/\D/g, "");
+  if (/^[3-9]/.test(digits)) digits = `0${digits}`;
+  digits = digits.slice(0, 4);
+  return digits.length > 2
+    ? `${digits.slice(0, 2)}:${digits.slice(2)}`
+    : digits;
+};
+
+/** `14:30` → `14:30`. `null` si está incompleta o no existe (`24:00`, `14:60`). */
+export const parseHm = (text: string): string | null => {
+  const hm = text.trim();
+  return /^([01]\d|2[0-3]):[0-5]\d$/.test(hm) ? hm : null;
 };
 
 /** "hoy", "mañana", "ayer" o "30/09/2026". */

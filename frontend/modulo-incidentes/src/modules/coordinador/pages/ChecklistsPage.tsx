@@ -45,7 +45,6 @@ import { ChecklistPreview, ChecklistSummaryLine } from "../components/pickers";
 import {
   Button,
   Card,
-  Chip,
   EmptyState,
   ErrorState,
   Field,
@@ -58,23 +57,15 @@ import {
 import { cx, inputClass } from "../components/uiUtils";
 import { useCoordFlash } from "../layout/flash";
 
-const MinutesCell = ({ summary }: { summary: ChecklistSummary }) => {
-  if (summary.minutes === null) {
-    return (
-      <Chip title="El asistente de voz no hará recordatorios con este checklist.">
-        Sin minutos · sin recordatorios
-      </Chip>
-    );
-  }
-  return (
-    <span className="inline-flex flex-wrap items-center gap-1.5">
-      <span className="tabular-nums text-slate-900">
-        {describeChecklistMinutes(summary)}
-      </span>
-      {summary.isPartial ? <Chip tone="amber">Minutos parciales</Chip> : null}
+/** Los minutos son opcionales: sin ellos no hay nada que avisar. El "~" ya dice que el total es parcial. */
+const MinutesCell = ({ summary }: { summary: ChecklistSummary }) =>
+  summary.minutes === null ? (
+    <span className="text-slate-400">—</span>
+  ) : (
+    <span className="tabular-nums text-slate-900">
+      {describeChecklistMinutes(summary)}
     </span>
   );
-};
 
 const downloadExample = () =>
   saveBlob(
@@ -140,8 +131,8 @@ export const ChecklistsPage = () => {
               </Button>
             }
           >
-            Crea el primero subiendo el CSV que ya usan los supervisores
-            (Titulo, Actividad, Minutos) o escribiendo el Detalle.
+            Crea el primero subiendo un CSV con las columnas Titulo y
+            Actividad, o escribiendo el Detalle.
           </EmptyState>
         ) : (
           <div className="relative overflow-x-auto">
@@ -239,7 +230,6 @@ const ChecklistForm = ({ initial }: { initial: Checklist | null }) => {
   const existing = initial?.plantilla ?? null;
 
   const [templateName, setTemplateName] = useState(initial?.templateName ?? "");
-  const [code, setCode] = useState(initial?.code ?? "");
   const [description, setDescription] = useState(initial?.description ?? "");
   const [detalle, setDetalle] = useState(initial?.detalle ?? "");
   const [upload, setUpload] = useState<Upload | null>(null);
@@ -303,7 +293,6 @@ const ChecklistForm = ({ initial }: { initial: Checklist | null }) => {
       saveChecklist(initial?.id ?? null, {
         templateName,
         description,
-        code,
         detalle,
         file: upload?.file ?? null,
         removeTemplate: !upload && Boolean(existing) && !keepExisting,
@@ -373,34 +362,19 @@ const ChecklistForm = ({ initial }: { initial: Checklist | null }) => {
                   onChange={(e) => setTemplateName(e.target.value)}
                 />
               </Field>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <Field
-                  label="Código"
-                  htmlFor="chk-codigo"
-                  hint="Opcional. Ejemplo: CHK-STD."
-                >
-                  <input
-                    id="chk-codigo"
-                    className={inputClass(false, "font-mono")}
-                    value={code}
-                    maxLength={40}
-                    onChange={(e) => setCode(e.target.value)}
-                  />
-                </Field>
-                <Field
-                  label="Descripción"
-                  htmlFor="chk-descripcion"
-                  hint="Opcional."
-                >
-                  <input
-                    id="chk-descripcion"
-                    className={inputClass(false)}
-                    value={description}
-                    maxLength={200}
-                    onChange={(e) => setDescription(e.target.value)}
-                  />
-                </Field>
-              </div>
+              <Field
+                label="Descripción"
+                htmlFor="chk-descripcion"
+                hint="Opcional. Si la dejas vacía, se usa el nombre."
+              >
+                <input
+                  id="chk-descripcion"
+                  className={inputClass(false)}
+                  value={description}
+                  maxLength={200}
+                  onChange={(e) => setDescription(e.target.value)}
+                />
+              </Field>
 
               <div className="space-y-1.5">
                 <p className="text-sm font-semibold text-slate-700">
@@ -482,8 +456,8 @@ const ChecklistForm = ({ initial }: { initial: Checklist | null }) => {
                       : "Arrastra aquí el archivo CSV o haz clic para elegirlo"}
                   </span>
                   <span className="text-xs text-slate-500">
-                    Columnas Titulo, Actividad, Minutos · separador coma o punto
-                    y coma · máximo 1 MB
+                    Columnas Titulo y Actividad (Minutos es opcional) ·
+                    separador coma o punto y coma · máximo 1 MB
                   </span>
                   <input
                     id="chk-archivo"
@@ -508,7 +482,7 @@ const ChecklistForm = ({ initial }: { initial: Checklist | null }) => {
                 hint={
                   hasFile
                     ? "Hay archivo: el equipo verá el archivo y este texto se ignora."
-                    : "Una actividad por línea: Titulo,Actividad,Minutos."
+                    : "Una actividad por línea: Titulo,Actividad. Los minutos son opcionales."
                 }
               >
                 <textarea
@@ -523,7 +497,7 @@ const ChecklistForm = ({ initial }: { initial: Checklist | null }) => {
                   )}
                   value={detalle}
                   placeholder={
-                    "Titulo,Actividad,Minutos\nDormitorio,Tender la cama con juego limpio,8"
+                    "Titulo,Actividad\nDormitorio,Tender la cama con juego limpio"
                   }
                   onChange={(e) => setDetalle(e.target.value)}
                 />
@@ -557,7 +531,6 @@ const ChecklistForm = ({ initial }: { initial: Checklist | null }) => {
                           : "info"
                     }
                   >
-                    {w.row ? `Fila ${w.row}: ` : ""}
                     {w.text}
                   </InlineAlert>
                 ))}
@@ -632,7 +605,7 @@ export const ChecklistEditorPage = () => {
           }
           subtitle={
             isNew
-              ? "Sube el CSV que ya usan los supervisores o escribe el Detalle."
+              ? undefined
               : "Los cambios se ven en todas las limpiezas que usan este checklist."
           }
         />

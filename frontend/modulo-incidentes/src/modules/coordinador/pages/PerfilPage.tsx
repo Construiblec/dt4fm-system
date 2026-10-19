@@ -1,11 +1,18 @@
 import { useState, type FormEvent } from "react";
 import axios from "axios";
-import { KeyRound } from "lucide-react";
+import { ChevronDown, KeyRound } from "lucide-react";
 import { changePassword } from "@/services/api";
 import { getRoleLabel, getRoleView } from "@/shared/constants/rolePalette";
 import { formatEmployeeName } from "@/shared/utils/nameUtils";
 import { useSessionStore } from "@/store/sessionStore";
-import { Button, Card, Field, InlineAlert, PageHeader } from "../components/ui";
+import {
+  Button,
+  Card,
+  Field,
+  FOCUS,
+  InlineAlert,
+  PageHeader,
+} from "../components/ui";
 import { cx, inputClass } from "../components/uiUtils";
 
 const MIN_PASSWORD_LENGTH = 8;
@@ -105,11 +112,37 @@ export const PerfilPage = () => {
         </div>
       </Card>
 
-      <Card
-        title="Cambiar contraseña"
-        subtitle="Necesitas tu contraseña actual. La nueva debe tener al menos 8 caracteres."
-      >
-        <form onSubmit={(e) => void submit(e)} className="space-y-4" noValidate>
+      {/* Plegado de inicio: se abre solo para cambiar la contraseña. */}
+      <details className="group min-w-0 rounded-2xl bg-white shadow-sm">
+        <summary
+          className={cx(
+            "flex cursor-pointer list-none items-center gap-3 rounded-2xl px-5 py-4 [&::-webkit-details-marker]:hidden",
+            FOCUS,
+          )}
+        >
+          <KeyRound
+            className="h-5 w-5 shrink-0 text-slate-400"
+            aria-hidden="true"
+          />
+          <span className="min-w-0 flex-1">
+            <span className="block text-base font-semibold text-slate-900">
+              Cambiar contraseña
+            </span>
+            <span className="mt-0.5 block text-sm text-slate-500">
+              Necesitas tu contraseña actual. La nueva debe tener al menos 8
+              caracteres.
+            </span>
+          </span>
+          <ChevronDown
+            className="h-5 w-5 shrink-0 text-slate-400 transition group-open:rotate-180"
+            aria-hidden="true"
+          />
+        </summary>
+        <form
+          onSubmit={(e) => void submit(e)}
+          className="space-y-4 border-t border-slate-100 px-5 py-4"
+          noValidate
+        >
           <Field
             label="Contraseña actual"
             htmlFor="pwd-actual"
@@ -176,7 +209,7 @@ export const PerfilPage = () => {
             </Button>
           </div>
         </form>
-      </Card>
+      </details>
     </div>
   );
 };

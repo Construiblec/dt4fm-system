@@ -12,7 +12,7 @@ import {
 import { formatPersonName, formatRange, ymdOf } from "../domain/dates";
 import { conflictsFor } from "../domain/tasks";
 import { formatMinutes } from "@/modules/incidentes/utils/cleaningChecklistUtils";
-import { cx, inputClass } from "./uiUtils";
+import { inputClass } from "./uiUtils";
 
 // ─── Edificio → Unidad ──────────────────────────────────────────────────────
 
@@ -236,16 +236,22 @@ export const ChecklistSelect = ({
     <option value="">Sin checklist</option>
     {checklists.map((c) => {
       const summary = summarizeChecklist(c.activities);
+      // Los minutos son opcionales: se nombran solo si los hay.
+      const minutes =
+        summary.minutes !== null ? ` · ${describeChecklistMinutes(summary)}` : "";
       return (
         <option key={c.id} value={c.id}>
-          {`${c.templateName ?? c.description ?? c.id} · ${summary.activityCount} actividades · ${describeChecklistMinutes(summary).toLowerCase()}`}
+          {`${c.templateName ?? c.description ?? c.id} · ${summary.activityCount} actividades${minutes}`}
         </option>
       );
     })}
   </select>
 );
 
-/** Así lo ve el equipo de limpieza: secciones con sus minutos y una casilla por actividad. */
+/**
+ * Así lo ve el equipo de limpieza: secciones y una casilla por actividad. Los
+ * minutos son opcionales y se muestran solo donde los hay.
+ */
 export const ChecklistPreview = ({ rows }: { rows: string[] }) => {
   const summary = useMemo(() => summarizeChecklist(rows), [rows]);
 
@@ -268,11 +274,11 @@ export const ChecklistPreview = ({ rows }: { rows: string[] }) => {
             <p className="text-sm font-semibold text-slate-900">
               {section.title || "Sin sección"}
             </p>
-            <span className="shrink-0 text-xs font-semibold tabular-nums text-slate-500">
-              {section.totalMinutes !== null
-                ? `${section.hasPartialMinutes ? "~" : ""}${formatMinutes(section.totalMinutes)}`
-                : "sin minutos"}
-            </span>
+            {section.totalMinutes !== null ? (
+              <span className="shrink-0 text-xs font-semibold tabular-nums text-slate-500">
+                {`${section.hasPartialMinutes ? "~" : ""}${formatMinutes(section.totalMinutes)}`}
+              </span>
+            ) : null}
           </div>
           <ul className="divide-y divide-slate-100">
             {section.items.map((item) => (
@@ -287,16 +293,11 @@ export const ChecklistPreview = ({ rows }: { rows: string[] }) => {
                 <span className="min-w-0 flex-1 text-slate-700">
                   {item.text}
                 </span>
-                <span
-                  className={cx(
-                    "shrink-0 text-xs tabular-nums",
-                    item.minutes !== null ? "text-slate-500" : "text-amber-700",
-                  )}
-                >
-                  {item.minutes !== null
-                    ? formatMinutes(item.minutes)
-                    : "sin minutos"}
-                </span>
+                {item.minutes !== null ? (
+                  <span className="shrink-0 text-xs tabular-nums text-slate-500">
+                    {formatMinutes(item.minutes)}
+                  </span>
+                ) : null}
               </li>
             ))}
           </ul>
@@ -313,12 +314,8 @@ export const ChecklistSummaryLine = ({ rows }: { rows: string[] }) => {
 
   return (
     <span className="tabular-nums">
-      {`${s.sectionCount} ${s.sectionCount === 1 ? "sección" : "secciones"} · ${s.activityCount} actividades · `}
-      {s.minutes === null ? (
-        <span className="text-amber-700">sin minutos</span>
-      ) : (
-        describeChecklistMinutes(s)
-      )}
+      {`${s.sectionCount} ${s.sectionCount === 1 ? "sección" : "secciones"} · ${s.activityCount} actividades`}
+      {s.minutes !== null ? ` · ${describeChecklistMinutes(s)}` : null}
     </span>
   );
 };

@@ -151,10 +151,10 @@ export type CreateManualTaskPayload = {
   observations?: string;
 };
 
+/** Sin `code`: el formulario ya no lo pide y el backend no toca el `Code` que no llega. */
 export type SaveChecklistPayload = {
   templateName: string;
   description: string;
-  code: string;
   detalle: string;
   /** Archivo nuevo; si falta, se conserva el que hubiera. */
   file: File | null;
