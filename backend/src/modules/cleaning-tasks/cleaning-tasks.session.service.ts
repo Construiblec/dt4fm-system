@@ -32,7 +32,8 @@ export class CleaningTasksSessionService implements OnModuleInit {
 
     // Si no hay sesión o expiró, refrescar
     if (!this.sessionId || now >= this.sessionExpiresAt) {
-      this.logger.warn('⚠️ Sesión expirada o inválida, refrescando...');
+      // Rutina (la sesión dura 30 min), no un aviso.
+      this.logger.debug('Sesión de servicio vencida o ausente: se renueva');
       await this.refreshSession();
     }
 
@@ -82,7 +83,10 @@ export class CleaningTasksSessionService implements OnModuleInit {
    * Invalida la sesión actual (fuerza refresco en próxima llamada)
    */
   invalidateSession(): void {
-    this.logger.warn('⚠️ Sesión invalidada manualmente');
+    // Quien la invalida (un 401) ya dejó su propia línea de aviso.
+    this.logger.debug(
+      'Sesión de servicio invalidada: se renueva en la próxima llamada',
+    );
     this.sessionId = null;
     this.sessionExpiresAt = 0;
   }

@@ -17,6 +17,7 @@ import {
   LookupValue,
   PreventiveMaintenanceOpenmaintService,
 } from './preventive-maintenance.openmaint.service';
+import { describeError } from '../../common/logging/describe-error.util';
 import { LookupOption, toLookupOption } from './utils/lookup-option.util';
 
 export type ChecklistOption = LookupOption;
@@ -112,8 +113,7 @@ export class PreventiveChecklistService {
       await this.openmaint.updateChecklistCard(sessionId, card._id, merged);
     } catch (error) {
       this.logger.error(
-        `No se pudo guardar el checklist del mantenimiento ${processId}`,
-        error,
+        `No se pudo guardar el checklist del mantenimiento ${processId} — ${describeError(error)}`,
       );
 
       throw new BadGatewayException(
@@ -213,8 +213,7 @@ export class PreventiveChecklistService {
       await this.openmaint.updateChecklistCard(sessionId, card._id, merged);
     } catch (error) {
       this.logger.error(
-        `No se pudo actualizar el checklist del mantenimiento ${processId}`,
-        error,
+        `No se pudo actualizar el checklist del mantenimiento ${processId} — ${describeError(error)}`,
       );
 
       throw new BadGatewayException(
@@ -238,8 +237,7 @@ export class PreventiveChecklistService {
       return response.data?.[0];
     } catch (error) {
       this.logger.error(
-        `No se pudo consultar el checklist del mantenimiento ${processId}`,
-        error,
+        `No se pudo consultar el checklist del mantenimiento ${processId} — ${describeError(error)}`,
       );
 
       throw new BadGatewayException(

@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'crypto';
+import { describeError } from '../../common/logging/describe-error.util';
 import { ContificoClient } from './contifico.client';
 import {
   ContificoCreateDocumentoDto,
@@ -37,10 +38,10 @@ export class ContificoService {
   async createDocumento(
     dto: ContificoCreateDocumentoDto,
   ): Promise<ContificoDocumentoResponse> {
+    // El número de documento identifica la factura; el nombre del huésped
+    // (`razon_social`) es un dato personal y no va al log.
     if (this.useMock()) {
-      this.logger.warn(
-        `[MOCK] Factura simulada para cliente: ${dto.cliente.razon_social}`,
-      );
+      this.logger.warn(`[MOCK] Factura simulada ${dto.documento}`);
       // El prefijo MOCK- viaja hasta HostawayInvoice en openMAINT, donde
       // distingue a simple vista una factura simulada de una real.
       return {
@@ -53,10 +54,6 @@ export class ContificoService {
       };
     }
 
-    this.logger.log(
-      `[Contifico] Creando documento para cliente: ${dto.cliente.razon_social}`,
-    );
-
     try {
       const response = await this.client.post<ContificoDocumentoResponse>(
         '/documento/',
@@ -64,16 +61,14 @@ export class ContificoService {
       );
 
       this.logger.log(
-        `[Contifico] Documento creado: ${response.documento} (id: ${response.id})`,
+        `Factura creada: ${response.documento} (id ${response.id})`,
       );
 
       return response;
     } catch (error) {
-      this.logger.error('[Contifico] Error al crear documento', {
-        status: error?.response?.status,
-        data: JSON.stringify(error?.response?.data),
-        message: error?.message,
-      });
+      this.logger.error(
+        `No se pudo crear la factura ${dto.documento} — ${describeError(error)}`,
+      );
 
       throw new InternalServerErrorException(
         'No se pudo crear la factura en Contifico',

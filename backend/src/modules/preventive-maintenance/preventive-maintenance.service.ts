@@ -8,6 +8,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import type { Response } from 'express';
+import { describeError } from '../../common/logging/describe-error.util';
 import { extractRegisterNotes } from '../../common/utils/openmaint-register.util';
 import { PushDispatchService } from '../push-notifications/push-dispatch.service';
 import {
@@ -289,8 +290,7 @@ export class PreventiveMaintenanceService {
         await this.openmaint.uploadAttachment(sessionId, id, file);
       } catch (error) {
         this.logger.error(
-          `No se pudo subir la evidencia del mantenimiento ${id}`,
-          error,
+          `No se pudo subir la evidencia del mantenimiento ${id} — ${describeError(error)}`,
         );
       }
     }
@@ -947,8 +947,7 @@ export class PreventiveMaintenanceService {
       });
     } catch (error) {
       this.logger.error(
-        `No se pudo registrar la hora de inicio del mantenimiento ${card.Number ?? card._id}`,
-        error,
+        `No se pudo registrar la hora de inicio del mantenimiento ${card.Number ?? card._id} — ${describeError(error)}`,
       );
     }
   }
@@ -970,8 +969,7 @@ export class PreventiveMaintenanceService {
       );
     } catch (error) {
       this.logger.error(
-        `No se pudo limpiar el N.D. del checklist del mantenimiento ${id}`,
-        error,
+        `No se pudo limpiar el N.D. del checklist del mantenimiento ${id} — ${describeError(error)}`,
       );
     }
   }

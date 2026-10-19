@@ -2,8 +2,10 @@ import {
   BadGatewayException,
   BadRequestException,
   Injectable,
+  Logger,
   UnauthorizedException,
 } from '@nestjs/common';
+import { describeError } from '../../common/logging/describe-error.util';
 import { OpenmaintService } from '../../integrations/openmaint/openmaint.service';
 import {
   BuildingLocationsDto,
@@ -45,6 +47,8 @@ const collator = new Intl.Collator('es', {
 
 @Injectable()
 export class BuildingsService {
+  private readonly logger = new Logger(BuildingsService.name);
+
   constructor(private readonly openmaintService: OpenmaintService) {}
 
   async getBuildings(sessionId: string) {
@@ -146,15 +150,15 @@ export class BuildingsService {
     } catch (error) {
       const status = error?.response?.status;
 
-      console.error('[buildings] getBuildingLocations error', {
-        buildingId,
-        status,
-        message: error?.message,
-      });
-
+      // Una sesión caducada ya queda en la línea de OpenmaintClient y en la de
+      // la petición (401): aquí solo se registra el fallo real.
       if (status === 401 || status === 403) {
         throw new UnauthorizedException('Sesión de OpenMAINT expirada');
       }
+
+      this.logger.error(
+        `No se pudieron leer las plantas y áreas del edificio ${buildingId} — ${describeError(error)}`,
+      );
 
       throw new BadGatewayException(
         'No se pudieron obtener las plantas y áreas del edificio',

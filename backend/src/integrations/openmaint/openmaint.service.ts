@@ -2,8 +2,10 @@ import {
   BadGatewayException,
   InternalServerErrorException,
   Injectable,
+  Logger,
 } from '@nestjs/common';
 import FormData from 'form-data';
+import { describeError } from '../../common/logging/describe-error.util';
 import { toImageDataUrl } from '../../common/utils/image-data-url.util';
 import {
   CM_ACTIONS,
@@ -118,6 +120,8 @@ type OpenmaintCreateUserBody = {
 
 @Injectable()
 export class OpenmaintService {
+  private readonly logger = new Logger(OpenmaintService.name);
+
   constructor(private readonly client: OpenmaintClient) {}
 
   async getBuildings(sessionId: string) {
@@ -201,7 +205,9 @@ export class OpenmaintService {
         error.response?.data?.messages?.[0]?.message ||
         error.response?.data?.message ||
         error.message;
-      console.error(`Error al consultar incidentes en OpenMAINT: ${errorMsg}`);
+      this.logger.error(
+        `Error al consultar incidentes — ${describeError(error)}`,
+      );
       throw new BadGatewayException(
         `Error al consultar incidentes: ${errorMsg}`,
       );
@@ -440,9 +446,9 @@ export class OpenmaintService {
         sessionId,
       );
     } catch (error) {
-      console.error(
-        `[OpenMAINT] Error al obtener ficha de empleado ${employeeId}:`,
-        error?.message,
+      // Se sigue sin la ficha: es una degradación, no un fallo de la petición.
+      this.logger.warn(
+        `No se pudo leer la ficha del empleado ${employeeId} — ${describeError(error)}`,
       );
       return null;
     }
@@ -544,7 +550,12 @@ export class OpenmaintService {
 
       return tenantResponse.data?.[0] ?? null;
     } catch (err) {
-      console.error('[findTenant] error:', err);
+      // `console.error(err)` volcaba el AxiosError entero, con la sesión de
+      // openMAINT en las cabeceras: `console` no pasa por AppLogger.
+      // Sin la cédula en el log: es un dato personal.
+      this.logger.warn(
+        `No se pudo buscar el inquilino por cédula — ${describeError(err)}`,
+      );
       return null;
     }
   }
@@ -554,20 +565,10 @@ export class OpenmaintService {
     sessionId: string,
   ): Promise<{ _id: number; username: string }> {
     try {
-      console.log(
-        '[OpenMAINT] createOwnerUser - payload:',
-        JSON.stringify({ ...body, password: '***' }),
-      );
-
       const response = (await this.client.post('/users', body, sessionId)) as {
         success?: boolean;
         data?: { _id: number; username: string };
       };
-
-      console.log(
-        '[OpenMAINT] createOwnerUser - response:',
-        JSON.stringify(response),
-      );
 
       if (!response?.data?._id) {
         throw new InternalServerErrorException(
@@ -575,17 +576,19 @@ export class OpenmaintService {
         );
       }
 
+      // Solo el id: el payload y la respuesta completos (que se registraban
+      // aquí) llevan los datos personales del propietario.
+      this.logger.log(`Usuario propietario creado: id=${response.data._id}`);
+
       return response.data;
     } catch (error) {
       if (error instanceof InternalServerErrorException) {
         throw error;
       }
 
-      console.error('[OpenMAINT] createOwnerUser - error:', {
-        status: error?.response?.status,
-        data: JSON.stringify(error?.response?.data),
-        message: error?.message,
-      });
+      this.logger.error(
+        `No se pudo crear el usuario propietario — ${describeError(error)}`,
+      );
 
       // Propagamos el error original para que el caller pueda inspeccionar el status
       throw error;
@@ -597,21 +600,11 @@ export class OpenmaintService {
     sessionId: string,
   ) {
     try {
-      console.log(
-        '[OpenMAINT] createCorrectiveMaintIncident - payload:',
-        JSON.stringify(body),
-      );
-
       const response = (await this.client.post(
         '/processes/CorrectiveMaint/instances',
         body,
         sessionId,
       )) as OpenmaintIncidentResponse;
-
-      console.log(
-        '[OpenMAINT] createCorrectiveMaintIncident - response:',
-        JSON.stringify(response),
-      );
 
       if (response.success === false) {
         throw new InternalServerErrorException(
@@ -619,17 +612,21 @@ export class OpenmaintService {
         );
       }
 
+      // Solo el id: el payload y la respuesta completos que se registraban
+      // aquí ocupaban decenas de líneas por incidente.
+      this.logger.log(
+        `Correctivo creado: id=${this.extractIncidentId(response) ?? '¿sin id?'}`,
+      );
+
       return response;
     } catch (error) {
       if (error instanceof InternalServerErrorException) {
         throw error;
       }
 
-      console.error('[OpenMAINT] createCorrectiveMaintIncident - error:', {
-        status: error?.response?.status,
-        data: JSON.stringify(error?.response?.data),
-        message: error?.message,
-      });
+      this.logger.error(
+        `No se pudo crear el correctivo — ${describeError(error)}`,
+      );
 
       throw new InternalServerErrorException(
         'Error al crear incidente en OpenMAINT',

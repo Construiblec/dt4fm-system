@@ -5,6 +5,7 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { describeError } from '../../common/logging/describe-error.util';
 import { OpenmaintServiceSession } from '../../integrations/openmaint/openmaint.service-session';
 import { PushDispatchService } from '../push-notifications/push-dispatch.service';
 import {
@@ -64,7 +65,7 @@ export class IotAlarmsService {
         }
 
         this.logger.warn(
-          `Intento ${attempt}/${maxAttempts} fallido para ${dto.event} / ${dto.assetCode}`,
+          `Intento ${attempt}/${maxAttempts} fallido para ${dto.event} / ${dto.assetCode} — ${describeError(error)}`,
         );
 
         if (attempt < maxAttempts) {
@@ -73,9 +74,10 @@ export class IotAlarmsService {
       }
     }
 
+    // El payload entero, a propósito: la Raspberry no reintenta, así que esta
+    // línea es el único registro con el que volver a dar de alta la alarma.
     this.logger.error(
-      `Alarma IoT no registrada: ${JSON.stringify(rawPayload)}`,
-      lastError instanceof Error ? lastError.stack : String(lastError),
+      `Alarma IoT no registrada — ${describeError(lastError)} | payload=${JSON.stringify(rawPayload)}`,
     );
 
     throw new BadGatewayException(
