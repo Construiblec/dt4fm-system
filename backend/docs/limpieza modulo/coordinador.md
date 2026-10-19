@@ -91,8 +91,9 @@ y `unitMatch`: `ok`, `none` (el listing no tiene unidad) o `ambiguous` (dos unid
 
 Campos: `NombrePlantilla`, `Code`, `Description`, `Detalle` (texto) y `Plantilla` (archivo CSV).
 
+- El formulario del coordinador ya no pide el `Code`: no lo envía, y el backend no toca el `Code` que no llega. La `Description` es obligatoria en openMAINT; si queda vacía, el frontend manda el nombre.
 - Si el archivo se puede leer, el equipo ve el archivo; si no, el `Detalle`.
-- CSV con columnas `Titulo,Actividad,Minutos`, separador coma o punto y coma, máximo 1 MB.
+- CSV con columnas `Titulo,Actividad` y, opcional, `Minutos`; separador coma o punto y coma; máximo 1 MB. Sin minutos no hay avisos: la revisión solo señala problemas de estructura (encabezado, tabulaciones, sección repetida, título sin actividad).
 - El backend valida con `readCsvTemplate` antes de subir: vacío, más de 1 MB, Excel o PDF y sin filas se rechazan con 400.
 - Al guardar se reemplaza o se quita el adjunto (`removeTemplate`).
 - **Subida verificada contra openMAINT (2026-10-12):** subir el adjunto no enlaza `Plantilla`; después se guarda su id con `PUT { Plantilla: id }`. Para reemplazar o quitar el archivo se pone `Plantilla: null` (se lleva el adjunto); borrarlo directo o subir otro con el mismo nombre da 500 "file name conflict". Los adjuntos sueltos con el mismo nombre se limpian antes de subir.
@@ -106,8 +107,8 @@ Módulo `frontend/modulo-incidentes/src/modules/coordinador/`, solo escritorio.
 | Ruta | Pantalla |
 |---|---|
 | `/coordinador` | Redirige a Limpiezas, que es la pantalla principal (el panel del día se quitó) |
-| `/coordinador/pendientes` | Limpiezas sin empleado o sin horario |
-| `/coordinador/limpiezas` · `/agenda` | Tabla con filtros y agenda del día por empleado |
+| `/coordinador/pendientes` | Limpiezas sin empleado o sin horario, 20 por página |
+| `/coordinador/limpiezas` · `/agenda` | Tabla de un día (hoy al abrir, o todas las fechas) con menú de estados y 20 por página; agenda del día por empleado |
 | `/coordinador/sincronizacion` | Creación automática: limpiezas de hoy o de mañana, y vista previa de un rango con estados y "Crear limpieza" por reserva |
 | `/coordinador/checklists`, `/nuevo`, `/:id` | Lista y editor con subida de CSV y vista previa |
 | `/coordinador/nueva` | Limpieza manual |
@@ -118,6 +119,8 @@ La ficha de una limpieza es un panel lateral controlado por la URL (`?limpieza=I
 - Colores de estado: los de `statusPalette.ts`.
 - `domain/` reúne las reglas puras (pendiente, atraso, superposición, bitácora) con tests; `domain/csvTemplate.ts` es una copia del lector del backend, y debe mantenerse igual.
 - Zona horaria: Guayaquil, UTC−5 fijo; las fechas viajan con offset `-05:00`.
+- Fechas en dd/mm/aaaa (`DateField`) y horas en hh:mm de 24 h (`TimeField`). No se usan los `<input type="date|time">` nativos porque siguen el idioma del navegador: en español de Ecuador la hora sale en 12 h con a. m./p. m.
+- Completar una pendiente se puede guardar a medias solo sin empleado: elegir empleado exige fecha y horario, porque el backend le avisa al asignarlo.
 
 ---
 

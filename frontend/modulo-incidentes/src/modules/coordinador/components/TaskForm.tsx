@@ -17,6 +17,7 @@ import {
   formatRange,
   hmOf,
   isoAt,
+  sameInstant,
   todayYmd,
   ymdOf,
 } from "../domain/dates";
@@ -29,6 +30,7 @@ import {
   EmployeeSelect,
 } from "./pickers";
 import { DateField } from "./DateField";
+import { TimeField } from "./TimeField";
 import { employeeName } from "./taskLabels";
 import { Button, Field, InlineAlert } from "./ui";
 import { inputClass } from "./uiUtils";
@@ -38,6 +40,8 @@ import { inputClass } from "./uiUtils";
  * - nueva: limpieza manual (descripción y horario obligatorios; lo demás, opcional).
  * - completar: una pendiente. Se puede guardar a medias (por ejemplo, solo
  *   corregir el checkout) y sigue en Pendientes hasta tener empleado y horario.
+ *   Elegir empleado sí exige el horario: el backend le avisa al empleado apenas
+ *   se le asigna, y no debe recibir una limpieza sin hora.
  * - editar: una asignada que no empezó. No puede perder el empleado.
  */
 export type TaskFormVariant = "nueva" | "completar" | "editar";
@@ -137,7 +141,6 @@ export const TaskForm = ({
   }
 
   const partialAllowed = variant === "completar";
-  const complete = Boolean(employeeId && date && start && end);
 
   const validate = () => {
     const next: Record<string, string | null> = {};
@@ -149,7 +152,10 @@ export const TaskForm = ({
     if (!isNew && source === "Hostaway" && !checkoutDate) {
       next.checkoutDate = "Completa la fecha de checkout.";
     }
-    const scheduleRequired = !partialAllowed || Boolean(start) || Boolean(end);
+    // A medias solo sin empleado: asignar le avisa al empleado, y sin horario
+    // recibiría una limpieza sin hora mientras sigue en Pendientes.
+    const scheduleRequired =
+      !partialAllowed || Boolean(employeeId) || Boolean(start) || Boolean(end);
     if (scheduleRequired) {
       if (!date) next.date = "Completa la fecha.";
       if (!start) next.start = "Completa la hora de inicio.";
@@ -191,9 +197,10 @@ export const TaskForm = ({
     }
     if ((unitId ?? null) !== (current.unit?.id ?? null))
       payload.unitId = unitId;
-    if (startIso && startIso !== current.plannedStartTime)
+    // Por instante y no por texto: openMAINT las devuelve en UTC (`…Z`).
+    if (startIso && !sameInstant(startIso, current.plannedStartTime))
       payload.plannedStartTime = startIso;
-    if (endIso && endIso !== current.plannedEndTime)
+    if (endIso && !sameInstant(endIso, current.plannedEndTime))
       payload.plannedEndTime = endIso;
     if (employeeChanged && employeeId) payload.employeeId = employeeId;
     if ((checklistId ?? null) !== (current.checklistDetail?.id ?? null)) {
@@ -316,23 +323,19 @@ export const TaskForm = ({
             required
             error={errors.start}
           >
-            <input
+            <TimeField
               id="f-inicio"
-              type="time"
-              step={300}
-              className={inputClass(errors.start)}
+              invalid={Boolean(errors.start)}
               value={start}
-              onChange={(e) => setStart(e.target.value)}
+              onChange={setStart}
             />
           </Field>
           <Field label="Fin" htmlFor="f-fin" required error={errors.end}>
-            <input
+            <TimeField
               id="f-fin"
-              type="time"
-              step={300}
-              className={inputClass(errors.end)}
+              invalid={Boolean(errors.end)}
               value={end}
-              onChange={(e) => setEnd(e.target.value)}
+              onChange={setEnd}
             />
           </Field>
         </div>
@@ -348,15 +351,11 @@ export const TaskForm = ({
         {chosenChecklist && checklistSummary ? (
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-600">
             <ChecklistSummaryLine rows={chosenChecklist.activities} />
-            {checklistSummary.minutes === null ? (
-              <span className="text-xs text-amber-700">
-                Sin minutos: el empleado no tendrá recordatorios.
-              </span>
-            ) : (
+            {checklistSummary.minutes !== null ? (
               <span className="text-xs text-slate-500">
                 Tiempo estimado: {describeChecklistMinutes(checklistSummary)}
               </span>
-            )}
+            ) : null}
           </div>
         ) : null}
 
@@ -446,7 +445,7 @@ export const TaskForm = ({
           {submitting
             ? "Guardando…"
             : partialAllowed
-              ? complete
+              ? employeeId
                 ? "Asignar"
                 : "Guardar sin asignar"
               : submitLabel}

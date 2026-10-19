@@ -63,8 +63,12 @@ export type LintWarning = {
 
 /**
  * Repite los pasos del parser para avisar de lo que va a pasar con cada fila
- * (encabezado, celda de minutos vacía, sección repetida…). No cambia lo que
+ * (encabezado, sección repetida, título sin actividad…). No cambia lo que
  * muestra el parser: solo lo explica.
+ *
+ * Los minutos son opcionales: una plantilla de dos columnas (Titulo,
+ * Actividad) vale igual que una de tres, así que no se avisa de los que faltan.
+ * Cada texto ya dice su fila.
  */
 export const lintChecklist = (
   rows: string[],
@@ -77,8 +81,6 @@ export const lintChecklist = (
   let currentKey: string | null = null;
   const seenTitles = new Map<string, number>();
   const untitled: number[] = [];
-  let withoutMinutes = 0;
-  let activities = 0;
   let tabsWarned = false;
 
   rows.forEach((line, index) => {
@@ -89,7 +91,7 @@ export const lintChecklist = (
       warnings.push({
         level: "info",
         row: rowNumber,
-        text: `Se detectó un encabezado («${line}»): no se muestra como actividad.`,
+        text: `Fila 1: es el encabezado («${line}») y no se muestra como actividad.`,
       });
       return;
     }
@@ -106,8 +108,6 @@ export const lintChecklist = (
     }
 
     if (fields.length === 1) {
-      activities += 1;
-      withoutMinutes += 1;
       if (!inherited) untitled.push(rowNumber);
       return;
     }
@@ -115,34 +115,12 @@ export const lintChecklist = (
     const last = fields[fields.length - 1];
     const minutes = fields.length >= 3 ? parseMinutes(last) : null;
 
-    if (fields.length >= 3) {
-      if (last === "") {
-        warnings.push({
-          level: "info",
-          row: rowNumber,
-          text: `Fila ${rowNumber}: la celda de minutos está vacía; la actividad queda sin minutos.`,
-        });
-      } else if (minutes === null) {
-        warnings.push({
-          level: "warn",
-          row: rowNumber,
-          text: `Fila ${rowNumber}: «${last}» no es un número de minutos; se toma como parte de la actividad.`,
-        });
-      } else if (last.includes(",")) {
-        warnings.push({
-          level: "info",
-          row: rowNumber,
-          text: `Fila ${rowNumber}: minutos con coma decimal (${last}) se leen como ${minutes}.`,
-        });
-      }
-
-      if (minutes !== null && fields.length > 3) {
-        warnings.push({
-          level: "warn",
-          row: rowNumber,
-          text: `Fila ${rowNumber}: tiene más de 3 columnas y se unió el texto de la actividad (¿un separador sin comillas dentro del texto?).`,
-        });
-      }
+    if (minutes !== null && fields.length > 3) {
+      warnings.push({
+        level: "warn",
+        row: rowNumber,
+        text: `Fila ${rowNumber}: tiene más de 3 columnas y se unió el texto de la actividad (¿un separador sin comillas dentro del texto?).`,
+      });
     }
 
     const text = (
@@ -161,9 +139,6 @@ export const lintChecklist = (
       });
       return;
     }
-
-    activities += 1;
-    if (minutes === null) withoutMinutes += 1;
 
     const rawTitle = fields[0] || inherited;
     inherited = rawTitle;
@@ -193,22 +168,6 @@ export const lintChecklist = (
           ? `La fila ${untitled[0]} no tiene`
           : `Las filas ${untitled.join(", ")} no tienen`
       } título de sección: se muestran sin sección.`,
-    });
-  }
-
-  if (activities > 0 && withoutMinutes === activities) {
-    warnings.push({
-      level: "warn",
-      text: "Ninguna actividad tiene minutos: el asistente de voz no hará recordatorios con este checklist.",
-    });
-  } else if (withoutMinutes > 0) {
-    warnings.push({
-      level: "warn",
-      text: `${
-        withoutMinutes === 1
-          ? "1 actividad no tiene"
-          : `${withoutMinutes} actividades no tienen`
-      } minutos: no habrá recordatorio para ${withoutMinutes === 1 ? "ella." : "ellas."}`,
     });
   }
 

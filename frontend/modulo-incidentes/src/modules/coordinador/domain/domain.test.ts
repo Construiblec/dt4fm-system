@@ -11,7 +11,10 @@ import {
   formatRange,
   hmOf,
   isoAt,
+  maskHm,
+  parseHm,
   relativeDay,
+  sameInstant,
   todayYmd,
   ymdOf,
 } from "./dates";
@@ -103,6 +106,34 @@ describe("fechas de Guayaquil", () => {
     expect(parseDmy("14/10/2026")).toBe("2026-10-14");
     expect(parseDmy("31/02/2026")).toBeNull();
     expect(parseDmy("14/10")).toBeNull();
+  });
+
+  it("el campo de hora escribe y lee hh:mm de 24 h, sin a. m. ni p. m.", () => {
+    expect(maskHm("1430")).toBe("14:30");
+    expect(maskHm("14:30")).toBe("14:30");
+    expect(maskHm("8")).toBe("08");
+    expect(maskHm("830")).toBe("08:30");
+    expect(maskHm("2")).toBe("2");
+    expect(maskHm("143")).toBe("14:3");
+    expect(maskHm("14305")).toBe("14:30");
+    expect(maskHm("")).toBe("");
+    expect(parseHm("14:30")).toBe("14:30");
+    expect(parseHm("00:00")).toBe("00:00");
+    expect(parseHm("23:59")).toBe("23:59");
+    expect(parseHm("24:00")).toBeNull();
+    expect(parseHm("14:60")).toBeNull();
+    expect(parseHm("14:3")).toBeNull();
+  });
+
+  it("compara instantes y no textos: UTC y -05:00 pueden ser la misma hora", () => {
+    expect(
+      sameInstant("2026-10-08T15:30:00Z", isoAt("2026-10-08", "10:30")),
+    ).toBe(true);
+    expect(
+      sameInstant("2026-10-08T15:30:00.000Z", isoAt("2026-10-08", "11:00")),
+    ).toBe(false);
+    expect(sameInstant(isoAt("2026-10-08", "10:30"), null)).toBe(false);
+    expect(sameInstant(null, undefined)).toBe(true);
   });
 
   it("formatea rangos y duraciones", () => {
@@ -338,7 +369,7 @@ describe("checklist", () => {
     expect(detalleToRows(null)).toEqual([]);
   });
 
-  it("la revisión avisa del encabezado, la sección repetida y los minutos que faltan", () => {
+  it("la revisión avisa del encabezado y la sección repetida, pero no de los minutos que faltan", () => {
     const { warnings } = lintChecklist([
       "Seccion;Actividades;tiempo",
       "Baño;Lavar;5",
@@ -347,9 +378,36 @@ describe("checklist", () => {
     ]);
     const texts = warnings.map((w) => w.text).join("\n");
 
-    expect(texts).toMatch(/encabezado/);
+    expect(texts).toMatch(/^Fila 1: es el encabezado/m);
     expect(texts).toMatch(/sección «Baño» vuelve a aparecer/);
-    expect(texts).toMatch(/1 actividad no tiene minutos/);
+    expect(texts).not.toMatch(/minutos/);
+  });
+
+  it("acepta plantillas de dos columnas (Titulo, Actividad) sin ningún aviso", () => {
+    const rows = [
+      "Titulo,Actividad",
+      "Dormitorio,Tender la cama",
+      "Baño,Lavar el inodoro",
+      "Baño,Limpiar el espejo",
+    ];
+    const summary = summarizeChecklist(rows);
+
+    expect(summary.sectionCount).toBe(2);
+    expect(summary.activityCount).toBe(3);
+    expect(summary.minutes).toBeNull();
+    expect(lintChecklist(rows).warnings.map((w) => w.level)).toEqual(["info"]);
+  });
+
+  it("una plantilla entera con la columna de minutos vacía no llena la pantalla de avisos", () => {
+    const { warnings } = lintChecklist([
+      "Titulo;Actividad;Minutos",
+      "Baño;Lavar;",
+      "Baño;Secar;",
+      "Cocina;Barrer;",
+    ]);
+
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0].text).toMatch(/encabezado/);
   });
 
   it("avisa cuando el archivo viene separado por tabulaciones", () => {

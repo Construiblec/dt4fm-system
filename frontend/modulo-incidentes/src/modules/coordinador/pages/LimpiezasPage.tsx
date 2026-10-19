@@ -22,7 +22,6 @@ import {
   formatRange,
   hmOf,
   minutesOfDay,
-  relativeDay,
   todayYmd,
   ymdOf,
 } from "../domain/dates";
@@ -36,7 +35,7 @@ import {
   statusKey,
   taskDate,
 } from "../domain/tasks";
-import { SourceBadge, StatusBadges } from "../components/taskBits";
+import { StatusBadges } from "../components/taskBits";
 import {
   employeeName,
   matchesSearch,
@@ -50,6 +49,7 @@ import {
   EmptyState,
   ErrorState,
   PageHeader,
+  Pagination,
   Segmented,
   Skeleton,
   SortHeader,
@@ -60,6 +60,7 @@ import {
 import { compareBy, cx, inputClass, useSort } from "../components/uiUtils";
 import { useOpenTask } from "../layout/useOpenTask";
 import { DateField } from "../components/DateField";
+import { FilterMenu, type FilterOption } from "../components/FilterMenu";
 
 type StatusKey = keyof typeof STATUS;
 
@@ -73,28 +74,13 @@ const STATUS_ORDER: StatusKey[] = [
   "cancelled",
 ];
 
-const DATE_FILTERS = [
-  { value: "todas", label: "Todas las fechas" },
-  { value: "hoy", label: "Hoy" },
-  { value: "manana", label: "Mañana" },
-  { value: "semana", label: "Próximos 7 días" },
-  { value: "pasados", label: "Últimos 7 días" },
-] as const;
+const STATUS_OPTIONS: FilterOption<StatusKey>[] = STATUS_ORDER.map((key) => ({
+  value: key,
+  label: STATUS[key].label,
+  dotClass: STATUS_LEVELS[STATUS[key].level].bar,
+}));
 
-type DateFilter = (typeof DATE_FILTERS)[number]["value"];
-
-const inDateFilter = (
-  task: CoordTask,
-  filter: DateFilter,
-  today: string,
-): boolean => {
-  const date = taskDate(task);
-  if (filter === "hoy") return date === today;
-  if (filter === "manana") return date === addDays(today, 1);
-  if (filter === "semana") return date >= today && date <= addDays(today, 7);
-  if (filter === "pasados") return date < today && date >= addDays(today, -7);
-  return true;
-};
+const PAGE_SIZE = 20;
 
 // ─── Tabla ──────────────────────────────────────────────────────────────────
 
@@ -110,27 +96,39 @@ const TableView = ({
   const { open } = useOpenTask();
   const [q, setQ] = useState("");
   const [statuses, setStatuses] = useState<StatusKey[]>(STATUS_ORDER);
-  const [dates, setDates] = useState<DateFilter>("todas");
+  // Un día concreto (hoy al abrir) o `null` para todas las fechas.
+  const [day, setDay] = useState<string | null>(today);
+  // Sin columna "Creada", pero el orden inicial sigue siendo "recién creadas primero".
   const [sort, onSort] = useSort({ key: "creada", dir: "desc" });
+  const [page, setPage] = useState(1);
 
-  const base = useMemo(
-    () =>
-      tasks.filter((t) => inDateFilter(t, dates, today) && matchesSearch(t, q)),
-    [tasks, dates, today, q],
-  );
-
-  const statusCount = useMemo(() => {
-    const counts = {} as Record<StatusKey, number>;
-    STATUS_ORDER.forEach((key) => {
-      counts[key] = base.filter((t) => statusKey(t) === key).length;
-    });
-    return counts;
-  }, [base]);
+  // Cambiar un filtro o el orden vuelve a la primera página.
+  const changeQuery = (next: string) => {
+    setQ(next);
+    setPage(1);
+  };
+  const changeDay = (next: string | null) => {
+    setDay(next);
+    setPage(1);
+  };
+  const changeStatuses = (next: StatusKey[]) => {
+    setStatuses(next);
+    setPage(1);
+  };
+  const changeSort = (key: string) => {
+    onSort(key);
+    setPage(1);
+  };
 
   const visible = useMemo(
     () =>
-      base
-        .filter((t) => statuses.includes(statusKey(t)))
+      tasks
+        .filter(
+          (t) =>
+            (day === null || taskDate(t) === day) &&
+            statuses.includes(statusKey(t)) &&
+            matchesSearch(t, q),
+        )
         .sort(
           compareBy<CoordTask>(sort, {
             creada: (t) => t.id,
@@ -141,17 +139,19 @@ const TableView = ({
               t.employee ? formatPersonName(t.employee.name) : null,
           }),
         ),
-    [base, statuses, sort],
+    [tasks, day, statuses, q, sort],
   );
 
-  const toggleStatus = (key: StatusKey) =>
-    setStatuses((list) =>
-      list.includes(key) ? list.filter((k) => k !== key) : [...list, key],
-    );
+  const pages = Math.max(1, Math.ceil(visible.length / PAGE_SIZE));
+  const currentPage = Math.min(page, pages);
+  const pageRows = visible.slice(
+    (currentPage - 1) * PAGE_SIZE,
+    currentPage * PAGE_SIZE,
+  );
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-end gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <label
           className="relative block w-full max-w-xs"
           htmlFor="buscar-limpiezas"
@@ -166,48 +166,29 @@ const TableView = ({
             className={inputClass(false, "pl-9")}
             placeholder="Número, unidad, listing o reserva"
             value={q}
-            onChange={(e) => setQ(e.target.value)}
+            onChange={(e) => changeQuery(e.target.value)}
           />
         </label>
-        <select
-          aria-label="Fecha"
-          className={inputClass(false, "w-auto")}
-          value={dates}
-          onChange={(e) => setDates(e.target.value as DateFilter)}
-        >
-          {DATE_FILTERS.map((f) => (
-            <option key={f.value} value={f.value}>
-              {f.label}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      <div className="flex flex-wrap gap-2" role="group" aria-label="Estados">
-        {STATUS_ORDER.map((key) => {
-          const on = statuses.includes(key);
-          const status = STATUS[key];
-          return (
-            <button
-              key={key}
-              type="button"
-              aria-pressed={on}
-              onClick={() => toggleStatus(key)}
-              className={cx(
-                "inline-flex items-center gap-1.5 whitespace-nowrap rounded-md px-2 py-1 text-xs font-semibold transition",
-                FOCUS,
-                on
-                  ? STATUS_LEVELS[status.level].badge
-                  : "border border-dashed border-slate-300 bg-white text-slate-400",
-              )}
-            >
-              {status.label}
-              <span className="tabular-nums opacity-70">
-                {statusCount[key]}
-              </span>
-            </button>
-          );
-        })}
+        <div className="flex flex-wrap items-center gap-2">
+          <DateField
+            id="limpiezas-dia"
+            ariaLabel="Día"
+            value={day ?? ""}
+            onChange={changeDay}
+          />
+          {day !== today ? (
+            <Button onClick={() => changeDay(today)}>Hoy</Button>
+          ) : null}
+          {day !== null ? (
+            <Button onClick={() => changeDay(null)}>Todas las fechas</Button>
+          ) : null}
+        </div>
+        <FilterMenu
+          label="Estados"
+          options={STATUS_OPTIONS}
+          selected={statuses}
+          onChange={changeStatuses}
+        />
       </div>
 
       <Card bodyClass="">
@@ -215,6 +196,13 @@ const TableView = ({
           <EmptyState
             icon={Search}
             title="Ninguna limpieza coincide con los filtros."
+            action={
+              day !== null ? (
+                <Button onClick={() => changeDay(null)}>
+                  Ver todas las fechas
+                </Button>
+              ) : null
+            }
           />
         ) : (
           <div className="relative overflow-x-auto">
@@ -225,7 +213,7 @@ const TableView = ({
                     label="Número"
                     sortKey="numero"
                     sort={sort}
-                    onSort={onSort}
+                    onSort={changeSort}
                   />
                   <th scope="col" className={TH}>
                     Descripción
@@ -237,36 +225,27 @@ const TableView = ({
                     label="Checkout"
                     sortKey="checkout"
                     sort={sort}
-                    onSort={onSort}
+                    onSort={changeSort}
                   />
                   <SortHeader
                     label="Planificada"
                     sortKey="planificada"
                     sort={sort}
-                    onSort={onSort}
+                    onSort={changeSort}
                   />
                   <SortHeader
                     label="Empleado"
                     sortKey="empleado"
                     sort={sort}
-                    onSort={onSort}
+                    onSort={changeSort}
                   />
                   <th scope="col" className={TH}>
                     Estado
                   </th>
-                  <th scope="col" className={TH}>
-                    Origen
-                  </th>
-                  <SortHeader
-                    label="Creada"
-                    sortKey="creada"
-                    sort={sort}
-                    onSort={onSort}
-                  />
                 </tr>
               </thead>
               <tbody>
-                {visible.map((t) => (
+                {pageRows.map((t) => (
                   <tr
                     key={t.id}
                     className="cursor-pointer border-t border-slate-100 hover:bg-slate-50"
@@ -338,27 +317,19 @@ const TableView = ({
                     <td className={TD}>
                       <StatusBadges task={t} nowMs={nowMs} />
                     </td>
-                    <td className={TD}>
-                      <SourceBadge source={t.source} />
-                    </td>
-                    <td
-                      className={cx(
-                        TD,
-                        "whitespace-nowrap tabular-nums text-slate-500",
-                      )}
-                    >
-                      {relativeDay(t.generatedDate, today)}
-                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
         )}
-        <p className="border-t border-slate-100 px-5 py-3 text-sm text-slate-500">
-          Mostrando {visible.length} de {tasks.length} limpiezas. Las recién
-          creadas aparecen primero.
-        </p>
+        <Pagination
+          page={currentPage}
+          pageSize={PAGE_SIZE}
+          total={visible.length}
+          onPage={setPage}
+          noun="limpiezas"
+        />
       </Card>
     </div>
   );
