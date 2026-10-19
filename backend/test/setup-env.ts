@@ -22,6 +22,12 @@ process.env.OPENMAINT_USERNAME ??= 'mock-admin';
 process.env.OPENMAINT_PASSWORD ??= 'mock-password';
 process.env.ENABLE_DOCS = 'false';
 
+// Solo errores en la salida de las suites: los avisos de negocio que provocan
+// los propios tests (credenciales rechazadas, openMAINT caído a propósito)
+// tapaban los fallos reales. `=` y no `??=`: el `.env` local suele subirlo a
+// `debug` para depurar.
+process.env.LOG_LEVEL = 'error';
+
 // Todos los schedulers apagados. PUSH_SCHEDULER_ENABLED en particular viene
 // en "true" en .env.example — si se hereda tal cual, un run E2E lento en
 // horario laboral de Guayaquil podría disparar el cron de limpieza atrasada.

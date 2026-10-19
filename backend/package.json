@@ -22,7 +22,7 @@
     "migration:generate": "npm run typeorm -- migration:generate",
     "migration:run": "npm run typeorm -- migration:run",
     "migration:revert": "npm run typeorm -- migration:revert",
-    "migration:run:prod": "typeorm migration:run -d dist/database/data-source.js",
+    "migration:run:prod": "node dist/database/run-migrations.js",
     "migration:show:prod": "typeorm migration:show -d dist/database/data-source.js",
     "migration:revert:prod": "typeorm migration:revert -d dist/database/data-source.js"
   },
