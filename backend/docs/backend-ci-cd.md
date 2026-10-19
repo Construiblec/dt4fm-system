@@ -109,7 +109,7 @@ La instancia de openMAINT de desarrollo guarda direcciones que pueden ser copias
 
 El resto es igual en ambos servicios: `VAPID_SUBJECT`, `CALENDAR_TIMEZONE`, `MAIL_PROVIDER` y la configuración SMTP o Resend, `MAIL_THROTTLE_MS`, `HISTORIAL_EMAIL_ENABLED`, `OPENMAINT_TEMPLATE_CLASS` y las credenciales de Hostaway. Las de Contifico solo existen en producción.
 
-`LOG_LEVEL=log` y `LOG_FORMAT` vacía en los dos. Con `log` sale una línea por petición, con su `rid`, y los eventos de negocio. Para depurar, `LOG_LEVEL=debug` añade cada llamada a openMAINT y a Contifico. Cambiarla en Render redespliega, así que hay que devolverla a `log` al terminar.
+`LOG_LEVEL=log` y `LOG_FORMAT` vacía en los dos. Con `log` sale una línea por petición, con su `rid`, y los eventos de negocio. Para depurar, `LOG_LEVEL=debug` añade cada llamada a openMAINT y a Contifico. Cambiarla en Render redespliega, así que hay que devolverla a `log` al terminar. Cómo leer los logs y buscar una petición por su `rid`: [logging.md](logging.md).
 
 A continuación, el detalle de cada variable:
 

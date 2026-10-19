@@ -12,6 +12,7 @@ import {
   extractReportNotes,
   RegisterLogEntry,
 } from '../../common/utils/openmaint-register.util';
+import { describeError } from '../../common/logging/describe-error.util';
 import {
   CorrectiveReporter,
   resolveReporter,
@@ -1370,7 +1371,7 @@ export class MaintenanceSupervisionService {
         );
       }
 
-      this.logger.error(reason, error as Error);
+      this.logger.error(`${reason} — ${describeError(error)}`);
       throw new BadGatewayException(reason);
     }
   }
