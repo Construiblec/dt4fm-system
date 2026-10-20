@@ -1,14 +1,14 @@
 import { Check } from "lucide-react";
 import { useState } from "react";
-import { formInputClass } from "@/modules/supervisor-mantenimiento/constants/formStyles";
+import { PlannedStartInputs } from "@/modules/supervisor-mantenimiento/components/PlannedStartInputs";
 import {
   getApiErrorMessage,
   updatePlannedStart,
 } from "@/modules/supervisor-mantenimiento/services/maintenanceSupervisionService";
 import type { SupervisedMaintenance } from "@/modules/supervisor-mantenimiento/types/SupervisedMaintenance";
 import { BottomSheet } from "@/shared/components/BottomSheet";
-import { DateField } from "@/shared/components/DateField";
 import { toDateTimeLocal } from "@/shared/utils/dateTimeInput";
+import { plannedStartProblem } from "@/shared/utils/plannedStart";
 
 type Props = {
   maintenance: SupervisedMaintenance;
@@ -31,14 +31,7 @@ export const PlannedStartSheet = ({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Una hora vacía no se toma como medianoche: hacen falta las dos
-  const falta = !fecha
-    ? !hora
-      ? "Indica la fecha y la hora previstas."
-      : "Falta la fecha."
-    : !hora
-      ? "Falta la hora."
-      : null;
+  const falta = plannedStartProblem(fecha, hora);
 
   const handleSubmit = async () => {
     if (falta) return;
@@ -79,20 +72,13 @@ export const PlannedStartSheet = ({
             Inicio previsto{" "}
             <span className="font-normal text-slate-600">(obligatorio)</span>
           </label>
-          <div className="grid grid-cols-2 gap-2">
-            <DateField
-              id="plannedStartDate"
-              value={fecha}
-              onChange={setFecha}
-            />
-            <input
-              type="time"
-              aria-label="Hora prevista"
-              value={hora}
-              onChange={(event) => setHora(event.target.value)}
-              className={formInputClass}
-            />
-          </div>
+          <PlannedStartInputs
+            id="plannedStartDate"
+            fecha={fecha}
+            hora={hora}
+            onFecha={setFecha}
+            onHora={setHora}
+          />
           <p className="mt-1.5 text-xs text-slate-600">
             Es una referencia para planear la carga de trabajo: no asigna a
             nadie ni cambia el estado.

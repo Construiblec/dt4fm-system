@@ -47,9 +47,11 @@ type Props = {
   onChange: (iso: string) => void;
   id?: string;
   className?: string;
+  /** Primer día elegible en `YYYY-MM-DD`; los anteriores se deshabilitan */
+  min?: string;
 };
 
-export const DateField = ({ value, onChange, id, className }: Props) => {
+export const DateField = ({ value, onChange, id, className, min }: Props) => {
   const [texto, setTexto] = useState(() => isoToDisplay(value));
   const [abierto, setAbierto] = useState(false);
   const contenedor = useRef<HTMLDivElement>(null);
@@ -155,9 +157,9 @@ export const DateField = ({ value, onChange, id, className }: Props) => {
         onClick={() => setAbierto((previo) => !previo)}
         aria-label="Abrir calendario"
         aria-expanded={abierto}
-        className="absolute right-1 top-1/2 -translate-y-1/2 rounded-md p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
+        className="absolute right-1 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
       >
-        <Calendar className="h-4 w-4" />
+        <Calendar className="h-5 w-5" />
       </button>
 
       {abierto ? (
@@ -167,7 +169,8 @@ export const DateField = ({ value, onChange, id, className }: Props) => {
               type="button"
               onClick={() => moverMes(-1)}
               aria-label="Mes anterior"
-              className="rounded-md p-1.5 text-slate-500 transition hover:bg-slate-100"
+              disabled={Boolean(min && `${toIsoDate(year, month, 1)}` <= min)}
+              className="rounded-md p-1.5 text-slate-500 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-30"
             >
               <ChevronLeft className="h-4 w-4" />
             </button>
@@ -204,18 +207,22 @@ export const DateField = ({ value, onChange, id, className }: Props) => {
               const iso = toIsoDate(year, month, day);
               const elegido = iso === value;
               const esHoy = iso === hoyIso;
+              const bloqueado = Boolean(min && iso < min);
 
               return (
                 <button
                   key={iso}
                   type="button"
+                  disabled={bloqueado}
                   onClick={() => elegir(day)}
                   className={`rounded-md py-1.5 text-sm transition ${
-                    elegido
-                      ? "bg-brand font-semibold text-white"
-                      : esHoy
-                        ? "bg-slate-100 font-semibold text-slate-900"
-                        : "text-slate-700 hover:bg-slate-100"
+                    bloqueado
+                      ? "cursor-not-allowed text-slate-300"
+                      : elegido
+                        ? "bg-brand font-semibold text-white"
+                        : esHoy
+                          ? "bg-slate-100 font-semibold text-slate-900"
+                          : "text-slate-700 hover:bg-slate-100"
                   }`}
                 >
                   {day}
