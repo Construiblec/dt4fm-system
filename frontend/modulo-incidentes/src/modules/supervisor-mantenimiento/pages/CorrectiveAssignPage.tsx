@@ -1,4 +1,4 @@
-import { Check, Info } from "lucide-react";
+import { Info } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
@@ -20,17 +20,13 @@ import type {
   SupervisedMaintenance,
 } from "@/modules/supervisor-mantenimiento/types/SupervisedMaintenance";
 import { getEmployeeId } from "@/shared/auth/session";
-import { DateField } from "@/shared/components/DateField";
+import { PrioritySelector } from "@/shared/components/PrioritySelector";
 import { SearchableSelect } from "@/shared/components/SearchableSelect";
-import {
-  PRIORITY_ADJECTIVES,
-  PRIORITY_DOT_CLASSES,
-  PRIORITY_ORDER,
-  toPriorityCode,
-  type PriorityCode,
-} from "@/shared/constants/priority";
+import { toPriorityCode, type PriorityCode } from "@/shared/constants/priority";
 import { toDateTimeLocal } from "@/shared/utils/dateTimeInput";
 import { equipmentLabel } from "@/shared/utils/equipmentLabel";
+import { plannedStartProblem } from "@/shared/utils/plannedStart";
+import { PlannedStartInputs } from "@/modules/supervisor-mantenimiento/components/PlannedStartInputs";
 
 /**
  * «Asignar y programar» en pantalla completa: prioridad, inicio previsto, equipo
@@ -126,8 +122,8 @@ export const CorrectiveAssignPage = () => {
     ? null
     : priority === null
       ? "Elige la prioridad."
-      : !fecha || !hora
-        ? "Indica la fecha y la hora de inicio previsto."
+      : plannedStartProblem(fecha, hora)
+        ? plannedStartProblem(fecha, hora)
         : teamId === null
           ? "Elige el equipo de trabajo."
           : assigneeId === null
@@ -188,61 +184,20 @@ export const CorrectiveAssignPage = () => {
       ) : maintenance ? (
         <>
           <FormCard>
-            <fieldset>
-              <legend className="mb-1.5 text-sm font-bold text-slate-900">
-                Prioridad{" "}
-                <span className="font-normal text-slate-600">
-                  (obligatorio)
-                </span>
-              </legend>
-              <div className="grid grid-cols-2 gap-2">
-                {[...PRIORITY_ORDER].reverse().map((option) => (
-                  <label
-                    key={option}
-                    className="flex min-h-12 cursor-pointer items-center gap-2.5 rounded-xl border border-slate-300 bg-white px-3.5 text-[15px] text-slate-700 transition has-[:checked]:border-2 has-[:checked]:border-brand has-[:checked]:bg-blue-50 has-[:checked]:font-bold has-[:checked]:text-blue-800 has-[:focus-visible]:ring-4 has-[:focus-visible]:ring-brand/20"
-                  >
-                    <input
-                      type="radio"
-                      name="priority"
-                      value={option}
-                      checked={priority === option}
-                      onChange={() => setPriority(option)}
-                      className="sr-only"
-                    />
-                    <span
-                      aria-hidden
-                      className={`h-2.5 w-2.5 shrink-0 rounded-full ${PRIORITY_DOT_CLASSES[option]}`}
-                    />
-                    <span className="flex-1">
-                      {PRIORITY_ADJECTIVES[option]}
-                    </span>
-                    {priority === option ? (
-                      <Check className="h-4 w-4" aria-hidden />
-                    ) : null}
-                  </label>
-                ))}
-              </div>
-            </fieldset>
+            <PrioritySelector value={priority} onChange={setPriority} />
 
             <FormField
               label="Inicio previsto"
               htmlFor="assignPlannedDate"
               help="Después de asignar ya no se puede cambiar."
             >
-              <div className="grid grid-cols-2 gap-2">
-                <DateField
-                  id="assignPlannedDate"
-                  value={fecha}
-                  onChange={setFecha}
-                />
-                <input
-                  type="time"
-                  aria-label="Hora de inicio previsto"
-                  value={hora}
-                  onChange={(event) => setHora(event.target.value)}
-                  className={formInputClass}
-                />
-              </div>
+              <PlannedStartInputs
+                id="assignPlannedDate"
+                fecha={fecha}
+                hora={hora}
+                onFecha={setFecha}
+                onHora={setHora}
+              />
             </FormField>
           </FormCard>
 
