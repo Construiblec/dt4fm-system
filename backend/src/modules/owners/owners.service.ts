@@ -17,7 +17,7 @@ import { AppSessionsService } from '../app-sessions/app-sessions.service';
 import { AuthService } from '../auth/auth.service';
 import { VerifyOwnerDto } from './dto/verify-owner.dto';
 import { RegisterOwnerDto } from './dto/register-owner.dto';
-import { ChangePasswordDto } from './dto/change-password.dto';
+import { OwnerChangePasswordDto } from './dto/change-password.dto';
 import { ContactAdminDto } from './dto/contact-admin.dto';
 import { CreateReservationDto } from './dto/create-reservation.dto';
 import { PayPaymentDto } from './dto/pay-payment.dto';
@@ -445,7 +445,7 @@ export class OwnersService {
   /** `currentSessionId` es la sesión que se conserva: la de quien la cambia. */
   async changeOwnerPassword(
     userId: number,
-    dto: ChangePasswordDto,
+    dto: OwnerChangePasswordDto,
     currentSessionId?: string,
   ) {
     const adminSessionId = await this.serviceSession.get();
