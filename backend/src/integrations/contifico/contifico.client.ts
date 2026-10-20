@@ -19,9 +19,7 @@ export class ContificoClient {
     private readonly configService: ConfigService,
   ) {
     this.apiKey = this.configService.get<string>('CONTIFICO_API_KEY') ?? '';
-    this.baseUrl =
-      this.configService.get<string>('CONTIFICO_BASE_URL') ??
-      'https://api.contifico.com/sistema/api/v1';
+    this.baseUrl = this.configService.get<string>('CONTIFICO_BASE_URL') ?? '';
   }
 
   private get authHeaders() {

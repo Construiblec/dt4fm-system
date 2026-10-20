@@ -34,9 +34,7 @@ export class SmtpMailProvider implements MailProvider {
   private readonly defaultFrom: string;
 
   constructor(private readonly configService: ConfigService) {
-    this.defaultFrom =
-      this.configService.get<string>('SMTP_FROM') ||
-      'DT4FM <no-reply@example.com>';
+    this.defaultFrom = this.configService.get<string>('SMTP_FROM') ?? '';
   }
 
   /**

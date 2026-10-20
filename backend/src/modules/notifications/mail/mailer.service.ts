@@ -248,13 +248,10 @@ export class MailerService {
       return (
         this.configService.get<string>('RESEND_FROM_EMAIL') ??
         this.configService.get<string>('RESEND_FROM') ??
-        'noreply@construiblec.cloud'
+        ''
       );
     }
 
-    return (
-      this.configService.get<string>('SMTP_FROM') ??
-      'noreply@construiblec.cloud'
-    );
+    return this.configService.get<string>('SMTP_FROM') ?? '';
   }
 }

@@ -30,7 +30,7 @@ export class ResendMailProvider implements MailProvider {
     this.defaultFrom =
       this.configService.get<string>('RESEND_FROM_EMAIL') ??
       this.configService.get<string>('RESEND_FROM') ??
-      'noreply@construiblec.cloud';
+      '';
 
     this.logger.log(
       `[Resend] Proveedor inicializado → from=${this.defaultFrom}`,

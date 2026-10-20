@@ -305,7 +305,10 @@ export class NotificationsService {
       contentType: 'image/jpeg',
     }));
 
-    const recipients = ['andersoncango09@gmail.com'];
+    const recipients =
+      process.env.INCIDENT_NOTIFICATION_EMAIL?.split(',')
+        .map((e) => e.trim())
+        .filter(Boolean) || [];
 
     const messages = recipients.map((to) => ({
       to,
