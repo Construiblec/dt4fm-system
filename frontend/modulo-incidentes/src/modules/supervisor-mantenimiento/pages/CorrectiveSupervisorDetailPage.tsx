@@ -9,7 +9,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { AppLayout } from "@/app/layout/AppLayout";
 import { CorrectiveDocumentationTab } from "@/modules/incidentes/components/corrective/CorrectiveDocumentationTab";
 import { CorrectiveSummaryCard } from "@/modules/incidentes/components/corrective/CorrectiveSummaryCard";
@@ -18,7 +18,7 @@ import {
   getCorrectiveStatusLabel,
   getCorrectiveStatusPill,
 } from "@/modules/incidentes/constants/correctiveStatus";
-import { AssignScheduleSheet } from "@/modules/supervisor-mantenimiento/components/AssignScheduleSheet";
+import { CorrectiveReassignSheet } from "@/modules/supervisor-mantenimiento/components/CorrectiveReassignSheet";
 import { MaintenanceEvidence } from "@/modules/supervisor-mantenimiento/components/MaintenanceEvidence";
 import { NotesReasonSheet } from "@/modules/supervisor-mantenimiento/components/NotesReasonSheet";
 import {
@@ -44,7 +44,7 @@ import { ReportDetailCard } from "@/shared/components/ReportDetailCard";
 import { withoutCode } from "@/shared/utils/locationLabel";
 
 type Tab = "report" | "documentation";
-type Sheet = "assign" | "reassign" | "reject" | "reopen" | null;
+type Sheet = "reassign" | "reject" | "reopen" | null;
 
 const TABS: { value: Tab; label: string }[] = [
   { value: "report", label: "Reporte" },
@@ -62,6 +62,7 @@ const dangerButton =
 /** Detalle del correctivo para el supervisor de mantenimiento. */
 export const CorrectiveSupervisorDetailPage = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { id = "" } = useParams();
 
   const [maintenance, setMaintenance] = useState<SupervisedMaintenance | null>(
@@ -69,7 +70,17 @@ export const CorrectiveSupervisorDetailPage = () => {
   );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [banner, setBanner] = useState<string | null>(null);
+  // La pantalla de asignación vuelve aquí con su mensaje de éxito
+  const [banner, setBanner] = useState<string | null>(
+    (location.state as { banner?: string } | null)?.banner ?? null,
+  );
+
+  // Se consume una vez: al recargar o volver atrás no debe repetirse
+  useEffect(() => {
+    if ((location.state as { banner?: string } | null)?.banner) {
+      navigate(location.pathname, { replace: true, state: null });
+    }
+  }, [location.pathname, location.state, navigate]);
   const [tab, setTab] = useState<Tab>("report");
   const [sheet, setSheet] = useState<Sheet>(null);
   const [evidence, setEvidence] = useState<MaintenanceEvidenceItem[]>([]);
@@ -261,7 +272,11 @@ export const CorrectiveSupervisorDetailPage = () => {
                     <div className="space-y-3 pt-1">
                       <button
                         type="button"
-                        onClick={() => setSheet("assign")}
+                        onClick={() =>
+                          navigate(
+                            `/supervisor-mantenimiento/corrective/${id}/asignar`,
+                          )
+                        }
                         className={primaryButton}
                       >
                         <UserPlus className="h-4 w-4" aria-hidden />
@@ -324,15 +339,14 @@ export const CorrectiveSupervisorDetailPage = () => {
         </div>
       </main>
 
-      {maintenance && (sheet === "assign" || sheet === "reassign") ? (
-        <AssignScheduleSheet
+      {maintenance && sheet === "reassign" ? (
+        <CorrectiveReassignSheet
           maintenance={maintenance}
-          mode={sheet}
           onClose={() => setSheet(null)}
           onSuccess={(updated) =>
             applyUpdate(
               updated,
-              `${sheet === "assign" ? "Asignado" : "Reasignado"} a ${updated.assignee?.name ?? "el responsable"}.`,
+              `Reasignado a ${updated.assignee?.name ?? "el responsable"}.`,
             )
           }
         />

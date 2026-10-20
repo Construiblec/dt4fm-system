@@ -11,6 +11,7 @@ import { CleaningTaskExecutionPage } from "@/modules/incidentes/pages/CleaningTa
 import { DashboardPage } from "@/modules/incidentes/pages/DashboardPage";
 import { IncidentDetailPage } from "@/modules/incidentes/pages/IncidentDetailPage";
 import { CorrectiveHistoryDetailPage } from "@/modules/incidentes/pages/CorrectiveHistoryDetailPage";
+import { CorrectiveAssignPage } from "@/modules/supervisor-mantenimiento/pages/CorrectiveAssignPage";
 import { PastPreventiveMaintenancePage } from "@/modules/incidentes/pages/PastPreventiveMaintenancePage";
 import { PreventiveMaintenanceDetailPage } from "@/modules/incidentes/pages/PreventiveMaintenanceDetailPage";
 import { ReportIncidentPage } from "@/modules/incidentes/pages/ReportIncidentPage";
@@ -142,6 +143,14 @@ export const router = createBrowserRouter([
     element: (
       <RequireRole roles={["SupervisorMantenimiento", "SuperUser"]}>
         <MaintenanceSupervisorDashboardPage />
+      </RequireRole>
+    ),
+  },
+  {
+    path: "/supervisor-mantenimiento/corrective/:id/asignar",
+    element: (
+      <RequireRole roles={["SupervisorMantenimiento", "SuperUser"]}>
+        <CorrectiveAssignPage />
       </RequireRole>
     ),
   },

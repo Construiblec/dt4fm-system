@@ -13,9 +13,9 @@ import {
   getPreventiveStatusLabel,
   getPreventiveStatusPill,
 } from "@/modules/incidentes/constants/preventiveStatus";
-import { AssignAssigneeModal } from "@/modules/supervisor-mantenimiento/components/AssignAssigneeModal";
+import { PreventiveAssignSheet } from "@/modules/supervisor-mantenimiento/components/PreventiveAssignSheet";
 import { MaintenanceEvidence } from "@/modules/supervisor-mantenimiento/components/MaintenanceEvidence";
-import { PlannedStartModal } from "@/modules/supervisor-mantenimiento/components/PlannedStartModal";
+import { PlannedStartSheet } from "@/modules/supervisor-mantenimiento/components/PlannedStartSheet";
 import {
   getApiErrorMessage,
   getMaintenanceDetail,
@@ -378,7 +378,7 @@ export const PreventiveSupervisorDetailPage = () => {
       </main>
 
       {maintenance && (modal === "assign" || modal === "reassign") ? (
-        <AssignAssigneeModal
+        <PreventiveAssignSheet
           maintenance={maintenance}
           mode={modal}
           onClose={() => setModal(null)}
@@ -394,7 +394,7 @@ export const PreventiveSupervisorDetailPage = () => {
       ) : null}
 
       {maintenance && modal === "planned-start" ? (
-        <PlannedStartModal
+        <PlannedStartSheet
           maintenance={maintenance}
           onClose={() => setModal(null)}
           onSuccess={(updated) =>
