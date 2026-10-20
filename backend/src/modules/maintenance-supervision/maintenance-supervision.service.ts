@@ -42,6 +42,7 @@ import {
   CmStatusId,
   resolveCorrectiveStatus,
 } from './constants/corrective-maint.constants';
+import { EquipmentOpenmaintService } from '../corrective-maintenance/equipment.openmaint.service';
 import { PushDispatchService } from '../push-notifications/push-dispatch.service';
 import { SUPPLIER_EMPLOYEE_TYPE } from './constants/supervision-roles.constants';
 import {
@@ -71,6 +72,8 @@ export type SupervisedMaintenance = {
   area?: string | null;
   /** Quien reportó; huésped, visitante e IoT con su nombre real. Solo correctivos */
   reporter?: CorrectiveReporter | null;
+  /** Equipo intervenido. Solo correctivos */
+  asset?: { id: number; name: string } | null;
   assignee: { id: number; name: string } | null;
   team: { id: number; name: string } | null;
   /**
@@ -143,6 +146,7 @@ export class MaintenanceSupervisionService {
     private readonly preventive: PreventiveMaintenanceOpenmaintService,
     private readonly openmaint: OpenmaintService,
     private readonly pushDispatch: PushDispatchService,
+    private readonly equipment: EquipmentOpenmaintService,
   ) {}
 
   // ── Listados ───────────────────────────────────────────────────────────────
@@ -369,6 +373,31 @@ export class MaintenanceSupervisionService {
     return { success: true, data, meta: { total: data.length } };
   }
 
+  /** Equipos del edificio del correctivo, para elegir el intervenido al asignar. */
+  async searchCorrectiveAssets(sessionId: string, id: number, query?: string) {
+    const card = await this.fetchCorrective(sessionId, id);
+
+    const assets = await this.call(
+      () =>
+        this.equipment.search(sessionId, {
+          query,
+          buildingId: card.Site ?? null,
+          // Sin texto se trae el edificio entero para filtrar en el cliente
+          limit: query?.trim() ? 30 : 300,
+        }),
+      'Error al buscar equipos en OpenMAINT',
+    );
+
+    const data = assets.map((asset) => ({
+      id: asset._id,
+      code: asset.Code ?? null,
+      description: asset.Description ?? null,
+      place: asset._Floor_description ?? null,
+    }));
+
+    return { success: true, data, meta: { total: data.length } };
+  }
+
   // ── Asignación ─────────────────────────────────────────────────────────────
 
   /**
@@ -424,6 +453,10 @@ export class MaintenanceSupervisionService {
 
     if (dto.plannedStart) {
       fields.ExpExecStartDate = dto.plannedStart;
+    }
+
+    if (dto.assetId !== undefined) {
+      fields.Asset = dto.assetId;
     }
 
     await this.call(
@@ -1023,6 +1056,7 @@ export class MaintenanceSupervisionService {
       floor: card._Floor_description ?? null,
       area: card._Unit_description ?? card._CommonArea_description ?? null,
       reporter: resolveReporter(reportNotes, card._Requester_description),
+      asset: this.toRef(card.Asset, card._Asset_description),
       assignee: this.toRef(card.Assignee, card._Assignee_description),
       team: this.toRef(card.Team, card._Team_description),
       priority: this.toPriority(card),

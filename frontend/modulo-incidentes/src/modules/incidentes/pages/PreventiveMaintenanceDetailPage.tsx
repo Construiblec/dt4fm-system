@@ -6,9 +6,9 @@ import {
   Image as ImageIcon,
   Paperclip,
   PauseCircle,
-  Plus,
 } from "lucide-react";
 import { AppLayout } from "@/app/layout/AppLayout";
+import { UploadFab } from "@/shared/components/UploadFab";
 import { AttachmentListSection } from "@/modules/incidentes/components/AttachmentListSection";
 import { PreventiveChecklist } from "@/modules/incidentes/components/PreventiveChecklist";
 import { PreventiveDetailTabs } from "@/modules/incidentes/components/PreventiveDetailTabs";
@@ -47,8 +47,7 @@ import { SuccessModal } from "@/shared/components/SuccessModal";
 
 import { formatMediumDateTime as formatDateTimeUtil } from "@/shared/utils/dateUtils";
 
-const formatDateTime = (value: string | null) =>
-  formatDateTimeUtil(value, "—");
+const formatDateTime = (value: string | null) => formatDateTimeUtil(value, "—");
 
 type InfoRowProps = {
   label: string;
@@ -134,8 +133,14 @@ export const PreventiveMaintenanceDetailPage = () => {
     () => maintenance?.checklist ?? [],
     [maintenance],
   );
-  const { answers, setAnswer, completedCount, totalCount, isComplete, payload } =
-    usePreventiveChecklist(checklistItems);
+  const {
+    answers,
+    setAnswer,
+    completedCount,
+    totalCount,
+    isComplete,
+    payload,
+  } = usePreventiveChecklist(checklistItems);
   const [observations, setObservations] = useState("");
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [isCompleting, setIsCompleting] = useState(false);
@@ -195,7 +200,11 @@ export const PreventiveMaintenanceDetailPage = () => {
       setSuspendError(null);
 
       // `payload` solo lleva las respondidas; el backend marca el resto como N.D.
-      await suspendPreventiveMaintenance(id, { reasonId, notes, items: payload });
+      await suspendPreventiveMaintenance(id, {
+        reasonId,
+        notes,
+        items: payload,
+      });
 
       setSuspendSuccessOpen(true);
     } catch {
@@ -454,7 +463,7 @@ export const PreventiveMaintenanceDetailPage = () => {
               {tab === "checklist" && maintenance.notes !== null ? (
                 <section className="rounded-3xl bg-white p-5 shadow-sm">
                   <h2 className="text-base font-semibold text-slate-900">
-                    Historial de notas
+                    Notas
                   </h2>
                   <p className="mt-3 whitespace-pre-line text-sm leading-6 text-slate-600">
                     {maintenance.notes}
@@ -540,17 +549,14 @@ export const PreventiveMaintenanceDetailPage = () => {
         </div>
 
         {/* Anclado al ancho de la app. Un mantenimiento cerrado no admite adjuntos */}
-        {tab === "documents" && !loading && !error && maintenance?.isClosed === false ? (
-          <div className="pointer-events-none fixed inset-x-0 bottom-0 z-40 mx-auto flex max-w-md justify-end px-5 pb-6">
-            <button
-              type="button"
-              aria-label="Subir informe o documento"
-              onClick={() => setShowUploadSheet(true)}
-              className="pointer-events-auto flex h-14 w-14 items-center justify-center rounded-full bg-brand text-white shadow-lg transition hover:bg-brand-hover"
-            >
-              <Plus className="h-6 w-6" />
-            </button>
-          </div>
+        {tab === "documents" &&
+        !loading &&
+        !error &&
+        maintenance?.isClosed === false ? (
+          <UploadFab
+            label="Subir informe o documento"
+            onClick={() => setShowUploadSheet(true)}
+          />
         ) : null}
 
         <UploadDocumentSheet

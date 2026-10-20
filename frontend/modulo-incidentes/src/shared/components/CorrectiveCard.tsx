@@ -1,4 +1,5 @@
 import { useEffect, useState, type ComponentType } from "react";
+import { formatReporter } from "@/shared/utils/reporterLabel";
 import { Link } from "react-router-dom";
 import {
   AlertTriangle,
@@ -23,7 +24,10 @@ import {
   toPriorityCode,
 } from "@/shared/constants/priority";
 import { LATE_START_STYLE } from "@/shared/constants/statusPalette";
-import { formatElapsed, formatDayMonthYearTime } from "@/shared/utils/dateUtils";
+import {
+  formatElapsed,
+  formatDayMonthYearTime,
+} from "@/shared/utils/dateUtils";
 import { formatPlace } from "@/shared/utils/locationLabel";
 
 export type ReporterKind = "staff" | "guest" | "visitor" | "iot";
@@ -71,11 +75,6 @@ type Field = {
 const NEW_STATUSES = new Set(["Opening", "Assignment"]);
 const FINISHED_STATUSES = new Set(["Accounting", "Completed"]);
 
-const REPORTER_SUFFIX: Partial<Record<ReporterKind, string>> = {
-  guest: " (huésped)",
-  visitor: " (visitante)",
-};
-
 const locationOf = (data: CorrectiveCardData) =>
   formatPlace(data.site, data.area, data.floor) ?? "Sin ubicación";
 
@@ -112,9 +111,14 @@ const dateField = (
 });
 
 /** Cada estado enseña solo las fechas y personas que importan en ese momento. */
-const fieldsFor = (data: CorrectiveCardData, perspective: Perspective): Field[] => {
+const fieldsFor = (
+  data: CorrectiveCardData,
+  perspective: Perspective,
+): Field[] => {
   const code = data.statusCode ?? "";
-  const fields: Field[] = [{ icon: MapPin, label: "Ubicación", value: locationOf(data) }];
+  const fields: Field[] = [
+    { icon: MapPin, label: "Ubicación", value: locationOf(data) },
+  ];
   const assignee: Field = {
     icon: Wrench,
     label: "Responsable",
@@ -126,7 +130,7 @@ const fieldsFor = (data: CorrectiveCardData, perspective: Perspective): Field[] 
       fields.push({
         icon: UserRound,
         label: "Reportado por",
-        value: data.reporter.name + (REPORTER_SUFFIX[data.reporter.kind] ?? ""),
+        value: formatReporter(data.reporter) ?? "",
       });
     }
     fields.push(dateField(CalendarDays, "Reportado el", data.openingDate));
@@ -151,7 +155,8 @@ const fieldsFor = (data: CorrectiveCardData, perspective: Perspective): Field[] 
       {
         icon: Timer,
         label: "Duración",
-        value: formatElapsed(data.execStartDate, data.execEndDate) ?? "Sin dato",
+        value:
+          formatElapsed(data.execStartDate, data.execEndDate) ?? "Sin dato",
       },
     );
   } else {
@@ -177,8 +182,11 @@ export const CorrectiveCard = ({
   const canOpen = Boolean(to) && !disabledReason;
 
   // Correctivo sin fecha límite: va atrasado si debía haber empezado y no lo hizo.
-  const plannedMs = data.plannedStart ? new Date(data.plannedStart).getTime() : NaN;
-  const mayBeLate = code === "Assigned" && !data.execStartDate && Number.isFinite(plannedMs);
+  const plannedMs = data.plannedStart
+    ? new Date(data.plannedStart).getTime()
+    : NaN;
+  const mayBeLate =
+    code === "Assigned" && !data.execStartDate && Number.isFinite(plannedMs);
   const now = useMinuteClock(mayBeLate);
   const lateMs = mayBeLate ? now - plannedMs : 0;
   const isLate = lateMs > 0;
@@ -205,7 +213,9 @@ export const CorrectiveCard = ({
           <p className="text-xs font-bold leading-[1.4] tracking-[0.4px] text-slate-600">
             {data.number ?? "Correctivo"}
           </p>
-          <span className={`shrink-0 leading-[1.4] ${getCorrectiveStatusPill(code)} !px-2.5`}>
+          <span
+            className={`shrink-0 leading-[1.4] ${getCorrectiveStatusPill(code)} !px-2.5`}
+          >
             <span className="sr-only">Estado: </span>
             {getCorrectiveStatusLabel(data.statusCode, data.status)}
           </span>
@@ -237,17 +247,22 @@ export const CorrectiveCard = ({
         ) : null}
 
         <dl className="space-y-[7px] rounded-lg bg-slate-50 px-3 py-2.5">
-          {fieldsFor(data, perspective).map(({ icon: Icon, label, value, dateTime }) => (
-            <div key={label} className="flex items-start gap-2">
-              <Icon aria-hidden className="mt-[3px] h-3.5 w-3.5 shrink-0 text-slate-500" />
-              <dt className="w-24 shrink-0 pt-px text-xs leading-[1.4] text-slate-600">
-                {label}
-              </dt>
-              <dd className="min-w-0 flex-1 break-words text-sm font-medium leading-[1.4] text-slate-900">
-                {dateTime ? <time dateTime={dateTime}>{value}</time> : value}
-              </dd>
-            </div>
-          ))}
+          {fieldsFor(data, perspective).map(
+            ({ icon: Icon, label, value, dateTime }) => (
+              <div key={label} className="flex items-start gap-2">
+                <Icon
+                  aria-hidden
+                  className="mt-[3px] h-3.5 w-3.5 shrink-0 text-slate-500"
+                />
+                <dt className="w-24 shrink-0 pt-px text-xs leading-[1.4] text-slate-600">
+                  {label}
+                </dt>
+                <dd className="min-w-0 flex-1 break-words text-sm font-medium leading-[1.4] text-slate-900">
+                  {dateTime ? <time dateTime={dateTime}>{value}</time> : value}
+                </dd>
+              </div>
+            ),
+          )}
         </dl>
 
         <div className="flex items-center justify-between gap-2">
@@ -273,7 +288,10 @@ export const CorrectiveCard = ({
             </span>
           ) : disabledReason ? (
             <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 py-[3px] pl-2 pr-[9px] text-xs font-medium leading-[1.4] text-slate-600">
-              <Lock aria-hidden="true" className="h-3 w-3 shrink-0 text-slate-500" />
+              <Lock
+                aria-hidden="true"
+                className="h-3 w-3 shrink-0 text-slate-500"
+              />
               {disabledReason}
             </span>
           ) : null}

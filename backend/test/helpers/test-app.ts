@@ -16,6 +16,7 @@ import { OpenmaintUsersService } from '../../src/integrations/openmaint/openmain
 import { CleaningTasksOpenmaintService } from '../../src/modules/cleaning-tasks/cleaning-tasks.openmaint.service';
 import { PreventiveMaintenanceOpenmaintService } from '../../src/modules/preventive-maintenance/preventive-maintenance.openmaint.service';
 import { CorrectiveMaintOpenmaintService } from '../../src/modules/maintenance-supervision/corrective-maint.openmaint.service';
+import { EquipmentOpenmaintService } from '../../src/modules/corrective-maintenance/equipment.openmaint.service';
 import { IotAlarmOpenmaintService } from '../../src/modules/iot-alarms/iot-alarm.openmaint.service';
 import { PasswordRecoveryOpenmaintService } from '../../src/modules/password-recovery/password-recovery.openmaint.service';
 import { PaymentsOpenmaintRepository } from '../../src/modules/payments/payments-openmaint.repository';
@@ -41,6 +42,7 @@ import {
   createCleaningTasksOpenmaintServiceMock,
   createPreventiveMaintenanceOpenmaintServiceMock,
   createCorrectiveMaintOpenmaintServiceMock,
+  createEquipmentOpenmaintServiceMock,
   createIotAlarmOpenmaintServiceMock,
   createPasswordRecoveryOpenmaintServiceMock,
   createPaymentsOpenmaintRepositoryMock,
@@ -88,6 +90,7 @@ export interface TestAppMocks {
   correctiveOpenmaint: ReturnType<
     typeof createCorrectiveMaintOpenmaintServiceMock
   >;
+  equipmentOpenmaint: ReturnType<typeof createEquipmentOpenmaintServiceMock>;
   iotOpenmaint: ReturnType<typeof createIotAlarmOpenmaintServiceMock>;
   passwordRecoveryOpenmaint: ReturnType<
     typeof createPasswordRecoveryOpenmaintServiceMock
@@ -114,6 +117,7 @@ export const createFreshMocks = (): TestAppMocks => ({
   cleaningTasksOpenmaint: createCleaningTasksOpenmaintServiceMock(),
   preventiveOpenmaint: createPreventiveMaintenanceOpenmaintServiceMock(),
   correctiveOpenmaint: createCorrectiveMaintOpenmaintServiceMock(),
+  equipmentOpenmaint: createEquipmentOpenmaintServiceMock(),
   iotOpenmaint: createIotAlarmOpenmaintServiceMock(),
   passwordRecoveryOpenmaint: createPasswordRecoveryOpenmaintServiceMock(),
   paymentsOpenmaint: createPaymentsOpenmaintRepositoryMock(),
@@ -167,6 +171,8 @@ export async function createTestApp(
     .useValue(mocks.preventiveOpenmaint)
     .overrideProvider(CorrectiveMaintOpenmaintService)
     .useValue(mocks.correctiveOpenmaint)
+    .overrideProvider(EquipmentOpenmaintService)
+    .useValue(mocks.equipmentOpenmaint)
     .overrideProvider(IotAlarmOpenmaintService)
     .useValue(mocks.iotOpenmaint)
     .overrideProvider(PasswordRecoveryOpenmaintService)

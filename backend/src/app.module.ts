@@ -16,6 +16,7 @@ import { OwnersModule } from './modules/owners/owners.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { MeetingRemindersModule } from './modules/meeting-reminders/meeting-reminders.module';
 import { PreventiveMaintenanceModule } from './modules/preventive-maintenance/preventive-maintenance.module';
+import { CorrectiveMaintenanceModule } from './modules/corrective-maintenance/corrective-maintenance.module';
 import { MaintenanceSupervisionModule } from './modules/maintenance-supervision/maintenance-supervision.module';
 import { PasswordRecoveryModule } from './modules/password-recovery/password-recovery.module';
 import { AccessControlModule } from './modules/access-control/access-control.module';
@@ -40,6 +41,7 @@ import { VideoSurveillanceModule } from './modules/video-surveillance/video-surv
     IotAlarmsModule,
     PreventiveMaintenanceModule,
     MaintenanceSupervisionModule,
+    CorrectiveMaintenanceModule,
     BuildingsModule,
     CleaningTasksModule,
     BillingModule,

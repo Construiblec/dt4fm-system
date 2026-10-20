@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ImageOff, X, ZoomIn } from "lucide-react";
+import { Image as ImageIcon, ImageOff, X, ZoomIn } from "lucide-react";
 import type { MaintenanceEvidence as Evidence } from "@/modules/supervisor-mantenimiento/types/SupervisedMaintenance";
 
 type Props = {
@@ -24,14 +24,17 @@ export const MaintenanceEvidence = ({ images, loading = false }: Props) => {
 
   return (
     <>
-      <section className="rounded-2xl bg-white p-4 shadow-sm">
-        <div className="mb-3 flex items-center justify-between">
-          <h3 className="text-sm font-bold text-slate-900">
-            Evidencia fotográfica
-          </h3>
+      <section className="rounded-3xl bg-white p-5 shadow-sm">
+        <div className="mb-4 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <ImageIcon className="h-5 w-5 text-slate-500" aria-hidden />
+            <h2 className="text-base font-semibold text-slate-900">
+              Evidencia
+            </h2>
+          </div>
 
           {!loading && images.length > 0 ? (
-            <span className="rounded-full bg-violet-100 px-2 py-0.5 text-xs font-semibold text-violet-700">
+            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600">
               {images.length} foto{images.length !== 1 ? "s" : ""}
             </span>
           ) : null}
