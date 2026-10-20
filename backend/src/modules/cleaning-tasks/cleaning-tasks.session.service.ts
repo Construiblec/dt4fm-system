@@ -44,10 +44,8 @@ export class CleaningTasksSessionService implements OnModuleInit {
    * Fuerza el refresco de la sesión
    */
   async refreshSession(): Promise<void> {
-    const username =
-      this.configService.get<string>('OPENMAINT_USERNAME') || 'admin';
-    const password =
-      this.configService.get<string>('OPENMAINT_PASSWORD') || 'admin';
+    const username = this.configService.get<string>('OPENMAINT_USERNAME') ?? '';
+    const password = this.configService.get<string>('OPENMAINT_PASSWORD') ?? '';
 
     try {
       const response = await this.client.post(
