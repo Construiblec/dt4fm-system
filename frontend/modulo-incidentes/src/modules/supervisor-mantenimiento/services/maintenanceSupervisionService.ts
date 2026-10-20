@@ -3,6 +3,7 @@ import { env } from "@/config/env";
 import { attachSessionRenewal } from "@/shared/auth/sessionHttp";
 import type {
   AssigneesResponse,
+  AssetOption,
   AssignPayload,
   EvidenceResponse,
   ListParams,
@@ -135,6 +136,21 @@ export const listAssignees = async (
       { headers: getAuthHeaders() },
     );
     return data;
+  } catch (error) {
+    return handleUnauthorized(error);
+  }
+};
+
+/** Equipos del edificio del correctivo, para elegir el intervenido. */
+export const listCorrectiveAssets = async (
+  id: number,
+): Promise<AssetOption[]> => {
+  try {
+    const { data } = await api.get<{ data: AssetOption[] }>(
+      `/maintenance-supervision/corrective/${id}/assets`,
+      { headers: getAuthHeaders() },
+    );
+    return data.data;
   } catch (error) {
     return handleUnauthorized(error);
   }

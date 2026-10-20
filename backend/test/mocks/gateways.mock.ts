@@ -97,10 +97,43 @@ export const createCorrectiveMaintOpenmaintServiceMock = () => ({
   findWithTasklist: jest.fn(),
   advance: jest.fn().mockResolvedValue({ data: {} }),
   saveFields: jest.fn().mockResolvedValue({ data: {} }),
+  findByAsset: jest.fn().mockResolvedValue({ data: [] }),
+  findAttachments: jest.fn().mockResolvedValue({ data: [] }),
+  downloadAttachment: jest.fn().mockResolvedValue({
+    data: Buffer.from('mock'),
+    contentType: 'application/pdf',
+    fileName: 'mock.pdf',
+  }),
+  deleteAttachment: jest.fn().mockResolvedValue(true),
+  uploadAttachment: jest.fn().mockResolvedValue(true),
 });
 
 export type CorrectiveMaintOpenmaintServiceMock = ReturnType<
   typeof createCorrectiveMaintOpenmaintServiceMock
+>;
+
+// ─── EquipmentOpenmaintService ──────────────────────────────────────────────
+
+export const createEquipmentOpenmaintServiceMock = () => ({
+  findById: jest.fn().mockResolvedValue(null),
+  search: jest.fn().mockResolvedValue([]),
+  findAttachments: jest.fn().mockResolvedValue([]),
+  downloadAttachment: jest.fn().mockResolvedValue({
+    data: Buffer.from('mock'),
+    contentType: 'application/pdf',
+    fileName: 'ficha.pdf',
+  }),
+  findManualIdsBySubset: jest.fn().mockResolvedValue([]),
+  findManualAttachments: jest.fn().mockResolvedValue([]),
+  downloadManualAttachment: jest.fn().mockResolvedValue({
+    data: Buffer.from('mock'),
+    contentType: 'application/pdf',
+    fileName: 'manual.pdf',
+  }),
+});
+
+export type EquipmentOpenmaintServiceMock = ReturnType<
+  typeof createEquipmentOpenmaintServiceMock
 >;
 
 // ─── IotAlarmOpenmaintService ───────────────────────────────────────────────

@@ -79,8 +79,12 @@ type OpenmaintIncidentDetail = {
   _Unit_description?: string | null;
   _Floor_description?: string | null;
   _CommonArea_description?: string | null;
-  /** Equipo sobre el que se abrió; hoy solo lo rellenan las alarmas IoT. */
+  /** Equipo intervenido: lo fijan las alarmas IoT o el supervisor al asignar. */
+  Asset?: number | null;
   _Asset_description?: string | null;
+  Priority?: number | null;
+  ExpExecStartDate?: string | null;
+  ExecEndDate?: string | null;
 };
 
 type OpenmaintIncidentDetailResponse = {
@@ -316,7 +320,14 @@ export class IncidentsService {
         null,
       priority:
         incident._Priority_description ?? incident.Priority_description ?? null,
+      priorityCode:
+        incident.Priority != null
+          ? (CM_PRIORITY_CODES[incident.Priority] ?? null)
+          : null,
       createdAt: incident.OpeningDate ?? null,
+      plannedStart: incident.ExpExecStartDate ?? null,
+      execStartDate: incident.ExecStartDate ?? null,
+      execEndDate: incident.ExecEndDate ?? null,
       // Lo que escribió quien reportó; `notes` es la nota del último paso.
       reportNotes: extractReportNotes(incident.Register ?? null),
       notes: extractRegisterNotes(incident.Register ?? null),
@@ -335,6 +346,7 @@ export class IncidentsService {
       commonArea: incident._CommonArea_description ?? null,
       floor: incident._Floor_description ?? null,
       asset: incident._Asset_description ?? null,
+      assetId: incident.Asset ?? null,
       images,
     };
   }

@@ -29,7 +29,10 @@ export const BottomSheet = ({
       onClick={onClose}
     >
       <div
-        className="w-full max-w-md rounded-t-3xl bg-white pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-3 shadow-xl"
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        className="max-h-[92dvh] w-full max-w-md overflow-y-auto rounded-t-3xl bg-white pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-3 shadow-xl"
         onClick={(event) => event.stopPropagation()}
       >
         <div className="mx-auto h-1 w-10 rounded-full bg-slate-200" />
@@ -41,7 +44,7 @@ export const BottomSheet = ({
             type="button"
             onClick={onClose}
             aria-label="Cerrar"
-            className="rounded-full p-1.5 text-slate-400 transition hover:text-slate-600"
+            className="flex h-11 w-11 items-center justify-center rounded-full text-slate-600 transition hover:bg-slate-100"
           >
             <X className="h-5 w-5" />
           </button>

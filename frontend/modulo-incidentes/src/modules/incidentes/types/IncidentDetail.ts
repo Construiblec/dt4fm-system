@@ -1,3 +1,4 @@
+import type { ReporterKind } from "@/shared/components/CorrectiveCard";
 import type { LogEntry } from "@/shared/components/NotesLogCard";
 
 export type IncidentDetail = {
@@ -16,7 +17,18 @@ export type IncidentDetail = {
   statusCode: string | null;
   status: string;
   priority: string;
+  /** `Critical|High|Medium|Low`, o null si aún no se fijó */
+  priorityCode?: string | null;
   createdAt: string;
+  plannedStart?: string | null;
+  execStartDate?: string | null;
+  execEndDate?: string | null;
+  reporter?: { name: string; kind: ReporterKind } | null;
+  requesterName?: string | null;
+  assigneeName?: string | null;
+  /** Equipo intervenido */
+  asset?: string | null;
+  assetId?: number | null;
   /** Lo que escribió quien reportó la novedad. */
   reportNotes: string | null;
   /** La nota del último paso del flujo. */

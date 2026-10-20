@@ -27,6 +27,8 @@ export type SupervisedMaintenance = {
   area?: string | null;
   /** Quien reportó; huésped, visitante e IoT con su nombre real. Solo correctivos */
   reporter?: { name: string; kind: ReporterKind } | null;
+  /** Equipo intervenido. Solo correctivos */
+  asset?: MaintenanceRef | null;
   assignee: MaintenanceRef | null;
   team: MaintenanceRef | null;
   /** Código estable (`Critical|High|Medium|Low`). Los preventivos no la traen */
@@ -122,5 +124,15 @@ export type AssignPayload = {
   /** Se ignora en preventivo: `Team` no es escribible en su flujo */
   teamId?: number;
   plannedStart?: string;
+  /** Equipo intervenido. Solo correctivos y opcional */
+  assetId?: number;
   notes?: string;
+};
+
+/** Equipo candidato a intervenido en un correctivo. */
+export type AssetOption = {
+  id: number;
+  code: string | null;
+  description: string | null;
+  place: string | null;
 };

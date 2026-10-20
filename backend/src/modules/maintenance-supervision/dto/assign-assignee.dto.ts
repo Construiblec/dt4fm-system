@@ -55,6 +55,17 @@ export class AssignAssigneeDto {
   priority?: string;
 
   @ApiPropertyOptional({
+    description:
+      'ID del equipo intervenido (superclase `Asset`). Opcional; solo correctivos.',
+    example: 3209930,
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @IsPositive()
+  assetId?: number;
+
+  @ApiPropertyOptional({
     description: 'Nota que se anexa a la bitácora del proceso',
   })
   @IsOptional()

@@ -19,7 +19,7 @@ export const ReportDetailCard = ({ notes, variant = "operator" }: Props) => {
   return (
     <section className="rounded-3xl bg-white p-5 shadow-sm">
       <div className="flex items-center justify-between gap-3">
-        <h2 className={titleClass}>Detalle del reporte</h2>
+        <h2 className={titleClass}>Detalle</h2>
         {alarm ? (
           <span className="shrink-0 rounded-md bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-700">
             Alarma IoT

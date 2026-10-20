@@ -109,6 +109,46 @@ describe('MaintenanceSupervisionController (e2e)', () => {
       );
     });
 
+    it('201: escribe el equipo intervenido en el mismo avance', async () => {
+      mocks.correctiveOpenmaint.findWithTasklist.mockResolvedValueOnce(
+        correctiveResponse({ status: CM_STATUS_IDS.ASSIGNMENT }),
+      );
+      mocks.correctiveOpenmaint.advance.mockResolvedValueOnce({ data: {} });
+      mocks.correctiveOpenmaint.findById.mockResolvedValueOnce(
+        correctiveResponse({
+          status: CM_STATUS_IDS.EXECUTION,
+          execStartDate: null,
+          asset: 3209930,
+        }),
+      );
+
+      const res = await request(app.getHttpServer())
+        .post('/maintenance-supervision/corrective/12345/assign')
+        .set('authorization', 'mock-session-id')
+        .send({
+          assigneeId: 1456396,
+          plannedStart: '2026-08-25T09:00:00.000Z',
+          priority: 'High',
+          assetId: 3209930,
+        })
+        .expect(201);
+
+      expect(res.body.data.asset).toEqual({
+        id: 3209930,
+        name: 'GAS 01 - Calentador',
+      });
+      expect(mocks.correctiveOpenmaint.advance).toHaveBeenCalledWith(
+        'mock-session-id',
+        12345,
+        expect.objectContaining({
+          fields: expect.objectContaining({
+            Asset: 3209930,
+            ExpExecStartDate: '2026-08-25T09:00:00.000Z',
+          }),
+        }),
+      );
+    });
+
     it('400 sin prioridad ni en el body ni en la tarjeta', async () => {
       mocks.correctiveOpenmaint.findWithTasklist.mockResolvedValueOnce(
         correctiveResponse({

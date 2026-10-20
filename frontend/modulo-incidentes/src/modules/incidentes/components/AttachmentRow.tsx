@@ -7,6 +7,8 @@ type Props = {
   /** Solo se pasa cuando el mantenimiento admite quitar adjuntos */
   onDelete?: (attachment: PreventiveMaintenanceAttachment) => void;
   isDeleting?: boolean;
+  /** Con `onDelete`, `false` quita la papelera de esta fila (p. ej. el informe) */
+  canDelete?: boolean;
 };
 
 const BADGES: Record<string, { label: string; className: string }> = {
@@ -34,6 +36,7 @@ export const AttachmentRow = ({
   attachment,
   onDelete,
   isDeleting = false,
+  canDelete = true,
 }: Props) => {
   const badge = getBadge(attachment);
   const uploadedAt = formatDate(attachment.uploadDate);
@@ -70,13 +73,13 @@ export const AttachmentRow = ({
         </span>
       </a>
 
-      {onDelete ? (
+      {onDelete && !canDelete ? null : onDelete ? (
         <button
           type="button"
           aria-label={`Eliminar ${attachment.fileName}`}
           disabled={isDeleting}
           onClick={() => onDelete(attachment)}
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-slate-400 transition hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-50"
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
         >
           <Trash2 className="h-4 w-4" />
         </button>

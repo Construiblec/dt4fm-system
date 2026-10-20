@@ -2,10 +2,11 @@ import { useEffect, useState, type ChangeEvent } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   ArrowLeft,
-  CalendarDays,
+  CalendarClock,
+  Check,
   Image as ImageIcon,
-  MapPin,
   Play,
+  Wrench,
 } from "lucide-react";
 import { AppLayout } from "@/app/layout/AppLayout";
 import {
@@ -20,25 +21,29 @@ import {
   getCorrectiveStatusLabel,
   getCorrectiveStatusPill,
 } from "@/modules/incidentes/constants/correctiveStatus";
-import {
-  getPriorityLabel,
-  PRIORITY_PILL_CLASSES,
-  toPriorityCode,
-} from "@/shared/constants/priority";
-import { PILL_SHAPE } from "@/shared/constants/statusPalette";
 import { ErrorModal } from "@/shared/components/ErrorModal";
 import { LoadingModal } from "@/shared/components/LoadingModal";
 import { NotesLogCard } from "@/shared/components/NotesLogCard";
 import { ReportDetailCard } from "@/shared/components/ReportDetailCard";
 import { SuccessModal } from "@/shared/components/SuccessModal";
+import { ActionNotice } from "@/shared/components/ActionNotice";
+import { formatReporter } from "@/shared/utils/reporterLabel";
+import { DetailTabs } from "@/shared/components/DetailTabs";
+import { CorrectiveDocumentationTab } from "@/modules/incidentes/components/corrective/CorrectiveDocumentationTab";
+import { CorrectiveSummaryCard } from "@/modules/incidentes/components/corrective/CorrectiveSummaryCard";
+import { EvidenceGallery } from "@/modules/incidentes/components/corrective/EvidenceGallery";
 import { TakePhotoButton } from "@/shared/components/TakePhotoButton";
-import {
-  describeImageError,
-  prepareImage,
-} from "@/shared/utils/prepareImage";
+import { describeImageError, prepareImage } from "@/shared/utils/prepareImage";
 
 import { formatDayMonthYearTime as formatDate } from "@/shared/utils/dateUtils";
 import { withoutCode } from "@/shared/utils/locationLabel";
+
+type Tab = "report" | "documentation";
+
+const TABS: { value: Tab; label: string }[] = [
+  { value: "report", label: "Reporte" },
+  { value: "documentation", label: "Documentación" },
+];
 
 export const IncidentDetailPage = () => {
   const navigate = useNavigate();
@@ -46,7 +51,7 @@ export const IncidentDetailPage = () => {
   const [incident, setIncident] = useState<IncidentDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [tab, setTab] = useState<Tab>("report");
   const [resolutionNotes, setResolutionNotes] = useState("");
   const [resolutionImage, setResolutionImage] = useState<File | null>(null);
   const [resolutionPreview, setResolutionPreview] = useState<string | null>(
@@ -114,8 +119,6 @@ export const IncidentDetailPage = () => {
     ? getCorrectiveStatusLabel(statusCode, incident.status)
     : "";
 
-  const priorityCode = incident ? toPriorityCode(incident.priority) : null;
-
   // «Asignado» significa que el trabajo está despachado pero sin arrancar: no
   // tiene `ExecStartDate`, y sin inicio el backend no deja finalizarlo.
   const isAssigned = statusCode === "Assigned";
@@ -158,7 +161,11 @@ export const IncidentDetailPage = () => {
 
       // El backend devuelve el estado ya resuelto; si el trabajo venía iniciado
       // conserva el inicio original en vez de pisarlo.
-      setIncident({ ...incident, statusCode: result.statusCode });
+      setIncident({
+        ...incident,
+        statusCode: result.statusCode,
+        execStartDate: result.execStartDate,
+      });
     } catch {
       setErrorComplete("No se pudo iniciar el trabajo");
     } finally {
@@ -203,25 +210,49 @@ export const IncidentDetailPage = () => {
     }
   };
 
+  const location =
+    [
+      incident?.building,
+      incident?.floor,
+      incident?.unit ?? incident?.commonArea,
+    ]
+      .map(withoutCode)
+      .filter(Boolean)
+      .join(" · ") || null;
+
+  const summaryExtra =
+    isAssigned && incident?.plannedStart
+      ? {
+          icon: CalendarClock,
+          label: "Inicio previsto",
+          value: formatDate(incident.plannedStart),
+        }
+      : isInExecution && incident?.execStartDate
+        ? {
+            icon: Play,
+            label: "Inicio",
+            value: formatDate(incident.execStartDate),
+          }
+        : null;
+
   return (
     <AppLayout className="bg-[#f1f1f2]">
       <main className="min-h-screen bg-[#f1f1f2]">
-        <header className="sticky top-0 z-10 border-b border-slate-200 bg-white/95 px-4 py-4 backdrop-blur">
+        <header className="sticky top-0 z-10 border-b border-slate-200 bg-white/95 px-4 py-3 backdrop-blur">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3">
               <button
                 type="button"
                 onClick={() => navigate("/dashboard")}
-                className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-slate-700 transition hover:bg-slate-200"
+                aria-label="Volver"
+                className="flex h-11 w-11 items-center justify-center rounded-full bg-slate-100 text-slate-700 transition hover:bg-slate-200"
               >
                 <ArrowLeft className="h-5 w-5" />
               </button>
 
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
-                  Incidente
-                </p>
-                <h1 className="text-base font-semibold text-slate-900">
+                <p className="text-sm font-medium text-slate-600">Correctivo</p>
+                <h1 className="text-lg font-bold text-slate-900">
                   {incident?.number ?? "Detalle"}
                 </h1>
               </div>
@@ -235,252 +266,204 @@ export const IncidentDetailPage = () => {
           </div>
         </header>
 
-        <div className="space-y-5 px-4 py-5">
+        <div
+          className={`space-y-5 px-4 py-5 ${tab === "documentation" ? "pb-28" : ""}`}
+        >
           {loading ? (
-            <section className="rounded-3xl bg-white p-5 text-sm text-slate-500 shadow-sm">
-              Cargando detalle del incidente...
+            <section className="rounded-3xl bg-white p-5 text-sm text-slate-600 shadow-sm">
+              Cargando detalle del correctivo...
             </section>
           ) : null}
 
           {!loading && error ? (
-            <section className="rounded-3xl bg-white p-5 text-sm text-red-600 shadow-sm">
+            <section className="rounded-3xl bg-white p-5 text-sm text-red-700 shadow-sm">
               {error}
             </section>
           ) : null}
 
           {!loading && !error && incident ? (
             <>
-              <section className="rounded-3xl bg-white p-5 shadow-sm">
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
-                      Datos del reporte
-                    </p>
-                    <h2 className="mt-2 text-lg font-semibold text-slate-900">
-                      {incident.location || withoutCode(incident.building)}
-                    </h2>
-                  </div>
-
-                  <span
-                    className={`${PILL_SHAPE} ring-1 ${
-                      priorityCode
-                        ? PRIORITY_PILL_CLASSES[priorityCode]
-                        : "bg-slate-50 text-slate-700 ring-slate-200"
-                    }`}
-                  >
-                    Prioridad {getPriorityLabel(priorityCode)}
-                  </span>
-                </div>
-
-                <div className="mt-5 space-y-4 text-sm text-slate-600">
-                  <div className="flex items-start gap-3">
-                    <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
-                    <div>
-                      <p className="font-medium text-slate-900">Sitio</p>
-                      <p>{withoutCode(incident.building) ?? "Sin edificio"}</p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-start gap-3">
-                    <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
-                    <div>
-                      <p className="font-medium text-slate-900">Piso / Área</p>
-                      <p>
-                        {[incident.floor, incident.unit ?? incident.commonArea]
-                          .map(withoutCode)
-                          .filter(Boolean)
-                          .join(" · ") || "Sin especificar"}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-start gap-3">
-                    <CalendarDays className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
-                    <div>
-                      <p className="font-medium text-slate-900">Fecha</p>
-                      <p>{formatDate(incident.createdAt)}</p>
-                    </div>
-                  </div>
-                </div>
-              </section>
-
-              {incident.images.length > 0 ? (
-                <section className="rounded-3xl bg-white p-5 shadow-sm">
-                  <div className="flex items-center gap-2">
-                    <ImageIcon className="h-5 w-5 text-slate-500" />
-                    <h2 className="text-base font-semibold text-slate-900">
-                      Evidencia del reporte
-                    </h2>
-                  </div>
-
-                  <div className="mt-4 grid grid-cols-2 gap-3">
-                    {incident.images.map((image, index) => (
-                      <div
-                        key={`${incident.id}-${index}`}
-                        className="overflow-hidden rounded-2xl bg-slate-100"
-                      >
-                        <button
-                          type="button"
-                          onClick={() => setSelectedImage(image)}
-                          className="block w-full"
-                        >
-                          <img
-                            src={image}
-                            alt={`Evidencia ${index + 1} del incidente ${incident.number}`}
-                            loading="lazy"
-                            className="h-32 w-full object-cover transition hover:scale-[1.02]"
-                          />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                </section>
-              ) : null}
-
-              <ReportDetailCard notes={incident.reportNotes} />
-
-              <NotesLogCard entries={incident.log} />
-
               {isAssigned ? (
-                <button
-                  type="button"
-                  onClick={handleStart}
-                  disabled={isStarting}
-                  className="flex w-full items-center justify-center gap-2 rounded-2xl bg-brand px-4 py-4 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-hover focus:outline-none focus:ring-4 focus:ring-brand/30 disabled:opacity-60"
-                >
-                  <Play className="h-4 w-4" />
-                  {isStarting ? "Iniciando..." : "Iniciar Mantenimiento"}
-                </button>
+                <ActionNotice
+                  tone="blue"
+                  title="Tienes este correctivo asignado"
+                  message="Empieza cuando llegues al sitio. Al iniciar quedará registrada la fecha y hora."
+                />
+              ) : !isInExecution ? (
+                <ActionNotice
+                  tone="slate"
+                  title={blockedReason ?? "Este correctivo no admite acciones"}
+                />
               ) : null}
 
-              {!isAssigned && !isInExecution ? (
-                <section className="rounded-3xl bg-white p-5 text-sm text-slate-500 shadow-sm">
-                  {blockedReason ?? "Este incidente no admite acciones"}
-                </section>
-              ) : null}
+              <CorrectiveSummaryCard
+                description={incident.location}
+                priority={incident.priorityCode ?? incident.priority}
+                location={location}
+                reporter={
+                  formatReporter(incident.reporter) ??
+                  incident.requesterName ??
+                  null
+                }
+                reportedAt={incident.createdAt}
+                responsible={incident.assigneeName}
+                extra={summaryExtra}
+              />
 
-              {isInExecution ? (
+              <DetailTabs
+                label="Secciones del correctivo"
+                tabs={TABS}
+                value={tab}
+                onChange={setTab}
+              />
+
+              {tab === "report" ? (
                 <>
-                  <section className="rounded-3xl bg-white p-5 shadow-sm">
-                    <h2 className="text-base font-semibold text-slate-900">
-                      Acciones de resolución
-                    </h2>
+                  <ReportDetailCard notes={incident.reportNotes} />
+                  <EvidenceGallery
+                    images={incident.images}
+                    reference={`el correctivo ${incident.number}`}
+                  />
+                  <NotesLogCard entries={incident.log} />
 
-                    <div className="mt-4 space-y-4">
-                      <div className="space-y-2">
-                        <label
-                          htmlFor="resolutionNotes"
-                          className="text-sm font-medium text-slate-700"
-                        >
-                          Observaciones
-                        </label>
-                        <textarea
-                          id="resolutionNotes"
-                          rows={5}
-                          placeholder="Describe las acciones realizadas para atender el incidente"
-                          className="w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-900 outline-none transition focus:border-brand focus:ring-4 focus:ring-brand/20"
-                          value={resolutionNotes}
-                          onChange={(event) =>
-                            setResolutionNotes(event.target.value)
-                          }
-                        />
-                      </div>
+                  {isAssigned ? (
+                    <button
+                      type="button"
+                      onClick={handleStart}
+                      disabled={isStarting}
+                      className="flex min-h-[52px] w-full items-center justify-center gap-2 rounded-2xl bg-brand px-4 text-[15px] font-semibold text-white shadow-sm transition hover:bg-brand-hover focus:outline-none focus-visible:ring-4 focus-visible:ring-brand/30 disabled:opacity-60"
+                    >
+                      <Play className="h-4 w-4" aria-hidden />
+                      {isStarting ? "Iniciando..." : "Iniciar mantenimiento"}
+                    </button>
+                  ) : null}
 
-                      <label className="block cursor-pointer rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-5 text-center">
-                        <ImageIcon className="mx-auto h-5 w-5 text-slate-400" />
-                        <p className="mt-2 text-sm font-medium text-slate-700">
-                          Adjuntar evidencia de resolución
-                        </p>
-                        <p className="mt-1 text-xs text-slate-400">
-                          Opcional: elige una imagen de la galería
-                        </p>
-
-                        {resolutionPreview ? (
-                          <img
-                            src={resolutionPreview}
-                            alt="Vista previa de evidencia de resolución"
-                            className="mx-auto mt-4 h-32 w-32 rounded-2xl object-cover shadow-sm"
+                  {isInExecution ? (
+                    <>
+                      <section className="rounded-3xl border-2 border-brand bg-white p-5 shadow-sm">
+                        <div className="flex items-center gap-2">
+                          <Wrench
+                            className="h-5 w-5 text-slate-500"
+                            aria-hidden
                           />
-                        ) : null}
+                          <h2 className="text-base font-semibold text-slate-900">
+                            Acciones de resolución
+                          </h2>
+                        </div>
+                        <p className="mt-1 text-sm text-slate-600">
+                          Cuenta qué hiciste y agrega una foto del resultado.
+                        </p>
 
-                        {resolutionImage ? (
-                          <p className="mt-3 text-xs font-medium text-slate-600">
-                            {resolutionImage.name}
-                          </p>
-                        ) : null}
+                        <div className="mt-4 space-y-4">
+                          <div className="space-y-2">
+                            <label
+                              htmlFor="resolutionNotes"
+                              className="text-sm font-semibold text-slate-900"
+                            >
+                              Observaciones
+                            </label>
+                            <textarea
+                              id="resolutionNotes"
+                              rows={5}
+                              placeholder="Ej.: cambié la válvula de la llave de paso y probé 30 minutos sin goteo."
+                              className="w-full resize-none rounded-2xl border border-slate-300 bg-slate-50 px-4 py-4 text-sm text-slate-900 outline-none transition placeholder:text-slate-500 focus:border-brand focus:ring-4 focus:ring-brand/20"
+                              value={resolutionNotes}
+                              onChange={(event) =>
+                                setResolutionNotes(event.target.value)
+                              }
+                            />
+                          </div>
 
-                        <input
-                          type="file"
-                          accept="image/*"
-                          className="hidden"
-                          onChange={handleResolutionImageChange}
-                        />
-                      </label>
+                          <label className="block cursor-pointer rounded-2xl border border-dashed border-slate-400 bg-slate-50 px-4 py-5 text-center focus-within:ring-4 focus-within:ring-brand/20">
+                            <ImageIcon
+                              className="mx-auto h-5 w-5 text-slate-500"
+                              aria-hidden
+                            />
+                            <p className="mt-2 text-sm font-semibold text-slate-700">
+                              Agregar foto del resultado
+                            </p>
+                            <p className="mt-1 text-xs text-slate-600">
+                              Opcional: elige una imagen de la galería
+                            </p>
 
-                      <TakePhotoButton onChange={handleResolutionImageChange} />
-                    </div>
-                  </section>
+                            {resolutionPreview ? (
+                              <img
+                                src={resolutionPreview}
+                                alt="Vista previa de la foto del resultado"
+                                className="mx-auto mt-4 h-32 w-32 rounded-2xl object-cover shadow-sm"
+                              />
+                            ) : null}
 
-                  <button
-                    type="button"
-                    onClick={() => setShowConfirmModal(true)}
-                    className="w-full rounded-2xl bg-brand px-4 py-4 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-hover focus:outline-none focus:ring-4 focus:ring-brand/30"
-                  >
-                    Finalizar Incidente
-                  </button>
+                            {resolutionImage ? (
+                              <p className="mt-3 text-xs font-medium text-slate-700">
+                                {resolutionImage.name}
+                              </p>
+                            ) : null}
+
+                            <input
+                              type="file"
+                              accept="image/*"
+                              className="sr-only"
+                              onChange={handleResolutionImageChange}
+                            />
+                          </label>
+
+                          <TakePhotoButton
+                            onChange={handleResolutionImageChange}
+                          />
+                        </div>
+                      </section>
+
+                      <button
+                        type="button"
+                        onClick={() => setShowConfirmModal(true)}
+                        className="flex min-h-[52px] w-full items-center justify-center gap-2 rounded-2xl bg-brand px-4 text-[15px] font-semibold text-white shadow-sm transition hover:bg-brand-hover focus:outline-none focus-visible:ring-4 focus-visible:ring-brand/30"
+                      >
+                        <Check className="h-4 w-4" aria-hidden />
+                        Finalizar correctivo
+                      </button>
+                    </>
+                  ) : null}
                 </>
               ) : null}
+
+              <CorrectiveDocumentationTab
+                id={String(incident.id)}
+                active={tab === "documentation"}
+                canManage={isAssigned || isInExecution}
+                onAttachmentsChange={() =>
+                  void getIncidentById(id)
+                    .then((data) =>
+                      setIncident((current) =>
+                        current ? { ...current, images: data.images } : data,
+                      ),
+                    )
+                    .catch(() => undefined)
+                }
+              />
             </>
           ) : null}
         </div>
 
-        {selectedImage ? (
-          <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/85 px-4 py-6"
-            onClick={() => setSelectedImage(null)}
-          >
-            <div
-              className="relative w-full max-w-md"
-              onClick={(event) => event.stopPropagation()}
-            >
-              <button
-                type="button"
-                onClick={() => setSelectedImage(null)}
-                className="absolute right-3 top-3 z-10 rounded-full bg-white/90 px-3 py-1 text-sm font-semibold text-slate-900 shadow-sm"
-              >
-                Cerrar
-              </button>
-
-              <div className="overflow-hidden rounded-3xl bg-white shadow-2xl">
-                <img
-                  src={selectedImage}
-                  alt="Vista ampliada de evidencia"
-                  className="max-h-[80vh] w-full object-contain bg-slate-950"
-                />
-              </div>
-            </div>
-          </div>
-        ) : null}
-
         <ConfirmModal
           open={showConfirmModal}
-          title="Confirmar acción"
-          message="¿Está seguro que desea finalizar este incidente?"
+          title="Finalizar correctivo"
+          message="¿Confirmas que el trabajo está terminado?"
           onConfirm={handleConfirmComplete}
           onCancel={() => setShowConfirmModal(false)}
         />
-        <LoadingModal open={isCompleting} message="Finalizando incidente..." />
+        <LoadingModal open={isCompleting} message="Finalizando correctivo..." />
         <SuccessModal
           open={successComplete}
-          title="Incidente finalizado correctamente"
-          message="Incidente finalizado correctamente"
+          title="Correctivo finalizado"
+          message="El trabajo quedó registrado y pasa a revisión."
           buttonLabel="Volver al Dashboard"
           onClose={() => navigate("/dashboard")}
         />
         <ErrorModal
           open={errorComplete !== null}
-          title="No se pudo finalizar el incidente"
-          message={errorComplete ?? "No se pudo finalizar el incidente"}
+          title="No se pudo completar la acción"
+          message={errorComplete ?? "No se pudo finalizar el correctivo"}
           onClose={() => setErrorComplete(null)}
         />
       </main>
