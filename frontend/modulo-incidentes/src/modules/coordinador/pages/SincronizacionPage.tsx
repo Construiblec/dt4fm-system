@@ -6,7 +6,6 @@ import {
   Link2Off,
   Plus,
   RefreshCw,
-  Search,
   UserCheck,
 } from "lucide-react";
 import type {
@@ -27,7 +26,6 @@ import {
 import { useNow } from "../hooks/useNow";
 import {
   addDays,
-  diffDays,
   formatDate,
   relativeDay,
   todayYmd,
@@ -41,7 +39,6 @@ import {
   Chip,
   EmptyState,
   ErrorState,
-  Field,
   InlineAlert,
   PageHeader,
   Pagination,
@@ -69,19 +66,6 @@ const STATUS_CHIP: Record<
 const isShown = (
   row: CheckoutRow,
 ): row is CheckoutRow & { status: ShownStatus } => row.status !== "huerfana";
-
-const MAX_RANGE_DAYS = 92;
-
-const rangeProblem = (from: string, to: string): string | null => {
-  if (!from || !to)
-    return "Rango incompleto: selecciona la fecha de inicio y la de fin.";
-  if (to < from)
-    return "Rango inválido: la fecha de fin es anterior a la de inicio.";
-  if (diffDays(from, to) + 1 > MAX_RANGE_DAYS) {
-    return `Rango demasiado amplio: el máximo es de ${MAX_RANGE_DAYS} días.`;
-  }
-  return null;
-};
 
 const resultMessage = (result: SyncResult, single: boolean) => {
   if (result.failed > 0) {
@@ -241,8 +225,8 @@ type Filter = "todos" | "por-crear" | "creada";
 /**
  * Creación automática de las limpiezas a partir de los checkouts de Hostaway
  * (reemplaza la página ExtJS de openMAINT): las de hoy o las de mañana de una
- * vez, y la revisión de un rango con el estado de cada reserva para crear una
- * limpieza suelta.
+ * vez, y la revisión de los checkouts de un día con el estado de cada reserva
+ * para crear una limpieza suelta.
  */
 export const SincronizacionPage = () => {
   const { open } = useOpenTask();
@@ -255,17 +239,15 @@ export const SincronizacionPage = () => {
   const tomorrow = addDays(today, 1);
   const [dayState, setDayState] = useState<RunState>(IDLE);
   const [confirmDay, setConfirmDay] = useState<string | null>(null);
-  const [from, setFrom] = useState(today);
-  const [to, setTo] = useState(addDays(today, 7));
-  const [query, setQuery] = useState({ from: today, to: addDays(today, 7) });
-  const [rangeError, setRangeError] = useState<string | null>(null);
+  // Un solo día: los checkouts de esa fecha.
+  const [day, setDay] = useState(today);
   const [filter, setFilter] = useState<Filter>("todos");
   const [page, setPage] = useState(1);
   const [creating, setCreating] = useState<string | null>(null);
   // Limpiezas recién creadas desde esta lista: ofrecen "Completar" sin esperar a que Hostaway se vuelva a consultar.
   const [createdTasks, setCreatedTasks] = useState<Record<string, number>>({});
 
-  const previewQ = useCheckoutPreview(query.from, query.to);
+  const previewQ = useCheckoutPreview(day, day);
 
   const rows = (previewQ.data?.rows ?? []).filter(isShown);
   const counts = {
@@ -334,13 +316,9 @@ export const SincronizacionPage = () => {
     }
   };
 
-  const showPreview = () => {
-    const problem = rangeProblem(from, to);
-    setRangeError(problem);
-    if (!problem) {
-      setQuery({ from, to });
-      setPage(1);
-    }
+  const changeDay = (next: string) => {
+    setDay(next);
+    setPage(1);
   };
 
   const busy = dayState.running;
@@ -381,35 +359,21 @@ export const SincronizacionPage = () => {
 
       <Card
         title="Próximas limpiezas"
-        subtitle="Revisa los checkouts de un rango."
+        subtitle="Revisa los checkouts de un día."
         bodyClass=""
       >
-        <div className="space-y-4 px-5 py-4">
-          <div className="flex flex-wrap items-end gap-3">
-            <Field label="Inicio" htmlFor="rango-inicio">
-              <DateField
-                id="rango-inicio"
-                value={from}
-                onChange={setFrom}
-                invalid={Boolean(rangeError)}
-              />
-            </Field>
-            <Field label="Fin" htmlFor="rango-fin">
-              <DateField
-                id="rango-fin"
-                value={to}
-                onChange={setTo}
-                invalid={Boolean(rangeError)}
-              />
-            </Field>
-            <Button icon={Search} onClick={showPreview}>
-              Ver próximas limpiezas
-            </Button>
-          </div>
-          {rangeError ? (
-            <p className="text-sm font-medium text-red-600" role="alert">
-              {rangeError}
-            </p>
+        <div className="flex flex-wrap items-center gap-2 px-5 py-4">
+          <DateField
+            id="proximas-dia"
+            ariaLabel="Día"
+            value={day}
+            onChange={changeDay}
+          />
+          {day !== today ? (
+            <Button onClick={() => changeDay(today)}>Hoy</Button>
+          ) : null}
+          {day !== tomorrow ? (
+            <Button onClick={() => changeDay(tomorrow)}>Mañana</Button>
           ) : null}
         </div>
 
@@ -450,7 +414,7 @@ export const SincronizacionPage = () => {
             title={
               rows.length
                 ? "Nada que mostrar con este filtro."
-                : "No hay checkouts en el rango seleccionado."
+                : "No hay checkouts para este día."
             }
           />
         ) : (
@@ -575,8 +539,8 @@ export const SincronizacionPage = () => {
         {previewQ.data ? (
           <p className="border-t border-slate-100 px-5 py-3 text-sm text-slate-600">
             {previewQ.data.count
-              ? `${previewQ.data.count} ${previewQ.data.count === 1 ? "checkout encontrado" : "checkouts encontrados"} entre el ${formatDate(previewQ.data.dateFrom)} y el ${formatDate(previewQ.data.dateTo)}`
-              : "No hay checkouts en el rango seleccionado."}
+              ? `${previewQ.data.count} ${previewQ.data.count === 1 ? "checkout encontrado" : "checkouts encontrados"} el ${formatDate(previewQ.data.dateFrom)}`
+              : "No hay checkouts para este día."}
           </p>
         ) : null}
       </Card>

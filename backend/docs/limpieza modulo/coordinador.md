@@ -6,7 +6,7 @@
 
 El coordinador (Code de openMAINT `Coordinador`; `SuperUser` también entra) prepara las limpiezas antes de que las ejecute el equipo:
 
-- Sincroniza con Hostaway (un día o un rango) y revisa los checkouts antes de crear.
+- Sincroniza con Hostaway (hoy o mañana) y revisa los checkouts de un día antes de crear.
 - Completa las limpiezas pendientes, una por una: unidad, horario, empleado, checklist y observaciones.
 - Crea limpiezas manuales (`Source: Manual`).
 - Edita y cancela las limpiezas que **no han empezado**.
@@ -109,7 +109,7 @@ Módulo `frontend/modulo-incidentes/src/modules/coordinador/`, solo escritorio.
 | `/coordinador` | Redirige a Limpiezas, que es la pantalla principal (el panel del día se quitó) |
 | `/coordinador/pendientes` | Limpiezas sin empleado o sin horario, 20 por página |
 | `/coordinador/limpiezas` · `/agenda` | Tabla de un día (hoy al abrir, o todas las fechas) con menú de estados y 20 por página; agenda del día por empleado |
-| `/coordinador/sincronizacion` | Creación automática: limpiezas de hoy o de mañana, y vista previa de un rango con estados y "Crear limpieza" por reserva |
+| `/coordinador/sincronizacion` | Creación automática: limpiezas de hoy o de mañana, y vista previa de un día (hoy al abrir; el backend sigue aceptando rangos) con estados y "Crear limpieza" por reserva |
 | `/coordinador/checklists`, `/nuevo`, `/:id` | Lista y editor con subida de CSV y vista previa |
 | `/coordinador/nueva` | Limpieza manual |
 
