@@ -246,7 +246,7 @@ export const CorrectiveCard = ({
           </p>
         ) : null}
 
-        <dl className="space-y-[7px] rounded-lg bg-slate-50 px-3 py-2.5">
+        <dl className="space-y-[7px] rounded-lg bg-slate-50 px-2.5 py-2.5">
           {fieldsFor(data, perspective).map(
             ({ icon: Icon, label, value, dateTime }) => (
               <div key={label} className="flex items-start gap-2">
@@ -254,7 +254,7 @@ export const CorrectiveCard = ({
                   aria-hidden
                   className="mt-[3px] h-3.5 w-3.5 shrink-0 text-slate-500"
                 />
-                <dt className="w-24 shrink-0 pt-px text-xs leading-[1.4] text-slate-600">
+                <dt className="w-[84px] shrink-0 pt-px text-xs leading-[1.4] text-slate-600">
                   {label}
                 </dt>
                 <dd className="min-w-0 flex-1 break-words text-sm font-medium leading-[1.4] text-slate-900">
