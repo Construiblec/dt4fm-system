@@ -108,4 +108,4 @@ Los estados de openMAINT (`CorrectiveMaint`, `PreventiveMaint`, `CleaningTask`) 
 npm run test:e2e
 ```
 
-Es normal ver en los logs el error de `CleaningTasksSessionService` en cada suite (login de `onModuleInit` contra el trap) y algún `error`/`warn` de negocio esperado (p. ej. reintentos de IoT, avances que openMAINT acepta pero no aplica en los tests que prueban justamente ese 502). Ninguno de esos logs indica que un test haya fallado — el resumen final (`Test Suites`, `Tests`) es la única fuente de verdad.
+Las suites corren con `LOG_LEVEL=error` (`setup-env.ts`) y con el mismo logger, `rid` y filtro de errores que producción (`setupLogging` en `test-app.ts`), así que cada evento ocupa una línea. Es normal ver el error de `CleaningTasksSessionService` en cada suite (el login de `onModuleInit` contra el trap) y las líneas `[HTTP] … 5xx` de las respuestas de error que los tests provocan a propósito (videovigilancia desactivada, VPS que no responde, avances que openMAINT acepta pero no aplica). Ninguna indica que un test haya fallado: el resumen final (`Test Suites`, `Tests`) es la única fuente de verdad. Ver [logging.md](logging.md).
