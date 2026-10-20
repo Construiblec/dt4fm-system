@@ -23,10 +23,7 @@ import {
 } from "@/shared/components/SearchableSelect";
 import { SuccessModal } from "@/shared/components/SuccessModal";
 import { TakePhotoButton } from "@/shared/components/TakePhotoButton";
-import {
-  describeImageError,
-  prepareImage,
-} from "@/shared/utils/prepareImage";
+import { describeImageError, prepareImage } from "@/shared/utils/prepareImage";
 import {
   clearSession,
   getHomeRoute,
@@ -34,15 +31,18 @@ import {
 } from "@/shared/auth/session";
 import { ArrowLeft } from "lucide-react";
 import { rememberReturnTo } from "@/shared/auth/returnTo";
-import { PRIORITY_ADJECTIVES, PRIORITY_IDS } from "@/shared/constants/priority";
+import {
+  PRIORITY_ADJECTIVES,
+  PRIORITY_IDS,
+  type PriorityCode,
+} from "@/shared/constants/priority";
+import { PriorityHint } from "@/shared/components/PriorityGuide";
 import { useInvalidateReportedIncidents } from "@/modules/incidentes/hooks/useReportedIncidents";
 
-/**
- * IDs del lookup `COMMON - Priority`. `Crítica` (117) existe pero no se ofrece
- * al reportar: es de uso interno. Etiquetas en femenino, como en la tarjeta.
- */
+/** IDs del lookup `COMMON - Priority`; en cuadrícula 2×2, de menos a más urgente. */
 const priorities = [
   {
+    code: "Low" as PriorityCode,
     id: PRIORITY_IDS.Low,
     label: PRIORITY_ADJECTIVES.Low,
     baseClassName:
@@ -50,6 +50,7 @@ const priorities = [
     activeClassName: "border-emerald-500 bg-emerald-500 text-white",
   },
   {
+    code: "Medium" as PriorityCode,
     id: PRIORITY_IDS.Medium,
     label: PRIORITY_ADJECTIVES.Medium,
     baseClassName:
@@ -57,14 +58,21 @@ const priorities = [
     activeClassName: "border-amber-500 bg-amber-500 text-white",
   },
   {
+    code: "High" as PriorityCode,
     id: PRIORITY_IDS.High,
     label: PRIORITY_ADJECTIVES.High,
     baseClassName:
       "border-orange-200 bg-orange-50 text-orange-700 hover:border-orange-300",
     activeClassName: "border-orange-500 bg-orange-500 text-white",
   },
+  {
+    code: "Critical" as PriorityCode,
+    id: PRIORITY_IDS.Critical,
+    label: PRIORITY_ADJECTIVES.Critical,
+    baseClassName: "border-red-200 bg-red-50 text-red-700 hover:border-red-300",
+    activeClassName: "border-red-500 bg-red-500 text-white",
+  },
 ] as const;
-
 
 type FormValues = {
   /** Breve descripción: es el título de la tarjeta */
@@ -247,7 +255,10 @@ export const ReportIncidentPage = () => {
 
   const hasFloors = (locations?.floors.length ?? 0) > 0;
   const isFallback =
-    Boolean(buildingId) && !locationsLoading && locations !== null && !hasFloors;
+    Boolean(buildingId) &&
+    !locationsLoading &&
+    locations !== null &&
+    !hasFloors;
 
   const floorOptions = useMemo<SearchableSelectOption[]>(
     () =>
@@ -259,7 +270,8 @@ export const ReportIncidentPage = () => {
   );
 
   const selectedFloor = useMemo(
-    () => locations?.floors.find((floor) => String(floor.id) === floorId) ?? null,
+    () =>
+      locations?.floors.find((floor) => String(floor.id) === floorId) ?? null,
     [locations, floorId],
   );
 
@@ -377,9 +389,7 @@ export const ReportIncidentPage = () => {
     }
 
     // Funcional: mientras se le\u00edan, pudo entrar otra foto.
-    setImages((current) =>
-      [...current, ...selectedFiles].slice(0, MAX_IMAGES),
-    );
+    setImages((current) => [...current, ...selectedFiles].slice(0, MAX_IMAGES));
   };
 
   const removeEvidence = (fileToRemove: File) => {
@@ -622,13 +632,13 @@ export const ReportIncidentPage = () => {
               />
               {locationsError ? (
                 <p className="text-xs font-medium text-amber-600">
-                  No se pudieron cargar las plantas de este edificio. Escriba
-                  la ubicaci{"\u00f3"}n manualmente.
+                  No se pudieron cargar las plantas de este edificio. Escriba la
+                  ubicaci{"\u00f3"}n manualmente.
                 </p>
               ) : (
                 <p className="text-xs text-slate-400">
-                  Este edificio no tiene plantas registradas. Escriba la
-                  ubicaci{"\u00f3"}n manualmente.
+                  Este edificio no tiene plantas registradas. Escriba la ubicaci
+                  {"\u00f3"}n manualmente.
                 </p>
               )}
             </section>
@@ -776,7 +786,7 @@ export const ReportIncidentPage = () => {
             <div
               role="group"
               aria-labelledby="priority-label"
-              className="grid grid-cols-3 gap-2"
+              className="grid grid-cols-2 gap-2"
             >
               {priorities.map((priority) => {
                 const isActive = selectedPriority.id === priority.id;
@@ -794,6 +804,7 @@ export const ReportIncidentPage = () => {
                 );
               })}
             </div>
+            <PriorityHint value={selectedPriority.code} variant="report" />
           </section>
 
           <section className="space-y-2">
