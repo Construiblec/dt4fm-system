@@ -26,6 +26,9 @@ export type IncidentDetail = {
   reporter?: { name: string; kind: ReporterKind } | null;
   requesterName?: string | null;
   assigneeName?: string | null;
+  category?: { id: number; name: string } | null;
+  /** También es el título (`location`), salvo con «Otro». */
+  subcategory?: { id: number; name: string; isOther: boolean } | null;
   /** Equipo intervenido */
   asset?: string | null;
   assetId?: number | null;

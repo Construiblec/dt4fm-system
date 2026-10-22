@@ -37,6 +37,7 @@ import { describeImageError, prepareImage } from "@/shared/utils/prepareImage";
 
 import { formatDayMonthYearTime as formatDate } from "@/shared/utils/dateUtils";
 import { withoutCode } from "@/shared/utils/locationLabel";
+import { categoryLabel } from "@/shared/utils/categoryLabel";
 
 type Tab = "report" | "documentation";
 
@@ -299,6 +300,10 @@ export const IncidentDetailPage = () => {
               <CorrectiveSummaryCard
                 description={incident.location}
                 priority={incident.priorityCode ?? incident.priority}
+                category={categoryLabel(
+                  incident.category,
+                  incident.subcategory,
+                )}
                 location={location}
                 reporter={
                   formatReporter(incident.reporter) ??

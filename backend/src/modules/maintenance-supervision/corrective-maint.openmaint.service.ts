@@ -38,6 +38,10 @@ export type CorrectiveMaintCard = {
   /** Equipo intervenido; opcional y escribible en CM02 */
   Asset?: number | null;
   _Asset_description?: string | null;
+  Category?: number | null;
+  _Category_description?: string | null;
+  Subcategory?: number | null;
+  _Subcategory_description?: string | null;
   Assignee?: number | null;
   _Assignee_description?: string | null;
   Team?: number | null;
