@@ -185,6 +185,18 @@ pantalla—, simplemente la UI ya no lo manda: cuando llega, vale como fecha y l
 Comprobado contra el clon el 2026-08-24: asignar sin fecha da 400 y **deja el correctivo intacto**;
 planificar y luego asignar da 201; y mandar `plannedStart` en el DTO también.
 
+**Prioridad (2026-10-14).** Al reportar ya no se pide prioridad: la fija el supervisor al asignar.
+`AssignAssigneeDto.priority` (`Critical|High|Medium|Low`) se escribe en `Priority` durante el mismo
+avance de CM02, y si el correctivo no trae ninguna (las alarmas IoT sí la traen) responde **400**.
+Si OpenMAINT no la guarda, se registra un aviso en el log. **Pendiente de verificar en el clon** que
+`Priority` sea escribible en CM02 y que CM01 avance sin ella.
+
+**Datos de la tarjeta.** El contrato del correctivo incluye además `floor`, `area` (unidad o área
+común) y `reporter { name, kind: staff|guest|visitor|iot }`. Huésped, visitante e IoT comparten
+solicitante técnico, así que su nombre sale de la nota de reporte (`corrective-reporter.util.ts`).
+Los listados ya no usan `onlyGridAttrs`: planta, área, fin real y la bitácora no son columnas de
+la rejilla.
+
 > **Formato de fecha.** `<input type="date">` y `datetime-local` se pintan según el idioma del
 > **navegador**, no el de la página: con Chrome en inglés salía `mm/dd/yyyy`, y no hay atributo ni
 > CSS que lo cambie. Por eso el calendario es propio (`shared/components/DateField.tsx`) y garantiza
@@ -344,7 +356,7 @@ Base `/maintenance-supervision`. Cabeceras: `authorization` (sesión openMAINT) 
 | POST | `/corrective/:id/reject` | `CM02-Reject`; motivo obligatorio |
 | POST | `/preventive/:id/assign` | `PM01-Advance`; **solo Assignee** |
 | POST | `/preventive/:id/resume` | `PM04-Advance`; solo desde Suspensión (§5 bis) |
-| PUT | `/:kind/:id/assignee` | Sin mover el flujo. Acepta `teamId` donde `Team` es escribible. En preventivo suspendido va por `PM04-Return` (§5 bis) |
+| PUT | `/:kind/:id/assignee` | Sin mover el flujo. Acepta `teamId` donde `Team` es escribible. En correctivo en Ejecución acepta `notes`: con nota se usa `CM03-Return` (384552), que es lo único que deja la entrada en la bitácora — un `saveFields` con `ProcessNotes` no registra nada (comprobado el 2026-10-13 sobre `CM.2026.0210`) — y después se restablece `ExecStartDate`. En preventivo suspendido va por `PM04-Return` (§5 bis) |
 | POST | `/corrective/:id/review` | `CM05-Advance` / `CM05-Back` |
 | PUT | `/:kind/:id/planned-start` | `ExpExecStartDate`; solo en CM02 / PM02 |
 

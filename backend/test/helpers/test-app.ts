@@ -2,6 +2,8 @@ import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 
 import { AppModule } from '../../src/app.module';
+import { AppLogger } from '../../src/common/logging/app-logger';
+import { setupLogging } from '../../src/common/logging/setup-logging';
 import { validationPipeOptions } from '../../src/config/validation.config';
 
 import { OpenmaintClient } from '../../src/integrations/openmaint/openmaint.client';
@@ -14,6 +16,7 @@ import { OpenmaintUsersService } from '../../src/integrations/openmaint/openmain
 import { CleaningTasksOpenmaintService } from '../../src/modules/cleaning-tasks/cleaning-tasks.openmaint.service';
 import { PreventiveMaintenanceOpenmaintService } from '../../src/modules/preventive-maintenance/preventive-maintenance.openmaint.service';
 import { CorrectiveMaintOpenmaintService } from '../../src/modules/maintenance-supervision/corrective-maint.openmaint.service';
+import { EquipmentOpenmaintService } from '../../src/modules/corrective-maintenance/equipment.openmaint.service';
 import { IotAlarmOpenmaintService } from '../../src/modules/iot-alarms/iot-alarm.openmaint.service';
 import { PasswordRecoveryOpenmaintService } from '../../src/modules/password-recovery/password-recovery.openmaint.service';
 import { PaymentsOpenmaintRepository } from '../../src/modules/payments/payments-openmaint.repository';
@@ -39,6 +42,7 @@ import {
   createCleaningTasksOpenmaintServiceMock,
   createPreventiveMaintenanceOpenmaintServiceMock,
   createCorrectiveMaintOpenmaintServiceMock,
+  createEquipmentOpenmaintServiceMock,
   createIotAlarmOpenmaintServiceMock,
   createPasswordRecoveryOpenmaintServiceMock,
   createPaymentsOpenmaintRepositoryMock,
@@ -86,6 +90,7 @@ export interface TestAppMocks {
   correctiveOpenmaint: ReturnType<
     typeof createCorrectiveMaintOpenmaintServiceMock
   >;
+  equipmentOpenmaint: ReturnType<typeof createEquipmentOpenmaintServiceMock>;
   iotOpenmaint: ReturnType<typeof createIotAlarmOpenmaintServiceMock>;
   passwordRecoveryOpenmaint: ReturnType<
     typeof createPasswordRecoveryOpenmaintServiceMock
@@ -112,6 +117,7 @@ export const createFreshMocks = (): TestAppMocks => ({
   cleaningTasksOpenmaint: createCleaningTasksOpenmaintServiceMock(),
   preventiveOpenmaint: createPreventiveMaintenanceOpenmaintServiceMock(),
   correctiveOpenmaint: createCorrectiveMaintOpenmaintServiceMock(),
+  equipmentOpenmaint: createEquipmentOpenmaintServiceMock(),
   iotOpenmaint: createIotAlarmOpenmaintServiceMock(),
   passwordRecoveryOpenmaint: createPasswordRecoveryOpenmaintServiceMock(),
   paymentsOpenmaint: createPaymentsOpenmaintRepositoryMock(),
@@ -165,6 +171,8 @@ export async function createTestApp(
     .useValue(mocks.preventiveOpenmaint)
     .overrideProvider(CorrectiveMaintOpenmaintService)
     .useValue(mocks.correctiveOpenmaint)
+    .overrideProvider(EquipmentOpenmaintService)
+    .useValue(mocks.equipmentOpenmaint)
     .overrideProvider(IotAlarmOpenmaintService)
     .useValue(mocks.iotOpenmaint)
     .overrideProvider(PasswordRecoveryOpenmaintService)
@@ -194,7 +202,10 @@ export async function createTestApp(
 
   const moduleFixture: TestingModule = await builder.compile();
 
-  const app = moduleFixture.createNestApplication();
+  // Mismo logger, `rid` y filtro de errores que `main.ts`, para que las E2E
+  // prueben lo que corre en Render. El nivel lo fija `setup-env.ts`.
+  const app = moduleFixture.createNestApplication({ logger: new AppLogger() });
+  setupLogging(app);
   app.useGlobalPipes(new ValidationPipe(validationPipeOptions));
   await app.init();
 

@@ -90,6 +90,17 @@ Ninguno de esos cinco contenedores lo usa el piloto. Detener la pila clon es ade
 En INF-06 se ven 4 preflights `204` (353 ms el del login; 479-480 ms los de `unread-count`, `my` y `mine`). El middleware de [main.ts](../../backend/src/main.ts#L10-L27) no envía `Access-Control-Max-Age`, así que el navegador no puede cachear la respuesta y repite el preflight en cada petición. El login completo tardó 2,45 s.
 **Corrección:** una línea de cabecera. Conviene hacerlo antes de medir la línea base de Fase 6, o la baseline queda inflada.
 
+**Resuelto en `ebc5bf0` (2026-09-10).** El middleware se sustituyó por `app.enableCors` con las opciones de [cors.config.ts](../../backend/src/config/cors.config.ts), que declaran `maxAge: 86400`. Verificado en producción el 2026-10-16 (commit `d856eff`): el preflight responde `access-control-max-age: 86400`.
+
+Qué cambia y qué no:
+
+- **El navegador recorta el valor.** Firefox respeta las 24 h, Chrome las deja en 2 h y Safari en 10 min. Safari es el motor de todo navegador de iPhone, la PWA incluida.
+- **La caché va por URL exacta.** `/cleaning-tasks/123` y `/cleaning-tasks/124` pagan cada una su preflight, igual que la misma ruta con otro query string.
+- **La primera petición lo sigue pagando.** El login es la primera petición de la sesión, así que repetir INF-06 en frío vuelve a mostrar los 4 preflights. La ganancia está en las peticiones repetidas a la misma ruta: navegar y volver, o los refetch.
+- **No acelera cada petición.** Un `OPTIONS` solo tardó 0,377 s el 2026-10-16: es el viaje de ida y vuelta a Render. `Max-Age` evita ese viaje extra, pero no lo acorta.
+
+**Para la línea base de Fase 6:** medir con «Disable cache» desmarcado en DevTools, porque esa casilla también vacía la caché de preflight. Comparar las peticiones repetidas, no el primer login. Para eliminar también el preflight del login haría falta servir la API desde el mismo origen que el frontend (un rewrite de Vercel). Solo vale la pena si la línea base muestra que estos preflights pesan.
+
 ### H-4 · P3 · CORS refleja cualquier Origin con credenciales
 Ya estaba identificado en el procedimiento (TS-002) y queda confirmado en producción. [main.ts:10-12](../../backend/src/main.ts#L10-L12) devuelve el `Origin` recibido junto a `Access-Control-Allow-Credentials: true`. Se corrige junto con H-3, que toca el mismo middleware.
 

@@ -1,3 +1,6 @@
+import type { ReporterKind } from "@/shared/components/CorrectiveCard";
+import type { LogEntry } from "@/shared/components/NotesLogCard";
+
 /** Tipo de mantenimiento; también es el segmento de ruta y del endpoint. */
 export type MaintenanceKind = "corrective" | "preventive";
 
@@ -18,6 +21,14 @@ export type SupervisedMaintenance = {
   status: string | null;
   isClosed: boolean;
   site: string | null;
+  /** Planta. Solo correctivos */
+  floor?: string | null;
+  /** Unidad o área común. Solo correctivos */
+  area?: string | null;
+  /** Quien reportó; huésped, visitante e IoT con su nombre real. Solo correctivos */
+  reporter?: { name: string; kind: ReporterKind } | null;
+  /** Equipo intervenido. Solo correctivos */
+  asset?: MaintenanceRef | null;
   assignee: MaintenanceRef | null;
   team: MaintenanceRef | null;
   /** Código estable (`Critical|High|Medium|Low`). Los preventivos no la traen */
@@ -38,6 +49,8 @@ export type SupervisedMaintenance = {
   suspensionReason?: string | null;
   /** Lo que escribió quien reportó la novedad. Solo correctivos. */
   reportNotes?: string | null;
+  /** Notas posteriores a la apertura, en orden cronológico. Solo correctivos. */
+  log?: LogEntry[];
 };
 
 export type Assignee = {
@@ -106,8 +119,20 @@ export type MaintenanceResponse = {
 
 export type AssignPayload = {
   assigneeId: number;
+  /** Código estable (`Critical|High|Medium|Low`). Solo correctivos */
+  priority?: string;
   /** Se ignora en preventivo: `Team` no es escribible en su flujo */
   teamId?: number;
   plannedStart?: string;
+  /** Equipo intervenido. Solo correctivos y opcional */
+  assetId?: number;
   notes?: string;
+};
+
+/** Equipo candidato a intervenido en un correctivo. */
+export type AssetOption = {
+  id: number;
+  code: string | null;
+  description: string | null;
+  place: string | null;
 };

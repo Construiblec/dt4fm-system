@@ -10,9 +10,13 @@ import { NotificationsPage } from "@/modules/notificaciones/pages/NotificationsP
 import { CleaningTaskExecutionPage } from "@/modules/incidentes/pages/CleaningTaskExecutionPage";
 import { DashboardPage } from "@/modules/incidentes/pages/DashboardPage";
 import { IncidentDetailPage } from "@/modules/incidentes/pages/IncidentDetailPage";
+import { CorrectiveHistoryDetailPage } from "@/modules/incidentes/pages/CorrectiveHistoryDetailPage";
+import { CorrectiveAssignPage } from "@/modules/supervisor-mantenimiento/pages/CorrectiveAssignPage";
 import { PastPreventiveMaintenancePage } from "@/modules/incidentes/pages/PastPreventiveMaintenancePage";
 import { PreventiveMaintenanceDetailPage } from "@/modules/incidentes/pages/PreventiveMaintenanceDetailPage";
 import { ReportIncidentPage } from "@/modules/incidentes/pages/ReportIncidentPage";
+import { MyReportsPage } from "@/modules/incidentes/pages/MyReportsPage";
+import { MyReportDetailPage } from "@/modules/incidentes/pages/MyReportDetailPage";
 import { SupervisorDashboardPage } from "@/modules/supervisor/pages/SupervisorDashboardPage";
 import { SupervisorTaskDetailPage } from "@/modules/supervisor/pages/SupervisorTaskDetailPage";
 import { AsistenteSLDashboardPage } from "@/modules/asistente-sl/pages/AsistenteSLDashboardPage";
@@ -31,6 +35,16 @@ import { OwnerProfilePage } from "@/modules/owners/pages/OwnerProfilePage";
 import { GuestDashboardPage } from "@/modules/guest/pages/GuestDashboardPage";
 import { GuestIncidentPage } from "@/modules/guest/pages/GuestIncidentPage";
 import { GuestShortLinkPage } from "@/modules/guest/pages/GuestShortLinkPage";
+import { CoordinatorLayout } from "@/modules/coordinador/layout/CoordinatorLayout";
+import { PendientesPage } from "@/modules/coordinador/pages/PendientesPage";
+import { LimpiezasPage } from "@/modules/coordinador/pages/LimpiezasPage";
+import { SincronizacionPage } from "@/modules/coordinador/pages/SincronizacionPage";
+import { PerfilPage } from "@/modules/coordinador/pages/PerfilPage";
+import { NuevaPage } from "@/modules/coordinador/pages/NuevaPage";
+import {
+  ChecklistEditorPage,
+  ChecklistsPage,
+} from "@/modules/coordinador/pages/ChecklistsPage";
 import { OwnerReservationDetailPage } from "@/modules/owners/pages/reservation/OwnerReservationDetailPage";
 
 export const router = createBrowserRouter([
@@ -43,10 +57,17 @@ export const router = createBrowserRouter([
   { path: "/dashboard", element: <DashboardPage /> },
   { path: "/cuenta", element: <AccountPage /> },
   { path: "/notificaciones", element: <NotificationsPage /> },
-  { path: "/cleaning-tasks/:id/execute", element: <CleaningTaskExecutionPage /> },
+  {
+    path: "/cleaning-tasks/:id/execute",
+    element: <CleaningTaskExecutionPage />,
+  },
   { path: "/visitor-form", element: <VisitorFormPage /> },
   { path: "/report-incident", element: <ReportIncidentPage /> },
   { path: "/incidents/:id", element: <IncidentDetailPage /> },
+  {
+    path: "/corrective-maintenance/historial/:id",
+    element: <CorrectiveHistoryDetailPage />,
+  },
   {
     path: "/preventive-maintenance/:id",
     element: <PreventiveMaintenanceDetailPage />,
@@ -56,6 +77,9 @@ export const router = createBrowserRouter([
     element: <PastPreventiveMaintenancePage />,
   },
   { path: "/reportar-incidente", element: <ReportIncidentPage /> },
+  // Lo que reportó cada usuario; el backend filtra por su empleado.
+  { path: "/mis-reportes", element: <MyReportsPage /> },
+  { path: "/mis-reportes/:id", element: <MyReportDetailPage /> },
   {
     path: "/supervisor",
     element: (
@@ -89,12 +113,44 @@ export const router = createBrowserRouter([
       </RequireRole>
     ),
   },
+  // ── Coordinador de limpiezas ──────────────────────────────────────────────
+  // Vista de escritorio con su propio layout (menú lateral); la ficha de una
+  // limpieza se abre como panel con `?limpieza=ID`.
+  {
+    path: "/coordinador",
+    element: (
+      <RequireRole roles={["Coordinador", "SuperUser"]}>
+        <CoordinatorLayout />
+      </RequireRole>
+    ),
+    children: [
+      // Sin panel del día: la pantalla principal es Limpiezas.
+      { index: true, element: <Navigate to="limpiezas" replace /> },
+      { path: "pendientes", element: <PendientesPage /> },
+      { path: "limpiezas", element: <LimpiezasPage /> },
+      { path: "agenda", element: <LimpiezasPage /> },
+      { path: "sincronizacion", element: <SincronizacionPage /> },
+      { path: "nueva", element: <NuevaPage /> },
+      { path: "checklists", element: <ChecklistsPage /> },
+      { path: "checklists/nuevo", element: <ChecklistEditorPage /> },
+      { path: "checklists/:id", element: <ChecklistEditorPage /> },
+      { path: "perfil", element: <PerfilPage /> },
+    ],
+  },
   // ── Supervisión de mantenimiento ──────────────────────────────────────────
   {
     path: "/supervisor-mantenimiento",
     element: (
       <RequireRole roles={["SupervisorMantenimiento", "SuperUser"]}>
         <MaintenanceSupervisorDashboardPage />
+      </RequireRole>
+    ),
+  },
+  {
+    path: "/supervisor-mantenimiento/corrective/:id/asignar",
+    element: (
+      <RequireRole roles={["SupervisorMantenimiento", "SuperUser"]}>
+        <CorrectiveAssignPage />
       </RequireRole>
     ),
   },

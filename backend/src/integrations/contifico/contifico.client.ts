@@ -1,8 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
-import { firstValueFrom } from 'rxjs';
-import { AxiosRequestConfig } from 'axios';
+import { firstValueFrom, Observable } from 'rxjs';
+import { AxiosRequestConfig, AxiosResponse, isAxiosError } from 'axios';
+import {
+  describeError,
+  safePath,
+} from '../../common/logging/describe-error.util';
 
 @Injectable()
 export class ContificoClient {
@@ -15,39 +19,52 @@ export class ContificoClient {
     private readonly configService: ConfigService,
   ) {
     this.apiKey = this.configService.get<string>('CONTIFICO_API_KEY') ?? '';
-    this.baseUrl =
-      this.configService.get<string>('CONTIFICO_BASE_URL') ??
-      'https://api.contifico.com/sistema/api/v1';
+    this.baseUrl = this.configService.get<string>('CONTIFICO_BASE_URL') ?? '';
   }
 
   private get authHeaders() {
     return { Authorization: this.apiKey };
   }
 
+  /**
+   * Una línea de `debug` si sale bien y una de `warn` si falla, sin la URL
+   * completa ni el cuerpo de la respuesta (como en `OpenmaintClient`).
+   */
+  private async send<T>(
+    method: string,
+    path: string,
+    request: () => Observable<AxiosResponse<T>>,
+  ): Promise<T> {
+    const startedAt = Date.now();
+
+    try {
+      const response = await firstValueFrom(request());
+
+      this.logger.debug(
+        `${method} ${safePath(path)} → ${response.status} (${Date.now() - startedAt} ms)`,
+      );
+
+      return response.data;
+    } catch (error) {
+      const reason = isAxiosError(error)
+        ? describeError(error)
+        : `${method} ${safePath(path)} → ${describeError(error)}`;
+
+      this.logger.warn(`${reason} (${Date.now() - startedAt} ms)`);
+      throw error;
+    }
+  }
+
   async get<T = unknown>(
     path: string,
     config?: AxiosRequestConfig,
   ): Promise<T> {
-    const url = `${this.baseUrl}${path}`;
-    this.logger.log(`[HTTP] GET ${url}`);
-
-    try {
-      const response = await firstValueFrom(
-        this.httpService.get<T>(url, {
-          ...config,
-          headers: { ...this.authHeaders, ...(config?.headers ?? {}) },
-        }),
-      );
-      this.logger.log(`[HTTP] GET ${url} → ${response.status}`);
-      return response.data;
-    } catch (error) {
-      this.logger.error(`[HTTP] GET ${url} → ERROR`, {
-        status: error?.response?.status,
-        data: JSON.stringify(error?.response?.data),
-        message: error?.message,
-      });
-      throw error;
-    }
+    return this.send('GET', path, () =>
+      this.httpService.get<T>(`${this.baseUrl}${path}`, {
+        ...config,
+        headers: { ...this.authHeaders, ...(config?.headers ?? {}) },
+      }),
+    );
   }
 
   async post<T = unknown>(
@@ -55,25 +72,11 @@ export class ContificoClient {
     body: unknown,
     config?: AxiosRequestConfig,
   ): Promise<T> {
-    const url = `${this.baseUrl}${path}`;
-    this.logger.log(`[HTTP] POST ${url}`);
-
-    try {
-      const response = await firstValueFrom(
-        this.httpService.post<T>(url, body, {
-          ...config,
-          headers: { ...this.authHeaders, ...(config?.headers ?? {}) },
-        }),
-      );
-      this.logger.log(`[HTTP] POST ${url} → ${response.status}`);
-      return response.data;
-    } catch (error) {
-      this.logger.error(`[HTTP] POST ${url} → ERROR`, {
-        status: error?.response?.status,
-        data: JSON.stringify(error?.response?.data),
-        message: error?.message,
-      });
-      throw error;
-    }
+    return this.send('POST', path, () =>
+      this.httpService.post<T>(`${this.baseUrl}${path}`, body, {
+        ...config,
+        headers: { ...this.authHeaders, ...(config?.headers ?? {}) },
+      }),
+    );
   }
 }

@@ -1,5 +1,6 @@
 import {
   badgeClass,
+  barClass,
   borderClass,
   pillClass,
   type StatusLevel,
@@ -18,17 +19,19 @@ import {
  * haya un inicio real.
  */
 export const CORRECTIVE_STATUS_LABELS: Record<string, string> = {
-  Opening: "Apertura",
-  Assignment: "Asignación",
+  Opening: "Nueva",
+  // Recién reportada: falta que el supervisor la asigne.
+  Assignment: "Nueva",
   Assigned: "Asignado",
   Estimate: "Presupuesto",
   Control: "Control",
-  Execution: "Ejecución",
-  Accounting: "Contabilidad",
+  Execution: "En ejecución",
+  // Trabajo terminado que el supervisor debe aprobar o reabrir.
+  Accounting: "Por aprobar",
   // OpenMAINT rotula este paso «Administración»; se respeta para que coincida
   // con lo que se ve en su propia interfaz.
   Management: "Administración",
-  Completed: "Completado",
+  Completed: "Aprobado",
   Canceled: "Cancelado",
 };
 
@@ -48,10 +51,11 @@ export const CORRECTIVE_STATUS_ORDER = [
 
 /**
  * Estados que se pueden mandar al backend como filtro. `Assigned` queda fuera:
- * es derivado y openMAINT no sabe filtrar por él.
+ * es derivado y openMAINT no sabe filtrar por él. `Opening` también: avanza
+ * solo al crear y se rotularía «Nueva» igual que `Assignment`.
  */
 export const CORRECTIVE_FILTERABLE_STATUSES = CORRECTIVE_STATUS_ORDER.filter(
-  (status) => status !== "Assigned",
+  (status) => status !== "Assigned" && status !== "Opening",
 );
 
 /**
@@ -61,8 +65,8 @@ export const CORRECTIVE_FILTERABLE_STATUSES = CORRECTIVE_STATUS_ORDER.filter(
  * `Completed` de limpieza — hecho, pendiente del visto bueno del supervisor.
  */
 export const CORRECTIVE_STATUS_LEVELS: Record<string, StatusLevel> = {
-  Opening: "pending",
-  Assignment: "assigned",
+  Opening: "new",
+  Assignment: "new",
   Assigned: "assigned",
   Execution: "inProgress",
   Estimate: "admin",
@@ -70,7 +74,7 @@ export const CORRECTIVE_STATUS_LEVELS: Record<string, StatusLevel> = {
   Management: "admin",
   Accounting: "review",
   Completed: "done",
-  Canceled: "cancelled",
+  Canceled: "discarded",
 };
 
 export const getCorrectiveStatusLevel = (
@@ -85,6 +89,9 @@ export const getCorrectiveStatusPill = (statusCode: string | null) =>
 
 export const getCorrectiveStatusBorder = (statusCode: string | null) =>
   borderClass(getCorrectiveStatusLevel(statusCode));
+
+export const getCorrectiveStatusBar = (statusCode: string | null) =>
+  barClass(getCorrectiveStatusLevel(statusCode));
 
 export const getCorrectiveStatusLabel = (
   statusCode: string | null,
@@ -116,13 +123,13 @@ export const getCorrectiveBlockedReason = (
     case "Assignment":
       return "Aún no está en ejecución";
     case "Accounting":
-      return "Pendiente de revisión";
+      return "Pendiente de aprobación";
     case "Estimate":
     case "Control":
     case "Management":
       return "En gestión administrativa";
     case "Completed":
-      return "Trabajo completado";
+      return "Trabajo aprobado";
     case "Canceled":
       return "Trabajo cancelado";
     default:

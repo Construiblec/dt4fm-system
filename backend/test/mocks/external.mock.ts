@@ -39,6 +39,7 @@ export const createHostawayServiceMock = () => ({
   getReservationsByArrivalDate: jest.fn().mockResolvedValue([]),
   getReservationsForAccess: jest.fn().mockResolvedValue([]),
   getCheckoutsByDate: jest.fn().mockResolvedValue({ result: [] }),
+  getReservationCheckout: jest.fn().mockResolvedValue(null),
   findConversationByReservation: jest
     .fn()
     .mockResolvedValue({ id: 900000, reservationId: null, channelId: null }),
@@ -88,6 +89,7 @@ export const createPushDispatchServiceMock = () => ({
   notifyCleaningAssigned: jest.fn().mockResolvedValue(undefined),
   notifyCleaningDelayed: jest.fn().mockResolvedValue(undefined),
   notifyCleaningCompleted: jest.fn().mockResolvedValue(undefined),
+  notifyCleaningReopened: jest.fn().mockResolvedValue(undefined),
   claimDispatch: jest.fn().mockResolvedValue(true),
 });
 

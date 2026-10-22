@@ -1,4 +1,5 @@
 import {
+  CalendarCheck,
   HardHat,
   Home,
   KeyRound,
@@ -108,6 +109,23 @@ export const ROLE_VIEWS: Record<string, RoleView> = {
     solid: "bg-fuchsia-600",
     homeRoute: "/asistente-sl",
   },
+  /**
+   * Coordinación de limpiezas: sincroniza con Hostaway, completa las pendientes
+   * y arma la agenda. Es una vista de escritorio, sin barra inferior. El índigo
+   * es provisional, a la espera de que producto lo valide.
+   */
+  Coordinador: {
+    name: "Coordinador de Limpiezas",
+    short: "Coordinación",
+    desc: "Sincronización, agenda y checklists",
+    icon: CalendarCheck,
+    dot: "bg-indigo-600",
+    text: "text-indigo-700",
+    soft: "bg-indigo-50",
+    ring: "border-indigo-600",
+    solid: "bg-indigo-600",
+    homeRoute: "/coordinador",
+  },
   Propietarios: {
     name: "Residente",
     short: "Residente",
@@ -169,6 +187,29 @@ export const getRoleView = (role?: string | null): RoleView => {
   }
 
   return ROLE_VIEWS[role] ?? FALLBACK_VIEW;
+};
+
+/** Primer tramo de la ruta: "/supervisor-cav/autorizaciones?x=1" → "supervisor-cav". */
+const areaOf = (path: string) => path.split(/[?#]/)[0].split("/")[1] ?? "";
+
+/**
+ * Zonas propias de cada vista (el primer tramo de su `homeRoute`). Lo que no
+ * está aquí —notificaciones, cuenta, la ficha de una tarea— es común a todas.
+ */
+const ROLE_AREAS = new Set(
+  [...Object.values(ROLE_VIEWS), EXECUTION_VIEW].map((view) =>
+    areaOf(view.homeRoute),
+  ),
+);
+
+/**
+ * ¿Sirve este destino pendiente (el de antes de un 401) para el rol con el que
+ * se entra? La pantalla de otro rol no: quien vuelve a entrar como supervisor no
+ * debe aterrizar en la coordinación solo porque fue lo último que tenía abierto.
+ */
+export const fitsRole = (path: string, role?: string | null): boolean => {
+  const area = areaOf(path);
+  return !ROLE_AREAS.has(area) || area === areaOf(getRoleView(role).homeRoute);
 };
 
 export type SelectableRole = RoleView & { code: string };

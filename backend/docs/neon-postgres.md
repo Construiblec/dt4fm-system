@@ -35,7 +35,7 @@ En el panel de conexión de Neon, el interruptor **Connection pooling** alterna 
 
 La separación no es opcional: el *pooler* es PgBouncer en modo transacción y rompe los *advisory locks* con los que TypeORM serializa las migraciones. Ejecutarlas a través del pooler falla o, peor, deja dos despliegues migrando a la vez.
 
-El TLS se deriva de la propia cadena: `resolveDatabaseSsl` activa verificación completa de certificado en cuanto la URL trae `sslmode=require`, que es como Neon las entrega. No hay una variable aparte que pueda quedar desalineada entre entornos.
+El TLS se deriva de la propia cadena, que debe llevar `sslmode=verify-full`. Neon las entrega con `sslmode=require`: hay que cambiarlo a mano. `pg` deja que el `sslmode` de la URL pise la opción `ssl` que pasa `resolveDatabaseSsl`, y en pg v9 `require` adopta la semántica de libpq y deja de verificar el certificado, sin ningún error. No hay una variable aparte que pueda quedar desalineada entre entornos.
 
 ---
 

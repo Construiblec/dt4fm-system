@@ -357,10 +357,18 @@ Ambos headers son obligatorios:
 
 ### Logging
 
+Una línea por fallo, con la causa resumida por `describeError`: método, ruta, estado y mensaje de openMAINT, sin cabeceras ni cuerpo.
+
 ```typescript
 // En CleaningTasksOpenmaintService
-this.logger.error('Error al obtener tareas del empleado:', error.message);
+this.logger.error(
+  `Error al obtener tareas del empleado — ${describeError(error)}`,
+);
+// → ERROR [CleaningTasksOpenmaintService] Error al obtener tareas del empleado —
+//   GET /classes/CleaningTask/cards?… → 500: <mensaje de openMAINT> rid=7f3a91c2
 ```
+
+No pasar `error.message` como segundo argumento: Nest lo toma como contexto y lo muestra entre corchetes en lugar del nombre del servicio.
 
 ---
 

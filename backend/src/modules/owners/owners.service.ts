@@ -3,9 +3,11 @@ import {
   ConflictException,
   Injectable,
   InternalServerErrorException,
+  Logger,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { describeError } from '../../common/logging/describe-error.util';
 import { OpenmaintAuthService } from '../../integrations/openmaint/openmaint.auth.service';
 import { OpenmaintService } from '../../integrations/openmaint/openmaint.service';
 import { OpenmaintClient } from '../../integrations/openmaint/openmaint.client';
@@ -15,7 +17,7 @@ import { AppSessionsService } from '../app-sessions/app-sessions.service';
 import { AuthService } from '../auth/auth.service';
 import { VerifyOwnerDto } from './dto/verify-owner.dto';
 import { RegisterOwnerDto } from './dto/register-owner.dto';
-import { ChangePasswordDto } from './dto/change-password.dto';
+import { OwnerChangePasswordDto } from './dto/change-password.dto';
 import { ContactAdminDto } from './dto/contact-admin.dto';
 import { CreateReservationDto } from './dto/create-reservation.dto';
 import { PayPaymentDto } from './dto/pay-payment.dto';
@@ -106,6 +108,8 @@ type UploadedFile = {
 
 @Injectable()
 export class OwnersService {
+  private readonly logger = new Logger(OwnersService.name);
+
   constructor(
     private readonly configService: ConfigService,
     private readonly openmaintAuthService: OpenmaintAuthService,
@@ -340,10 +344,9 @@ export class OwnersService {
         );
         results.push({ id: paymentId, success: true });
       } catch (error) {
-        console.error(`[owners] payPayment error for id ${paymentId}:`, {
-          status: error?.response?.status,
-          data: JSON.stringify(error?.response?.data),
-        });
+        this.logger.error(
+          `No se pudo registrar el pago ${paymentId} — ${describeError(error)}`,
+        );
         results.push({
           id: paymentId,
           success: false,
@@ -360,9 +363,10 @@ export class OwnersService {
       try {
         await this.paidNotifier.notifyPaidPayments(paidIds, sessionId);
       } catch (error) {
-        console.error('[owners] notifyPaidPayments error:', {
-          message: (error as Error)?.message,
-        });
+        // Best-effort: el pago ya quedó registrado.
+        this.logger.warn(
+          `Pagos ${paidIds.join(', ')} registrados, pero no se avisó al administrador — ${describeError(error)}`,
+        );
       }
     }
 
@@ -407,10 +411,9 @@ export class OwnersService {
       );
       return { success: true, message: 'Comprobante subido correctamente' };
     } catch (error) {
-      console.error('[owners] uploadPaymentVoucher error:', {
-        status: error?.response?.status,
-        data: JSON.stringify(error?.response?.data),
-      });
+      this.logger.error(
+        `No se pudo subir el comprobante del pago ${paymentId} — ${describeError(error)}`,
+      );
       throw new InternalServerErrorException('No se pudo subir el comprobante');
     }
   }
@@ -442,7 +445,7 @@ export class OwnersService {
   /** `currentSessionId` es la sesión que se conserva: la de quien la cambia. */
   async changeOwnerPassword(
     userId: number,
-    dto: ChangePasswordDto,
+    dto: OwnerChangePasswordDto,
     currentSessionId?: string,
   ) {
     const adminSessionId = await this.serviceSession.get();
@@ -475,9 +478,11 @@ export class OwnersService {
         adminSessionId,
       );
     } catch (error) {
-      console.error('[owners] changeOwnerPassword error:', {
-        status: error?.response?.status,
-      });
+      // `describeError` nunca imprime el cuerpo de la petición, que aquí lleva
+      // la contraseña nueva.
+      this.logger.error(
+        `No se pudo cambiar la contraseña de ${account.username} — ${describeError(error)}`,
+      );
       throw new InternalServerErrorException(
         'No se pudo actualizar la contraseña',
       );
@@ -506,9 +511,9 @@ export class OwnersService {
         message: 'Tu mensaje fue enviado al administrador correctamente',
       };
     } catch (error) {
-      console.error('[owners] contactAdmin error:', {
-        status: error?.response?.status,
-      });
+      this.logger.error(
+        `No se pudo enviar el mensaje del inquilino ${tenantId} al administrador — ${describeError(error)}`,
+      );
       throw new InternalServerErrorException('No se pudo enviar el mensaje.');
     }
   }
@@ -596,9 +601,9 @@ export class OwnersService {
         precio: area.Precio ?? 0,
       };
     } catch (error) {
-      console.error('[owners] createReservation error:', {
-        status: error?.response?.status,
-      });
+      this.logger.error(
+        `No se pudo reservar el área ${areaId} — ${describeError(error)}`,
+      );
       throw new InternalServerErrorException('No se pudo crear la reserva');
     }
   }

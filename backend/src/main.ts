@@ -1,13 +1,21 @@
-import { ValidationPipe } from '@nestjs/common';
+import { Logger, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
+import { AppLogger } from './common/logging/app-logger';
+import { setupLogging } from './common/logging/setup-logging';
 import { validationPipeOptions } from './config/validation.config';
 import { corsOptions } from './config/cors.config';
 
 async function bootstrap() {
-  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  // El logger va desde la creación: así también pasan por él los mensajes de
+  // arranque de Nest, que `AppLogger` reduce a lo que importa.
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    logger: new AppLogger(),
+  });
+
+  setupLogging(app);
 
   // Render pone un proxy delante: sin esto `request.ip` es la del proxy y los
   // límites por IP los comparten todos los clientes.
@@ -111,6 +119,14 @@ async function bootstrap() {
   }
 
   await app.listen(Number(process.env.PORT ?? 3000), '0.0.0.0');
+
+  // Una línea que dice qué versión arrancó y con qué nivel de log, para
+  // ubicar en Render dónde empieza cada despliegue. Mismo commit que /health.
+  const commit =
+    process.env.RENDER_GIT_COMMIT ?? process.env.GIT_SHA ?? 'local';
+  new Logger('Bootstrap').log(
+    `Arrancado commit=${commit.slice(0, 7)} nivel=${process.env.LOG_LEVEL?.trim() || 'log'}`,
+  );
 }
 
 bootstrap();

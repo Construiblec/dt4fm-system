@@ -4,6 +4,7 @@ import { CalendarClock } from "lucide-react";
 import { AppLayout } from "@/app/layout/AppLayout";
 import { useAuthorizations } from "@/modules/supervisor-cav/hooks/useAuthorizations";
 import { AppHeader } from "@/shared/components/AppHeader";
+import { FloatingReportButton } from "@/modules/incidentes/components/FloatingReportButton";
 import { DateField } from "@/shared/components/DateField";
 import { ListStateMessage } from "@/modules/incidentes/components/ListStateMessage";
 import { formatMediumDate } from "@/shared/utils/dateUtils";
@@ -134,6 +135,7 @@ export const AuthorizationsListPage = () => {
             </div>
           </div>
         </section>
+        <FloatingReportButton />
       </main>
     </AppLayout>
   );

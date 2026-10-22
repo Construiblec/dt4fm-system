@@ -230,7 +230,7 @@ export const PastPreventiveMaintenancePage = () => {
               <AttachmentListSection
                 icon={FileText}
                 title="Informe generado"
-                subtitle="Informe que OpenMAINT generó al cerrar el mantenimiento."
+                subtitle="Informe generado al cerrar el mantenimiento."
                 attachments={attachments.filter(
                   (attachment) => attachment.isReport,
                 )}

@@ -1,27 +1,32 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsNotEmpty, IsOptional, IsInt, Min } from 'class-validator';
+import {
+  IsInt,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  MaxLength,
+  Min,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 
 /**
- * Creación manual de una limpieza (Source: 'Manual'), a diferencia del flujo
+ * Creación manual de una limpieza (`Source: Manual`), a diferencia del flujo
  * de sincronización con Hostaway (`CreateCleaningTaskDto`), que exige
- * `hostawayReservationId` y no permite fijar Unit/Employee al crear.
+ * `hostawayReservationId`.
+ *
+ * Obligatorios: descripción y horario. Unidad, empleado, checklist y
+ * observaciones son opcionales; sin empleado la limpieza queda en Pendientes.
  */
 export class CreateManualCleaningTaskDto {
   @ApiProperty({
-    description: 'ID de la Unit (unidad) a limpiar',
-    example: 1187,
+    description:
+      'Descripción de la limpieza. Obligatoria: a diferencia del flujo Hostaway no hay listingName del que derivarla.',
+    example: 'Limpieza profunda - Pradera, Suite I41',
   })
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  unitId: number;
-
-  @ApiProperty({ description: 'ID del empleado asignado', example: 4567 })
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  employeeId: number;
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(200)
+  description: string;
 
   @ApiProperty({
     description: 'Fecha y hora de inicio planificada (ISO 8601)',
@@ -39,17 +44,28 @@ export class CreateManualCleaningTaskDto {
   @IsNotEmpty()
   plannedEndTime: string;
 
-  @ApiProperty({
-    description:
-      'Descripción de la tarea. Obligatoria: a diferencia del flujo Hostaway no hay listingName del que derivarla.',
-    example: 'Limpieza profunda - Torre A, Depto 302',
+  @ApiPropertyOptional({
+    description: 'ID de la Unit (unidad) a limpiar',
+    example: 1187,
   })
-  @IsString()
-  @IsNotEmpty()
-  description: string;
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  unitId?: number;
 
   @ApiPropertyOptional({
-    description: 'ID de la plantilla de checklist (CleaningActivity)',
+    description: 'ID del empleado asignado',
+    example: 4567,
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  employeeId?: number;
+
+  @ApiPropertyOptional({
+    description: 'ID del checklist (CleaningActivity)',
     example: 42,
   })
   @IsOptional()
@@ -58,8 +74,9 @@ export class CreateManualCleaningTaskDto {
   @Min(1)
   cleaningChecklistId?: number;
 
-  @ApiPropertyOptional({ description: 'Observaciones de la tarea' })
+  @ApiPropertyOptional({ description: 'Observaciones para el equipo' })
   @IsString()
   @IsOptional()
+  @MaxLength(500)
   observations?: string;
 }

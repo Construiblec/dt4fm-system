@@ -1,8 +1,8 @@
 import {
+  BadGatewayException,
   Injectable,
   Logger,
   ServiceUnavailableException,
-  UnauthorizedException,
 } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
@@ -173,9 +173,12 @@ export class HostawayService {
     }>;
     const safeMessage = this.buildSafeErrorMessage(finalError);
 
+    // 502 y no 401: el que falla es el backend frente a Hostaway, no la sesión
+    // del usuario. Un 401 aquí lo leía el frontend como "sesión caducada" y
+    // mandaba al login a alguien con la sesión perfectamente válida.
     if (finalError?.response?.status === 401) {
-      throw new UnauthorizedException(
-        `Hostaway rechazo las credenciales OAuth` +
+      throw new BadGatewayException(
+        `Hostaway rechazó las credenciales del servidor (HOSTAWAY_CLIENT_ID / HOSTAWAY_CLIENT_SECRET)` +
           (safeMessage ? ` (${safeMessage})` : ''),
       );
     }
@@ -254,9 +257,13 @@ export class HostawayService {
    * Obtiene checkouts entre dateFrom y dateTo (inclusive).
    * Si HOSTAWAY_USE_MOCK=true retorna datos de prueba.
    *
-   * NOTA: Hostaway no filtra por checkOutDateFrom/To en el resultado —
-   * devuelve las reservas más recientes. Por eso filtramos en código
-   * por departureDate y por status válido.
+   * Hostaway filtra por fecha de salida con `departureStartDate` /
+   * `departureEndDate`. Antes se mandaba `checkOutDateFrom/To`, que Hostaway
+   * ignora: devolvía las reservas más recientes y había que recorrer 25 páginas
+   * (2.500 reservas, ~25-40 s) para quedarse con unas pocas, y con rangos de
+   * varios días el tope de páginas dejaba checkouts fuera. Medido el 14/10/2026:
+   * un día bajó de 28 s a 0,4 s y una semana de 38 s a 0,8 s, con 2 checkouts
+   * que antes faltaban. Igual se filtra en código por departureDate y status.
    *
    * Recorremos todas las páginas con el cursor afterId (mismo patrón que
    * getReservationsByArrivalDate). Con una sola página de 100 un rango de
@@ -286,8 +293,8 @@ export class HostawayService {
 
     while (page <= MAX_CHECKOUT_PAGES) {
       const params: Record<string, unknown> = {
-        checkOutDateFrom: dateFrom,
-        checkOutDateTo: dateTo,
+        departureStartDate: dateFrom,
+        departureEndDate: dateTo,
         includeResources: 1,
         limit: HOSTAWAY_PAGE_SIZE,
       };
@@ -540,6 +547,58 @@ export class HostawayService {
     );
 
     return allReservations;
+  }
+
+  /**
+   * La fecha de salida actual de UNA reserva, por su id. Para saber si la
+   * reserva de una limpieza ya creada cambió de checkout sin volver a recorrer
+   * semanas de reservas. `null` si no existe, no tiene un status que genere
+   * limpieza (cancelada, etc.) o Hostaway no responde: quien llama la trata
+   * como "ya no está".
+   */
+  async getReservationCheckout(reservationId: string): Promise<{
+    reservationId: string;
+    listingName: string;
+    listingId: string;
+    checkoutDate: string;
+  } | null> {
+    if (this.useMock()) return null;
+
+    try {
+      const token = await this.getAccessToken();
+      const response = await this.performRequest<{
+        result?: RawHostawayReservation;
+      }>(
+        `Consulta de la reserva Hostaway ${reservationId}`,
+        () =>
+          firstValueFrom(
+            this.httpService.get(
+              `https://api.hostaway.com/v1/reservations/${encodeURIComponent(reservationId)}`,
+              {
+                timeout: this.requestTimeoutMs,
+                headers: { Authorization: `Bearer ${token}` },
+              },
+            ),
+          ),
+        { maxRetries: 0 },
+      );
+
+      const r = response.data?.result;
+      if (!r?.departureDate) return null;
+      if (!VALID_RESERVATION_STATUSES.includes(r.status ?? '')) return null;
+
+      return {
+        reservationId: String(r.hostawayReservationId ?? r.id ?? reservationId),
+        listingName: r.listingName ?? '',
+        listingId: String(r.listingMapId ?? ''),
+        checkoutDate: r.departureDate,
+      };
+    } catch (error) {
+      this.logger.warn(
+        `No se pudo leer la reserva Hostaway ${reservationId}: ${(error as Error)?.message}`,
+      );
+      return null;
+    }
   }
 
   /**

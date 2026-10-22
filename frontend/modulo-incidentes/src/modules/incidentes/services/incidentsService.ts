@@ -27,7 +27,8 @@ attachSessionRenewal(incidentsApi, "authorization");
 
 export type CreateIncidentPayload = {
   buildingId: string;
-  floorArea: string;
+  /** Breve descripción: título de la tarjeta */
+  shortDescription: string;
   /** Ubicación estructurada; se omite lo que el usuario no haya elegido */
   floorId?: number | null;
   unitId?: number | null;
@@ -49,7 +50,7 @@ type GetMyIncidentsResponse = {
 
 export const createIncident = async ({
   buildingId,
-  floorArea,
+  shortDescription,
   floorId,
   unitId,
   commonAreaId,
@@ -68,7 +69,7 @@ export const createIncident = async ({
 
   const formData = new FormData();
   formData.append("buildingId", buildingId);
-  formData.append("floorArea", floorArea);
+  formData.append("shortDescription", shortDescription);
   formData.append("priority", String(Number(priority)));
   formData.append("notes", notes);
 
@@ -113,6 +114,41 @@ export const getMyIncidents = async (): Promise<Incident[]> => {
         headers: {
           Authorization: sessionId ?? "",
           "x-employee-id": employeeId ?? "",
+        },
+      },
+    );
+
+    return data.incidents;
+  } catch (error) {
+    if (axios.isAxiosError(error) && error.response?.status === 401) {
+      redirectToLogin();
+    }
+
+    throw error;
+  }
+};
+
+export type ReportedIncident = Incident & {
+  /** Última vez que cambió el correctivo. */
+  updatedAt?: string | null;
+};
+
+/** Correctivos que abrió el usuario, del más reciente al más antiguo. */
+export const getReportedIncidents = async (): Promise<ReportedIncident[]> => {
+  const sessionId = localStorage.getItem("sessionId");
+  const employeeId = getEmployeeId();
+
+  if (employeeId === null) {
+    throw new MissingEmployeeError();
+  }
+
+  try {
+    const { data } = await incidentsApi.get<{ incidents: ReportedIncident[] }>(
+      "/incidents/reported",
+      {
+        headers: {
+          Authorization: sessionId ?? "",
+          "x-employee-id": employeeId,
         },
       },
     );

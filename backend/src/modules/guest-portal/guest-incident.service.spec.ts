@@ -9,7 +9,6 @@ import { ConfigService } from '@nestjs/config';
 import { OpenmaintServiceSession } from '../../integrations/openmaint/openmaint.service-session';
 import { GuestPortalData } from '../access-control/guest-portal-data.service';
 import { IncidentsService } from '../incidents/incidents.service';
-import { CM_PRIORITY_IDS } from '../maintenance-supervision/constants/corrective-maint.constants';
 import { RateLimiterService } from '../password-recovery/rate-limiter.service';
 import { GuestIncidentService } from './guest-incident.service';
 import { GuestLocationService } from './guest-location.service';
@@ -84,11 +83,30 @@ describe('GuestIncidentService', () => {
         buildingId: 3019998,
         floorId: 3055144,
         unitId: 4242,
-        priority: CM_PRIORITY_IDS.MEDIUM,
-        floorArea: 'Huésped - P12 - Baño principal',
+        shortDescription: 'No hay agua caliente',
       }),
       [],
     );
+  });
+
+  it('usa el título del huésped y deja la prioridad al supervisor', async () => {
+    const { service, createIncident } = harness();
+
+    await service.report(
+      guestWith(),
+      { ...dto, title: 'Sin agua caliente' },
+      [],
+      NOW,
+    );
+
+    const [, , sent] = createIncident.mock.calls[0] as [
+      string,
+      number,
+      Record<string, unknown>,
+    ];
+
+    expect(sent.shortDescription).toBe('Sin agua caliente');
+    expect(sent).not.toHaveProperty('priority');
   });
 
   it('no envía planta si la unidad no tiene una asignada en openMAINT', async () => {
@@ -160,14 +178,14 @@ describe('GuestIncidentService', () => {
       NOW,
     );
 
-    const [, , { notes, floorArea }] = createIncident.mock.calls[0] as [
+    const [, , { notes, shortDescription }] = createIncident.mock.calls[0] as [
       string,
       number,
-      { notes: string; floorArea: string },
+      { notes: string; shortDescription: string },
     ];
 
     expect(notes).not.toMatch(/[<>]/);
-    expect(floorArea).not.toMatch(/[<>]/);
+    expect(shortDescription).not.toMatch(/[<>]/);
     expect(notes).toContain('Fuga ‹b›grave‹/b›');
   });
 

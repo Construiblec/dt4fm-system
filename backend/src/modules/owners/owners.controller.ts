@@ -32,7 +32,7 @@ import {
 import { OwnersService } from './owners.service';
 import { VerifyOwnerDto } from './dto/verify-owner.dto';
 import { RegisterOwnerDto } from './dto/register-owner.dto';
-import { ChangePasswordDto } from './dto/change-password.dto';
+import { OwnerChangePasswordDto } from './dto/change-password.dto';
 import { ContactAdminDto } from './dto/contact-admin.dto';
 import { CreateReservationDto } from './dto/create-reservation.dto';
 import { PayPaymentDto } from './dto/pay-payment.dto';
@@ -337,7 +337,7 @@ export class OwnersController {
   })
   async changePassword(
     @Param('userId', ParseIntPipe) userId: number,
-    @Body() dto: ChangePasswordDto,
+    @Body() dto: OwnerChangePasswordDto,
     @Req() request: RequestWithOwner,
   ) {
     // La sesión de quien cambia la contraseña es la única que se conserva.

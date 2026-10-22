@@ -62,6 +62,8 @@ export type GateCommandResult = {
 };
 
 export type GuestIncidentInput = {
+  /** Breve descripción: es el título que ve mantenimiento */
+  title: string;
   description: string;
   location?: string;
   images: File[];
@@ -122,6 +124,7 @@ export const createGuestIncident = async (
   input: GuestIncidentInput,
 ): Promise<GuestIncidentResult> => {
   const form = new FormData();
+  form.append("title", input.title);
   form.append("description", input.description);
 
   if (input.location) form.append("location", input.location);

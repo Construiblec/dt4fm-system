@@ -1,4 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
+import FormData from 'form-data';
+import type {
+  DownloadedFile,
+  RawOpenmaintAttachment,
+} from '../../common/utils/openmaint-attachment.util';
 import { OpenmaintClient } from '../../integrations/openmaint/openmaint.client';
 import {
   CmStatusId,
@@ -30,6 +35,9 @@ export type CorrectiveMaintCard = {
   _Unit_description?: string | null;
   CommonArea?: number | null;
   _CommonArea_description?: string | null;
+  /** Equipo intervenido; opcional y escribible en CM02 */
+  Asset?: number | null;
+  _Asset_description?: string | null;
   Assignee?: number | null;
   _Assignee_description?: string | null;
   Team?: number | null;
@@ -68,6 +76,17 @@ export type CorrectiveMaintCardsResponse = {
 export type CorrectiveMaintCardResponse = {
   success?: boolean;
   data?: CorrectiveMaintCard;
+};
+
+export type CorrectiveAttachmentsResponse = {
+  success?: boolean;
+  data?: RawOpenmaintAttachment[];
+};
+
+export type UploadableFile = {
+  buffer: Buffer;
+  originalname: string;
+  mimetype: string;
 };
 
 export type FindAllOptions = {
@@ -139,9 +158,10 @@ export class CorrectiveMaintOpenmaintService {
     sessionId: string,
     { limit, offset, statusIds, assigned }: FindAllOptions,
   ): Promise<CorrectiveMaintCardsResponse> {
+    // Sin `onlyGridAttrs`: la tarjeta necesita planta, área, fin real y la nota
+    // de reporte, que no están entre las columnas de la rejilla.
     const params = new URLSearchParams({
       include_tasklist: 'false',
-      onlyGridAttrs: 'true',
       start: String(offset),
       limit: String(limit),
       sort: JSON.stringify([{ property: 'Sorting', direction: 'DESC' }]),
@@ -262,6 +282,87 @@ export class CorrectiveMaintOpenmaintService {
         ...fields,
       },
       sessionId,
+    );
+  }
+
+  /** Correctivos sobre un mismo equipo, del más reciente al más antiguo. */
+  async findByAsset(
+    sessionId: string,
+    assetId: number,
+    { limit, statusIds }: { limit: number; statusIds?: CmStatusId[] },
+  ): Promise<CorrectiveMaintCardsResponse> {
+    const params = new URLSearchParams({
+      include_tasklist: 'false',
+      start: '0',
+      limit: String(limit),
+      sort: JSON.stringify([{ property: 'Sorting', direction: 'DESC' }]),
+      filter: JSON.stringify(
+        this.buildFilter([
+          this.equals('Asset', assetId),
+          this.statusCondition(statusIds),
+        ]),
+      ),
+    });
+
+    return (await this.client.get(
+      `${INSTANCES_PATH}?${params.toString()}`,
+      sessionId,
+    )) as CorrectiveMaintCardsResponse;
+  }
+
+  async findAttachments(
+    sessionId: string,
+    id: number,
+  ): Promise<CorrectiveAttachmentsResponse> {
+    return (await this.client.get(
+      `${INSTANCES_PATH}/${id}/attachments`,
+      sessionId,
+    )) as CorrectiveAttachmentsResponse;
+  }
+
+  async downloadAttachment(
+    sessionId: string,
+    id: number,
+    attachmentId: string,
+  ): Promise<DownloadedFile> {
+    return this.client.getBuffer(
+      `${INSTANCES_PATH}/${id}/attachments/${attachmentId}/download`,
+      sessionId,
+    );
+  }
+
+  async deleteAttachment(
+    sessionId: string,
+    id: number,
+    attachmentId: string,
+  ): Promise<unknown> {
+    return this.client.delete(
+      `${INSTANCES_PATH}/${id}/attachments/${attachmentId}`,
+      sessionId,
+    );
+  }
+
+  async uploadAttachment(
+    sessionId: string,
+    id: number,
+    file: UploadableFile,
+  ): Promise<unknown> {
+    const formData = new FormData();
+
+    formData.append('file', file.buffer, {
+      filename: file.originalname,
+      contentType: file.mimetype,
+    });
+    formData.append(
+      'attachment',
+      JSON.stringify({ fileName: file.originalname, majorVersion: true }),
+    );
+
+    return this.client.post(
+      `${INSTANCES_PATH}/${id}/attachments`,
+      formData,
+      sessionId,
+      { headers: formData.getHeaders() },
     );
   }
 

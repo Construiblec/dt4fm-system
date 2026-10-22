@@ -95,17 +95,21 @@ Cada servicio tiene su propia instancia de openMAINT y su propia rama de Neon, a
 | `APP_BASE_URL` | URL del frontend de producción | URL del frontend de desarrollo |
 | `PASSWORD_RESET_SECRET` | Un secreto propio | Otro distinto, para que un enlace de pruebas no valga en producción |
 | `ENABLE_DOCS` | `false` | `true` |
-| `HOSTAWAY_USE_MOCK` | `false` | `true`, salvo que se esté probando la integración real |
-| `INCIDENT_NOTIFICATION_EMAIL` | Buzón real | Buzón de pruebas |
+| `CONTIFICO_USE_MOCK` | `false` | `true`, y sin `CONTIFICO_API_KEY` ni `CONTIFICO_POS_TOKEN`: cada documento que Contifico acepta es una factura real |
+| `MAIL_REDIRECT_TO` | Vacía | Buzón de pruebas: todo correo sale hacia él, con el destinatario original en el asunto |
+| `HOSTAWAY_USE_MOCK` | `false` | `false` también: la sincronización de tareas de limpieza necesita las reservas reales. La entrega del enlace del huésped por Hostaway está limitada a la reserva de prueba ([guest-stay.service.ts](../src/modules/access-control/guest-stay.service.ts)), un filtro temporal del piloto |
+| `INCIDENT_NOTIFICATION_EMAIL` | Buzón institucional | Buzón de pruebas |
 | `CORS_ALLOWED_ORIGINS` | Solo el dominio de Vercel de producción | El de staging (+ `localhost:5173` para desarrollar contra el backend remoto) |
 
 **`PORT` no se define.** Render la inyecta y [`main.ts`](../src/main.ts) la lee con 3000 como respaldo; fijarla a mano rompe el enrutado de Render.
 
-Antes de encender en desarrollo los schedulers que envían correo (`PAYMENTS_*`, `MEETING_REMINDER_*`, `BILLING_*`), conviene revisar qué direcciones tiene la instancia de openMAINT de desarrollo: si son copias de las reales, escribirán a personas reales.
+La instancia de openMAINT de desarrollo guarda direcciones que pueden ser copias de las reales. Por eso, en desarrollo, los schedulers que envían correo (`PAYMENTS_*`, `MEETING_REMINDER_*`) quedan apagados, y solo se encienden para probarlos con `MAIL_REDIRECT_TO` definida. El de facturación (`BILLING_*`), solo con `CONTIFICO_USE_MOCK=true`.
 
 #### Las comunes
 
-El resto es igual en ambos servicios: `VAPID_SUBJECT`, `CALENDAR_TIMEZONE`, `MAIL_PROVIDER` y la configuración SMTP o Resend, `MAIL_THROTTLE_MS`, `HISTORIAL_EMAIL_ENABLED`, `OPENMAINT_TEMPLATE_CLASS` y las credenciales de Hostaway. Las de Contifico también, pero conviene confirmar que `CONTIFICO_BASE_URL` apunte a un entorno de pruebas en desarrollo: es facturación real.
+El resto es igual en ambos servicios: `VAPID_SUBJECT`, `CALENDAR_TIMEZONE`, `MAIL_PROVIDER` y la configuración SMTP o Resend, `MAIL_THROTTLE_MS`, `HISTORIAL_EMAIL_ENABLED`, `OPENMAINT_TEMPLATE_CLASS` y las credenciales de Hostaway. Las de Contifico solo existen en producción.
+
+`LOG_LEVEL=log` y `LOG_FORMAT` vacía en los dos. Con `log` sale una línea por petición, con su `rid`, y los eventos de negocio. Para depurar, `LOG_LEVEL=debug` añade cada llamada a openMAINT y a Contifico. Cambiarla en Render redespliega, así que hay que devolverla a `log` al terminar. Cómo leer los logs y buscar una petición por su `rid`: [logging.md](logging.md).
 
 A continuación, el detalle de cada variable:
 
@@ -140,8 +144,8 @@ Estas son **por entorno**: cada servicio apunta a su propia rama de Neon y usa s
 
 | Variable | Descripción | Ejemplo de Valor |
 | --- | --- | --- |
-| `DATABASE_URL` | Cadena **con** pooler de la rama de Neon del entorno. La usa la aplicación en runtime. | `postgresql://...-pooler...neon.tech/dt4fm?sslmode=require` |
-| `DATABASE_URL_DIRECT` | Cadena **sin** pooler de la misma rama. Solo para migraciones: PgBouncer rompe los *advisory locks* de DDL. | `postgresql://...neon.tech/dt4fm?sslmode=require` |
+| `DATABASE_URL` | Cadena **con** pooler de la rama de Neon del entorno. La usa la aplicación en runtime. | `postgresql://...-pooler...neon.tech/dt4fm?sslmode=verify-full` |
+| `DATABASE_URL_DIRECT` | Cadena **sin** pooler de la misma rama. Solo para migraciones: PgBouncer rompe los *advisory locks* de DDL. | `postgresql://...neon.tech/dt4fm?sslmode=verify-full` |
 | `VAPID_PUBLIC_KEY` | Clave pública de Web Push. El frontend la pide a `GET /push/vapid-public-key`. | *(Secreto)* |
 | `VAPID_PRIVATE_KEY` | Clave privada con la que se firman los envíos. **No rotar**: invalida todas las suscripciones vivas. | *(Secreto)* |
 | `VAPID_SUBJECT` | Contacto que exige la especificación de Web Push. | `mailto:no-reply@dt4fm.com` |

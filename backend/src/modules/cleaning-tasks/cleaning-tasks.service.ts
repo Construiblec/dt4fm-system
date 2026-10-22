@@ -10,6 +10,8 @@ import { HostawayService } from '../../integrations/hostaway/hostaway.service';
 import { PushDispatchService } from '../push-notifications/push-dispatch.service';
 import {
   AttachmentCard,
+  CleaningActivityCard,
+  CleaningTaskCard,
   CleaningTasksOpenmaintService,
 } from './cleaning-tasks.openmaint.service';
 import {
@@ -19,7 +21,10 @@ import {
   PHASE_TRANSITIONS,
   PhaseId,
 } from './constants/phase.constants';
-import { SUPERVISOR_ROLES } from './constants/roles.constants';
+import {
+  isCoordinatorOnly,
+  SUPERVISOR_ROLES,
+} from './constants/roles.constants';
 import {
   MAX_SUPERVISION_EVIDENCE,
   resolveAttachmentOrigin,
@@ -30,6 +35,8 @@ import {
 import { CancelTaskDto } from './dto/cancel-task.dto';
 import { CompleteTaskDto } from './dto/complete-task.dto';
 import { CreateCleaningTaskDto } from './dto/create-cleaning-task.dto';
+import { CreateManualCleaningTaskDto } from './dto/create-manual-cleaning-task.dto';
+import { SaveCleaningActivityDto } from './dto/save-cleaning-activity.dto';
 import { GetCheckoutsQueryDto } from './dto/get-checkouts-query.dto';
 import { PauseTaskDto } from './dto/pause-task.dto';
 import { ReopenTaskDto } from './dto/reopen-task.dto';
@@ -268,6 +275,34 @@ const MAX_TOTAL_EXECUTION_MINUTES = 1440 * 7;
 /** Ventana máxima consultable de checkouts, para acotar el costo hacia Hostaway. */
 const MAX_CHECKOUT_RANGE_DAYS = 92;
 
+/** Fecha de hoy en Guayaquil (YYYY-MM-DD). `toISOString` da el día en UTC, que desde las 19:00 ya es mañana. */
+const guayaquilToday = (): string =>
+  new Date().toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' });
+
+/**
+ * Número de tarea: CT.<año>.<últimos 4 dígitos del reloj>. Las tarjetas de una
+ * sincronización se crean en paralelo y comparten milisegundo, así que el
+ * contador es monótono dentro del proceso para que dos no salgan iguales.
+ */
+let lastTaskSerial = 0;
+const nextTaskNumber = (): string => {
+  const clock = Number(Date.now().toString().slice(-4));
+  lastTaskSerial =
+    clock > lastTaskSerial ? clock : (lastTaskSerial + 1) % 10000;
+  return `CT.${new Date().getFullYear()}.${String(lastTaskSerial).padStart(4, '0')}`;
+};
+
+/** Una limpieza que el coordinador todavía puede editar o cancelar: no empezó y no está en pausa. */
+const isUnstartedTask = (task: {
+  _phase_description?: string;
+  phase?: unknown;
+  ActualStartTime?: string | null;
+  TeamObservations?: string | null;
+}): boolean => {
+  const phase = task._phase_description ?? String(task.phase);
+  return phase === 'Assigned' && !task.ActualStartTime && !isPausedTask(task);
+};
+
 @Injectable()
 export class CleaningTasksService {
   private readonly logger = new Logger(CleaningTasksService.name);
@@ -368,6 +403,7 @@ export class CleaningTasksService {
         sessionStartedAt: resolveSessionStartedAt(task),
         sessionBaseMinutes: resolveSessionBaseMinutes(task),
         hostawayReservationId: task.HostawayReservation ?? null,
+        hostawayListingId: task.HostawayListingID ?? null,
         checkoutDate: task.CheckoutDate ?? null,
         source: task._Source_description ?? task.Source ?? null,
         generatedDate: task.GeneratedDate,
@@ -385,13 +421,15 @@ export class CleaningTasksService {
         message: `Ya existe una tarea para la reserva ${dto.hostawayReservationId}`,
       };
     }
-    const today = new Date().toISOString().split('T')[0];
     const body: Record<string, unknown> = {
-      TaskNumber: `CT.${new Date().getFullYear()}.${Date.now().toString().slice(-4)}`,
+      TaskNumber: nextTaskNumber(),
       phase: PHASE_LOOKUP.Assigned,
-      GeneratedDate: today,
+      GeneratedDate: guayaquilToday(),
+      // Solo la fecha: la hora del checkout no se guarda, el horario lo pone el coordinador.
       CheckoutDate: dto.checkoutDate,
       HostawayReservation: dto.hostawayReservationId,
+      // Con el listing, openMAINT vincula la unidad si hay exactamente una.
+      HostawayListingID: dto.listingId,
       Source: SOURCE_LOOKUP.Hostaway,
       Description: `Limpieza - ${dto.listingName}`,
     };
@@ -416,6 +454,20 @@ export class CleaningTasksService {
     const results = await Promise.allSettled(
       checkouts.map((c) => this.createCleaningTask(c)),
     );
+    const errors = results.flatMap((r, i) =>
+      r.status === 'rejected'
+        ? [
+            {
+              reservationId: checkouts[i].hostawayReservationId,
+              listingName: checkouts[i].listingName,
+              message:
+                r.reason instanceof Error
+                  ? r.reason.message
+                  : 'No se pudo crear la limpieza',
+            },
+          ]
+        : [],
+    );
     return {
       created: results.filter(
         (r) => r.status === 'fulfilled' && r.value.created,
@@ -423,8 +475,9 @@ export class CleaningTasksService {
       skipped: results.filter(
         (r) => r.status === 'fulfilled' && !r.value.created,
       ).length,
-      failed: results.filter((r) => r.status === 'rejected').length,
+      failed: errors.length,
       total: checkouts.length,
+      errors,
     };
   }
 
@@ -470,11 +523,28 @@ export class CleaningTasksService {
       phase?: string;
       date?: string;
       employeeId?: number;
+      sort?: 'newest';
     } = {},
   ) {
     const { limit = 50, offset = 0 } = options;
     const response = await this.openmaintService.getAllTasks(options);
-    const rawTasks = response.data ?? [];
+    const tasks = await this.toListItems(response.data ?? [], sessionToken);
+    return {
+      success: true,
+      data: tasks,
+      meta: { total: response.meta?.total ?? tasks.length, limit, offset },
+    };
+  }
+
+  /**
+   * Forma única de una limpieza en los listados de supervisión y coordinación.
+   * Además de lo de siempre trae el listing de Hostaway y el checklist, que son
+   * lo que necesita la coordinación para mostrar y filtrar sin pedir cada ficha.
+   */
+  private async toListItems(
+    rawTasks: CleaningTaskCard[],
+    sessionToken: string,
+  ) {
     const uniqueUnitIds = [
       ...new Set(
         rawTasks.map((t) => t.Unit).filter((u): u is number => u != null),
@@ -484,7 +554,7 @@ export class CleaningTasksService {
       uniqueUnitIds.map((id) => this.fetchUnitInfo(id, sessionToken)),
     );
     const unitMap = new Map(uniqueUnitIds.map((id, i) => [id, unitResults[i]]));
-    const tasks = rawTasks.map((task) => ({
+    return rawTasks.map((task) => ({
       id: task._id,
       type: task._type ?? 'CleaningTask',
       taskNumber: task.TaskNumber,
@@ -504,18 +574,20 @@ export class CleaningTasksService {
       sessionStartedAt: resolveSessionStartedAt(task),
       sessionBaseMinutes: resolveSessionBaseMinutes(task),
       hostawayReservation: task.HostawayReservation ?? null,
+      hostawayListingId: task.HostawayListingID ?? null,
       checkoutDate: task.CheckoutDate ?? null,
       source: task._Source_description ?? task.Source ?? null,
       unit: task.Unit != null ? (unitMap.get(task.Unit) ?? null) : null,
       employee: task.Employee
         ? { id: task.Employee, name: task._Employee_description ?? '' }
         : null,
+      checklist: task.CleaningChecklist
+        ? {
+            id: task.CleaningChecklist,
+            description: task._CleaningChecklist_description ?? null,
+          }
+        : null,
     }));
-    return {
-      success: true,
-      data: tasks,
-      meta: { total: response.meta?.total ?? tasks.length, limit, offset },
-    };
   }
 
   // ─── Tareas por empleado ──────────────────────────────────────────────────
@@ -644,7 +716,11 @@ export class CleaningTasksService {
         sessionStartedAt: resolveSessionStartedAt(task),
         sessionBaseMinutes: resolveSessionBaseMinutes(task),
         hostawayReservation: task.HostawayReservation ?? null,
+        hostawayListingId: task.HostawayListingID ?? null,
         checkoutDate: task.CheckoutDate ?? null,
+        // `Notes` es de solo escritura para la API en casi todas las instancias:
+        // si no llega, la ficha simplemente no muestra motivo.
+        cancelReason: task.Notes ?? null,
         source: task._Source_description ?? task.Source ?? null,
         unit: unitInfo,
         employee: task.Employee
@@ -676,6 +752,7 @@ export class CleaningTasksService {
         description: unit.Description ?? null,
         name: unit.Name ?? null,
         building: unit._Building_description ?? null,
+        buildingId: unit.Building ?? null,
       };
     } catch {
       return null;
@@ -1092,6 +1169,12 @@ export class CleaningTasksService {
       body,
       sessionToken,
     );
+    // Rechazar en la revisión también reabre la tarea (es el camino habitual:
+    // "Reabrir" solo se ofrece sobre una tarea ya revisada), así que el
+    // operario recibe el mismo aviso, con el comentario como motivo.
+    if (!dto.approved && task.Employee) {
+      void this.notifyCleaningReopened(task, taskId, comments, sessionToken);
+    }
     return {
       success: true,
       data: {
@@ -1149,6 +1232,10 @@ export class CleaningTasksService {
       body,
       sessionToken,
     );
+    // El operario se entera de que tiene que volver; no bloquea la respuesta.
+    if (task.Employee) {
+      void this.notifyCleaningReopened(task, taskId, reason, sessionToken);
+    }
     return {
       success: true,
       data: {
@@ -1166,7 +1253,8 @@ export class CleaningTasksService {
     dto: CancelTaskDto,
     sessionToken: string,
   ) {
-    if (!SUPERVISOR_ROLES.includes(role))
+    const coordinatorOnly = isCoordinatorOnly(role);
+    if (!SUPERVISOR_ROLES.includes(role) && !coordinatorOnly)
       throw new ForbiddenException('Only supervisors can cancel tasks');
     const response = await this.openmaintService.getTaskById(
       taskId,
@@ -1175,16 +1263,29 @@ export class CleaningTasksService {
     const task = response?.data;
     if (!task) throw new NotFoundException(`Tarea ${taskId} no encontrada`);
     const phaseDesc = task._phase_description ?? String(task.phase);
-    if (!['Assigned', 'InExecution'].includes(phaseDesc)) {
+    if (coordinatorOnly) {
+      // La coordinación cancela lo que no empezó (huérfanas, checkout que cambió); lo demás es de supervisión.
+      if (!isUnstartedTask(task))
+        throw new ForbiddenException(
+          'El coordinador solo puede cancelar una limpieza que todavía no empezó',
+        );
+    } else if (!['Assigned', 'InExecution'].includes(phaseDesc)) {
       throw new BadRequestException(
         'Only tasks in Assigned or InExecution state can be cancelled',
       );
     }
-    const updated = await this.openmaintService.updateTaskWithSession(
-      taskId,
-      { phase: PHASE_IDS.CANCELLED, Notes: dto.reason },
-      sessionToken,
-    );
+    // `Notes` no figura entre los atributos escribibles del grupo Coordinador:
+    // la política ya se validó arriba, así que la escritura va por la sesión interna.
+    const updated = coordinatorOnly
+      ? await this.openmaintService.updateCleaningTask(taskId, {
+          phase: PHASE_IDS.CANCELLED,
+          Notes: dto.reason,
+        })
+      : await this.openmaintService.updateTaskWithSession(
+          taskId,
+          { phase: PHASE_IDS.CANCELLED, Notes: dto.reason },
+          sessionToken,
+        );
     return {
       success: true,
       data: {
@@ -1665,27 +1766,487 @@ export class CleaningTasksService {
    *
    * Para fijar una hora planificada hay que mandarla en `plannedStartTime`.
    */
-  async updateCleaningTask(taskId: number, dto: UpdateCleaningTaskDto) {
+  /**
+   * Edita una limpieza. Supervisión puede tocar todo; el coordinador solo
+   * puede editar lo que todavía no empezó, y nunca la fase ni los tiempos de
+   * ejecución (eso lo escribe la app del empleado).
+   *
+   * Un valor `null` en unidad, checklist u observaciones lo borra.
+   */
+  async updateCleaningTask(
+    taskId: number,
+    dto: UpdateCleaningTaskDto,
+    role?: string,
+  ) {
+    let current: CleaningTaskCard | undefined;
+
+    if (isCoordinatorOnly(role)) {
+      const restricted = [
+        dto.phase,
+        dto.actualStartTime,
+        dto.actualEndTime,
+        dto.executionTime,
+      ].some((v) => v !== undefined);
+      if (restricted) {
+        throw new ForbiddenException(
+          'El coordinador no puede cambiar la fase ni los tiempos de ejecución',
+        );
+      }
+      current = (await this.openmaintService.getTaskByIdWithSession(taskId))
+        ?.data;
+      if (!current)
+        throw new NotFoundException(`Tarea ${taskId} no encontrada`);
+      if (!isUnstartedTask(current)) {
+        throw new ForbiddenException(
+          'Solo se puede editar una limpieza que todavía no empezó',
+        );
+      }
+    }
+
+    const start = dto.plannedStartTime ?? current?.PlannedStartTime;
+    const end = dto.plannedEndTime ?? current?.PlannedEndTime;
+    if (
+      (dto.plannedStartTime || dto.plannedEndTime) &&
+      start &&
+      end &&
+      Date.parse(end) <= Date.parse(start)
+    ) {
+      throw new BadRequestException(
+        'El fin planificado debe ser posterior al inicio',
+      );
+    }
+
     const body: Record<string, unknown> = {};
     if (dto.phase) body.phase = dto.phase;
-    if (dto.employeeId) body.Employee = Number(dto.employeeId);
+    if (dto.employeeId) body.Employee = dto.employeeId;
     if (dto.plannedStartTime) body.PlannedStartTime = dto.plannedStartTime;
     if (dto.plannedEndTime) body.PlannedEndTime = dto.plannedEndTime;
     if (dto.actualStartTime) body.ActualStartTime = dto.actualStartTime;
     if (dto.actualEndTime) body.ActualEndTime = dto.actualEndTime;
     if (dto.executionTime != null) body.ExecutionTime = dto.executionTime;
-    if (dto.observations) body.Observations = dto.observations;
+    if (dto.observations !== undefined)
+      body.Observations = dto.observations?.trim() || null;
+    if (dto.description !== undefined) {
+      const description = dto.description.trim();
+      if (!description)
+        throw new BadRequestException('La descripción no puede quedar vacía');
+      body.Description = description;
+    }
+    if (dto.checkoutDate) body.CheckoutDate = dto.checkoutDate;
+    if (dto.unitId !== undefined) body.Unit = dto.unitId;
+    if (dto.cleaningChecklistId !== undefined)
+      body.CleaningChecklist = dto.cleaningChecklistId;
+
+    if (Object.keys(body).length === 0) {
+      throw new BadRequestException('No hay nada que actualizar');
+    }
 
     const response = await this.openmaintService.updateCleaningTask(
       taskId,
       body,
     );
 
-    if (dto.employeeId) {
-      void this.notifyCleaningAssigned(taskId, Number(dto.employeeId));
+    // Avisa solo si de verdad cambió el empleado (volver a guardar al mismo no molesta a nadie).
+    const employeeChanged =
+      dto.employeeId !== undefined &&
+      (current === undefined || current.Employee !== dto.employeeId);
+    if (employeeChanged && dto.employeeId) {
+      void this.notifyCleaningAssigned(taskId, dto.employeeId);
     }
 
-    return { updated: true, taskId: response.data?._id ?? taskId };
+    return {
+      updated: true,
+      taskId: response.data?._id ?? taskId,
+      notified: employeeChanged ? (dto.employeeId ?? null) : null,
+    };
+  }
+
+  // ─── Coordinación ─────────────────────────────────────────────────────────
+
+  /** Alta de una limpieza a mano (`Source: Manual`). Sin empleado queda en Pendientes. */
+  async createManualCleaningTask(dto: CreateManualCleaningTaskDto) {
+    if (Date.parse(dto.plannedEndTime) <= Date.parse(dto.plannedStartTime)) {
+      throw new BadRequestException(
+        'El fin planificado debe ser posterior al inicio',
+      );
+    }
+
+    const body: Record<string, unknown> = {
+      TaskNumber: nextTaskNumber(),
+      phase: PHASE_LOOKUP.Assigned,
+      GeneratedDate: guayaquilToday(),
+      Source: SOURCE_LOOKUP.Manual,
+      Description: dto.description.trim(),
+      PlannedStartTime: dto.plannedStartTime,
+      PlannedEndTime: dto.plannedEndTime,
+    };
+    if (dto.unitId) body.Unit = dto.unitId;
+    if (dto.employeeId) body.Employee = dto.employeeId;
+    if (dto.cleaningChecklistId)
+      body.CleaningChecklist = dto.cleaningChecklistId;
+    if (dto.observations?.trim()) body.Observations = dto.observations.trim();
+
+    const response = await this.openmaintService.createCleaningTask(body);
+    const taskId = response.data?._id ?? null;
+
+    if (taskId && dto.employeeId) {
+      void this.notifyCleaningAssigned(taskId, dto.employeeId);
+    }
+
+    return {
+      created: true,
+      taskId,
+      taskNumber: response.data?.TaskNumber ?? body.TaskNumber,
+      notified: dto.employeeId ?? null,
+    };
+  }
+
+  /** Empleados de limpieza que se pueden asignar: internos, sin proveedores. */
+  async listCleaningEmployees() {
+    const response = await this.openmaintService.listInternalEmployees();
+    const data = (response.data ?? []).map((e) => ({
+      id: e._id,
+      name: e.Description ?? String(e._id),
+      team:
+        e.Team != null
+          ? { id: e.Team, name: e._Team_description ?? String(e.Team) }
+          : null,
+    }));
+    return { success: true, data, meta: { total: data.length } };
+  }
+
+  /**
+   * Vista previa de sincronización: cada checkout de Hostaway del rango con el
+   * estado de su limpieza.
+   *
+   * - por-crear: la reserva todavía no tiene limpieza.
+   * - creada: ya existe y la fecha coincide.
+   * - cambio: la reserva cambió de fecha en Hostaway; la limpieza dice otra.
+   * - huerfana: la limpieza es del rango pero su reserva ya no aparece en
+   *   Hostaway (ni cerca de las fechas): se canceló.
+   *
+   * `unitMatch` anticipa si openMAINT va a poder vincular la unidad.
+   */
+  async previewCheckouts(query: GetCheckoutsQueryDto = {}) {
+    const base = await this.getCheckouts(query);
+    const { dateFrom, dateTo } = base;
+
+    const [tasksResponse, unitsResponse] = await Promise.all([
+      this.openmaintService.getHostawayTasks(),
+      this.openmaintService.listUnitsWithListing(),
+    ]);
+    const tasks = tasksResponse.data ?? [];
+    const taskByReservation = new Map<string, CleaningTaskCard>();
+    for (const t of tasks) {
+      if (
+        t.HostawayReservation &&
+        !taskByReservation.has(t.HostawayReservation)
+      )
+        taskByReservation.set(t.HostawayReservation, t);
+    }
+
+    const unitsByListing = new Map<string, number>();
+    for (const u of unitsResponse.data ?? []) {
+      if (u.HostawayListingID)
+        unitsByListing.set(
+          u.HostawayListingID,
+          (unitsByListing.get(u.HostawayListingID) ?? 0) + 1,
+        );
+    }
+    const unitMatch = (listingId: string) => {
+      const n = unitsByListing.get(listingId) ?? 0;
+      return n === 1 ? 'ok' : n === 0 ? 'none' : 'ambiguous';
+    };
+
+    const inRange = new Set(base.checkouts.map((c) => c.reservationId));
+
+    // Limpiezas del rango cuya reserva no vino en la consulta: o se movió de
+    // fecha o desapareció. Se pregunta a Hostaway por cada una (son pocas).
+    const stray = tasks.filter(
+      (t) =>
+        t.HostawayReservation &&
+        !inRange.has(t.HostawayReservation) &&
+        t.CheckoutDate &&
+        t.CheckoutDate >= dateFrom &&
+        t.CheckoutDate <= dateTo &&
+        (t._phase_description ?? String(t.phase)) !== 'Cancelled',
+    );
+    const moved = new Map<
+      string,
+      { checkoutDate: string; listingName: string; listingId: string }
+    >();
+    // Antes se volvía a pedir a Hostaway una ventana de ±45 días, que era otra
+    // pasada larga; ahora solo las reservas que faltan, de a 5.
+    for (let i = 0; i < stray.length; i += 5) {
+      const found = await Promise.all(
+        stray
+          .slice(i, i + 5)
+          .map((t) =>
+            this.hostawayService.getReservationCheckout(
+              t.HostawayReservation as string,
+            ),
+          ),
+      );
+      for (const r of found) {
+        if (r) {
+          moved.set(r.reservationId, {
+            checkoutDate: r.checkoutDate,
+            listingName: r.listingName,
+            listingId: r.listingId,
+          });
+        }
+      }
+    }
+
+    const sessionToken = '';
+    const items = await this.toListItems(tasks, sessionToken);
+    const itemById = new Map(items.map((i) => [i.id, i]));
+
+    type Row = {
+      reservationId: string;
+      listingId: string;
+      listingName: string;
+      /** Fecha de checkout que dice la limpieza, si ya existe. */
+      checkoutDate: string;
+      /** Fecha de checkout que dice Hostaway hoy; null si la reserva ya no está. */
+      hostawayCheckoutDate: string | null;
+      checkoutTime: string | null;
+      status: 'por-crear' | 'creada' | 'cambio' | 'huerfana';
+      unitMatch: 'ok' | 'none' | 'ambiguous';
+      task: (typeof items)[number] | null;
+    };
+    const rows: Row[] = [];
+
+    for (const c of base.checkouts) {
+      const task = taskByReservation.get(c.reservationId);
+      const item = task ? (itemById.get(task._id) ?? null) : null;
+      const same = !task || task.CheckoutDate === c.checkoutDate;
+      rows.push({
+        reservationId: c.reservationId,
+        listingId: String(c.listingId),
+        listingName: c.listingName,
+        checkoutDate: task?.CheckoutDate ?? c.checkoutDate,
+        hostawayCheckoutDate: c.checkoutDate,
+        checkoutTime: this.normalizeCheckoutTime(c.checkoutTime),
+        status: !task ? 'por-crear' : same ? 'creada' : 'cambio',
+        unitMatch: unitMatch(String(c.listingId)),
+        task: item,
+      });
+    }
+
+    for (const t of stray) {
+      const reservationId = t.HostawayReservation as string;
+      const now = moved.get(reservationId);
+      const item = itemById.get(t._id) ?? null;
+      rows.push({
+        reservationId,
+        listingId: now?.listingId ?? t.HostawayListingID ?? '',
+        listingName:
+          now?.listingName ?? (t.Description ?? '').replace(/^Limpieza - /, ''),
+        checkoutDate: t.CheckoutDate as string,
+        hostawayCheckoutDate: now?.checkoutDate ?? null,
+        checkoutTime: null,
+        status: now ? 'cambio' : 'huerfana',
+        unitMatch: unitMatch(now?.listingId ?? t.HostawayListingID ?? ''),
+        task: item,
+      });
+    }
+
+    rows.sort(
+      (a, b) =>
+        (a.hostawayCheckoutDate ?? a.checkoutDate).localeCompare(
+          b.hostawayCheckoutDate ?? b.checkoutDate,
+        ) || a.listingName.localeCompare(b.listingName),
+    );
+
+    return { dateFrom, dateTo, count: rows.length, rows };
+  }
+
+  // ─── Checklists (CleaningActivity) ────────────────────────────────────────
+
+  /**
+   * Contenido de un checklist con su origen. Manda el archivo si se puede
+   * leer; si no, `Detalle`. Igual que `resolveChecklistRows`, pero dice de
+   * dónde salió y con qué codificación, que es lo que muestra la lista.
+   */
+  private async resolveChecklistContent(
+    activityId: number,
+    act: CleaningActivityCard,
+  ): Promise<{
+    rows: string[];
+    source: 'archivo' | 'detalle';
+    encoding: string | null;
+    fileError: string | null;
+  }> {
+    const fromDetalle = (fileError: string | null = null) => ({
+      rows: act.Detalle
+        ? act.Detalle.split('\n')
+            .map((line) => line.trim())
+            .filter(Boolean)
+        : [],
+      source: 'detalle' as const,
+      encoding: null,
+      fileError,
+    });
+
+    const attachmentId = act.Plantilla?.trim();
+    if (!attachmentId) return fromDetalle();
+
+    try {
+      const file = await this.openmaintService.downloadActivityTemplate(
+        activityId,
+        attachmentId,
+      );
+      const parsed = readCsvTemplate(file.data);
+      if (!parsed.ok) return fromDetalle(parsed.reason);
+      return {
+        rows: parsed.rows,
+        source: 'archivo',
+        encoding: parsed.encoding,
+        fileError: null,
+      };
+    } catch (error) {
+      return fromDetalle(
+        error instanceof Error ? error.message : String(error),
+      );
+    }
+  }
+
+  private async toChecklist(act: CleaningActivityCard) {
+    const content = await this.resolveChecklistContent(act._id, act);
+    return {
+      id: act._id,
+      code: act.Code ?? null,
+      description: act.Description ?? null,
+      templateName: act.NombrePlantilla ?? null,
+      detalle: act.Detalle ?? '',
+      plantilla: act._plantillaRota
+        ? {
+            fileName: null,
+            size: null,
+            encoding: null,
+            readable: false,
+            error:
+              'el archivo ya no existe en openMAINT; sube uno nuevo o quítalo',
+          }
+        : act.Plantilla
+          ? {
+              fileName: act._Plantilla_FileName ?? null,
+              size: act._Plantilla_Size ?? null,
+              encoding: content.encoding,
+              readable: content.source === 'archivo',
+              error: content.fileError,
+            }
+          : null,
+      activities: content.rows,
+      source: content.source,
+    };
+  }
+
+  async listChecklists() {
+    const response = await this.openmaintService.listCleaningActivities();
+    const cards = response.data ?? [];
+    const data: Awaited<ReturnType<CleaningTasksService['toChecklist']>>[] = [];
+    // De a pocos: cada plantilla con archivo es una descarga a openMAINT.
+    for (let i = 0; i < cards.length; i += 5) {
+      data.push(
+        ...(await Promise.all(
+          cards.slice(i, i + 5).map((c) => this.toChecklist(c)),
+        )),
+      );
+    }
+    return { success: true, data, meta: { total: data.length } };
+  }
+
+  async getChecklist(id: number) {
+    const response = await this.openmaintService.getCleaningActivity(id);
+    if (!response?.data)
+      throw new NotFoundException(`Checklist ${id} no encontrado`);
+    return { success: true, data: await this.toChecklist(response.data) };
+  }
+
+  /** Bytes de la plantilla, para descargarla desde la ficha. */
+  async getChecklistTemplateFile(id: number) {
+    const response = await this.openmaintService.getCleaningActivity(id);
+    const attachmentId = response?.data?.Plantilla?.trim();
+    if (!attachmentId)
+      throw new NotFoundException(
+        'Este checklist no tiene archivo de plantilla',
+      );
+    return this.openmaintService.downloadActivityTemplate(id, attachmentId);
+  }
+
+  /**
+   * Crea (id = null) o edita un checklist. El archivo CSV se valida con el
+   * mismo lector que usa la app del empleado: lo que aquí se acepta es lo que
+   * el equipo va a poder leer.
+   */
+  async saveChecklist(
+    id: number | null,
+    dto: SaveCleaningActivityDto,
+    file?: { buffer: Buffer; originalname: string; mimetype: string },
+  ) {
+    if (file) {
+      const parsed = readCsvTemplate(file.buffer);
+      if (!parsed.ok) throw new BadRequestException(parsed.reason);
+    }
+
+    const detalle = dto.detalle?.trim() ?? '';
+    if (!file && !detalle && !dto.removeTemplate && id === null) {
+      throw new BadRequestException(
+        'Agrega actividades en el Detalle o sube el archivo de la plantilla',
+      );
+    }
+
+    const body: Record<string, unknown> = {
+      NombrePlantilla: dto.templateName.trim(),
+      Description: dto.description.trim(),
+      Detalle: dto.detalle ?? '',
+    };
+    if (dto.code !== undefined) body.Code = dto.code.trim() || null;
+
+    let activityId = id;
+    let previousAttachment: string | null = null;
+
+    if (id === null) {
+      const created = await this.openmaintService.createCleaningActivity(body);
+      activityId = created.data?._id ?? null;
+      if (activityId === null)
+        throw new InternalServerErrorException(
+          'OpenMAINT no devolvió el id del checklist',
+        );
+    } else {
+      const current = await this.openmaintService.getCleaningActivity(id);
+      if (!current?.data)
+        throw new NotFoundException(`Checklist ${id} no encontrado`);
+      previousAttachment = current.data.Plantilla?.trim() || null;
+      // Poner `Plantilla: null` quita el archivo anterior; es la única forma de
+      // reemplazarlo sin chocar por el nombre del archivo.
+      // Una referencia a un archivo que ya no existe también se limpia: es lo
+      // que deja la tarjeta ilegible para openMAINT.
+      if (
+        current.data._plantillaRota ||
+        (previousAttachment && (file || dto.removeTemplate))
+      )
+        body.Plantilla = null;
+      await this.openmaintService.updateCleaningActivity(id, body);
+    }
+
+    if (activityId !== null && file) {
+      await this.openmaintService.removeStaleActivityAttachments(
+        activityId,
+        file.originalname,
+      );
+      const attachmentId = await this.openmaintService.uploadActivityTemplate(
+        activityId,
+        file,
+      );
+      await this.openmaintService.updateCleaningActivity(activityId, {
+        Plantilla: attachmentId,
+      });
+    }
+
+    return { saved: true, created: id === null, id: activityId };
   }
 
   /** Best-effort: nunca propaga. */
@@ -1712,6 +2273,47 @@ export class CleaningTasksService {
     } catch (error) {
       this.logger.warn(
         `No se pudo notificar el fin de la limpieza ${taskId}: ` +
+          `${(error as Error)?.message}`,
+      );
+    }
+  }
+
+  /**
+   * Avisa al operario que su limpieza fue reabierta. Sin unidad, la ubicación sale
+   * de la descripción ("Limpieza - R315" → "R315") en vez de "ubicación no
+   * especificada". Best-effort: nunca propaga.
+   */
+  private async notifyCleaningReopened(
+    task: {
+      Employee?: number | null;
+      Unit?: number | null;
+      _Unit_description?: string | null;
+      Description?: string | null;
+    },
+    taskId: number,
+    reason: string | undefined,
+    sessionToken: string,
+  ) {
+    if (!task.Employee) return;
+    try {
+      const unit = task.Unit
+        ? await this.fetchUnitInfo(task.Unit, sessionToken)
+        : null;
+
+      await this.pushDispatch.notifyCleaningReopened({
+        id: taskId,
+        cleaningEmployeeId: task.Employee,
+        unitName:
+          task._Unit_description ??
+          unit?.description ??
+          task.Description?.replace(/^Limpieza - /, '') ??
+          null,
+        buildingName: unit?.building,
+        reason: reason || null,
+      });
+    } catch (error) {
+      this.logger.warn(
+        `No se pudo notificar la reapertura de la limpieza ${taskId}: ` +
           `${(error as Error)?.message}`,
       );
     }

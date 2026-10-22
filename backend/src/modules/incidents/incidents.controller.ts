@@ -74,6 +74,42 @@ export class IncidentsController {
     return this.incidentsService.getMyIncidents(employeeId, sessionId);
   }
 
+  @Get('reported')
+  @ApiOperation({
+    summary: 'Obtener las incidencias que reportó el empleado autenticado',
+  })
+  @ApiHeader({
+    name: 'authorization',
+    description: 'Token de sesión de OpenMAINT',
+    required: true,
+  })
+  @ApiHeader({
+    name: 'x-employee-id',
+    description: 'ID del empleado que reportó',
+    required: true,
+  })
+  @ApiResponse({ status: 200, description: 'Lista de reportes del empleado' })
+  @ApiResponse({
+    status: 400,
+    description: 'Parámetros de cabecera faltantes o inválidos',
+  })
+  async getReportedIncidents(
+    @Headers('authorization') sessionId: string,
+    @Headers('x-employee-id') employeeIdHeader: string,
+  ) {
+    const employeeId = Number(employeeIdHeader);
+
+    if (!sessionId) {
+      throw new BadRequestException('Authorization header is required');
+    }
+
+    if (!Number.isInteger(employeeId) || employeeId <= 0) {
+      throw new BadRequestException('x-employee-id header is required');
+    }
+
+    return this.incidentsService.getReportedIncidents(employeeId, sessionId);
+  }
+
   @Post(':id/start')
   @ApiOperation({
     summary: 'Registrar el inicio real del trabajo de una incidencia',
@@ -162,7 +198,6 @@ export class IncidentsController {
     if (!sessionId) {
       throw new BadRequestException('Authorization header is required');
     }
-    console.log('complete incident');
     return this.incidentsService.completeIncident(id, sessionId, dto, file);
   }
 
@@ -221,10 +256,10 @@ export class IncidentsController {
           description: 'ID del edificio',
           example: 3456,
         },
-        floorArea: {
+        shortDescription: {
           type: 'string',
-          description: 'Área o piso',
-          example: 'Piso 2',
+          description: 'Breve descripción (título de la tarjeta, máx. 80)',
+          example: 'Tomacorriente sin energía',
         },
         notes: {
           type: 'string',
@@ -233,8 +268,9 @@ export class IncidentsController {
         },
         priority: {
           type: 'integer',
-          description: 'Prioridad (1-Alta, 2-Media, 3-Baja)',
-          example: 2,
+          description:
+            'ID de prioridad; opcional, la fija el supervisor al asignar',
+          example: 119,
         },
         images: {
           type: 'array',
@@ -242,7 +278,7 @@ export class IncidentsController {
           description: 'Imágenes del incidente (máx 6)',
         },
       },
-      required: ['buildingId', 'floorArea', 'priority', 'notes'],
+      required: ['buildingId', 'shortDescription', 'notes'],
     },
   })
   @ApiResponse({ status: 201, description: 'Incidencia creada con éxito' })

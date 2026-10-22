@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { describeError } from '../../common/logging/describe-error.util';
 import { OpenmaintClient } from '../../integrations/openmaint/openmaint.client';
 import { OpenmaintAuthService } from '../../integrations/openmaint/openmaint.auth.service';
 
@@ -92,8 +93,7 @@ export class PaymentsOpenmaintRepository {
       return record;
     } catch (error) {
       this.logger.error(
-        '[PaymentsRepo] Error al obtener ConfigExpensa:',
-        (error as Error)?.message,
+        `No se pudo leer ConfigExpensa — ${describeError(error)}`,
       );
       return null;
     }
@@ -117,8 +117,7 @@ export class PaymentsOpenmaintRepository {
       }));
     } catch (error) {
       this.logger.error(
-        '[PaymentsRepo] Error al obtener tenants:',
-        (error as Error)?.message,
+        `No se pudieron leer las alícuotas de los inquilinos — ${describeError(error)}`,
       );
       throw error;
     }

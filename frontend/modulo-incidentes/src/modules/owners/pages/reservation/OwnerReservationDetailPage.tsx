@@ -25,7 +25,7 @@ import {
 const toOpenMaintTimestamp = (date: string, time: string): string =>
   `${date}T${time}:00`;
 
-import { formatDayMonthTime } from "@/shared/utils/dateUtils";
+import { formatDate, formatDayMonthTime } from "@/shared/utils/dateUtils";
 
 /** Formatea timestamp de OpenMAINT a texto legible */
 const formatTimestamp = (ts: string | null): string => {
@@ -65,7 +65,9 @@ export const OwnerReservationDetailPage = () => {
   const [scheduleError, setScheduleError] = useState<string | null>(null);
 
   // Pago
-  const [paymentMethod, setPaymentMethod] = useState<"voucher" | "card" | null>(null);
+  const [paymentMethod, setPaymentMethod] = useState<"voucher" | "card" | null>(
+    null,
+  );
   const [voucherFile, setVoucherFile] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -151,7 +153,10 @@ export const OwnerReservationDetailPage = () => {
         <main className="min-h-screen bg-slate-50 px-4 py-6">
           <div className="space-y-3">
             {[1, 2, 3].map((i) => (
-              <div key={i} className="h-24 animate-pulse rounded-2xl bg-slate-200" />
+              <div
+                key={i}
+                className="h-24 animate-pulse rounded-2xl bg-slate-200"
+              />
             ))}
           </div>
         </main>
@@ -184,7 +189,6 @@ export const OwnerReservationDetailPage = () => {
   return (
     <AppLayout>
       <main className="min-h-screen bg-slate-50 px-4 py-6">
-
         {/* Header */}
         <button
           type="button"
@@ -196,7 +200,11 @@ export const OwnerReservationDetailPage = () => {
           className="mb-6 flex items-center gap-1 text-sm font-medium text-slate-500 transition hover:text-slate-800"
         >
           <ChevronLeft className="h-4 w-4" />
-          {step === "detail" ? "Áreas comunales" : step === "schedule" ? "Detalle" : "Horario"}
+          {step === "detail"
+            ? "Áreas comunales"
+            : step === "schedule"
+              ? "Detalle"
+              : "Horario"}
         </button>
 
         {/* ── Step: detail ── */}
@@ -205,14 +213,16 @@ export const OwnerReservationDetailPage = () => {
             {/* Card principal del área */}
             <div className="mb-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
               <div className="mb-4 flex items-start justify-between gap-2">
-                <h1 className="text-xl font-bold text-slate-900">{area.name}</h1>
+                <h1 className="text-xl font-bold text-slate-900">
+                  {area.name}
+                </h1>
                 <span
                   className={`shrink-0 rounded-full px-3 py-1 text-xs font-semibold ${
                     area.estado === "Libre"
                       ? "bg-emerald-100 text-emerald-700"
                       : area.estado === "Reservado"
-                      ? "bg-red-100 text-red-700"
-                      : "bg-slate-100 text-slate-600"
+                        ? "bg-red-100 text-red-700"
+                        : "bg-slate-100 text-slate-600"
                   }`}
                 >
                   {area.estado}
@@ -224,7 +234,10 @@ export const OwnerReservationDetailPage = () => {
                 {area.edificio ? (
                   <div className="flex items-center gap-2">
                     <MapPin className="h-4 w-4 shrink-0 text-slate-400" />
-                    <span>{area.edificio}{area.piso ? ` · ${area.piso}` : ""}</span>
+                    <span>
+                      {area.edificio}
+                      {area.piso ? ` · ${area.piso}` : ""}
+                    </span>
                   </div>
                 ) : null}
                 {area.areaNeta ? (
@@ -279,7 +292,9 @@ export const OwnerReservationDetailPage = () => {
               <ul className="mt-1 space-y-1 text-xs text-amber-600">
                 <li>• La reserva se cobra por hora completa.</li>
                 <li>• La garantía se devuelve contactando al administrador.</li>
-                <li>• No se permiten reservas con pagos de expensas pendientes.</li>
+                <li>
+                  • No se permiten reservas con pagos de expensas pendientes.
+                </li>
                 <li>• El área debe dejarse en las mismas condiciones.</li>
               </ul>
             </div>
@@ -417,7 +432,7 @@ export const OwnerReservationDetailPage = () => {
               Método de pago
             </h1>
             <p className="mb-6 text-sm text-slate-500">
-              {area.name} · {date} · {startTime} — {endTime}
+              {area.name} · {formatDate(date)} · {startTime} — {endTime}
             </p>
 
             {/* Monto */}
@@ -458,7 +473,9 @@ export const OwnerReservationDetailPage = () => {
                 >
                   <Upload
                     className={`h-5 w-5 ${
-                      paymentMethod === "voucher" ? "text-brand" : "text-slate-500"
+                      paymentMethod === "voucher"
+                        ? "text-brand"
+                        : "text-slate-500"
                     }`}
                   />
                 </div>
@@ -480,7 +497,9 @@ export const OwnerReservationDetailPage = () => {
                     type="file"
                     accept="image/*,application/pdf"
                     className="hidden"
-                    onChange={(e) => setVoucherFile(e.target.files?.[0] ?? null)}
+                    onChange={(e) =>
+                      setVoucherFile(e.target.files?.[0] ?? null)
+                    }
                   />
                   <button
                     type="button"
@@ -547,9 +566,7 @@ export const OwnerReservationDetailPage = () => {
             <button
               type="button"
               disabled={
-                !paymentMethod ||
-                (paymentMethod === "card") ||
-                submitting
+                !paymentMethod || paymentMethod === "card" || submitting
               }
               onClick={handleConfirm}
               className="w-full rounded-xl bg-brand py-4 text-center text-base font-semibold text-white shadow-md transition hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-60"
@@ -594,7 +611,9 @@ export const OwnerReservationDetailPage = () => {
                   </div>
                   {reservationResult.precio > 0 ? (
                     <div className="flex justify-between border-t border-slate-100 pt-2">
-                      <span className="font-semibold text-slate-700">Total</span>
+                      <span className="font-semibold text-slate-700">
+                        Total
+                      </span>
                       <span className="font-bold text-brand">
                         ${(reservationResult.precio * horasReserva).toFixed(2)}
                       </span>

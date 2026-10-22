@@ -1,5 +1,6 @@
 import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { describeError } from '../../common/logging/describe-error.util';
 import { OpenmaintClient } from '../../integrations/openmaint/openmaint.client';
 
 /**
@@ -31,7 +32,8 @@ export class CleaningTasksSessionService implements OnModuleInit {
 
     // Si no hay sesión o expiró, refrescar
     if (!this.sessionId || now >= this.sessionExpiresAt) {
-      this.logger.warn('⚠️ Sesión expirada o inválida, refrescando...');
+      // Rutina (la sesión dura 30 min), no un aviso.
+      this.logger.debug('Sesión de servicio vencida o ausente: se renueva');
       await this.refreshSession();
     }
 
@@ -42,14 +44,10 @@ export class CleaningTasksSessionService implements OnModuleInit {
    * Fuerza el refresco de la sesión
    */
   async refreshSession(): Promise<void> {
-    const username =
-      this.configService.get<string>('OPENMAINT_USERNAME') || 'admin';
-    const password =
-      this.configService.get<string>('OPENMAINT_PASSWORD') || 'admin';
+    const username = this.configService.get<string>('OPENMAINT_USERNAME') ?? '';
+    const password = this.configService.get<string>('OPENMAINT_PASSWORD') ?? '';
 
     try {
-      this.logger.log('🔄 Solicitando nueva sesión a OpenMAINT...');
-
       const response = await this.client.post(
         '/sessions?scope=service&returnId=true',
         { username, password },
@@ -59,19 +57,20 @@ export class CleaningTasksSessionService implements OnModuleInit {
       this.sessionExpiresAt = Date.now() + this.SESSION_DURATION_MS;
 
       if (this.sessionId) {
+        // Ni el id ni un trozo: es la credencial de la cuenta de servicio, y
+        // los primeros caracteres que se escribían aquí reducían lo que queda
+        // por adivinar.
         this.logger.log(
-          `✅ Sesión iniciada: ${this.sessionId.substring(0, 10)}...`,
-        );
-        this.logger.log(
-          `⏰ Sesión válida hasta: ${new Date(this.sessionExpiresAt).toLocaleTimeString()}`,
+          `Sesión de servicio iniciada, válida hasta ${new Date(this.sessionExpiresAt).toLocaleTimeString()}`,
         );
       } else {
-        this.logger.error('❌ No se pudo obtener session ID de OpenMAINT');
+        this.logger.error(
+          'openMAINT no devolvió el id de la sesión de servicio',
+        );
       }
     } catch (error) {
       this.logger.error(
-        '❌ Error al iniciar sesión con OpenMAINT:',
-        error.message,
+        `No se pudo iniciar la sesión de servicio en openMAINT — ${describeError(error)}`,
       );
       this.sessionId = null;
       this.sessionExpiresAt = 0;
@@ -82,7 +81,10 @@ export class CleaningTasksSessionService implements OnModuleInit {
    * Invalida la sesión actual (fuerza refresco en próxima llamada)
    */
   invalidateSession(): void {
-    this.logger.warn('⚠️ Sesión invalidada manualmente');
+    // Quien la invalida (un 401) ya dejó su propia línea de aviso.
+    this.logger.debug(
+      'Sesión de servicio invalidada: se renueva en la próxima llamada',
+    );
     this.sessionId = null;
     this.sessionExpiresAt = 0;
   }

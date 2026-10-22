@@ -25,9 +25,9 @@ registerRoute(
   }),
 );
 
-// No se llama a skipWaiting() al instalar: el SW nuevo espera a que el usuario
-// acepte desde UpdateAppToast, para no recargar a un operario a mitad de un
-// checklist. `virtual:pwa-register` manda este mensaje cuando el usuario acepta.
+// No se llama a skipWaiting() al instalar: el SW nuevo espera a que AutoUpdate
+// lo active en un momento seguro (al abrir, al volver o al cambiar de pantalla,
+// nunca a mitad de un checklist). `virtual:pwa-register` manda este mensaje.
 self.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'SKIP_WAITING') {
     void self.skipWaiting();
@@ -54,8 +54,12 @@ self.addEventListener('push', (event) => {
       badge: '/pwa-64x64.png',
       // Agrupa por entidad: un reaviso sustituye al anterior en vez de apilarse.
       tag: payload.tag,
+      // Sin esto, el que sustituye a otro con la misma etiqueta (un "Reabierta"
+      // sobre la "Asignada" de esa tarea) entra en silencio, sin sonar ni vibrar.
+      // La lib de TypeScript no tipa `renotify`, de ahí el cast.
+      renotify: Boolean(payload.tag),
       data: { deepLink: payload.deepLink ?? null, type: payload.type },
-    }),
+    } as NotificationOptions & { renotify?: boolean }),
   );
 });
 

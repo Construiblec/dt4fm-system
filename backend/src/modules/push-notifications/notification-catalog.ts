@@ -14,6 +14,7 @@ export const NOTIFICATION_TYPES = {
   CLEANING_ASSIGNED: 'cleaning.assigned',
   CLEANING_DELAYED: 'cleaning.delayed',
   CLEANING_COMPLETED: 'cleaning.completed',
+  CLEANING_REOPENED: 'cleaning.reopened',
 } as const;
 
 export { MAINTENANCE_SUPERVISOR_ROLES, CLEANING_SUPERVISOR_ROLES };
@@ -28,6 +29,9 @@ export const DEEP_LINKS = {
   preventiveDetail: (id: string | number) =>
     `/supervisor-mantenimiento/preventive/${id}`,
   cleaningDetail: (id: string | number) => `/supervisor/task/${id}`,
+  /** Vista del operario: la tarea abre en su pantalla previa, sin arrancar el tiempo. */
+  cleaningTaskAssignee: (id: string | number) =>
+    `/cleaning-tasks/${id}/execute`,
   /** Vista del técnico, distinta de la del supervisor. */
   preventiveDetailAssignee: (id: string | number) =>
     `/preventive-maintenance/${id}`,
@@ -211,3 +215,29 @@ export const cleaningCompleted = (input: {
   entityKind: 'cleaning',
   entityId: String(input.id),
 });
+
+/** Tope del motivo en el aviso: el sistema operativo corta los cuerpos largos. */
+const MAX_REASON_LENGTH = 100;
+
+const shorten = (text: string, max: number): string =>
+  text.length > max ? `${text.slice(0, max - 1).trimEnd()}…` : text;
+
+/** Va al operario, así que abre la tarea en su vista y no la del supervisor. */
+export const cleaningReopened = (input: {
+  id: string | number;
+  location: string;
+  reason?: string | null;
+}): PushMessage => {
+  const reason = input.reason?.trim();
+
+  return {
+    type: NOTIFICATION_TYPES.CLEANING_REOPENED,
+    title: 'Reabierta: Limpieza',
+    body:
+      `Supervisión reabrió tu limpieza en ${input.location}` +
+      (reason ? `: «${shorten(reason, MAX_REASON_LENGTH)}»` : ''),
+    deepLink: DEEP_LINKS.cleaningTaskAssignee(input.id),
+    entityKind: 'cleaning',
+    entityId: String(input.id),
+  };
+};

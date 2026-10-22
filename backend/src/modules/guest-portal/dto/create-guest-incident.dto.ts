@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 import { IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
+import { SHORT_DESCRIPTION_MAX } from '../../incidents/dto/create-incident.dto';
 
 const trim = ({ value }: { value: unknown }) =>
   typeof value === 'string' ? value.trim() : value;
@@ -10,6 +11,17 @@ const trim = ({ value }: { value: unknown }) =>
  * su estancia, y el `whitelist` global descarta cualquier intento de enviarlos.
  */
 export class CreateGuestIncidentDto {
+  @ApiPropertyOptional({
+    description:
+      'Breve descripción; si falta se toma el inicio de `description`',
+    example: 'Sin agua caliente',
+  })
+  @IsOptional()
+  @Transform(trim)
+  @IsString()
+  @MaxLength(SHORT_DESCRIPTION_MAX)
+  title?: string;
+
   @ApiProperty({
     description: 'Qué está pasando',
     example: 'No sale agua caliente en la ducha',

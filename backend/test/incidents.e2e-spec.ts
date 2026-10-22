@@ -28,15 +28,24 @@ describe('IncidentsController (e2e)', () => {
         .set('x-employee-id', '999')
         .send({
           buildingId: 100,
-          floorArea: 'Piso 1',
-          priority: 1,
+          shortDescription: 'Fuga en el lavamanos',
           notes: 'Prueba E2E de creación',
         })
         .expect(201);
 
       expect(res.body.incidentId).toBe(12345);
       expect(res.body.requester).toBe(999);
-      expect(mocks.openmaint.createCorrectiveMaintIncident).toHaveBeenCalled();
+      // Sin prioridad: la fija el supervisor al asignar.
+      expect(
+        mocks.openmaint.createCorrectiveMaintIncident,
+      ).toHaveBeenCalledWith(
+        expect.not.objectContaining({ Priority: expect.anything() }),
+        'mock-session-id',
+      );
+      expect(
+        mocks.openmaint.createCorrectiveMaintIncident.mock.calls[0][0]
+          .ShortDescr,
+      ).toBe('Fuga en el lavamanos');
     });
 
     it('400 si faltan las cabeceras obligatorias', async () => {
@@ -51,12 +60,25 @@ describe('IncidentsController (e2e)', () => {
         .expect(400);
     });
 
-    it('400 si el body no pasa class-validator (priority ausente)', async () => {
+    it('400 si falta la breve descripción', async () => {
       await request(app.getHttpServer())
         .post('/incidents')
         .set('authorization', 'mock-session-id')
         .set('x-employee-id', '999')
-        .send({ buildingId: 100, floorArea: 'Piso 1', notes: 'Sin prioridad' })
+        .send({ buildingId: 100, notes: 'Sin título' })
+        .expect(400);
+    });
+
+    it('400 si la breve descripción supera los 80 caracteres', async () => {
+      await request(app.getHttpServer())
+        .post('/incidents')
+        .set('authorization', 'mock-session-id')
+        .set('x-employee-id', '999')
+        .send({
+          buildingId: 100,
+          shortDescription: 'x'.repeat(81),
+          notes: 'Largo',
+        })
         .expect(400);
     });
   });
@@ -204,6 +226,33 @@ describe('IncidentsController (e2e)', () => {
         .get('/incidents/my')
         .set('authorization', 'mock-session-id')
         .set('x-employee-id', 'no-es-numero')
+        .expect(400);
+    });
+  });
+
+  describe('GET /incidents/reported', () => {
+    it('devuelve los reportes del empleado con su estado estable', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/incidents/reported')
+        .set('authorization', 'mock-session-id')
+        .set('x-employee-id', '999')
+        .expect(200);
+
+      expect(mocks.openmaint.getIncidentsByRequester).toHaveBeenCalledWith(
+        'mock-session-id',
+        999,
+      );
+      expect(res.body.incidents[0]).toMatchObject({
+        id: 12346,
+        statusCode: 'Assignment',
+      });
+      expect(res.body.incidents[0].updatedAt).toEqual(expect.any(String));
+    });
+
+    it('400 sin x-employee-id', async () => {
+      await request(app.getHttpServer())
+        .get('/incidents/reported')
+        .set('authorization', 'mock-session-id')
         .expect(400);
     });
   });

@@ -7,7 +7,16 @@ import {
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
-import { extractReportNotes } from '../../common/utils/openmaint-register.util';
+import {
+  extractRegisterLog,
+  extractReportNotes,
+  RegisterLogEntry,
+} from '../../common/utils/openmaint-register.util';
+import { describeError } from '../../common/logging/describe-error.util';
+import {
+  CorrectiveReporter,
+  resolveReporter,
+} from '../../common/utils/corrective-reporter.util';
 import { OpenmaintService } from '../../integrations/openmaint/openmaint.service';
 import {
   PM_ACTIONS,
@@ -26,12 +35,14 @@ import {
   CM_PENDING_REVIEW_STATUS,
   CM_PLANNED_START_WRITABLE_STATUS,
   CM_PRIORITY_CODES,
+  CM_PRIORITY_CODE_TO_ID,
   CM_STATUS_IDS,
   CM_STATUS_NAME_TO_ID,
   CM_TEAM_WRITABLE_STATUS,
   CmStatusId,
   resolveCorrectiveStatus,
 } from './constants/corrective-maint.constants';
+import { EquipmentOpenmaintService } from '../corrective-maintenance/equipment.openmaint.service';
 import { PushDispatchService } from '../push-notifications/push-dispatch.service';
 import { SUPPLIER_EMPLOYEE_TYPE } from './constants/supervision-roles.constants';
 import {
@@ -55,6 +66,14 @@ export type SupervisedMaintenance = {
   status: string | null;
   isClosed: boolean;
   site: string | null;
+  /** Planta. Solo correctivos */
+  floor?: string | null;
+  /** Unidad o área común. Solo correctivos */
+  area?: string | null;
+  /** Quien reportó; huésped, visitante e IoT con su nombre real. Solo correctivos */
+  reporter?: CorrectiveReporter | null;
+  /** Equipo intervenido. Solo correctivos */
+  asset?: { id: number; name: string } | null;
   assignee: { id: number; name: string } | null;
   team: { id: number; name: string } | null;
   /**
@@ -84,6 +103,8 @@ export type SupervisedMaintenance = {
    * bitácora. Solo correctivos.
    */
   reportNotes?: string | null;
+  /** Notas posteriores a la apertura, en orden cronológico. Solo correctivos. */
+  log?: RegisterLogEntry[];
 };
 
 export type Assignee = {
@@ -125,6 +146,7 @@ export class MaintenanceSupervisionService {
     private readonly preventive: PreventiveMaintenanceOpenmaintService,
     private readonly openmaint: OpenmaintService,
     private readonly pushDispatch: PushDispatchService,
+    private readonly equipment: EquipmentOpenmaintService,
   ) {}
 
   // ── Listados ───────────────────────────────────────────────────────────────
@@ -351,6 +373,31 @@ export class MaintenanceSupervisionService {
     return { success: true, data, meta: { total: data.length } };
   }
 
+  /** Equipos del edificio del correctivo, para elegir el intervenido al asignar. */
+  async searchCorrectiveAssets(sessionId: string, id: number, query?: string) {
+    const card = await this.fetchCorrective(sessionId, id);
+
+    const assets = await this.call(
+      () =>
+        this.equipment.search(sessionId, {
+          query,
+          buildingId: card.Site ?? null,
+          // Sin texto se trae el edificio entero para filtrar en el cliente
+          limit: query?.trim() ? 30 : 300,
+        }),
+      'Error al buscar equipos en OpenMAINT',
+    );
+
+    const data = assets.map((asset) => ({
+      id: asset._id,
+      code: asset.Code ?? null,
+      description: asset.Description ?? null,
+      place: asset._Floor_description ?? null,
+    }));
+
+    return { success: true, data, meta: { total: data.length } };
+  }
+
   // ── Asignación ─────────────────────────────────────────────────────────────
 
   /**
@@ -387,7 +434,18 @@ export class MaintenanceSupervisionService {
       );
     }
 
+    // Al crear ya no se pide prioridad: la decide el supervisor aquí.
+    if (!dto.priority && card.Priority == null) {
+      throw new BadRequestException(
+        'Hay que fijar la prioridad antes de asignar el correctivo',
+      );
+    }
+
     const fields: Record<string, unknown> = { Assignee: dto.assigneeId };
+
+    if (dto.priority) {
+      fields.Priority = CM_PRIORITY_CODE_TO_ID[dto.priority];
+    }
 
     if (dto.teamId !== undefined) {
       fields.Team = dto.teamId;
@@ -397,12 +455,16 @@ export class MaintenanceSupervisionService {
       fields.ExpExecStartDate = dto.plannedStart;
     }
 
+    if (dto.assetId !== undefined) {
+      fields.Asset = dto.assetId;
+    }
+
     await this.call(
       () =>
         this.corrective.advance(sessionId, id, {
           activityId: this.requireActivityId(card._tasklist, id),
           action: CM_ACTIONS.ASSIGN,
-          notes: dto.notes ?? null,
+          notes: dto.notes?.trim() || null,
           fields,
         }),
       'Error al asignar el correctivo en OpenMAINT',
@@ -430,6 +492,12 @@ export class MaintenanceSupervisionService {
       updated,
     );
 
+    if (dto.priority && assigned.Priority !== fields.Priority) {
+      this.logger.warn(
+        `OpenMAINT no guardó la prioridad ${dto.priority} del correctivo ${id} al asignar`,
+      );
+    }
+
     return { success: true, data: this.toCorrective(assigned) };
   }
 
@@ -451,7 +519,27 @@ export class MaintenanceSupervisionService {
     id: number,
     assigned: CorrectiveMaintCard,
   ): Promise<CorrectiveMaintCard> {
-    if (!assigned.ExecStartDate) {
+    return this.restoreExecStart(sessionId, id, assigned, null);
+  }
+
+  /**
+   * Deja `ExecStartDate` como estaba antes de una acción que vuelve a entrar en
+   * Ejecución, porque OpenMAINT lo rellena por su cuenta al hacerlo.
+   */
+  private async restoreExecStart(
+    sessionId: string,
+    id: number,
+    assigned: CorrectiveMaintCard,
+    previous: string | null,
+  ): Promise<CorrectiveMaintCard> {
+    const current = assigned.ExecStartDate ?? null;
+    const unchanged =
+      current === previous ||
+      (current !== null &&
+        previous !== null &&
+        new Date(current).getTime() === new Date(previous).getTime());
+
+    if (unchanged) {
       return assigned;
     }
 
@@ -465,14 +553,14 @@ export class MaintenanceSupervisionService {
 
       await this.corrective.saveFields(sessionId, id, {
         activityId,
-        fields: { ExecStartDate: null },
+        fields: { ExecStartDate: previous },
       });
 
       return (await this.corrective.findById(sessionId, id)).data ?? assigned;
     } catch (error) {
       this.logger.warn(
-        `No se pudo vaciar ExecStartDate del correctivo ${id}: se mostrará como ` +
-          `«Execution» en vez de «Assigned». ${(error as Error)?.message ?? ''}`,
+        `No se pudo restablecer ExecStartDate del correctivo ${id}: el estado ` +
+          `«Assigned»/«Execution» puede no coincidir. ${(error as Error)?.message ?? ''}`,
       );
 
       return assigned;
@@ -658,6 +746,7 @@ export class MaintenanceSupervisionService {
     id: number,
     assigneeId: number,
     teamId?: number,
+    notes?: string,
   ) {
     const nextAssignee = await this.findAssignee(sessionId, assigneeId);
 
@@ -704,6 +793,40 @@ export class MaintenanceSupervisionService {
 
       if (nuevoEquipo !== undefined) {
         fields.Team = nuevoEquipo;
+      }
+
+      const note = notes?.trim();
+
+      // Con nota se usa `CM03-Return`, la acción del flujo para cambiar de
+      // persona sin salir de Ejecución: un guardado no deja nada en la bitácora.
+      if (note && card.ProcessStatus === CM_STATUS_IDS.EXECUTION) {
+        await this.call(
+          () =>
+            this.corrective.advance(sessionId, id, {
+              activityId: this.requireActivityId(card._tasklist, id),
+              action: CM_ACTIONS.CHANGE_ASSIGNEE,
+              notes: note,
+              fields,
+            }),
+          'Error al reasignar el correctivo en OpenMAINT',
+        );
+
+        const returned = await this.assertCorrectiveReached(
+          sessionId,
+          id,
+          CM_STATUS_IDS.EXECUTION,
+          'OpenMAINT aceptó la petición pero no aplicó la reasignación del correctivo',
+        );
+
+        // Volver a entrar en Ejecución no debe tocar el inicio que ya había.
+        const kept = await this.restoreExecStart(
+          sessionId,
+          id,
+          returned,
+          card.ExecStartDate ?? null,
+        );
+
+        return { success: true, data: this.toCorrective(kept) };
       }
 
       await this.call(
@@ -912,6 +1035,8 @@ export class MaintenanceSupervisionService {
   private toCorrective(card: CorrectiveMaintCard): SupervisedMaintenance {
     const isClosed = (card._FlowStatus_code ?? '').startsWith('closed');
     const dueDate = card.DueExecEndDate ?? null;
+    const register = card.Register ?? card._Register_html ?? null;
+    const reportNotes = extractReportNotes(register);
 
     return {
       id: card._id,
@@ -928,6 +1053,10 @@ export class MaintenanceSupervisionService {
         null,
       isClosed,
       site: card._Site_description ?? null,
+      floor: card._Floor_description ?? null,
+      area: card._Unit_description ?? card._CommonArea_description ?? null,
+      reporter: resolveReporter(reportNotes, card._Requester_description),
+      asset: this.toRef(card.Asset, card._Asset_description),
       assignee: this.toRef(card.Assignee, card._Assignee_description),
       team: this.toRef(card.Team, card._Team_description),
       priority: this.toPriority(card),
@@ -937,9 +1066,8 @@ export class MaintenanceSupervisionService {
       isOverdue: this.isOverdue(dueDate, isClosed),
       execStartDate: card.ExecStartDate ?? null,
       execEndDate: card.ExecEndDate ?? null,
-      reportNotes: extractReportNotes(
-        card.Register ?? card._Register_html ?? null,
-      ),
+      reportNotes,
+      log: extractRegisterLog(register, card._ProcessStatus_code),
     };
   }
 
@@ -1277,7 +1405,7 @@ export class MaintenanceSupervisionService {
         );
       }
 
-      this.logger.error(reason, error as Error);
+      this.logger.error(`${reason} — ${describeError(error)}`);
       throw new BadGatewayException(reason);
     }
   }

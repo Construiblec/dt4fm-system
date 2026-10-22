@@ -96,6 +96,21 @@ export const createOpenmaintServiceMock = () => ({
       },
     ],
   }),
+  getIncidentsByRequester: jest.fn().mockResolvedValue({
+    data: [
+      {
+        _id: 12346,
+        Number: 'CM.2026.0151',
+        ShortDescr: 'Fuga de agua',
+        _Priority_description_translation: 'Media',
+        _ProcessStatus_code: 'CM-Assignment',
+        _ProcessStatus_description_translation: 'Assignment',
+        _Site_description: 'Mock Building',
+        OpeningDate: new Date().toISOString(),
+        _beginDate: new Date().toISOString(),
+      },
+    ],
+  }),
 });
 
 export type OpenmaintServiceMock = ReturnType<

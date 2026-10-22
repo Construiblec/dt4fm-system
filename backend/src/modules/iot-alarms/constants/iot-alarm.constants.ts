@@ -44,5 +44,16 @@ export const IOT_SUBJECT_PREFIX = '[IoT]';
 /** Nombre que ve el supervisor. openMAINT guarda el empleado como "Iot Sistema". */
 export const IOT_REQUESTER_LABEL = 'Sistema IoT';
 
+/** Campos del cuerpo con significado propio; el resto se trata como medición. */
+export const IOT_KNOWN_FIELDS = [
+  'assetCode',
+  'event',
+  'timestamp',
+  'message',
+  'device',
+  'building',
+  'place',
+];
+
 /** `ShortDescr` es una columna de 255 en CMDBuild. */
 export const SHORT_DESCR_MAX = 255;

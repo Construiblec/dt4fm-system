@@ -166,6 +166,24 @@ export class MaintenanceSupervisionController {
     return this.service.assignCorrective(sessionId, id, dto);
   }
 
+  @Get('corrective/:id/assets')
+  @ApiOperation({
+    summary: 'Buscar el equipo intervenido de un correctivo',
+    description:
+      'Busca por código o descripción en el edificio del correctivo.',
+  })
+  @ApiParam({ name: 'id', type: 'integer' })
+  @ApiQuery({ name: 'q', required: false })
+  @ApiResponse({ status: 200, description: 'Equipos encontrados' })
+  async searchAssets(
+    @Headers('authorization') sessionId: string,
+    @Param('id', ParseIntPipe) id: number,
+    @Query('q') query?: string,
+  ) {
+    await this.authorize(sessionId);
+    return this.service.searchCorrectiveAssets(sessionId, id, query);
+  }
+
   @Post('corrective/:id/reject')
   @ApiOperation({ summary: 'Rechazar y cerrar un correctivo sin ejecutarlo' })
   @ApiParam({ name: 'id', type: 'integer' })
@@ -247,6 +265,7 @@ export class MaintenanceSupervisionController {
       id,
       dto.assigneeId,
       dto.teamId,
+      dto.notes,
     );
   }
 

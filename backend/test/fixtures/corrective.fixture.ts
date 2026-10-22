@@ -18,9 +18,13 @@ export interface CorrectiveCardOptions {
   assignee?: number | null;
   team?: number | null;
   expExecStartDate?: string | null;
+  /** ID del lookup de prioridad; al crear ya no se fija */
+  priority?: number | null;
   number?: string;
   taskId?: string;
   register?: string;
+  /** ID del equipo intervenido (`Asset`) */
+  asset?: number | null;
 }
 
 const CM_STATUS_CODE_BY_ID: Record<CmStatusId, string> = {
@@ -48,6 +52,9 @@ export const correctiveCard = (opts: CorrectiveCardOptions) => ({
   Team: opts.team ?? null,
   ShortDescr: 'Mock incident location',
   _Site_description: 'Mock Building',
+  Priority: opts.priority ?? null,
+  Asset: opts.asset ?? null,
+  _Asset_description: opts.asset ? 'GAS 01 - Calentador' : null,
   _Priority_description: 'Alta',
   OpeningDate: new Date().toISOString(),
   Register: opts.register ?? '<span data-block="notes">Mock notes</span>',

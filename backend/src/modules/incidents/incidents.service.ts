@@ -3,15 +3,20 @@ import {
   BadGatewayException,
   Injectable,
   InternalServerErrorException,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { describeError } from '../../common/logging/describe-error.util';
 import {
+  extractRegisterLog,
   extractRegisterNotes,
   extractReportNotes,
 } from '../../common/utils/openmaint-register.util';
+import { resolveReporter } from '../../common/utils/corrective-reporter.util';
 import { OpenmaintService } from '../../integrations/openmaint/openmaint.service';
 import {
   CM_DERIVED_ASSIGNED,
+  CM_PRIORITY_CODES,
   resolveCorrectiveStatus,
 } from '../maintenance-supervision/constants/corrective-maint.constants';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -39,6 +44,13 @@ type OpenmaintIncidentListItem = {
   ExpExecStartDate?: string | null;
   /** Inicio real. Vacío mientras el técnico no haya arrancado el trabajo. */
   ExecStartDate?: string | null;
+  ExecEndDate?: string | null;
+  Priority?: number | null;
+  _Floor_description?: string | null;
+  _Unit_description?: string | null;
+  _CommonArea_description?: string | null;
+  /** Inicio de la versión vigente de la tarjeta: la última vez que cambió. */
+  _beginDate?: string | null;
 };
 
 type OpenmaintIncidentListResponse = {
@@ -66,8 +78,13 @@ type OpenmaintIncidentDetail = {
   _Assignee_description?: string | null;
   _Unit_description?: string | null;
   _Floor_description?: string | null;
-  /** Equipo sobre el que se abrió; hoy solo lo rellenan las alarmas IoT. */
+  _CommonArea_description?: string | null;
+  /** Equipo intervenido: lo fijan las alarmas IoT o el supervisor al asignar. */
+  Asset?: number | null;
   _Asset_description?: string | null;
+  Priority?: number | null;
+  ExpExecStartDate?: string | null;
+  ExecEndDate?: string | null;
 };
 
 type OpenmaintIncidentDetailResponse = {
@@ -104,6 +121,8 @@ type OpenmaintIncidentTaskContextData = {
 
 @Injectable()
 export class IncidentsService {
+  private readonly logger = new Logger(IncidentsService.name);
+
   constructor(
     private readonly openmaintService: OpenmaintService,
     private readonly notificationsService: NotificationsService,
@@ -210,16 +229,17 @@ export class IncidentsService {
       try {
         await this.uploadAttachment(id, file, sessionId);
       } catch (error) {
-        console.error('Error al subir evidencia de cierre a OpenMAINT', error);
+        this.logger.error(
+          `Correctivo ${id}: no se pudo subir la evidencia de cierre — ${describeError(error)}`,
+        );
       }
     }
 
     // Enviar notificación de cierre en segundo plano
     this.sendIncidentFinishedNotificationInBackground(id, sessionId).catch(
       (err) => {
-        console.error(
-          'Error enviando notificación de incidente finalizado:',
-          err,
+        this.logger.error(
+          `Correctivo ${id}: no se pudo iniciar el aviso de cierre — ${describeError(err)}`,
         );
       },
     );
@@ -300,15 +320,33 @@ export class IncidentsService {
         null,
       priority:
         incident._Priority_description ?? incident.Priority_description ?? null,
+      priorityCode:
+        incident.Priority != null
+          ? (CM_PRIORITY_CODES[incident.Priority] ?? null)
+          : null,
       createdAt: incident.OpeningDate ?? null,
+      plannedStart: incident.ExpExecStartDate ?? null,
+      execStartDate: incident.ExecStartDate ?? null,
+      execEndDate: incident.ExecEndDate ?? null,
       // Lo que escribió quien reportó; `notes` es la nota del último paso.
       reportNotes: extractReportNotes(incident.Register ?? null),
       notes: extractRegisterNotes(incident.Register ?? null),
+      // Notas posteriores a la apertura: asignación, ejecución, rechazo…
+      log: extractRegisterLog(
+        incident.Register ?? null,
+        incident._ProcessStatus_code,
+      ),
       requesterName: incident._Requester_description ?? null,
+      reporter: resolveReporter(
+        extractReportNotes(incident.Register ?? null),
+        incident._Requester_description,
+      ),
       assigneeName: incident._Assignee_description ?? null,
       unit: incident._Unit_description ?? null,
+      commonArea: incident._CommonArea_description ?? null,
       floor: incident._Floor_description ?? null,
       asset: incident._Asset_description ?? null,
+      assetId: incident.Asset ?? null,
       images,
     };
   }
@@ -327,28 +365,62 @@ export class IncidentsService {
       );
     }
 
+    return { incidents: (response.data ?? []).map(this.toListItem) };
+  }
+
+  /** Correctivos que abrió el empleado, para que siga en qué van. */
+  async getReportedIncidents(employeeId: number, sessionId: string) {
+    let response: OpenmaintIncidentListResponse;
+
+    try {
+      response = (await this.openmaintService.getIncidentsByRequester(
+        sessionId,
+        employeeId,
+      )) as OpenmaintIncidentListResponse;
+    } catch {
+      throw new BadGatewayException(
+        'Error al consultar incidentes en OpenMAINT',
+      );
+    }
+
     return {
       incidents: (response.data ?? []).map((incident) => ({
-        id: incident._id,
-        number: incident.Number,
-        location: incident.ShortDescr,
-        priority: incident._Priority_description_translation,
-        // El código estable es el que debe gobernar la lógica del front.
-        // `_ProcessStatus_description_translation` viaja traducido según el
-        // idioma de la sesión, así que solo sirve como etiqueta visible.
-        // Se deriva con la misma regla que usa el supervisor, para que los dos
-        // roles vean el mismo estado: «Asignado» mientras no haya inicio real.
-        statusCode: resolveCorrectiveStatus(
-          incident._ProcessStatus_code,
-          incident.ExecStartDate,
-        ),
-        status: incident._ProcessStatus_description_translation,
-        building: incident._Site_description,
-        createdAt: incident.OpeningDate,
-        plannedStart: incident.ExpExecStartDate ?? null,
+        ...this.toListItem(incident),
+        updatedAt: incident._beginDate ?? null,
       })),
     };
   }
+
+  private readonly toListItem = (incident: OpenmaintIncidentListItem) => ({
+    id: incident._id,
+    number: incident.Number,
+    subject: incident.ShortDescr ?? null,
+    /** Obsoleto: igual a `subject`, se mantiene por compatibilidad. */
+    location: incident.ShortDescr,
+    priority: incident._Priority_description_translation,
+    priorityCode:
+      incident.Priority != null
+        ? (CM_PRIORITY_CODES[incident.Priority] ?? null)
+        : null,
+    // El código estable es el que debe gobernar la lógica del front.
+    // `_ProcessStatus_description_translation` viaja traducido según el
+    // idioma de la sesión, así que solo sirve como etiqueta visible.
+    // Se deriva con la misma regla que usa el supervisor, para que los dos
+    // roles vean el mismo estado: «Asignado» mientras no haya inicio real.
+    statusCode: resolveCorrectiveStatus(
+      incident._ProcessStatus_code,
+      incident.ExecStartDate,
+    ),
+    status: incident._ProcessStatus_description_translation,
+    building: incident._Site_description,
+    createdAt: incident.OpeningDate,
+    plannedStart: incident.ExpExecStartDate ?? null,
+    execStartDate: incident.ExecStartDate ?? null,
+    execEndDate: incident.ExecEndDate ?? null,
+    floor: incident._Floor_description ?? null,
+    area:
+      incident._Unit_description ?? incident._CommonArea_description ?? null,
+  });
 
   async createIncident(
     sessionId: string,
@@ -356,6 +428,10 @@ export class IncidentsService {
     dto: CreateIncidentDto,
     images: UploadedImage[] = [],
   ) {
+    if (!(dto.shortDescription ?? dto.floorArea ?? '').trim()) {
+      throw new BadRequestException('La breve descripción es obligatoria');
+    }
+
     const incidentResponse =
       await this.openmaintService.createCorrectiveMaintIncident(
         {
@@ -363,11 +439,12 @@ export class IncidentsService {
           _activity: 'CM01-Opening',
           _advance: true,
           OpeningDate: new Date().toISOString(),
-          ShortDescr: dto.floorArea,
+          ShortDescr: (dto.shortDescription ?? dto.floorArea ?? '').trim(),
           ProcessNotes: dto.notes,
           Requester: employeeId,
           Type: 268288,
-          Priority: dto.priority,
+          // Sin prioridad la fija el supervisor al asignar.
+          ...(dto.priority ? { Priority: dto.priority } : {}),
           Site: dto.buildingId,
           // Solo se envían si el usuario los eligió; son opcionales en OpenMAINT
           ...(dto.floorId ? { Floor: dto.floorId } : {}),
@@ -415,9 +492,8 @@ export class IncidentsService {
       dto,
       sessionId,
     ).catch((err) => {
-      console.error(
-        'Error no controlado al iniciar la notificación del incidente:',
-        err,
+      this.logger.error(
+        `Correctivo ${incidentId}: no se pudo iniciar el aviso de creación — ${describeError(err)}`,
       );
     });
 
@@ -474,9 +550,8 @@ export class IncidentsService {
         buildingName: incidentDetail?.building,
       });
     } catch (error) {
-      console.error(
-        'Error al enviar la notificación del incidente en segundo plano:',
-        error,
+      this.logger.error(
+        `Correctivo ${incidentId}: no se pudo enviar el aviso de creación — ${describeError(error)}`,
       );
     }
   }
@@ -521,9 +596,8 @@ export class IncidentsService {
         buildingName: incidentDetail?.building,
       });
     } catch (error) {
-      console.error(
-        'Error al enviar la notificación de incidente finalizado en segundo plano:',
-        error,
+      this.logger.error(
+        `Correctivo ${incidentId}: no se pudo enviar el aviso de cierre — ${describeError(error)}`,
       );
     }
   }

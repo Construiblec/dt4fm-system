@@ -2,19 +2,11 @@ import {
   AlertTriangle,
   CalendarClock,
   CalendarDays,
-  ClipboardCheck,
-  Layers,
   MapPin,
   UserRound,
   UserRoundX,
   Wrench,
 } from "lucide-react";
-import {
-  CORRECTIVE_PENDING_REVIEW_STATUS,
-  getCorrectiveStatusBadge,
-  getCorrectiveStatusBorder,
-  getCorrectiveStatusLabel,
-} from "@/modules/incidentes/constants/correctiveStatus";
 import {
   getPreventiveStatusBadge,
   getPreventiveStatusBorder,
@@ -30,28 +22,24 @@ import {
   OVERDUE_STYLE,
 } from "@/shared/constants/statusPalette";
 
-export type MaintenanceCardKind = "corrective" | "preventive";
-
 /**
- * Vista mínima que necesita la tarjeta. Es deliberadamente más pequeña que los
- * tipos de cada módulo para que sirva a los tres orígenes: el listado del
- * supervisor, los correctivos del técnico y sus preventivos.
+ * Vista mínima del preventivo para su tarjeta. El correctivo tiene la suya:
+ * `CorrectiveCard`.
  */
 export type MaintenanceCardData = {
   id: number;
-  kind: MaintenanceCardKind;
   number: string | null;
-  /** Qué hay que hacer: descripción del correctivo o asunto del preventivo */
+  /** Asunto del preventivo */
   subject: string | null;
   /** Código estable; nunca la etiqueta traducida */
   statusCode: string | null;
   /** Etiqueta de OpenMAINT, como respaldo si el código no está mapeado */
   status: string | null;
   site: string | null;
-  /** Ubicación (correctivo) o equipo/activo intervenido (preventivo) */
+  /** Equipo o activo intervenido */
   target: string | null;
   assignee: string | null;
-  /** Código estable de prioridad; los preventivos no la traen */
+  /** Los preventivos no la traen hoy; se pinta si algún día llega */
   priorityCode: string | null;
   openingDate: string | null;
   plannedStart: string | null;
@@ -75,18 +63,7 @@ const formatShortDate = (value: string | null) =>
   formatShortDateUtil(value, "Sin fecha");
 
 
-/**
- * Tarjeta única de mantenimiento, para correctivo y preventivo y para las dos
- * vistas (equipo y supervisor).
- *
- * Sustituye a tres componentes que mostraban lo mismo de formas distintas:
- * `TaskCard` (que además nunca llegó a pintar el número de incidente y coloreaba
- * el borde por prioridad en vez de por estado), `PreventiveMaintenanceCard` y
- * `SupervisedMaintenanceCard`.
- *
- * Las fechas se muestran **solo si tienen dato**: los correctivos no tienen
- * fecha límite en OpenMAINT, así que pintar la fila siempre dejaría un hueco.
- */
+/** Tarjeta de mantenimiento preventivo, para el equipo y para el supervisor. */
 export const MaintenanceCard = ({
   maintenance,
   showAssignee = false,
@@ -94,26 +71,15 @@ export const MaintenanceCard = ({
   disabledReason = null,
   openLabel = "Abrir",
 }: Props) => {
-  const isCorrective = maintenance.kind === "corrective";
-
   const border = maintenance.isOverdue
     ? OVERDUE_STYLE.border
-    : isCorrective
-      ? getCorrectiveStatusBorder(maintenance.statusCode)
-      : getPreventiveStatusBorder(maintenance.statusCode);
-
-  const statusBadge = isCorrective
-    ? getCorrectiveStatusBadge(maintenance.statusCode)
-    : getPreventiveStatusBadge(maintenance.statusCode);
-
-  const statusLabel = isCorrective
-    ? getCorrectiveStatusLabel(maintenance.statusCode, maintenance.status)
-    : getPreventiveStatusLabel(maintenance.statusCode, maintenance.status);
-
+    : getPreventiveStatusBorder(maintenance.statusCode);
+  const statusBadge = getPreventiveStatusBadge(maintenance.statusCode);
+  const statusLabel = getPreventiveStatusLabel(
+    maintenance.statusCode,
+    maintenance.status,
+  );
   const priority = toPriorityCode(maintenance.priorityCode);
-
-  const pendingReview =
-    isCorrective && maintenance.statusCode === CORRECTIVE_PENDING_REVIEW_STATUS;
 
   const plannedStart = formatDateTime(maintenance.plannedStart);
   const dueDate = formatDateTime(maintenance.dueDate);
@@ -125,7 +91,7 @@ export const MaintenanceCard = ({
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-xs font-bold uppercase tracking-wide text-brand">
-            {maintenance.number ?? (isCorrective ? "Correctivo" : "Preventivo")}
+            {maintenance.number ?? "Preventivo"}
           </p>
           <h3 className="mt-1 text-base font-semibold text-slate-900">
             {maintenance.subject ?? "Sin descripción"}
@@ -149,15 +115,6 @@ export const MaintenanceCard = ({
           </span>
         ) : null}
 
-        {pendingReview ? (
-          <span
-            className={`inline-flex items-center gap-1 ${BADGE_SHAPE} bg-indigo-100 text-indigo-700`}
-          >
-            <ClipboardCheck className="h-3 w-3" />
-            Por revisar
-          </span>
-        ) : null}
-
         {maintenance.isOverdue ? (
           <span
             className={`inline-flex items-center gap-1 ${BADGE_SHAPE} ${OVERDUE_STYLE.badge}`}
@@ -172,11 +129,7 @@ export const MaintenanceCard = ({
       <div className="mt-3 space-y-2 text-sm text-slate-600">
         {maintenance.target ? (
           <div className="flex items-center gap-2">
-            {isCorrective ? (
-              <Layers className="h-4 w-4 shrink-0" />
-            ) : (
-              <Wrench className="h-4 w-4 shrink-0" />
-            )}
+            <Wrench className="h-4 w-4 shrink-0" />
             <span className="min-w-0 truncate">{maintenance.target}</span>
           </div>
         ) : null}
@@ -197,7 +150,7 @@ export const MaintenanceCard = ({
           ) : (
             <div className="flex items-center gap-2 font-medium text-amber-700">
               <UserRoundX className="h-4 w-4 shrink-0" />
-              <span>Sin cesionario</span>
+              <span>Sin responsable</span>
             </div>
           )
         ) : null}

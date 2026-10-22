@@ -5,6 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { describeError } from '../../common/logging/describe-error.util';
 import { OpenmaintAuthService } from '../../integrations/openmaint/openmaint.auth.service';
 import { OpenmaintClient } from '../../integrations/openmaint/openmaint.client';
 import { CreateEmailTemplateDto } from './dto/create-email-template.dto';
@@ -63,10 +64,9 @@ export class EmailTemplatesService {
         total: response.meta?.total ?? 0,
       };
     } catch (error) {
-      this.logger.error('Error al listar plantillas en openMAINT', {
-        status: error?.response?.status,
-        data: JSON.stringify(error?.response?.data),
-      });
+      this.logger.error(
+        `Error al listar plantillas en openMAINT — ${describeError(error)}`,
+      );
       throw new InternalServerErrorException(
         'No se pudieron obtener las plantillas',
       );
@@ -91,10 +91,9 @@ export class EmailTemplatesService {
       return response.data;
     } catch (error) {
       if (error instanceof NotFoundException) throw error;
-      this.logger.error(`Error al obtener plantilla ${id}`, {
-        status: error?.response?.status,
-        data: JSON.stringify(error?.response?.data),
-      });
+      this.logger.error(
+        `Error al obtener plantilla ${id} — ${describeError(error)}`,
+      );
       throw new InternalServerErrorException('No se pudo obtener la plantilla');
     }
   }
@@ -120,10 +119,9 @@ export class EmailTemplatesService {
       return response.data;
     } catch (error) {
       if (error instanceof InternalServerErrorException) throw error;
-      this.logger.error('Error al crear plantilla en openMAINT', {
-        status: error?.response?.status,
-        data: JSON.stringify(error?.response?.data),
-      });
+      this.logger.error(
+        `Error al crear plantilla en openMAINT — ${describeError(error)}`,
+      );
       throw new InternalServerErrorException('No se pudo crear la plantilla');
     }
   }
@@ -160,10 +158,9 @@ export class EmailTemplatesService {
       ) {
         throw error;
       }
-      this.logger.error(`Error al actualizar plantilla ${id}`, {
-        status: error?.response?.status,
-        data: JSON.stringify(error?.response?.data),
-      });
+      this.logger.error(
+        `Error al actualizar plantilla ${id} — ${describeError(error)}`,
+      );
       throw new InternalServerErrorException(
         'No se pudo actualizar la plantilla',
       );
@@ -187,10 +184,9 @@ export class EmailTemplatesService {
       return { success: true };
     } catch (error) {
       if (error instanceof NotFoundException) throw error;
-      this.logger.error(`Error al eliminar plantilla ${id}`, {
-        status: error?.response?.status,
-        data: JSON.stringify(error?.response?.data),
-      });
+      this.logger.error(
+        `Error al eliminar plantilla ${id} — ${describeError(error)}`,
+      );
       throw new InternalServerErrorException(
         'No se pudo eliminar la plantilla',
       );

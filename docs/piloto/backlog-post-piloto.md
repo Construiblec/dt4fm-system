@@ -69,7 +69,7 @@ Cuatro defectos conocidos, heredados del estado del prototipo. Los cuatro son la
 
 ### BP-002 · avance del 2026-09-03
 
-**Hecho:** `main.ts` deja de reflejar cualquier `Origin` recibido. `app.enableCors()` valida contra una lista blanca (`CORS_ALLOWED_ORIGINS`, ver [`cors.config.ts`](../../backend/src/config/cors.config.ts)); sin la variable, usa por defecto los tres dominios reales del piloto (local, staging, producción — los mismos ya documentados en `APP_BASE_URL` de `.env.example`). Cada servicio de Render debería declarar solo los suyos (ver la tabla de variables en [backend-ci-cd.md](../../backend/docs/backend-ci-cd.md)), pero el valor por defecto ya cierra el hueco aunque no se configure.
+**Hecho:** `main.ts` deja de reflejar cualquier `Origin` recibido. `app.enableCors()` valida contra una lista blanca (`CORS_ALLOWED_ORIGINS`, ver [`cors.config.ts`](../../backend/src/config/cors.config.ts)); sin la variable no se permite ningún navegador, porque el código no trae dominios por defecto. Cada servicio de Render declara los suyos (ver la tabla de variables en [backend-ci-cd.md](../../backend/docs/backend-ci-cd.md)).
 
 **Verificado:** `cors.config.spec.ts`, 3 pruebas — sin variable, variable vacía, y parseo de una lista con espacios.
 

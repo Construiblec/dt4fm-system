@@ -1,12 +1,14 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
+  IsIn,
   IsInt,
   IsISO8601,
   IsOptional,
   IsPositive,
   IsString,
 } from 'class-validator';
+import { CM_PRIORITY_CODES } from '../constants/corrective-maint.constants';
 
 export class AssignAssigneeDto {
   @ApiProperty({
@@ -40,6 +42,28 @@ export class AssignAssigneeDto {
   @IsOptional()
   @IsISO8601()
   plannedStart?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Código de prioridad. **Solo correctivos**: obligatorio si el correctivo ' +
+      'aún no tiene una, porque al crearlo ya no se pide.',
+    enum: Object.values(CM_PRIORITY_CODES),
+    example: 'Medium',
+  })
+  @IsOptional()
+  @IsIn(Object.values(CM_PRIORITY_CODES))
+  priority?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'ID del equipo intervenido (superclase `Asset`). Opcional; solo correctivos.',
+    example: 3209930,
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @IsPositive()
+  assetId?: number;
 
   @ApiPropertyOptional({
     description: 'Nota que se anexa a la bitácora del proceso',

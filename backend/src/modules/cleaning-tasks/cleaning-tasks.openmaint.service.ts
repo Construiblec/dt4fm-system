@@ -3,6 +3,7 @@ import {
   InternalServerErrorException,
   Logger,
 } from '@nestjs/common';
+import { describeError } from '../../common/logging/describe-error.util';
 import { OpenmaintClient } from '../../integrations/openmaint/openmaint.client';
 import { CleaningTasksSessionService } from './cleaning-tasks.session.service';
 import {
@@ -37,7 +38,22 @@ type CleaningTaskCard = {
   _Unit_description?: string;
   Employee?: number;
   _Employee_description?: string;
+  HostawayListingID?: string | null;
   CleaningChecklist?: number | null;
+  _CleaningChecklist_description?: string | null;
+};
+
+export type EmployeeCard = {
+  _id: number;
+  _type?: string;
+  Description?: string;
+  Team?: number | null;
+  _Team_description?: string | null;
+};
+
+export type UnitListingCard = {
+  _id: number;
+  HostawayListingID?: string | null;
 };
 
 type CleaningActivityCard = {
@@ -56,7 +72,34 @@ type CleaningActivityCard = {
   /** Metadatos aplanados del adjunto. Solo se usan para el log. */
   _Plantilla_FileName?: string | null;
   _Plantilla_Size?: number | null;
+  /**
+   * Lo pone este servicio, no openMAINT: `Plantilla` apunta a un documento
+   * que ya no existe en el DMS y la tarjeta solo se pudo leer sin el archivo.
+   */
+  _plantillaRota?: boolean;
 };
+
+/**
+ * Campos de una CleaningActivity que se pueden leer aunque el archivo de
+ * `Plantilla` esté roto. `attrs` no devuelve `_id`, por eso va `Id`.
+ */
+const ACTIVITY_BASIC_ATTRS = 'Id,Code,Description,NombrePlantilla,Detalle';
+
+type BasicActivityRow = Omit<CleaningActivityCard, '_id'> & {
+  _id?: number;
+  Id?: number;
+};
+
+/** Tarjeta armada solo con los campos básicos: el equipo verá el `Detalle`. */
+const toBrokenTemplateCard = (row: BasicActivityRow): CleaningActivityCard => ({
+  _id: (row._id ?? row.Id) as number,
+  Code: row.Code,
+  Description: row.Description,
+  NombrePlantilla: row.NombrePlantilla,
+  Detalle: row.Detalle,
+  Plantilla: null,
+  _plantillaRota: true,
+});
 
 type CleaningActivityResponse = {
   success: boolean;
@@ -77,6 +120,8 @@ type UnitResponse = {
   success: boolean;
   data: UnitCard;
 };
+
+export type { CleaningActivityCard, CleaningTaskCard };
 
 export type AttachmentCard = {
   _id: string;
@@ -135,7 +180,7 @@ export class CleaningTasksOpenmaintService {
       // Si es error 401, refrescar sesión y reintentar UNA vez
       if (error.response?.status === 401 || error.status === 401) {
         this.logger.warn(
-          `⚠️ Error 401 en ${operationName}, refrescando sesión y reintentando...`,
+          `401 en ${operationName}: se renueva la sesión de servicio y se reintenta`,
         );
 
         // Forzar refresco de sesión
@@ -170,7 +215,9 @@ export class CleaningTasksOpenmaintService {
 
       return (await this.client.get(path, sessionId)) as OpenmaintCardsResponse;
     }, 'getCleaningTasks').catch((error) => {
-      this.logger.error('Error al obtener tareas de limpieza:', error.message);
+      this.logger.error(
+        `Error al obtener tareas de limpieza — ${describeError(error)}`,
+      );
       throw new InternalServerErrorException(
         'Error al obtener tareas de limpieza de OpenMAINT',
       );
@@ -187,7 +234,7 @@ export class CleaningTasksOpenmaintService {
         sessionId,
       )) as OpenmaintCardResponse;
     }, 'createCleaningTask').catch((error) => {
-      this.logger.error('Error al crear tarea:', error.message);
+      this.logger.error(`Error al crear tarea — ${describeError(error)}`);
       throw new InternalServerErrorException(
         `Error al crear tarea de limpieza en OpenMAINT: ${error.message}`,
       );
@@ -205,7 +252,7 @@ export class CleaningTasksOpenmaintService {
         sessionId,
       )) as OpenmaintCardResponse;
     }, 'updateCleaningTask').catch((error) => {
-      this.logger.error('Error al actualizar tarea:', error.message);
+      this.logger.error(`Error al actualizar tarea — ${describeError(error)}`);
       throw new InternalServerErrorException(
         'Error al actualizar tarea de limpieza en OpenMAINT',
       );
@@ -239,7 +286,9 @@ export class CleaningTasksOpenmaintService {
     return this.executeWithRetry(async (sessionId) => {
       return (await this.client.get(path, sessionId)) as OpenmaintCardsResponse;
     }, 'getTasksByEmployee').catch((error) => {
-      this.logger.error('Error al obtener tareas del empleado:', error.message);
+      this.logger.error(
+        `Error al obtener tareas del empleado — ${describeError(error)}`,
+      );
       throw new InternalServerErrorException(
         'Error al obtener tareas de limpieza de OpenMAINT',
       );
@@ -259,7 +308,9 @@ export class CleaningTasksOpenmaintService {
         sessionToken,
       )) as OpenmaintCardResponse;
     } catch (error) {
-      this.logger.error(`Error al obtener tarea ${taskId}:`, error.message);
+      this.logger.error(
+        `Error al obtener tarea ${taskId} — ${describeError(error)}`,
+      );
       throw new InternalServerErrorException(
         `Error al obtener tarea ${taskId} de OpenMAINT`,
       );
@@ -288,20 +339,56 @@ export class CleaningTasksOpenmaintService {
   async getCleaningActivity(
     activityId: number,
   ): Promise<CleaningActivityResponse> {
-    return this.executeWithRetry(async (sessionId) => {
-      return (await this.client.get(
-        `/classes/CleaningActivity/cards/${activityId}`,
-        sessionId,
-      )) as CleaningActivityResponse;
-    }, 'getCleaningActivity').catch((error) => {
+    try {
+      return await this.executeWithRetry(async (sessionId) => {
+        return (await this.client.get(
+          `/classes/CleaningActivity/cards/${activityId}`,
+          sessionId,
+        )) as CleaningActivityResponse;
+      }, 'getCleaningActivity');
+    } catch (error) {
+      // Si el archivo de `Plantilla` ya no existe en el DMS, openMAINT no puede
+      // armar la tarjeta y responde 500. Se lee sin el archivo para que el
+      // checklist siga funcionando con su `Detalle`.
+      const basic = await this.findBasicActivity(activityId).catch(() => null);
+      if (basic) {
+        this.logger.warn(
+          `CleaningActivity ${activityId}: no se pudo leer completa (${describeError(error)}); ` +
+            'se usa sin el archivo de Plantilla, que probablemente ya no existe en el DMS.',
+        );
+        return { success: true, data: basic };
+      }
+
       this.logger.error(
-        `Error al obtener CleaningActivity ${activityId}:`,
-        error.message,
+        `Error al obtener CleaningActivity ${activityId} — ${describeError(error)}`,
       );
       throw new InternalServerErrorException(
         `Error al obtener CleaningActivity ${activityId} de OpenMAINT`,
       );
-    });
+    }
+  }
+
+  /** La tarjeta sin el archivo, filtrada por `Id` (el GET de una sola ignora `attrs`). */
+  private async findBasicActivity(
+    activityId: number,
+  ): Promise<CleaningActivityCard | null> {
+    const filter = encodeURIComponent(
+      JSON.stringify({
+        attribute: {
+          simple: { attribute: 'Id', operator: 'equal', value: [activityId] },
+        },
+      }),
+    );
+    const response = await this.executeWithRetry(
+      async (sessionId) =>
+        (await this.client.get(
+          `/classes/CleaningActivity/cards?limit=1&attrs=${ACTIVITY_BASIC_ATTRS}&filter=${filter}`,
+          sessionId,
+        )) as { data?: BasicActivityRow[] },
+      'findBasicActivity',
+    );
+    const row = response?.data?.[0];
+    return row ? toBrokenTemplateCard({ ...row, _id: activityId }) : null;
   }
 
   /**
@@ -344,7 +431,9 @@ export class CleaningTasksOpenmaintService {
         sessionId,
       )) as UnitResponse;
     }, 'getUnitById').catch((error) => {
-      this.logger.error(`Error al obtener Unit ${unitId}:`, error.message);
+      this.logger.error(
+        `Error al obtener Unit ${unitId} — ${describeError(error)}`,
+      );
       throw new InternalServerErrorException(
         `Error al obtener Unit ${unitId} de OpenMAINT`,
       );
@@ -366,7 +455,9 @@ export class CleaningTasksOpenmaintService {
         sessionToken,
       )) as OpenmaintCardResponse;
     } catch (error) {
-      this.logger.error(`Error al actualizar tarea ${taskId}:`, error.message);
+      this.logger.error(
+        `Error al actualizar tarea ${taskId} — ${describeError(error)}`,
+      );
       throw new InternalServerErrorException(
         `Error al actualizar tarea ${taskId} en OpenMAINT`,
       );
@@ -387,8 +478,7 @@ export class CleaningTasksOpenmaintService {
       )) as OpenmaintAttachmentsResponse;
     } catch (error) {
       this.logger.error(
-        `Error al obtener attachments de tarea ${taskId}:`,
-        error.message,
+        `Error al obtener attachments de tarea ${taskId} — ${describeError(error)}`,
       );
       throw new InternalServerErrorException(
         'Error al obtener attachments de OpenMAINT',
@@ -411,8 +501,7 @@ export class CleaningTasksOpenmaintService {
       );
     } catch (error) {
       this.logger.error(
-        `Error al borrar attachment ${attachmentId} de tarea ${taskId}:`,
-        error.message,
+        `Error al borrar attachment ${attachmentId} de tarea ${taskId} — ${describeError(error)}`,
       );
       throw new InternalServerErrorException(
         'Error al borrar archivo en OpenMAINT',
@@ -462,8 +551,7 @@ export class CleaningTasksOpenmaintService {
       )) as { data?: AttachmentCard } | undefined;
     } catch (error) {
       this.logger.error(
-        `Error al subir attachment a tarea ${taskId}:`,
-        error.message,
+        `Error al subir attachment a tarea ${taskId} — ${describeError(error)}`,
       );
       throw new InternalServerErrorException(
         'Error al subir archivo a OpenMAINT',
@@ -483,10 +571,12 @@ export class CleaningTasksOpenmaintService {
       phase?: string;
       date?: string;
       employeeId?: number;
+      /** 'newest': las recién creadas primero (por id descendente). */
+      sort?: 'newest';
     } = {},
   ): Promise<OpenmaintCardsResponse> {
     return this.executeWithRetry(async (sessionId) => {
-      const { limit = 50, offset = 0, phase, date, employeeId } = options;
+      const { limit = 50, offset = 0, phase, date, employeeId, sort } = options;
 
       const conditions: any[] = [];
 
@@ -533,14 +623,278 @@ export class CleaningTasksOpenmaintService {
         )}`;
       }
 
-      const path = `/classes/CleaningTask/cards?limit=${limit}&start=${offset}${filterParam}`;
+      const sortParam =
+        sort === 'newest'
+          ? `&sort=${encodeURIComponent(JSON.stringify([{ property: '_id', direction: 'DESC' }]))}`
+          : '';
+      const path = `/classes/CleaningTask/cards?limit=${limit}&start=${offset}${sortParam}${filterParam}`;
       return (await this.client.get(path, sessionId)) as OpenmaintCardsResponse;
     }, 'getAllTasks').catch((error) => {
-      this.logger.error('Error al obtener todas las tareas:', error.message);
+      this.logger.error(
+        `Error al obtener todas las tareas — ${describeError(error)}`,
+      );
       throw new InternalServerErrorException(
         'Error al obtener tareas de limpieza de OpenMAINT',
       );
     });
+  }
+
+  /**
+   * Tarjetas que vienen de Hostaway (tienen reserva), las más recientes primero.
+   * Es lo que necesita la vista previa de sincronización para cruzar cada
+   * checkout con su limpieza, sin depender de la fecha de checkout guardada
+   * (que es justo la que puede haber cambiado).
+   */
+  async getHostawayTasks(limit = 500): Promise<OpenmaintCardsResponse> {
+    return this.executeWithRetry(async (sessionId) => {
+      const filter = {
+        attribute: {
+          simple: { attribute: 'HostawayReservation', operator: 'isnotnull' },
+        },
+      };
+      const sort = [{ property: '_id', direction: 'DESC' }];
+      const path = `/classes/CleaningTask/cards?limit=${limit}&filter=${encodeURIComponent(
+        JSON.stringify(filter),
+      )}&sort=${encodeURIComponent(JSON.stringify(sort))}`;
+      return (await this.client.get(path, sessionId)) as OpenmaintCardsResponse;
+    }, 'getHostawayTasks').catch((error) => {
+      this.logger.error(
+        `Error al obtener tareas de Hostaway — ${describeError(error)}`,
+      );
+      throw new InternalServerErrorException(
+        'Error al obtener tareas de limpieza de OpenMAINT',
+      );
+    });
+  }
+
+  /**
+   * Empleados internos: los únicos que pueden ser `Employee` de una limpieza
+   * (la referencia apunta a `InternalEmployee`). Los proveedores quedan fuera
+   * por construcción. Sesión interna: es dato de referencia.
+   */
+  async listInternalEmployees(): Promise<{ data: EmployeeCard[] }> {
+    return this.executeWithRetry(async (sessionId) => {
+      return (await this.client.get(
+        '/classes/InternalEmployee/cards?limit=500',
+        sessionId,
+      )) as { data: EmployeeCard[] };
+    }, 'listInternalEmployees').catch((error) => {
+      this.logger.error(`Error al listar empleados — ${describeError(error)}`);
+      throw new InternalServerErrorException(
+        'Error al consultar los empleados en OpenMAINT',
+      );
+    });
+  }
+
+  /**
+   * Unidades que tienen `HostawayListingID`. Con eso se sabe, para cada
+   * listing, si openMAINT va a poder vincular la unidad: ninguna (sin unidad),
+   * una (vínculo) o varias (ambiguo).
+   */
+  async listUnitsWithListing(): Promise<{ data: UnitListingCard[] }> {
+    return this.executeWithRetry(async (sessionId) => {
+      const filter = {
+        attribute: {
+          simple: { attribute: 'HostawayListingID', operator: 'isnotnull' },
+        },
+      };
+      return (await this.client.get(
+        `/classes/Unit/cards?limit=500&filter=${encodeURIComponent(JSON.stringify(filter))}`,
+        sessionId,
+      )) as { data: UnitListingCard[] };
+    }, 'listUnitsWithListing').catch((error) => {
+      this.logger.warn(
+        `No se pudieron leer los listings de las unidades: ${describeError(error)}`,
+      );
+      return { data: [] as UnitListingCard[] };
+    });
+  }
+
+  async listCleaningActivities(): Promise<{ data: CleaningActivityCard[] }> {
+    try {
+      return await this.executeWithRetry(async (sessionId) => {
+        return (await this.client.get(
+          '/classes/CleaningActivity/cards?limit=200',
+          sessionId,
+        )) as { data: CleaningActivityCard[] };
+      }, 'listCleaningActivities');
+    } catch (error) {
+      this.logger.warn(
+        `No se pudo listar los checklists completos (${describeError(error)}); ` +
+          'se arman uno por uno para aislar el que tenga el archivo de Plantilla roto.',
+      );
+    }
+
+    // Una sola tarjeta con el archivo perdido hace fallar la lista entera. Se
+    // piden los campos básicos (siempre legibles) y luego cada tarjeta por
+    // separado: la rota queda sin archivo y las demás, completas.
+    try {
+      const basic = await this.executeWithRetry(
+        async (sessionId) =>
+          (await this.client.get(
+            `/classes/CleaningActivity/cards?limit=200&attrs=${ACTIVITY_BASIC_ATTRS}`,
+            sessionId,
+          )) as { data?: BasicActivityRow[] },
+        'listCleaningActivitiesBasic',
+      );
+      const rows = basic?.data ?? [];
+      const data: CleaningActivityCard[] = [];
+      for (let i = 0; i < rows.length; i += 5) {
+        data.push(
+          ...(await Promise.all(
+            rows.slice(i, i + 5).map(async (row) => {
+              const id = (row._id ?? row.Id) as number;
+              try {
+                return (
+                  await this.executeWithRetry(
+                    async (sessionId) =>
+                      (await this.client.get(
+                        `/classes/CleaningActivity/cards/${id}`,
+                        sessionId,
+                      )) as CleaningActivityResponse,
+                    'getCleaningActivity',
+                  )
+                ).data;
+              } catch {
+                this.logger.warn(
+                  `CleaningActivity ${id}: archivo de Plantilla ilegible; se lista sin él.`,
+                );
+                return toBrokenTemplateCard({ ...row, _id: id });
+              }
+            }),
+          )),
+        );
+      }
+      return { data };
+    } catch (error) {
+      this.logger.error(`Error al listar checklists — ${describeError(error)}`);
+      throw new InternalServerErrorException(
+        'Error al consultar los checklists en OpenMAINT',
+      );
+    }
+  }
+
+  async createCleaningActivity(
+    body: Record<string, unknown>,
+  ): Promise<CleaningActivityResponse> {
+    return this.executeWithRetry(async (sessionId) => {
+      return (await this.client.post(
+        '/classes/CleaningActivity/cards',
+        body,
+        sessionId,
+      )) as CleaningActivityResponse;
+    }, 'createCleaningActivity').catch((error) => {
+      this.logger.error(`Error al crear checklist — ${describeError(error)}`);
+      throw new InternalServerErrorException(
+        'Error al crear el checklist en OpenMAINT',
+      );
+    });
+  }
+
+  async updateCleaningActivity(
+    activityId: number,
+    body: Record<string, unknown>,
+  ): Promise<CleaningActivityResponse> {
+    return this.executeWithRetry(async (sessionId) => {
+      return (await this.client.put(
+        `/classes/CleaningActivity/cards/${activityId}`,
+        body,
+        sessionId,
+      )) as CleaningActivityResponse;
+    }, 'updateCleaningActivity').catch((error) => {
+      this.logger.error(
+        `Error al editar checklist ${activityId}: ${describeError(error)}`,
+      );
+      throw new InternalServerErrorException(
+        'Error al guardar el checklist en OpenMAINT',
+      );
+    });
+  }
+
+  /**
+   * Borra los adjuntos sueltos de un checklist que se llaman igual que el
+   * archivo por subir. Quedan así cuando una subida anterior falló a medias
+   * (el adjunto entró pero nunca se enlazó a `Plantilla`) y OpenMAINT rechaza
+   * un segundo archivo con el mismo nombre. Best-effort: nunca propaga.
+   */
+  async removeStaleActivityAttachments(
+    activityId: number,
+    fileName: string,
+  ): Promise<void> {
+    try {
+      const listed = (await this.executeWithRetry(
+        (sessionId) =>
+          this.client.get(
+            `/classes/CleaningActivity/cards/${activityId}/attachments`,
+            sessionId,
+          ),
+        'listActivityAttachments',
+      )) as { data?: Array<{ _id: string; name?: string }> } | undefined;
+
+      for (const attachment of listed?.data ?? []) {
+        if (attachment.name?.toLowerCase() !== fileName.toLowerCase()) continue;
+        await this.executeWithRetry(
+          (sessionId) =>
+            this.client.delete(
+              `/classes/CleaningActivity/cards/${activityId}/attachments/${encodeURIComponent(attachment._id)}`,
+              sessionId,
+            ),
+          'removeStaleActivityAttachment',
+        );
+      }
+    } catch (error) {
+      this.logger.warn(
+        `No se pudieron limpiar adjuntos sueltos del checklist ${activityId}: ${describeError(error)}`,
+      );
+    }
+  }
+
+  /**
+   * Sube el archivo CSV de un checklist y devuelve el id del adjunto.
+   *
+   * Verificado contra la instancia (2026-10-12): subir el adjunto NO enlaza el
+   * atributo `Plantilla`; hay que guardar después ese id en la tarjeta
+   * (`PUT { Plantilla: id }`). Y el adjunto ya enlazado no se puede borrar ni
+   * reemplazar por el nombre ("file name conflict" / 500): se quita poniendo
+   * `Plantilla: null` en la tarjeta, que se lleva el archivo consigo.
+   */
+  async uploadActivityTemplate(
+    activityId: number,
+    file: { buffer: Buffer; originalname: string; mimetype: string },
+  ): Promise<string> {
+    const formData = new globalThis.FormData();
+    formData.append(
+      'attachment',
+      JSON.stringify({ fileName: file.originalname }),
+    );
+    formData.append(
+      'file',
+      new Blob([new Uint8Array(file.buffer)], { type: file.mimetype }),
+      file.originalname,
+    );
+
+    const response = await this.executeWithRetry(async (sessionId) => {
+      return (await this.client.postFormData(
+        `/classes/CleaningActivity/cards/${activityId}/attachments`,
+        formData,
+        sessionId,
+      )) as { data?: { _id?: string } } | undefined;
+    }, 'uploadActivityTemplate').catch((error) => {
+      this.logger.error(
+        `Error al subir la plantilla del checklist ${activityId}: ${describeError(error)}`,
+      );
+      throw new InternalServerErrorException(
+        'Error al subir el archivo de la plantilla a OpenMAINT',
+      );
+    });
+
+    const attachmentId = response?.data?._id;
+    if (!attachmentId) {
+      throw new InternalServerErrorException(
+        'OpenMAINT no devolvió el id del archivo de la plantilla',
+      );
+    }
+    return attachmentId;
   }
 
   /**
@@ -557,8 +911,7 @@ export class CleaningTasksOpenmaintService {
       return response;
     } catch (error) {
       this.logger.error(
-        `Error al descargar attachment ${attachmentId}:`,
-        error.message,
+        `Error al descargar attachment ${attachmentId} — ${describeError(error)}`,
       );
       throw new InternalServerErrorException(
         'Error al descargar el archivo desde OpenMAINT',
@@ -588,7 +941,9 @@ export class CleaningTasksOpenmaintService {
         return (response.data?.length ?? 0) > 0;
       }, 'taskExistsByReservationId');
     } catch (error) {
-      this.logger.error('Error al verificar duplicados:', error.message);
+      this.logger.error(
+        `Error al verificar duplicados — ${describeError(error)}`,
+      );
       return false;
     }
   }

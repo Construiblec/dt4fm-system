@@ -1,11 +1,16 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
-import { AxiosRequestConfig } from 'axios';
-import { firstValueFrom } from 'rxjs';
+import { AxiosRequestConfig, AxiosResponse, isAxiosError } from 'axios';
+import { firstValueFrom, Observable } from 'rxjs';
+import {
+  describeError,
+  safePath,
+} from '../../common/logging/describe-error.util';
 
 @Injectable()
 export class OpenmaintClient {
+  private readonly logger = new Logger(OpenmaintClient.name);
   private baseUrl: string;
 
   constructor(
@@ -15,35 +20,56 @@ export class OpenmaintClient {
     this.baseUrl = this.configService.get<string>('OPENMAINT_URL') || '';
   }
 
-  async get(path: string, sessionId?: string, config?: AxiosRequestConfig) {
-    const url = `${this.baseUrl}${path}`;
+  private sessionHeaders(sessionId?: string): Record<string, string> {
+    return sessionId ? { 'Cmdbuild-authorization': sessionId } : {};
+  }
 
-    console.log(`[HTTP] GET ${url}`);
-
-    const headers = sessionId ? { 'Cmdbuild-authorization': sessionId } : {};
+  /**
+   * Toda petición a openMAINT pasa por aquí: una línea de `debug` si sale bien
+   * (oculta con el nivel por defecto) y una de `warn` si falla.
+   *
+   * Antes cada llamada escribía dos líneas con la URL entera —el filtro JSON
+   * codificado y la IP del VPS, ~424 caracteres— y cada fallo volcaba el cuerpo
+   * completo de la respuesta. `safePath` además tapa el id de `/sessions/{id}`,
+   * que es la credencial misma.
+   */
+  private async send<T = any>(
+    method: string,
+    path: string,
+    request: () => Observable<AxiosResponse<T>>,
+  ): Promise<AxiosResponse<T>> {
+    const startedAt = Date.now();
 
     try {
-      const response = await firstValueFrom(
-        this.httpService.get(url, {
-          ...config,
-          headers: {
-            ...headers,
-            ...(config?.headers ?? {}),
-          },
-        }),
+      const response = await firstValueFrom(request());
+
+      this.logger.debug(
+        `${method} ${safePath(path)} → ${response.status} (${Date.now() - startedAt} ms)`,
       );
 
-      console.log(`[HTTP] GET ${url} → ${response.status}`);
-
-      return response.data;
+      return response;
     } catch (error) {
-      console.error(`[HTTP] GET ${url} → ERROR`, {
-        status: error?.response?.status,
-        data: JSON.stringify(error?.response?.data),
-        message: error?.message,
-      });
+      const reason = isAxiosError(error)
+        ? describeError(error)
+        : `${method} ${safePath(path)} → ${describeError(error)}`;
+
+      this.logger.warn(`${reason} (${Date.now() - startedAt} ms)`);
       throw error;
     }
+  }
+
+  async get(path: string, sessionId?: string, config?: AxiosRequestConfig) {
+    const response = await this.send('GET', path, () =>
+      this.httpService.get(`${this.baseUrl}${path}`, {
+        ...config,
+        headers: {
+          ...this.sessionHeaders(sessionId),
+          ...(config?.headers ?? {}),
+        },
+      }),
+    );
+
+    return response.data;
   }
 
   async post(
@@ -52,34 +78,17 @@ export class OpenmaintClient {
     sessionId?: string,
     config?: AxiosRequestConfig,
   ) {
-    const url = `${this.baseUrl}${path}`;
+    const response = await this.send('POST', path, () =>
+      this.httpService.post(`${this.baseUrl}${path}`, body, {
+        ...config,
+        headers: {
+          ...this.sessionHeaders(sessionId),
+          ...(config?.headers ?? {}),
+        },
+      }),
+    );
 
-    console.log(`[HTTP] POST ${url}`);
-
-    const headers = sessionId ? { 'Cmdbuild-authorization': sessionId } : {};
-
-    try {
-      const response = await firstValueFrom(
-        this.httpService.post(url, body, {
-          ...config,
-          headers: {
-            ...headers,
-            ...(config?.headers ?? {}),
-          },
-        }),
-      );
-
-      console.log(`[HTTP] POST ${url} → ${response.status}`);
-
-      return response.data;
-    } catch (error) {
-      console.error(`[HTTP] POST ${url} → ERROR`, {
-        status: error?.response?.status,
-        data: JSON.stringify(error?.response?.data),
-        message: error?.message,
-      });
-      throw error;
-    }
+    return response.data;
   }
 
   /**
@@ -91,31 +100,13 @@ export class OpenmaintClient {
     formData: globalThis.FormData,
     sessionId?: string,
   ) {
-    const url = `${this.baseUrl}${path}`;
+    const response = await this.send('POST', path, () =>
+      this.httpService.post(`${this.baseUrl}${path}`, formData, {
+        headers: this.sessionHeaders(sessionId),
+      }),
+    );
 
-    console.log(`[HTTP] POST (multipart) ${url}`);
-
-    const headers: Record<string, string> = {};
-    if (sessionId) {
-      headers['Cmdbuild-authorization'] = sessionId;
-    }
-
-    try {
-      const response = await firstValueFrom(
-        this.httpService.post(url, formData, { headers }),
-      );
-
-      console.log(`[HTTP] POST (multipart) ${url} → ${response.status}`);
-
-      return response.data;
-    } catch (error) {
-      console.error(`[HTTP] POST (multipart) ${url} → ERROR`, {
-        status: error?.response?.status,
-        data: JSON.stringify(error?.response?.data),
-        message: error?.message,
-      });
-      throw error;
-    }
+    return response.data;
   }
 
   /**
@@ -126,75 +117,40 @@ export class OpenmaintClient {
     path: string,
     sessionId?: string,
   ): Promise<{ data: Buffer; contentType: string; fileName: string }> {
-    const url = `${this.baseUrl}${path}`;
-    console.log(`[HTTP] GET (buffer) ${url}`);
+    const response = await this.send<ArrayBuffer>('GET', path, () =>
+      this.httpService.get<ArrayBuffer>(`${this.baseUrl}${path}`, {
+        headers: this.sessionHeaders(sessionId),
+        responseType: 'arraybuffer',
+      }),
+    );
 
-    const headers: Record<string, string> = {};
-    if (sessionId) {
-      headers['Cmdbuild-authorization'] = sessionId;
-    }
+    const contentType =
+      (response.headers['content-type'] as string) ??
+      'application/octet-stream';
 
-    try {
-      const response = await firstValueFrom(
-        this.httpService.get(url, {
-          headers,
-          responseType: 'arraybuffer',
-        }),
-      );
+    // Extrae el nombre del header Content-Disposition si existe
+    const disposition =
+      (response.headers['content-disposition'] as string) ?? '';
+    const fileNameMatch = disposition.match(
+      /filename[^;=\n]*=(['"]?)([^'"\n;]*?)\1/,
+    );
+    const fileName = fileNameMatch?.[2]?.trim() ?? 'attachment';
 
-      const contentType =
-        (response.headers['content-type'] as string) ??
-        'application/octet-stream';
-
-      // Extrae el nombre del header Content-Disposition si existe
-      const disposition =
-        (response.headers['content-disposition'] as string) ?? '';
-      const fileNameMatch = disposition.match(
-        /filename[^;=\n]*=(['"]?)([^'"\n;]*?)\1/,
-      );
-      const fileName = fileNameMatch?.[2]?.trim() ?? 'attachment';
-
-      console.log(
-        `[HTTP] GET (buffer) ${url} → ${response.status} ${contentType}`,
-      );
-
-      return {
-        data: Buffer.from(response.data as ArrayBuffer),
-        contentType,
-        fileName,
-      };
-    } catch (error) {
-      console.error(`[HTTP] GET (buffer) ${url} → ERROR`, {
-        status: error?.response?.status,
-        message: error?.message,
-      });
-      throw error;
-    }
+    return {
+      data: Buffer.from(response.data),
+      contentType,
+      fileName,
+    };
   }
 
   async delete(path: string, sessionId?: string) {
-    const url = `${this.baseUrl}${path}`;
+    const response = await this.send('DELETE', path, () =>
+      this.httpService.delete(`${this.baseUrl}${path}`, {
+        headers: this.sessionHeaders(sessionId),
+      }),
+    );
 
-    console.log(`[HTTP] DELETE ${url}`);
-
-    const headers = sessionId ? { 'Cmdbuild-authorization': sessionId } : {};
-
-    try {
-      const response = await firstValueFrom(
-        this.httpService.delete(url, { headers }),
-      );
-
-      console.log(`[HTTP] DELETE ${url} → ${response.status}`);
-
-      return response.data;
-    } catch (error) {
-      console.error(`[HTTP] DELETE ${url} → ERROR`, {
-        status: error?.response?.status,
-        data: JSON.stringify(error?.response?.data),
-        message: error?.message,
-      });
-      throw error;
-    }
+    return response.data;
   }
 
   async put(
@@ -203,33 +159,16 @@ export class OpenmaintClient {
     sessionId?: string,
     config?: AxiosRequestConfig,
   ) {
-    const url = `${this.baseUrl}${path}`;
+    const response = await this.send('PUT', path, () =>
+      this.httpService.put(`${this.baseUrl}${path}`, body, {
+        ...config,
+        headers: {
+          ...this.sessionHeaders(sessionId),
+          ...(config?.headers ?? {}),
+        },
+      }),
+    );
 
-    console.log(`[HTTP] PUT ${url}`);
-
-    const headers = sessionId ? { 'Cmdbuild-authorization': sessionId } : {};
-
-    try {
-      const response = await firstValueFrom(
-        this.httpService.put(url, body, {
-          ...config,
-          headers: {
-            ...headers,
-            ...(config?.headers ?? {}),
-          },
-        }),
-      );
-
-      console.log(`[HTTP] PUT ${url} → ${response.status}`);
-
-      return response.data;
-    } catch (error) {
-      console.error(`[HTTP] PUT ${url} → ERROR`, {
-        status: error?.response?.status,
-        data: JSON.stringify(error?.response?.data),
-        message: error?.message,
-      });
-      throw error;
-    }
+    return response.data;
   }
 }
