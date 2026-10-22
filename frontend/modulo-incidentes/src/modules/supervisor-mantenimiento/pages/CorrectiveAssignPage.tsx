@@ -27,11 +27,20 @@ import { toDateTimeLocal } from "@/shared/utils/dateTimeInput";
 import { equipmentLabel } from "@/shared/utils/equipmentLabel";
 import { plannedStartProblem } from "@/shared/utils/plannedStart";
 import { PlannedStartInputs } from "@/modules/supervisor-mantenimiento/components/PlannedStartInputs";
+import { CategoryPicker } from "@/shared/components/CategoryPicker";
+import {
+  getCategories,
+  type MaintCategory,
+} from "@/shared/services/categoriesService";
+import { correctiveTitle } from "@/shared/utils/categoryLabel";
 
 /**
- * «Asignar y programar» en pantalla completa: prioridad, inicio previsto, equipo
- * de trabajo, responsable y equipo intervenido viajan en un solo avance (CM02).
+ * «Asignar y programar» en pantalla completa: categoría, prioridad, inicio
+ * previsto, equipo de trabajo, responsable y equipo intervenido viajan en un
+ * solo avance (CM02).
  */
+const MAX_TITLE_LENGTH = 80;
+
 export const CorrectiveAssignPage = () => {
   const navigate = useNavigate();
   const { id = "" } = useParams();
@@ -54,16 +63,26 @@ export const CorrectiveAssignPage = () => {
   const [assigneeId, setAssigneeId] = useState<number | null>(null);
   const [assetId, setAssetId] = useState("");
   const [notes, setNotes] = useState("");
+  const [categories, setCategories] = useState<MaintCategory[]>([]);
+  const [categoryId, setCategoryId] = useState<number | null>(null);
+  const [subcategoryId, setSubcategoryId] = useState("");
+  const [otherText, setOtherText] = useState("");
 
   useEffect(() => {
     Promise.all([
       getMaintenanceDetail("corrective", Number(id)),
       listAssignees(),
+      getCategories(),
     ])
-      .then(([detail, people]) => {
+      .then(([detail, people, categoryList]) => {
         const data = detail.data;
         setMaintenance(data);
         setEmployees(people.data);
+        setCategories(categoryList);
+        setCategoryId(data.category?.id ?? null);
+        setSubcategoryId(data.subcategory ? String(data.subcategory.id) : "");
+        // Con «Otro» el título es lo que escribió quien reportó.
+        setOtherText(data.subcategory?.isOther ? (data.subject ?? "") : "");
         setPriority(toPriorityCode(data.priority?.code));
         setFecha(toDateTimeLocal(data.plannedStart).slice(0, 10));
         setHora(toDateTimeLocal(data.plannedStart).slice(11, 16));
@@ -118,17 +137,41 @@ export const CorrectiveAssignPage = () => {
     [assets],
   );
 
+  const category = useMemo(
+    () => categories.find((item) => item.id === categoryId) ?? null,
+    [categories, categoryId],
+  );
+  const subcategory =
+    category?.subcategories.find((item) => String(item.id) === subcategoryId) ??
+    null;
+  const subcategoryOptions = useMemo(
+    () =>
+      (category?.subcategories ?? []).map((item) => ({
+        value: String(item.id),
+        label: item.name,
+        hint: item.isOther ? "Escribirás qué tipo de novedad es" : undefined,
+      })),
+    [category],
+  );
+  const title = correctiveTitle(subcategory, otherText);
+
   const missing = loading
     ? null
-    : priority === null
-      ? "Elige la prioridad."
-      : plannedStartProblem(fecha, hora)
-        ? plannedStartProblem(fecha, hora)
-        : teamId === null
-          ? "Elige el equipo de trabajo."
-          : assigneeId === null
-            ? "Elige a la persona responsable."
-            : null;
+    : category === null
+      ? "Elige la categoría."
+      : subcategory === null
+        ? "Elige la subcategoría."
+        : subcategory.isOther && !otherText.trim()
+          ? "Escribe qué tipo de novedad es."
+          : priority === null
+            ? "Elige la prioridad."
+            : plannedStartProblem(fecha, hora)
+              ? plannedStartProblem(fecha, hora)
+              : teamId === null
+                ? "Elige el equipo de trabajo."
+                : assigneeId === null
+                  ? "Elige a la persona responsable."
+                  : null;
 
   const close = () => navigate(detailPath);
 
@@ -143,6 +186,9 @@ export const CorrectiveAssignPage = () => {
         assigneeId,
         teamId,
         priority: priority ?? undefined,
+        categoryId: category?.id,
+        subcategoryId: subcategory?.id,
+        ...(subcategory?.isOther ? { shortDescription: otherText.trim() } : {}),
         plannedStart: new Date(`${fecha}T${hora}`).toISOString(),
         ...(assetId ? { assetId: Number(assetId) } : {}),
         ...(notes.trim() ? { notes: notes.trim() } : {}),
@@ -164,7 +210,7 @@ export const CorrectiveAssignPage = () => {
       title="Asignar y programar"
       subtitle={
         maintenance
-          ? [maintenance.number, maintenance.subject]
+          ? [maintenance.number, title || maintenance.subject]
               .filter(Boolean)
               .join(" · ")
           : null
@@ -183,6 +229,76 @@ export const CorrectiveAssignPage = () => {
         </p>
       ) : maintenance ? (
         <>
+          <FormCard>
+            <div>
+              <p
+                id="assignCategory-label"
+                className="mb-1.5 block text-sm font-bold text-slate-900"
+              >
+                Categoría{" "}
+                <span className="font-normal text-slate-600">
+                  (obligatorio)
+                </span>
+              </p>
+              <CategoryPicker
+                variant="compact"
+                name="assignCategory"
+                categories={categories}
+                value={categoryId}
+                onChange={(next) => {
+                  if (next === categoryId) return;
+                  setCategoryId(next);
+                  setSubcategoryId("");
+                }}
+                labelledBy="assignCategory-label"
+              />
+            </div>
+
+            <FormField
+              label="Subcategoría"
+              htmlFor="assignSubcategory"
+              help={
+                subcategory?.isOther
+                  ? undefined
+                  : "Viene del reporte. Si la cambias, el título del correctivo también cambia."
+              }
+            >
+              <SearchableSelect
+                id="assignSubcategory"
+                value={subcategoryId}
+                onChange={setSubcategoryId}
+                options={subcategoryOptions}
+                disabled={category === null}
+                placeholder={
+                  category
+                    ? "Selecciona una subcategoría"
+                    : "Elige primero la categoría"
+                }
+                searchPlaceholder="Buscar subcategoría..."
+                emptyMessage="Sin subcategorías"
+              />
+            </FormField>
+
+            {subcategory?.isOther ? (
+              <FormField
+                label="¿Qué tipo de novedad es?"
+                htmlFor="assignOther"
+                help={`Será el título del correctivo (máx. ${MAX_TITLE_LENGTH} caracteres).`}
+              >
+                <input
+                  id="assignOther"
+                  type="text"
+                  value={otherText}
+                  maxLength={MAX_TITLE_LENGTH}
+                  onChange={(event) => setOtherText(event.target.value)}
+                  placeholder="Ej.: Puerta del clóset descuadrada"
+                  autoComplete="off"
+                  className={formInputClass}
+                />
+              </FormField>
+            ) : null}
+          </FormCard>
+
           <FormCard>
             <PrioritySelector value={priority} onChange={setPriority} />
 

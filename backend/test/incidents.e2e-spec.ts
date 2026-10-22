@@ -21,17 +21,18 @@ describe('IncidentsController (e2e)', () => {
   afterEach(() => resetMockCalls());
 
   describe('POST /incidents', () => {
-    it('crea una incidencia y devuelve el incidentId', async () => {
-      const res = await request(app.getHttpServer())
+    const post = (body: Record<string, unknown>) =>
+      request(app.getHttpServer())
         .post('/incidents')
         .set('authorization', 'mock-session-id')
         .set('x-employee-id', '999')
-        .send({
-          buildingId: 100,
-          shortDescription: 'Fuga en el lavamanos',
-          notes: 'Prueba E2E de creación',
-        })
-        .expect(201);
+        .send({ buildingId: 100, notes: 'Prueba E2E', ...body });
+
+    const sent = () =>
+      mocks.openmaint.createCorrectiveMaintIncident.mock.calls[0][0];
+
+    it('crea la incidencia con categoría y la subcategoría como título', async () => {
+      const res = await post({ categoryId: 1, subcategoryId: 11 }).expect(201);
 
       expect(res.body.incidentId).toBe(12345);
       expect(res.body.requester).toBe(999);
@@ -42,10 +43,52 @@ describe('IncidentsController (e2e)', () => {
         expect.not.objectContaining({ Priority: expect.anything() }),
         'mock-session-id',
       );
+      expect(sent()).toMatchObject({
+        Category: 1,
+        Subcategory: 11,
+        ShortDescr: 'Sistema de agua caliente',
+      });
+    });
+
+    it('ignora el texto libre si la subcategoría no es «Otro»', async () => {
+      await post({
+        categoryId: 1,
+        subcategoryId: 11,
+        shortDescription: 'Otra cosa',
+      }).expect(201);
+
+      expect(sent().ShortDescr).toBe('Sistema de agua caliente');
+    });
+
+    it('con «Otro» usa el texto escrito como título', async () => {
+      await post({
+        categoryId: 1,
+        subcategoryId: 19,
+        shortDescription: ' Puerta del clóset descuadrada ',
+      }).expect(201);
+
+      expect(sent()).toMatchObject({
+        Subcategory: 19,
+        ShortDescr: 'Puerta del clóset descuadrada',
+      });
+    });
+
+    it('400 si la subcategoría es «Otro» y no hay texto', async () => {
+      await post({ categoryId: 1, subcategoryId: 19 }).expect(400);
       expect(
-        mocks.openmaint.createCorrectiveMaintIncident.mock.calls[0][0]
-          .ShortDescr,
-      ).toBe('Fuga en el lavamanos');
+        mocks.openmaint.createCorrectiveMaintIncident,
+      ).not.toHaveBeenCalled();
+    });
+
+    it('400 si la subcategoría es de otra categoría', async () => {
+      await post({ categoryId: 2, subcategoryId: 11 }).expect(400);
+      expect(
+        mocks.openmaint.createCorrectiveMaintIncident,
+      ).not.toHaveBeenCalled();
+    });
+
+    it('400 si falta la categoría', async () => {
+      await post({ shortDescription: 'Sin categoría' }).expect(400);
     });
 
     it('400 si faltan las cabeceras obligatorias', async () => {
@@ -53,32 +96,38 @@ describe('IncidentsController (e2e)', () => {
         .post('/incidents')
         .send({
           buildingId: 100,
-          floorArea: 'Piso 1',
-          priority: 1,
+          categoryId: 1,
+          subcategoryId: 11,
           notes: 'Prueba sin headers',
         })
         .expect(400);
     });
 
-    it('400 si falta la breve descripción', async () => {
-      await request(app.getHttpServer())
-        .post('/incidents')
+    it('400 si el texto de «Otro» supera los 80 caracteres', async () => {
+      await post({
+        categoryId: 1,
+        subcategoryId: 19,
+        shortDescription: 'x'.repeat(81),
+      }).expect(400);
+    });
+  });
+
+  describe('GET /incidents/categories', () => {
+    it('devuelve las categorías con sus subcategorías', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/incidents/categories')
         .set('authorization', 'mock-session-id')
-        .set('x-employee-id', '999')
-        .send({ buildingId: 100, notes: 'Sin título' })
-        .expect(400);
+        .expect(200);
+
+      expect(res.body.map((c: { name: string }) => c.name)).toEqual([
+        'Limpieza',
+        'Mantenimiento',
+      ]);
     });
 
-    it('400 si la breve descripción supera los 80 caracteres', async () => {
+    it('400 sin sesión', async () => {
       await request(app.getHttpServer())
-        .post('/incidents')
-        .set('authorization', 'mock-session-id')
-        .set('x-employee-id', '999')
-        .send({
-          buildingId: 100,
-          shortDescription: 'x'.repeat(81),
-          notes: 'Largo',
-        })
+        .get('/incidents/categories')
         .expect(400);
     });
   });

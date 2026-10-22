@@ -12,10 +12,28 @@ export class CreateIncidentDto {
   @Min(1)
   buildingId: number;
 
+  @ApiProperty({
+    description: 'ID de la categoría (MaintCategory)',
+    example: 1460015,
+  })
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  categoryId: number;
+
+  @ApiProperty({
+    description: 'ID de la subcategoría (MaintSubcategory) de esa categoría',
+    example: 1460074,
+  })
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  subcategoryId: number;
+
   @ApiPropertyOptional({
     description:
-      'Breve descripción de la incidencia; es el título de la tarjeta',
-    example: 'Fuga de agua bajo el lavamanos',
+      'Solo con la subcategoría «Otro»: qué tipo de novedad es. En las demás, el título es el nombre de la subcategoría',
+    example: 'Puerta del clóset descuadrada',
   })
   @IsOptional()
   @IsString()
@@ -81,3 +99,10 @@ export class CreateIncidentDto {
   @IsString()
   notes: string;
 }
+
+/** Lo que recibe el servicio: el portal del huésped no elige categoría. */
+export type NewIncident = Omit<
+  CreateIncidentDto,
+  'categoryId' | 'subcategoryId'
+> &
+  Partial<Pick<CreateIncidentDto, 'categoryId' | 'subcategoryId'>>;

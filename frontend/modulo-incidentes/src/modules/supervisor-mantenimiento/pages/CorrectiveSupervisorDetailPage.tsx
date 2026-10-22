@@ -38,6 +38,7 @@ import {
 } from "@/modules/supervisor-mantenimiento/utils/correctiveDetailRules";
 import { ActionNotice } from "@/shared/components/ActionNotice";
 import { formatReporter } from "@/shared/utils/reporterLabel";
+import { categoryLabel } from "@/shared/utils/categoryLabel";
 import { DetailTabs } from "@/shared/components/DetailTabs";
 import { NotesLogCard } from "@/shared/components/NotesLogCard";
 import { ReportDetailCard } from "@/shared/components/ReportDetailCard";
@@ -212,6 +213,10 @@ export const CorrectiveSupervisorDetailPage = () => {
               <CorrectiveSummaryCard
                 description={maintenance.subject}
                 priority={maintenance.priority?.code}
+                category={categoryLabel(
+                  maintenance.category,
+                  maintenance.subcategory,
+                )}
                 location={
                   [maintenance.site, maintenance.floor, maintenance.area]
                     .map(withoutCode)

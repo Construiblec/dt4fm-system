@@ -25,7 +25,20 @@ export interface CorrectiveCardOptions {
   register?: string;
   /** ID del equipo intervenido (`Asset`) */
   asset?: number | null;
+  /** `null` simula un reporte sin categoría (portal del huésped). Por defecto 1 · 11 */
+  category?: number | null;
+  subcategory?: number | null;
+  shortDescr?: string;
 }
+
+/** Nombres del catálogo de `MAINT_CATEGORIES` (test/mocks/gateways.mock.ts). */
+const CATEGORY_NAMES: Record<number, string> = {
+  1: 'MNT - Mantenimiento',
+  2: 'LIM - Limpieza',
+  11: 'Sistema de agua caliente',
+  19: 'Otro',
+  21: 'Manchas',
+};
 
 const CM_STATUS_CODE_BY_ID: Record<CmStatusId, string> = {
   [CM_STATUS_IDS.OPENING]: 'CM-Opening',
@@ -50,11 +63,23 @@ export const correctiveCard = (opts: CorrectiveCardOptions) => ({
   ExpExecStartDate: opts.expExecStartDate ?? null,
   Assignee: opts.assignee ?? null,
   Team: opts.team ?? null,
-  ShortDescr: 'Mock incident location',
+  ShortDescr: opts.shortDescr ?? 'Mock incident location',
   _Site_description: 'Mock Building',
   Priority: opts.priority ?? null,
   Asset: opts.asset ?? null,
   _Asset_description: opts.asset ? 'GAS 01 - Calentador' : null,
+  ...(() => {
+    const category = opts.category === undefined ? 1 : opts.category;
+    const subcategory = opts.subcategory === undefined ? 11 : opts.subcategory;
+    return {
+      Category: category,
+      _Category_description: category ? CATEGORY_NAMES[category] : null,
+      Subcategory: subcategory,
+      _Subcategory_description: subcategory
+        ? CATEGORY_NAMES[subcategory]
+        : null,
+    };
+  })(),
   _Priority_description: 'Alta',
   OpeningDate: new Date().toISOString(),
   Register: opts.register ?? '<span data-block="notes">Mock notes</span>',
