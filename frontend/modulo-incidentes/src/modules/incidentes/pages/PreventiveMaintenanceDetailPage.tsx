@@ -15,6 +15,7 @@ import { PreventiveDetailTabs } from "@/modules/incidentes/components/Preventive
 import type { PreventiveDetailTab } from "@/modules/incidentes/components/PreventiveDetailTabs";
 import { PreventiveDocumentsSection } from "@/modules/incidentes/components/PreventiveDocumentsSection";
 import { PreventiveHistorySection } from "@/modules/incidentes/components/PreventiveHistorySection";
+import { PreventivePreStart } from "@/modules/incidentes/components/PreventivePreStart";
 import { SuspendMaintenanceModal } from "@/modules/incidentes/components/SuspendMaintenanceModal";
 import { UploadDocumentSheet } from "@/modules/incidentes/components/UploadDocumentSheet";
 import { PREVENTIVE_UPLOAD_ENABLED } from "@/modules/incidentes/constants/preventiveDocuments";
@@ -30,6 +31,7 @@ import {
   completePreventiveMaintenance,
   deletePreventiveMaintenanceDocument,
   getSuspensionReasons,
+  openPreventiveMaintenance,
   savePreventiveChecklist,
   startPreventiveMaintenance,
   suspendPreventiveMaintenance,
@@ -40,6 +42,7 @@ import type {
   PreventiveMaintenanceDetail,
   SuspensionReason,
 } from "@/modules/incidentes/types/PreventiveMaintenance";
+import { ActionNotice } from "@/shared/components/ActionNotice";
 import { ConfirmModal } from "@/shared/components/ConfirmModal";
 import { ErrorModal } from "@/shared/components/ErrorModal";
 import { LoadingModal } from "@/shared/components/LoadingModal";
@@ -95,7 +98,14 @@ export const PreventiveMaintenanceDetailPage = () => {
     useState<PreventiveMaintenanceAttachment | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  const canManageDocuments = maintenance?.isClosed === false;
+  // En Asignación todavía no se inició: se enseña la pantalla previa y el
+  // inicio queda en manos del técnico.
+  const isAssigned = maintenance?.statusCode === "Acceptance";
+  // Antes de iniciar los documentos son solo de consulta
+  const canManageDocuments = maintenance?.isClosed === false && !isAssigned;
+  const showUploadFab =
+    tab === "documents" && !loading && !error && canManageDocuments;
+  const showExecution = tab === "checklist" && !isAssigned;
 
   const handleDelete = async (attachment: PreventiveMaintenanceAttachment) => {
     try {
@@ -123,6 +133,24 @@ export const PreventiveMaintenanceDetailPage = () => {
       setUploadError("No se pudo adjuntar el documento");
     } finally {
       setIsUploading(false);
+    }
+  };
+
+  // ── Inicio ──────────────────────────────────────────────────────────────────
+  const [isStarting, setIsStarting] = useState(false);
+  const [startError, setStartError] = useState<string | null>(null);
+
+  const handleStart = async () => {
+    try {
+      setIsStarting(true);
+
+      // Devuelve el detalle ya en Ejecución y con el inicio real sellado, así
+      // que la página pasa sola a la lista de operación.
+      setMaintenance(await startPreventiveMaintenance(id));
+    } catch {
+      setStartError("No se pudo iniciar el mantenimiento preventivo");
+    } finally {
+      setIsStarting(false);
     }
   };
 
@@ -249,10 +277,9 @@ export const PreventiveMaintenanceDetailPage = () => {
         setLoading(true);
         setError(null);
 
-        // Abrir la tarjeta inicia la ejecución: si estaba en Asignación pasa a
-        // Ejecución también en OpenMAINT. La llamada es idempotente y devuelve
-        // el detalle ya actualizado.
-        const data = await startPreventiveMaintenance(id);
+        // Abrir no inicia: uno en Asignación espera a «Iniciar mantenimiento».
+        // Sí devuelve a pendientes lo que quedó N.D. tras una suspensión.
+        const data = await openPreventiveMaintenance(id);
 
         if (isMounted) {
           setMaintenance(data);
@@ -311,9 +338,7 @@ export const PreventiveMaintenanceDetailPage = () => {
         </header>
 
         {/* El FAB flota sobre el final de la lista, de ahí el respiro extra */}
-        <div
-          className={`space-y-5 px-4 py-5 ${tab === "documents" ? "pb-28" : ""}`}
-        >
+        <div className={`space-y-5 px-4 py-5 ${showUploadFab ? "pb-28" : ""}`}>
           {loading ? (
             <section className="rounded-3xl bg-white p-5 text-sm text-slate-500 shadow-sm">
               Cargando detalle del mantenimiento...
@@ -328,6 +353,14 @@ export const PreventiveMaintenanceDetailPage = () => {
 
           {!loading && !error && maintenance ? (
             <>
+              {isAssigned ? (
+                <ActionNotice
+                  tone="blue"
+                  title="Tienes este mantenimiento asignado"
+                  message="Empieza cuando llegues al sitio. Al iniciar quedará registrada la fecha y hora."
+                />
+              ) : null}
+
               {/* Solo visible si la reanudación automática al abrir no se aplicó */}
               {maintenance.statusCode === "Suspension" ? (
                 <section className="flex items-start gap-2 rounded-3xl bg-violet-50 p-5 shadow-sm ring-1 ring-violet-200">
@@ -384,14 +417,21 @@ export const PreventiveMaintenanceDetailPage = () => {
                     label="Fecha límite"
                     value={formatDateTime(maintenance.dueDate)}
                   />
-                  <InfoRow
-                    label="Inicio real"
-                    value={formatDateTime(maintenance.execStartDate)}
-                  />
+                  {/* Antes de iniciar todavía no existe */}
+                  {!isAssigned ? (
+                    <InfoRow
+                      label="Inicio real"
+                      value={formatDateTime(maintenance.execStartDate)}
+                    />
+                  ) : null}
                 </div>
               </section>
 
-              <PreventiveDetailTabs value={tab} onChange={setTab} />
+              <PreventiveDetailTabs
+                value={tab}
+                onChange={setTab}
+                checklistLabel={isAssigned ? "Antes de empezar" : undefined}
+              />
 
               {tab === "documents" ? (
                 <>
@@ -427,7 +467,15 @@ export const PreventiveMaintenanceDetailPage = () => {
                 </>
               ) : null}
 
-              {tab === "checklist" && maintenance.images.length > 0 ? (
+              {tab === "checklist" && isAssigned ? (
+                <PreventivePreStart
+                  items={checklistItems}
+                  isStarting={isStarting}
+                  onStart={() => void handleStart()}
+                />
+              ) : null}
+
+              {showExecution && maintenance.images.length > 0 ? (
                 <section className="rounded-3xl bg-white p-5 shadow-sm">
                   <div className="flex items-center gap-2">
                     <ImageIcon className="h-5 w-5 text-slate-500" />
@@ -460,7 +508,7 @@ export const PreventiveMaintenanceDetailPage = () => {
                 </section>
               ) : null}
 
-              {tab === "checklist" && maintenance.notes !== null ? (
+              {showExecution && maintenance.notes !== null ? (
                 <section className="rounded-3xl bg-white p-5 shadow-sm">
                   <h2 className="text-base font-semibold text-slate-900">
                     Notas
@@ -471,7 +519,7 @@ export const PreventiveMaintenanceDetailPage = () => {
                 </section>
               ) : null}
 
-              {tab === "checklist" ? (
+              {showExecution ? (
                 <PreventiveChecklist
                   items={checklistItems}
                   answers={answers}
@@ -480,7 +528,7 @@ export const PreventiveMaintenanceDetailPage = () => {
                 />
               ) : null}
 
-              {tab === "checklist" &&
+              {showExecution &&
               (maintenance.canComplete || maintenance.canSuspend) ? (
                 <>
                   <section className="rounded-3xl bg-white p-5 shadow-sm">
@@ -548,11 +596,8 @@ export const PreventiveMaintenanceDetailPage = () => {
           ) : null}
         </div>
 
-        {/* Anclado al ancho de la app. Un mantenimiento cerrado no admite adjuntos */}
-        {tab === "documents" &&
-        !loading &&
-        !error &&
-        maintenance?.isClosed === false ? (
+        {/* Anclado al ancho de la app. Uno cerrado o sin iniciar no admite adjuntos */}
+        {showUploadFab ? (
           <UploadFab
             label="Subir informe o documento"
             onClick={() => setShowUploadSheet(true)}
@@ -580,6 +625,13 @@ export const PreventiveMaintenanceDetailPage = () => {
             }
           }}
           onCancel={() => setDocumentToDelete(null)}
+        />
+
+        <ErrorModal
+          open={startError !== null}
+          title="No se pudo iniciar el mantenimiento"
+          message={startError ?? ""}
+          onClose={() => setStartError(null)}
         />
 
         <ErrorModal

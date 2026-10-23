@@ -89,7 +89,8 @@ export const listMaintenances = async (
 
 /**
  * Detalle en solo lectura. Endpoint propio a propósito: la vista del técnico
- * usa `POST /preventive-maintenance/:id/start`, que **avanza el flujo**.
+ * abre con `POST /preventive-maintenance/:id/open`, que **escribe** en el
+ * checklist, e inicia con `/start`, que **avanza el flujo**.
  */
 export const getMaintenanceDetail = async (
   kind: MaintenanceKind,
