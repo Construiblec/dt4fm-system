@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { formatDayMonthYear, formatDayMonthYearTime, formatElapsed } from "./dateUtils";
+import {
+  formatDayMonthYear,
+  formatDayMonthYearTime,
+  formatElapsed,
+  formatLate,
+  formatMinutes,
+} from "./dateUtils";
 
 const at = (hhmm: string, day = 12) => `2026-10-${day}T${hhmm}:00`;
 
@@ -19,6 +25,24 @@ describe("formatElapsed", () => {
   it("devuelve null sin fin o con el fin antes del inicio", () => {
     expect(formatElapsed(at("09:00"), null)).toBeNull();
     expect(formatElapsed(at("10:00"), at("09:00"))).toBeNull();
+  });
+});
+
+describe("formatMinutes", () => {
+  it("expresa minutos enteros en días, horas y minutos", () => {
+    expect(formatMinutes(80)).toBe("1 h 20 min");
+    expect(formatMinutes(0)).toBe("0 min");
+    expect(formatMinutes(1620)).toBe("1 d 3 h");
+  });
+});
+
+describe("formatLate", () => {
+  it("usa unidades gruesas y nunca baja de un minuto", () => {
+    expect(formatLate(10_000)).toBe("1 min");
+    expect(formatLate(35 * 60_000)).toBe("35 min");
+    expect(formatLate(18 * 3_600_000)).toBe("18 h");
+    expect(formatLate((2 * 24 + 4) * 3_600_000)).toBe("2 d 4 h");
+    expect(formatLate(24 * 3_600_000)).toBe("1 d");
   });
 });
 

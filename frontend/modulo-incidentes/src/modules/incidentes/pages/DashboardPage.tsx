@@ -1,6 +1,6 @@
 import { AppLayout } from "@/app/layout/AppLayout";
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import { AppHeader } from "@/shared/components/AppHeader";
 import { isSupplier } from "@/shared/auth/session";
 import { FloatingReportButton } from "@/modules/incidentes/components/FloatingReportButton";
@@ -34,7 +34,6 @@ type MaintenanceKind = "corrective" | "preventive";
 const ITEMS_PER_PAGE = 5;
 
 export const DashboardPage = () => {
-  const navigate = useNavigate();
   const supplierUser = useMemo(() => isSupplier(), []);
   const syncActiveTask = useCleaningTaskExecutionStore(
     (state) => state.syncActiveTask,
@@ -425,16 +424,15 @@ export const DashboardPage = () => {
                                   target: maintenance.equipment,
                                   assignee: null,
                                   priorityCode: null,
-                                  openingDate: maintenance.dueDate,
                                   plannedStart: maintenance.expectedStartDate,
                                   dueDate: maintenance.dueDate,
+                                  execStartDate: maintenance.execStartDate,
+                                  execEndDate: maintenance.execEndDate,
+                                  suspensionReason: null,
                                   isOverdue: maintenance.isOverdue,
                                 }}
-                                onOpen={() =>
-                                  navigate(
-                                    `/preventive-maintenance/${maintenance.id}`,
-                                  )
-                                }
+                                perspective="operator"
+                                to={`/preventive-maintenance/${maintenance.id}`}
                                 disabledReason={
                                   isSuspended
                                     ? "Pendiente de reanudación"
