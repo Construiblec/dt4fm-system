@@ -333,8 +333,8 @@ Dos detalles verificados en el clon (2026-08-24) sobre `PM.2026.0331`:
 - La actividad pasa a `PM03-Execution`, así que el técnico retoma donde lo dejó.
 
 Las actividades marcadas «N.D.» durante la suspensión **no se tocan aquí**. Se limpian cuando el
-técnico abre el mantenimiento: `startExecution` llama a `clearNotDone` en cuanto la ficha está en
-ejecución, venga de donde venga. Meter esa limpieza en supervisión obligaría a inyectar el servicio
+técnico abre el mantenimiento: `openMaintenance` (`POST /preventive-maintenance/:id/open`) llama a
+`clearNotDone` en cuanto la ficha está en ejecución, venga de donde venga. Meter esa limpieza en supervisión obligaría a inyectar el servicio
 de checklist en este módulo para nada.
 
 `toPreventive` expone además `suspensionReason` —la descripción traducida— para que la pantalla
@@ -393,10 +393,11 @@ preventivos.
 
 ### Por qué hay un detalle propio
 
-`GET /preventive-maintenance/:id` serviría, pero la pantalla del técnico llama a
-`POST /:id/start` **al montar**, y eso avanza el flujo de Asignación a Ejecución. El supervisor no
-puede provocar esa transición solo por abrir un detalle. El mismo cuidado ya lo tenía
-`PastPreventiveMaintenancePage`.
+`GET /preventive-maintenance/:id` serviría, pero el módulo del técnico está pensado para quien
+ejecuta: abrir llama a `POST /:id/open`, que en Ejecución **escribe** en el checklist (limpia el
+N.D.), y su botón «Iniciar mantenimiento» llama a `POST /:id/start`, que avanza el flujo de
+Asignación a Ejecución. El supervisor no debe provocar nada de eso solo por abrir un detalle. El
+mismo cuidado ya lo tenía `PastPreventiveMaintenancePage`.
 
 ### Sobre el gating por `x-role`
 

@@ -333,6 +333,58 @@ describe('PreventiveMaintenanceService', () => {
     });
   });
 
+  describe('openMaintenance', () => {
+    const acceptanceCard = {
+      ...openmaintCard,
+      ProcessStatus: PM_STATUS_IDS.ACCEPTANCE,
+      _ProcessStatus_code: 'PM-Assignment',
+      ExecStartDate: undefined,
+    };
+
+    const suspendedCard = {
+      ...openmaintCard,
+      ProcessStatus: PM_STATUS_IDS.SUSPENSION,
+      _ProcessStatus_code: 'PM-Suspension',
+    };
+
+    it('no inicia un mantenimiento en Aceptación: lo deja para el botón', async () => {
+      openmaint.findById.mockResolvedValue({ data: acceptanceCard });
+
+      const { data } = await service.openMaintenance(SESSION_ID, 4370994);
+
+      expect(openmaint.advance).not.toHaveBeenCalled();
+      expect(openmaint.saveFields).not.toHaveBeenCalled();
+      expect(data.statusCode).toBe('Acceptance');
+      expect(data.execStartDate).toBeNull();
+      expect(data.canComplete).toBe(false);
+    });
+
+    it('devuelve a pendientes las actividades N.D. si está en Ejecución', async () => {
+      openmaint.findById.mockResolvedValue({ data: openmaintCard });
+
+      await service.openMaintenance(SESSION_ID, 4370994);
+
+      expect(checklist.clearNotDone).toHaveBeenCalledWith(SESSION_ID, 4370994);
+    });
+
+    it('deja el checklist marcado como N.D. mientras siga suspendido', async () => {
+      openmaint.findById.mockResolvedValue({ data: suspendedCard });
+
+      await service.openMaintenance(SESSION_ID, 4370994);
+
+      expect(checklist.clearNotDone).not.toHaveBeenCalled();
+    });
+
+    it('no interrumpe al técnico si falla la limpieza del N.D.', async () => {
+      openmaint.findById.mockResolvedValue({ data: openmaintCard });
+      checklist.clearNotDone.mockRejectedValue(new Error('boom'));
+
+      const { data } = await service.openMaintenance(SESSION_ID, 4370994);
+
+      expect(data.statusCode).toBe('Execution');
+    });
+  });
+
   describe('startExecution', () => {
     const acceptanceCard = {
       ...openmaintCard,

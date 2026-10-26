@@ -712,7 +712,7 @@ export class MaintenanceSupervisionService {
    * `PM.2026.0331`, que volvió a `PM-Execution` con la actividad `PM03`.
    *
    * Las actividades marcadas «N.D.» durante la suspensión no se tocan aquí: se
-   * limpian cuando el técnico abre el mantenimiento, porque `startExecution`
+   * limpian cuando el técnico abre el mantenimiento, porque `openMaintenance`
    * llama a `clearNotDone` en cuanto la ficha está en ejecución.
    */
   async resumePreventive(sessionId: string, id: number) {
