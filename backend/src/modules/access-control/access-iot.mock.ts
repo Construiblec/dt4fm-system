@@ -89,6 +89,9 @@ const CAMERAS: AccessIotCamera[] = [
 
 const FULL_CAMERA_ID = 'PRA-CAM-02';
 
+/** Cooldown del gateway sobre la peatonal: dentro de él, `operation_busy` y ningún pulso. */
+const PEDESTRIAN_GATEWAY_COOLDOWN_MS = 3_000;
+
 /**
  * Usuario cargado a mano en el terminal, sin prefijo reservado. Existe para que
  * la conciliación tenga algo que reportar y no tocar, y para que el camino de
@@ -119,6 +122,7 @@ export class AccessIotMockGateway extends AccessIotGateway {
   private readonly logger = new Logger(AccessIotMockGateway.name);
   private readonly store = new Map<string, StoredCredential>();
   private readonly triggers = new Map<string, TriggerResult>();
+  private readonly lastPulseAt = new Map<string, number>();
 
   listBuildings(): Promise<AccessIotBuilding[]> {
     return Promise.resolve(BUILDINGS);
@@ -264,8 +268,8 @@ export class AccessIotMockGateway extends AccessIotGateway {
   }
 
   /**
-   * Como el gateway: solo la barrera vehicular, solo `{ requestId }`, y
-   * deduplica por `(deviceId, requestId)`, así que repetir no da un segundo pulso.
+   * Como el gateway: barrera vehicular o terminal peatonal, solo `{ requestId }`,
+   * y deduplica por `(deviceId, requestId)`: repetir no da un segundo pulso.
    */
   triggerDevice(
     deviceId: string,
@@ -286,15 +290,27 @@ export class AccessIotMockGateway extends AccessIotGateway {
     if (previous) return Promise.resolve(previous);
 
     const device = DEVICES.find((candidate) => candidate.deviceId === deviceId);
+    const vehicular =
+      device?.kind === 'barrier' && device.scope === 'vehicular';
+    const pedestrian =
+      device?.kind === 'terminal' && device.scope === 'pedestrian';
+    const now = Date.now();
+    const busy =
+      pedestrian &&
+      now - (this.lastPulseAt.get(deviceId) ?? -Infinity) <
+        PEDESTRIAN_GATEWAY_COOLDOWN_MS;
     const result: TriggerResult = !device
       ? { outcome: 'failed', errorCode: 'not_found' }
-      : device.kind !== 'barrier' || device.scope !== 'vehicular'
+      : !vehicular && !pedestrian
         ? { outcome: 'failed', errorCode: 'device_not_compatible' }
         : !device.online
           ? { outcome: 'failed', errorCode: 'device_unreachable' }
-          : { outcome: 'triggered' };
+          : busy
+            ? { outcome: 'failed', errorCode: 'operation_busy' }
+            : { outcome: 'triggered' };
 
     this.triggers.set(key, result);
+    if (result.outcome === 'triggered') this.lastPulseAt.set(deviceId, now);
     this.logger.log(`Pulso simulado en ${deviceId}: ${result.outcome}`);
 
     return Promise.resolve(result);

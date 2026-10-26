@@ -56,9 +56,9 @@ export class DoorsController {
   @HttpCode(HttpStatus.OK)
   @ApiHeader({ name: 'authorization', description: 'Sesión de openMAINT' })
   @ApiOperation({
-    summary: 'Pulsar la barrera vehicular desde la fase «Abrir»',
+    summary: 'Pulsar «Abrir» en una barrera vehicular o en una puerta peatonal',
     description:
-      'Solo barreras vehiculares con tiempos medidos. Manda un pulso: `triggered` dice que salió, nada sobre la posición de la barrera. `uncertain`: pudo salir.',
+      'Barreras vehiculares con tiempos medidos y terminales peatonales. Manda un pulso: `triggered` dice que salió, nada sobre la posición de la puerta. `uncertain`: pudo salir. `failed` con `operation_busy`: el gateway tenía una operación en curso y no pulsó.',
   })
   @ApiResponse({ status: 200, description: 'Resultado del pulso.' })
   @ApiResponse({ status: 403, description: 'Se requiere rol de CAV.' })
@@ -71,11 +71,12 @@ export class DoorsController {
   @ApiResponse({
     status: 422,
     description:
-      'No es una barrera vehicular o su edificio no tiene tiempos medidos.',
+      'La puerta no admite apertura remota, o es una barrera sin tiempos medidos.',
   })
   @ApiResponse({
     status: 429,
-    description: 'La barrera recibió un pulso hace menos de 10 s.',
+    description:
+      'La puerta recibió un pulso hace menos de 10 s (barrera) o 5 s (peatonal).',
   })
   @ApiResponse({ status: 503, description: 'Apertura remota desactivada.' })
   open(
@@ -102,7 +103,7 @@ export class DoorsController {
   @ApiResponse({
     status: 422,
     description:
-      'No es una barrera vehicular o su edificio no tiene tiempos medidos.',
+      'Es una puerta peatonal (solo «Abrir»), no admite apertura remota o no tiene tiempos medidos.',
   })
   @ApiResponse({ status: 429, description: 'Pulso hace menos de 10 s.' })
   @ApiResponse({ status: 503, description: 'Apertura remota desactivada.' })

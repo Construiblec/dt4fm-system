@@ -1700,9 +1700,107 @@ describe('AccessControlController (e2e)', () => {
         });
       });
 
-      it('422 con una puerta peatonal: ya no se abre a distancia', async () => {
-        await comoCav('ING-PEATONAL-1', 'open').expect(422);
-        expect(mocks.accessIot.triggerDevice).not.toHaveBeenCalled();
+      describe('puerta peatonal', () => {
+        const fases = () =>
+          dataSource.query(`SELECT * FROM "vehicular_gate_phase"`);
+
+        it('pulsa «Abrir» sin fase ni ventana de cierre', async () => {
+          const requestId = randomUUID();
+
+          const res = await comoCav('ING-PEATONAL-1', 'open', requestId).expect(
+            200,
+          );
+
+          expect(res.body.data).toMatchObject({
+            requestId,
+            deviceId: 'ING-PEATONAL-1',
+            outcome: 'triggered',
+            openUntil: null,
+            cooldownUntil: expect.any(String),
+          });
+          expect(mocks.accessIot.triggerDevice).toHaveBeenCalledWith(
+            'ING-PEATONAL-1',
+            { requestId },
+          );
+          expect((await historial())[0]).toMatchObject({
+            deviceScope: 'pedestrian',
+            action: 'open',
+            status: 'triggered',
+            actorUsername: 'cav.mock',
+          });
+          expect(await fases()).toEqual([]);
+        });
+
+        it('422 al «Cerrar» una peatonal', async () => {
+          await comoCav('ING-PEATONAL-1', 'close').expect(422);
+          expect(mocks.accessIot.triggerDevice).not.toHaveBeenCalled();
+        });
+
+        it('429 a otro clic antes de 5 s, sin llamar a la VPS', async () => {
+          await comoCav('ING-PEATONAL-1', 'open').expect(200);
+
+          const res = await comoCav('ING-PEATONAL-1', 'open').expect(429);
+
+          expect(res.body.retryAfterSeconds).toBeLessThanOrEqual(5);
+          expect(mocks.accessIot.triggerDevice).toHaveBeenCalledTimes(1);
+
+          await envejecer(5);
+          await comoCav('ING-PEATONAL-1', 'open').expect(200);
+          expect(mocks.accessIot.triggerDevice).toHaveBeenCalledTimes(2);
+        });
+
+        it('operation_busy es un no seguro: no hubo pulso', async () => {
+          mocks.accessIot.triggerDevice.mockResolvedValueOnce({
+            outcome: 'failed',
+            errorCode: 'operation_busy',
+          });
+
+          const res = await comoCav('ING-PEATONAL-1', 'open').expect(200);
+
+          expect(res.body.data).toMatchObject({
+            outcome: 'failed',
+            errorCode: 'operation_busy',
+            cooldownUntil: null,
+          });
+        });
+
+        it('un incierto avisa pero no bloquea la puerta más allá del enfriamiento', async () => {
+          mocks.accessIot.triggerDevice.mockResolvedValueOnce({
+            outcome: 'uncertain',
+          });
+
+          const res = await comoCav('ING-PEATONAL-1', 'open').expect(200);
+          await envejecer(5);
+          const [peatonal] = (await puertas()).buildings[0].doors;
+
+          expect(res.body.data.outcome).toBe('uncertain');
+          expect(peatonal).toMatchObject({ phase: null, remoteControl: true });
+          await comoCav('ING-PEATONAL-1', 'open').expect(200);
+          expect(mocks.accessIot.triggerDevice).toHaveBeenCalledTimes(2);
+          expect(await fases()).toEqual([]);
+        });
+
+        it('el mismo requestId devuelve lo que pasó sin repetir el pulso', async () => {
+          const requestId = randomUUID();
+          await comoCav('ING-PEATONAL-1', 'open', requestId).expect(200);
+
+          const res = await comoCav('ING-PEATONAL-1', 'open', requestId).expect(
+            200,
+          );
+
+          expect(res.body.data).toMatchObject({
+            outcome: 'triggered',
+            openUntil: null,
+          });
+          expect(mocks.accessIot.triggerDevice).toHaveBeenCalledTimes(1);
+        });
+
+        it('no cambia la fase de la barrera vehicular del edificio', async () => {
+          await comoCav('ING-PEATONAL-1', 'open').expect(200);
+
+          await comoCav('ING-VEHICULAR-1', 'open').expect(200);
+          expect(mocks.accessIot.triggerDevice).toHaveBeenCalledTimes(2);
+        });
       });
 
       it('baja la barrera que abrió un huésped, dentro de la ventana', async () => {
@@ -1724,18 +1822,21 @@ describe('AccessControlController (e2e)', () => {
         expect(mocks.accessIot.triggerDevice).toHaveBeenCalledTimes(1);
       });
 
-      it('lista la fase de cada barrera; las peatonales sin control remoto', async () => {
+      it('lista la fase de cada barrera; las peatonales con control remoto y sin fase', async () => {
         const antes = await puertas();
         await comoCav('ING-VEHICULAR-1', 'open').expect(200);
+        await comoCav('ING-PEATONAL-1', 'open').expect(200);
         const despues = await puertas();
 
         expect(antes.enabled).toBe(true);
         expect(antes.buildings[0].doors).toEqual([
           expect.objectContaining({
             deviceId: 'ING-PEATONAL-1',
-            remoteControl: false,
+            remoteControl: true,
             phase: null,
             openUntil: null,
+            settlesAt: null,
+            cooldownUntil: null,
           }),
           expect.objectContaining({
             deviceId: 'ING-VEHICULAR-1',
@@ -1745,6 +1846,14 @@ describe('AccessControlController (e2e)', () => {
             cooldownUntil: null,
           }),
         ]);
+        expect(despues.buildings[0].doors[0]).toMatchObject({
+          phase: null,
+          cooldownUntil: expect.any(String),
+          lastCommand: expect.objectContaining({
+            action: 'open',
+            outcome: 'triggered',
+          }),
+        });
         expect(despues.buildings[0].doors[1]).toMatchObject({
           phase: 'closable',
           openUntil: expect.any(String),

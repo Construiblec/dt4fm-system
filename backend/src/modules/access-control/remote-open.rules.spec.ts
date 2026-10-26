@@ -4,7 +4,9 @@ import {
   effectiveStatus,
   gateTimings,
   guestGateEligibility,
+  isPedestrianDoor,
   isRemoteGate,
+  PEDESTRIAN_COOLDOWN_MS,
   pulseRefusal,
   STALE_ATTEMPT_MS,
 } from './remote-open.rules';
@@ -108,6 +110,18 @@ describe('reglas de apertura remota', () => {
     expect(isRemoteGate({ kind: 'terminal', scope: 'vehicular' })).toBe(false);
   });
 
+  it('la peatonal es el terminal peatonal, no una barrera', () => {
+    expect(isPedestrianDoor({ kind: 'terminal', scope: 'pedestrian' })).toBe(
+      true,
+    );
+    expect(isPedestrianDoor({ kind: 'barrier', scope: 'vehicular' })).toBe(
+      false,
+    );
+    expect(isPedestrianDoor({ kind: 'barrier', scope: 'pedestrian' })).toBe(
+      false,
+    );
+  });
+
   describe('cooldownEnd', () => {
     it('dura 10 s desde el último pulso', () => {
       expect(cooldownEnd(ago(3_000), now)).toEqual(
@@ -118,6 +132,13 @@ describe('reglas de apertura remota', () => {
     it('sin pulso reciente no hay enfriamiento', () => {
       expect(cooldownEnd(null, now)).toBeNull();
       expect(cooldownEnd(ago(10_000), now)).toBeNull();
+    });
+
+    it('la peatonal se enfría 5 s', () => {
+      expect(cooldownEnd(ago(1_000), now, PEDESTRIAN_COOLDOWN_MS)).toEqual(
+        new Date(now.getTime() + 4_000),
+      );
+      expect(cooldownEnd(ago(5_000), now, PEDESTRIAN_COOLDOWN_MS)).toBeNull();
     });
   });
 

@@ -226,10 +226,11 @@ fallo peligroso del módulo.
 
 ## D-18 · Apertura remota de un toque
 
-Decidido el 2026-09-18; enmendado el 2026-09-30 por la [nota de `trigger`](nota-cambio-trigger.md).
+Decidido el 2026-09-18; enmendado el 2026-09-30 por la [nota de `trigger`](nota-cambio-trigger.md)
+y el 2026-10-26 por la [apertura peatonal](#enmienda-del-2026-10-26--puertas-peatonales).
 El huésped pulsa la barrera **vehicular** de su edificio desde el portal y el Supervisor CAV
-**cualquier barrera vehicular** desde el panel. Las puertas peatonales ya no se abren a distancia:
-la API central las rechaza. En los dos casos es un solo toque, sin confirmación.
+**cualquier barrera vehicular y cualquier puerta peatonal** desde el panel. En los dos casos es un
+solo toque, sin confirmación.
 
 El backend autoriza y la VPS ejecuta `POST /v1/devices/{id}/trigger`, **un pulso único**: la
 barrera no tiene sensor y el hardware solo admite eso. «Abrir» y «Cerrar» son fases de interfaz.
@@ -262,6 +263,25 @@ y no llega a la VPS: con un pulso único, sería un «Cerrar» sobre el coche de
 `uncertain`. Nunca se deduce la fase de un incierto: el Supervisor CAV la revisa y la libera desde el
 panel. Queda pendiente con IoT si pasa sola a `ready` al vencer el cierre automático medido
 ([nota](nota-cambio-trigger.md#pendiente-de-acordar)).
+
+### Enmienda del 2026-10-26 · puertas peatonales
+
+IoT habilitó `trigger` sobre `kind: "terminal"` con `scope: "pedestrian"` en Inglaterra y Pradera.
+
+- **Solo el Supervisor CAV.** El portal del huésped no cambia: su PIN ya abre la peatonal.
+- **Siempre «Abrir», sin fase**, con el color del rol para distinguirlo de la barrera. No hay Abrir/Cerrar ni `vehicular_gate_phase`; `close`
+  sobre una peatonal es un `422`. No hace falta medir tiempos.
+- **Bloqueo de 5 s** del botón tras cada clic, y **enfriamiento de 5 s por puerta** contado en la
+  base (`429`). IoT pide al menos 3 s; se eligieron 5. El cooldown autoritativo es del gateway: si aún tiene una operación en curso
+  responde `409 operation_busy`, que entra en la lista blanca de «no hubo pulso». Ninguno de los
+  dos es el tiempo que la puerta queda abierta.
+- **Un `ambiguous` es un aviso, no un bloqueo.** No hay fase que liberar; el Supervisor CAV
+  comprueba la puerta y decide si vuelve a pulsar, con un UUID nuevo. Nunca hay reintento automático.
+- Siguen igual: `ACCESS_REMOTE_OPEN_ENABLED`, historial en `remote_open_request` antes de llamar,
+  `requestId` por clic y deduplicado.
+- **Confirmado por IoT:** `operation_busy` llega como `409` con el cuerpo de error habitual, y el
+  `200` peatonal es idéntico al vehicular. El backend sigue validando el eco de `requestId` y
+  `deviceId`: si falta o no coincide, o `state` trae otro valor, es incierto.
 
 ---
 

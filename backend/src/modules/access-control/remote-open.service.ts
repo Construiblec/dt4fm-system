@@ -43,7 +43,9 @@ import {
   gateTimings,
   GuestGateEligibility,
   guestGateEligibility,
+  isPedestrianDoor,
   isRemoteGate,
+  PEDESTRIAN_COOLDOWN_MS,
   PULSE_COOLDOWN_MS,
   PulseRefusal,
   pulseRefusal,
@@ -136,7 +138,7 @@ export interface DoorsOverview {
       kind: string;
       scope: AccessIotDevice['scope'];
       online: boolean;
-      /** Barrera vehicular con tiempos medidos: la única que se pulsa a distancia. */
+      /** Barrera vehicular con tiempos medidos o terminal peatonal: se pulsa a distancia. */
       remoteControl: boolean;
       phase: EffectivePhase | null;
       lastCommand: DoorLastCommand | null;
@@ -174,11 +176,15 @@ const asOutcome = (status: RemoteOpenStatus): TriggerOutcome =>
     ? 'triggered'
     : (status as TriggerOutcome);
 
+/** Sin tiempos de barrera: la puerta es peatonal y se enfría 5 s, sin fase. */
+const cooldownFor = (timings: GateTimings | null) =>
+  timings ? PULSE_COOLDOWN_MS : PEDESTRIAN_COOLDOWN_MS;
+
 /**
- * Apertura remota de la barrera vehicular por `trigger`, un pulso único.
- * «Abrir» y «Cerrar» son fases de interfaz que se guardan por barrera en
- * `vehicular_gate_phase`. El historial se escribe antes de llamar a la VPS, y el
- * `requestId` hace que repetir un toque no repita el pulso.
+ * Apertura remota por `trigger`, un pulso único. En la barrera vehicular
+ * «Abrir» y «Cerrar» son fases de interfaz guardadas en `vehicular_gate_phase`;
+ * la peatonal solo tiene «Abrir», sin fase. El historial se escribe antes de llamar
+ * a la VPS, y el `requestId` hace que repetir un toque no repita el pulso.
  */
 @Injectable()
 export class RemoteOpenService {
@@ -247,7 +253,7 @@ export class RemoteOpenService {
     const replay = await this.replay(actor, action, requestId);
     if (replay) return replay;
 
-    const { device, timings } = await this.staffGate(deviceId);
+    const { device, timings } = await this.staffDoor(deviceId, action);
 
     return this.command(actor, action, device, timings, requestId);
   }
@@ -357,7 +363,10 @@ export class RemoteOpenService {
     const gates = devices.filter(
       (device) => isRemoteGate(device) && this.timingsFor(device.buildingId),
     );
-    const snapshots = await this.snapshots(gates);
+    const [snapshots, pedestrianCooldowns] = await Promise.all([
+      this.snapshots(gates),
+      this.pedestrianCooldowns(devices.filter(isPedestrianDoor)),
+    ]);
 
     const buildingIds = [
       ...new Set(devices.map((device) => device.buildingId)),
@@ -378,6 +387,22 @@ export class RemoteOpenService {
           doors: devices
             .filter((device) => device.buildingId === buildingId)
             .map((device) => {
+              if (isPedestrianDoor(device)) {
+                return {
+                  deviceId: device.deviceId,
+                  kind: device.kind,
+                  scope: device.scope,
+                  online: device.online,
+                  remoteControl: true,
+                  phase: null,
+                  lastCommand: lastCommands.get(device.deviceId) ?? null,
+                  openUntil: null,
+                  settlesAt: null,
+                  cooldownUntil:
+                    pedestrianCooldowns.get(device.deviceId) ?? null,
+                };
+              }
+
               const snapshot = snapshots.get(device.deviceId);
               const phase = snapshot?.phase ?? null;
               const pulsedAt = snapshot?.state?.pulsedAt ?? null;
@@ -423,10 +448,25 @@ export class RemoteOpenService {
       : null;
   }
 
-  /** El Supervisor CAV solo opera barreras vehiculares con tiempos medidos. */
-  private async staffGate(
+  /** El Supervisor CAV pulsa barreras vehiculares con tiempos medidos y terminales peatonales. */
+  private async staffDoor(
     deviceId: string,
-  ): Promise<{ device: AccessIotDevice; timings: GateTimings }> {
+    action: DoorAction,
+  ): Promise<{ device: AccessIotDevice; timings: GateTimings | null }> {
+    const device = await this.findDevice(deviceId);
+
+    if (!isPedestrianDoor(device)) return this.staffGate(deviceId, device);
+
+    if (action !== 'open') {
+      throw new UnprocessableEntityException(
+        'Las puertas peatonales solo admiten «Abrir»',
+      );
+    }
+
+    return { device, timings: null };
+  }
+
+  private async findDevice(deviceId: string): Promise<AccessIotDevice> {
     const find = (devices: AccessIotDevice[]) =>
       devices.find((candidate) => candidate.deviceId === deviceId);
     // Una puerta recién dada de alta en la VPS aún no está en la caché.
@@ -438,9 +478,19 @@ export class RemoteOpenService {
       throw new NotFoundException(`La puerta ${deviceId} no existe`);
     }
 
+    return device;
+  }
+
+  /** Solo las barreras vehiculares con tiempos medidos tienen fase. */
+  private async staffGate(
+    deviceId: string,
+    known?: AccessIotDevice,
+  ): Promise<{ device: AccessIotDevice; timings: GateTimings }> {
+    const device = known ?? (await this.findDevice(deviceId));
+
     if (!isRemoteGate(device)) {
       throw new UnprocessableEntityException(
-        'Solo las barreras vehiculares admiten apertura remota',
+        'Esta puerta no admite apertura remota',
       );
     }
 
@@ -508,7 +558,8 @@ export class RemoteOpenService {
     }
 
     const outcome = asOutcome(status);
-    const timings = this.timingsFor(row.buildingId);
+    const pedestrian = row.deviceScope === 'pedestrian';
+    const timings = pedestrian ? null : this.timingsFor(row.buildingId);
     const state =
       outcome === 'triggered' && action === 'open' && timings
         ? await this.phases.findOne({ where: { deviceId: row.deviceId } })
@@ -528,15 +579,20 @@ export class RemoteOpenService {
       cooldownUntil:
         (outcome === 'failed'
           ? null
-          : cooldownEnd(row.requestedAt, now)?.toISOString()) ?? null,
+          : cooldownEnd(
+              row.requestedAt,
+              now,
+              pedestrian ? PEDESTRIAN_COOLDOWN_MS : PULSE_COOLDOWN_MS,
+            )?.toISOString()) ?? null,
     };
   }
 
+  /** `timings` nulo: puerta peatonal, sin fase. */
   private async command(
     actor: Actor,
     action: DoorAction,
     device: AccessIotDevice,
-    timings: GateTimings,
+    timings: GateTimings | null,
     requestId: string,
   ): Promise<RemoteOpenResult> {
     const reserved = await this.reserve(
@@ -551,8 +607,7 @@ export class RemoteOpenService {
       throw new HttpException(
         {
           statusCode: HttpStatus.TOO_MANY_REQUESTS,
-          message:
-            'La barrera acaba de recibir una orden. Espera unos segundos.',
+          message: `La ${timings ? 'barrera' : 'puerta'} acaba de recibir una orden. Espera unos segundos.`,
           retryAfterSeconds: Math.ceil(reserved.retryAfterMs / 1000),
         },
         HttpStatus.TOO_MANY_REQUESTS,
@@ -561,7 +616,8 @@ export class RemoteOpenService {
 
     const { outcome, errorCode, at } = await this.pulse(actor, reserved);
 
-    await this.advancePhase(reserved, outcome, at);
+    // En la peatonal un incierto es solo un aviso: no hay fase que bloquear.
+    if (timings) await this.advancePhase(reserved, outcome, at);
 
     return {
       requestId,
@@ -569,7 +625,7 @@ export class RemoteOpenService {
       errorCode,
       at: at.toISOString(),
       openUntil:
-        outcome === 'triggered' && action === 'open'
+        outcome === 'triggered' && action === 'open' && timings
           ? new Date(at.getTime() + timings.closeWindowMs).toISOString()
           : null,
       // Cuenta desde que se reservó la orden, igual que el `429`.
@@ -577,7 +633,7 @@ export class RemoteOpenService {
         outcome === 'failed'
           ? null
           : new Date(
-              reserved.requestedAt.getTime() + PULSE_COOLDOWN_MS,
+              reserved.requestedAt.getTime() + cooldownFor(timings),
             ).toISOString(),
     };
   }
@@ -585,13 +641,13 @@ export class RemoteOpenService {
   /**
    * Fase, enfriamiento y alta del `attempted` bajo un candado por barrera, para
    * que dos toques simultáneos no pasen los dos. Una fase que no admite el
-   * pulso es un `409` sin llamar a la VPS.
+   * pulso es un `409` sin llamar a la VPS. La peatonal solo mira el enfriamiento.
    */
   private async reserve(
     actor: Actor,
     action: DoorAction,
     device: AccessIotDevice,
-    timings: GateTimings,
+    timings: GateTimings | null,
     requestId: string,
   ): Promise<RemoteOpenRequest | { retryAfterMs: number }> {
     try {
@@ -599,21 +655,34 @@ export class RemoteOpenService {
         await this.lock(manager, device.deviceId);
 
         const now = new Date();
-        const { phase, state, cooldownUntil } = await this.snapshot(
-          manager,
-          device.deviceId,
-          timings,
-          now,
-        );
-        const refusal = pulseRefusal(
-          action,
-          phase,
-          actor.type === 'guest' ? actor : { type: 'staff' },
-          state?.openedByStayId ?? null,
-        );
+        let cooldownUntil: Date | null;
 
-        if (refusal !== 'ok') {
-          throw new ConflictException(PHASE_REFUSALS[refusal]);
+        if (timings) {
+          const snapshot = await this.snapshot(
+            manager,
+            device.deviceId,
+            timings,
+            now,
+          );
+          const refusal = pulseRefusal(
+            action,
+            snapshot.phase,
+            actor.type === 'guest' ? actor : { type: 'staff' },
+            snapshot.state?.openedByStayId ?? null,
+          );
+
+          if (refusal !== 'ok') {
+            throw new ConflictException(PHASE_REFUSALS[refusal]);
+          }
+
+          cooldownUntil = snapshot.cooldownUntil;
+        } else {
+          cooldownUntil = await this.cooldownUntil(
+            manager,
+            device.deviceId,
+            PEDESTRIAN_COOLDOWN_MS,
+            now,
+          );
         }
 
         if (cooldownUntil) {
@@ -714,7 +783,7 @@ export class RemoteOpenService {
     timings: GateTimings,
     now: Date,
   ): Promise<PhaseSnapshot> {
-    const [state, stale, lastPulse] = await Promise.all([
+    const [state, stale, cooldownUntil] = await Promise.all([
       manager.findOne(VehicularGatePhase, { where: { deviceId } }),
       manager.findOne(RemoteOpenRequest, {
         where: {
@@ -724,21 +793,54 @@ export class RemoteOpenService {
         },
         order: { requestedAt: 'DESC' },
       }),
-      manager.findOne(RemoteOpenRequest, {
-        where: {
-          deviceId,
-          status: In(PULSE_STATUSES),
-          requestedAt: MoreThan(new Date(now.getTime() - PULSE_COOLDOWN_MS)),
-        },
-        order: { requestedAt: 'DESC' },
-      }),
+      this.cooldownUntil(manager, deviceId, PULSE_COOLDOWN_MS, now),
     ]);
 
     return {
       phase: effectivePhase(state, stale?.requestedAt ?? null, timings, now),
       state,
-      cooldownUntil: cooldownEnd(lastPulse?.requestedAt ?? null, now),
+      cooldownUntil,
     };
+  }
+
+  /** Fin del enfriamiento contado desde el último pulso en la base. */
+  private async cooldownUntil(
+    manager: EntityManager,
+    deviceId: string,
+    cooldownMs: number,
+    now: Date,
+  ): Promise<Date | null> {
+    const lastPulse = await manager.findOne(RemoteOpenRequest, {
+      where: {
+        deviceId,
+        status: In(PULSE_STATUSES),
+        requestedAt: MoreThan(new Date(now.getTime() - cooldownMs)),
+      },
+      order: { requestedAt: 'DESC' },
+    });
+
+    return cooldownEnd(lastPulse?.requestedAt ?? null, now, cooldownMs);
+  }
+
+  private async pedestrianCooldowns(
+    doors: AccessIotDevice[],
+  ): Promise<Map<string, Date | null>> {
+    const now = new Date();
+    const result = new Map<string, Date | null>();
+
+    for (const door of doors) {
+      result.set(
+        door.deviceId,
+        await this.cooldownUntil(
+          this.requests.manager,
+          door.deviceId,
+          PEDESTRIAN_COOLDOWN_MS,
+          now,
+        ),
+      );
+    }
+
+    return result;
   }
 
   private async snapshots(

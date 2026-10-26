@@ -19,11 +19,11 @@ import type {
  * Endpoints del backend (módulo `access-control`):
  *
  *   GET  /access-doors                    puertas por edificio, fase y último pulso
- *   POST /access-doors/:deviceId/open     { requestId }  fase «Abrir»
- *   POST /access-doors/:deviceId/close    { requestId }  fase «Cerrar»
+ *   POST /access-doors/:deviceId/open     { requestId }  «Abrir» (barrera o peatonal)
+ *   POST /access-doors/:deviceId/close    { requestId }  «Cerrar», solo barrera
  *   POST /access-doors/:deviceId/resolve  libera una barrera sin confirmar
  *
- * Solo barreras vehiculares: open y close mandan el mismo pulso (`trigger`).
+ * open y close mandan el mismo pulso (`trigger`).
  */
 export const listDoors = async (): Promise<DoorsOverview> => {
   if (isCavMock) return mockListDoors();

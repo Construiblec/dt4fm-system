@@ -137,13 +137,36 @@ describe('AccessIotMockGateway', () => {
       ).resolves.toEqual({ outcome: 'triggered' });
     });
 
-    it('una puerta peatonal es device_not_compatible', async () => {
+    it('pulsa una puerta peatonal en línea', async () => {
       await expect(
         gateway.triggerDevice('ING-PEATONAL-1', { requestId: id(2) }),
-      ).resolves.toEqual({
-        outcome: 'failed',
-        errorCode: 'device_not_compatible',
-      });
+      ).resolves.toEqual({ outcome: 'triggered' });
+    });
+
+    it('otro clic peatonal dentro del cooldown es operation_busy, sin pulso', async () => {
+      await gateway.triggerDevice('PRA-PEATONAL-1', { requestId: id(8) });
+
+      await expect(
+        gateway.triggerDevice('PRA-PEATONAL-1', { requestId: id(9) }),
+      ).resolves.toEqual({ outcome: 'failed', errorCode: 'operation_busy' });
+      // El reenvío técnico del primero sigue devolviendo su pulso.
+      await expect(
+        gateway.triggerDevice('PRA-PEATONAL-1', { requestId: id(8) }),
+      ).resolves.toEqual({ outcome: 'triggered' });
+    });
+
+    it('el cooldown peatonal vence a los 3 s', async () => {
+      jest.useFakeTimers({ now: new Date('2026-10-26T12:00:00Z') });
+      try {
+        await gateway.triggerDevice('PRA-PEATONAL-1', { requestId: id(10) });
+        jest.advanceTimersByTime(3_000);
+
+        await expect(
+          gateway.triggerDevice('PRA-PEATONAL-1', { requestId: id(11) }),
+        ).resolves.toEqual({ outcome: 'triggered' });
+      } finally {
+        jest.useRealTimers();
+      }
     });
 
     it('una barrera caída falla con device_unreachable', async () => {

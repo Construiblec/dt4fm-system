@@ -20,6 +20,7 @@ import {
 } from "@/modules/supervisor-cav/hooks/useRemoteDoors";
 import {
   DOOR_SCOPE_LABELS,
+  PEDESTRIAN_LOCK_MS,
   type Door,
   type DoorAction,
   type DoorLastCommand,
@@ -29,7 +30,7 @@ import { AppHeader } from "@/shared/components/AppHeader";
 import { FloatingReportButton } from "@/modules/incidentes/components/FloatingReportButton";
 import { formatRelativeTime } from "@/shared/utils/dateUtils";
 
-// La barrera no tiene sensor: los textos hablan de pulsos, nunca de posición.
+// Ni barrera ni puerta tienen sensor: los textos hablan de pulsos, nunca de posición.
 const OUTCOME_LABELS: Record<DoorLastCommand["outcome"], string> = {
   triggered: "pulso enviado",
   opened: "pulso enviado",
@@ -46,15 +47,19 @@ const lastCommandText = (last: DoorLastCommand) =>
   OUTCOME_LABELS[last.outcome];
 
 /** Motivo del `failed` según el código de la VPS; lo demás cae en el genérico. */
-const FAILURE_MESSAGES: Record<string, string> = {
-  device_unreachable: "El gateway no alcanzó la barrera.",
-  gateway_unreachable: "El edificio no responde.",
-  operations_disabled: "El edificio tiene apagado el control físico de la barrera.",
-  device_not_compatible: "Esta puerta no admite apertura remota.",
-  not_found: "Esta barrera aún no admite apertura remota.",
-};
+const failureMessage = (errorCode: string | undefined, target: string) =>
+  ({
+    device_unreachable: `El gateway no alcanzó la ${target}.`,
+    gateway_unreachable: "El edificio no responde.",
+    operations_disabled: `El edificio tiene apagado el control físico de la ${target}.`,
+    device_not_compatible: "Esta puerta no admite apertura remota.",
+    not_found: `Esta ${target} aún no admite apertura remota.`,
+    operation_busy: `${target === "puerta" ? "Puerta ocupada" : "Barrera ocupada"}: no se envió otro pulso.`,
+  })[errorCode ?? ""] ?? `La ${target} no respondió.`;
 
-const noticeFor = (result: DoorActionResult) => {
+const noticeFor = (result: DoorActionResult, pedestrian: boolean) => {
+  const target = pedestrian ? "puerta" : "barrera";
+
   switch (result.outcome) {
     case "triggered":
       return {
@@ -63,7 +68,7 @@ const noticeFor = (result: DoorActionResult) => {
         text:
           result.action === "close"
             ? "Orden de cierre enviada a la barrera"
-            : "Orden enviada a la barrera",
+            : `Orden enviada a la ${target}`,
       };
     case "resolved":
       return {
@@ -75,14 +80,15 @@ const noticeFor = (result: DoorActionResult) => {
       return {
         tone: "text-amber-700 bg-amber-50",
         Icon: TriangleAlert,
-        text: "No se pudo confirmar si el pulso salió. Revisa la barrera.",
+        text: pedestrian
+          ? "No se pudo confirmar si el pulso salió. Comprueba la puerta antes de volver a pulsar."
+          : "No se pudo confirmar si el pulso salió. Revisa la barrera.",
       };
     case "failed":
       return {
         tone: "text-red-700 bg-red-50",
         Icon: CircleAlert,
-        text:
-          FAILURE_MESSAGES[result.errorCode ?? ""] ?? "La barrera no respondió.",
+        text: failureMessage(result.errorCode, target),
       };
     case "error":
       return {
@@ -93,8 +99,14 @@ const noticeFor = (result: DoorActionResult) => {
   }
 };
 
-const ResultNotice = ({ result }: { result: DoorActionResult }) => {
-  const { tone, Icon, text } = noticeFor(result);
+const ResultNotice = ({
+  result,
+  pedestrian,
+}: {
+  result: DoorActionResult;
+  pedestrian: boolean;
+}) => {
+  const { tone, Icon, text } = noticeFor(result, pedestrian);
 
   return (
     <p
@@ -141,7 +153,8 @@ const DoorRow = ({
   onCommand: (action: DoorAction) => void;
   onResolve: () => void;
 }) => {
-  const Icon = door.scope === "vehicular" ? Car : DoorOpen;
+  const pedestrian = door.scope === "pedestrian";
+  const Icon = pedestrian ? DoorOpen : Car;
   const phase = livePhase(door, now);
   const action: DoorAction = phase === "closable" ? "close" : "open";
   // Liberar una barrera no es un pulso: el enfriamiento no le aplica.
@@ -196,7 +209,9 @@ const DoorRow = ({
                 ? "bg-amber-600 hover:bg-amber-700"
                 : action === "close"
                   ? "bg-slate-800 hover:bg-slate-700"
-                  : "bg-brand hover:bg-brand-hover"
+                  : pedestrian
+                    ? "bg-cyan-600 hover:bg-cyan-700"
+                    : "bg-brand hover:bg-brand-hover"
             }`}
           >
             {pendingAction ? (
@@ -230,7 +245,7 @@ const DoorRow = ({
         </p>
       ) : null}
 
-      {result ? <ResultNotice result={result} /> : null}
+      {result ? <ResultNotice result={result} pedestrian={pedestrian} /> : null}
 
       {door.lastCommand ? (
         <p className="mt-2 text-[11px] text-slate-400">
@@ -350,7 +365,13 @@ export const RemoteDoorsPage = () => {
                       now={now}
                       result={results[door.deviceId]}
                       cooldownUntil={cooldowns[door.deviceId] ?? null}
-                      onCommand={(action) => void command(door.deviceId, action)}
+                      onCommand={(action) =>
+                        void command(
+                          door.deviceId,
+                          action,
+                          door.scope === "pedestrian" ? PEDESTRIAN_LOCK_MS : 0,
+                        )
+                      }
                       onResolve={() => void resolve(door.deviceId)}
                     />
                   ))}

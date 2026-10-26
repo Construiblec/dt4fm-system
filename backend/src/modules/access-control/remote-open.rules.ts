@@ -10,14 +10,18 @@ export const STALE_ATTEMPT_MS = 30_000;
 /** Por barrera y para cualquier pulso: Abrir y Cerrar son la misma orden física. */
 export const PULSE_COOLDOWN_MS = 10_000;
 
+/** Bloqueo del botón «Abrir» peatonal; el cooldown autoritativo es el del gateway. */
+export const PEDESTRIAN_COOLDOWN_MS = 5_000;
+
 /** Fin del enfriamiento que abrió el último pulso; nulo si ya pasó. */
 export const cooldownEnd = (
   lastPulseAt: Date | null,
   now: Date,
+  cooldownMs = PULSE_COOLDOWN_MS,
 ): Date | null => {
   if (!lastPulseAt) return null;
 
-  const until = new Date(lastPulseAt.getTime() + PULSE_COOLDOWN_MS);
+  const until = new Date(lastPulseAt.getTime() + cooldownMs);
 
   return until > now ? until : null;
 };
@@ -29,6 +33,11 @@ export const remoteOpenEnabled = (config: ConfigService): boolean =>
 /** La API central solo acepta `trigger` sobre la barrera vehicular de cada edificio. */
 export const isRemoteGate = (device: Pick<AccessIotDevice, 'kind' | 'scope'>) =>
   device.kind === 'barrier' && device.scope === 'vehicular';
+
+/** Terminal peatonal: un pulso sin fase Abrir/Cerrar, solo para el Supervisor CAV. */
+export const isPedestrianDoor = (
+  device: Pick<AccessIotDevice, 'kind' | 'scope'>,
+) => device.kind === 'terminal' && device.scope === 'pedestrian';
 
 export interface GateTimings {
   /** Desde el pulso, hasta cuándo quien abrió puede pulsar «Cerrar». */
