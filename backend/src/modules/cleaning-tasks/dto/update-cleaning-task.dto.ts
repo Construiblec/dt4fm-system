@@ -22,14 +22,17 @@ export class UpdateCleaningTaskDto {
   phase?: string;
 
   @ApiPropertyOptional({
-    description: 'ID de empleado asignado',
+    description:
+      'ID de empleado asignado. `null` lo quita: la limpieza vuelve a Pendientes.',
     example: 4567,
+    nullable: true,
   })
   @IsOptional()
+  @ValidateIf((_, value) => value !== null)
   @Type(() => Number)
   @IsInt()
   @Min(1)
-  employeeId?: number;
+  employeeId?: number | null;
 
   @ApiPropertyOptional({
     description: 'Fecha y hora de inicio planificada (ISO 8601)',
