@@ -7,10 +7,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useState } from "react";
-import {
-  PriorityGuideSheet,
-  PriorityHint,
-} from "@/shared/components/PriorityGuide";
+import { PriorityGuideSheet } from "@/shared/components/PriorityGuide";
 import {
   PRIORITY_ADJECTIVES,
   PRIORITY_ORDER,
@@ -48,21 +45,30 @@ type Props = {
   value: PriorityCode | null;
   onChange: (value: PriorityCode) => void;
   name?: string;
+  label?: string;
+  /** Texto entre paréntesis junto a la leyenda; `null` para no mostrarlo. */
+  note?: string | null;
+  legendClassName?: string;
 };
 
 export const PrioritySelector = ({
   value,
   onChange,
   name = "priority",
+  label = "Prioridad",
+  note = "obligatorio",
+  legendClassName = "text-sm font-bold text-slate-900",
 }: Props) => {
   const [guideOpen, setGuideOpen] = useState(false);
 
   return (
     <fieldset className="space-y-2">
       {/* Leyenda flotante: sigue siendo hija directa del fieldset y deja sitio al enlace. */}
-      <legend className="float-left text-sm font-bold text-slate-900">
-        Prioridad{" "}
-        <span className="font-normal text-slate-600">(obligatorio)</span>
+      <legend className={`float-left ${legendClassName}`}>
+        {label}
+        {note ? (
+          <span className="font-normal text-slate-600"> ({note})</span>
+        ) : null}
       </legend>
       <button
         type="button"
@@ -101,7 +107,6 @@ export const PrioritySelector = ({
           );
         })}
       </div>
-      {value ? <PriorityHint value={value} /> : null}
       <PriorityGuideSheet
         open={guideOpen}
         onClose={() => setGuideOpen(false)}

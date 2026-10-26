@@ -29,6 +29,10 @@ export type SupervisedMaintenance = {
   reporter?: { name: string; kind: ReporterKind } | null;
   /** Equipo intervenido. Solo correctivos */
   asset?: MaintenanceRef | null;
+  /** Solo correctivos; vacía en los reportes del portal del huésped */
+  category?: MaintenanceRef | null;
+  /** También es el título (`subject`), salvo con «Otro» */
+  subcategory?: (MaintenanceRef & { isOther: boolean }) | null;
   assignee: MaintenanceRef | null;
   team: MaintenanceRef | null;
   /** Código estable (`Critical|High|Medium|Low`). Los preventivos no la traen */
@@ -126,6 +130,11 @@ export type AssignPayload = {
   plannedStart?: string;
   /** Equipo intervenido. Solo correctivos y opcional */
   assetId?: number;
+  /** Solo correctivos: la subcategoría pasa a ser el título */
+  categoryId?: number;
+  subcategoryId?: number;
+  /** Solo con la subcategoría «Otro» */
+  shortDescription?: string;
   notes?: string;
 };
 

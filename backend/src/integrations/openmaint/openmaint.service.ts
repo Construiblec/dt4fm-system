@@ -65,8 +65,8 @@ type OpenmaintCreateIncidentBody = {
   Floor?: number;
   Unit?: number;
   CommonArea?: number;
-  Category: number;
-  Subcategory: number;
+  Category?: number;
+  Subcategory?: number;
   ProcessStatus: number;
 };
 

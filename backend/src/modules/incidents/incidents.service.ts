@@ -22,7 +22,12 @@ import {
 import { NotificationsService } from '../notifications/notifications.service';
 import { PushDispatchService } from '../push-notifications/push-dispatch.service';
 import { CompleteIncidentDto } from './dto/complete-incident.dto';
-import { CreateIncidentDto } from './dto/create-incident.dto';
+import { NewIncident, SHORT_DESCRIPTION_MAX } from './dto/create-incident.dto';
+import {
+  correctiveTitle,
+  MaintCategoryCatalogService,
+  toCategoryRefs,
+} from '../../integrations/openmaint/maint-category-catalog.service';
 
 export type UploadedImage = {
   buffer: Buffer;
@@ -85,6 +90,10 @@ type OpenmaintIncidentDetail = {
   Priority?: number | null;
   ExpExecStartDate?: string | null;
   ExecEndDate?: string | null;
+  Category?: number | null;
+  _Category_description?: string | null;
+  Subcategory?: number | null;
+  _Subcategory_description?: string | null;
 };
 
 type OpenmaintIncidentDetailResponse = {
@@ -127,7 +136,25 @@ export class IncidentsService {
     private readonly openmaintService: OpenmaintService,
     private readonly notificationsService: NotificationsService,
     private readonly pushDispatch: PushDispatchService,
+    private readonly categories: MaintCategoryCatalogService,
   ) {}
+
+  /** Categorías y subcategorías para el formulario de reporte. */
+  listCategories() {
+    return this.categories.list();
+  }
+
+  private async resolveCategory(dto: NewIncident) {
+    if (!dto.categoryId && !dto.subcategoryId) {
+      return null;
+    }
+
+    if (!dto.categoryId || !dto.subcategoryId) {
+      throw new BadRequestException('Elige la categoría y la subcategoría');
+    }
+
+    return this.categories.resolve(dto.categoryId, dto.subcategoryId);
+  }
 
   /**
    * Sella el inicio real del trabajo, que es lo que separa «Asignado» de
@@ -324,6 +351,7 @@ export class IncidentsService {
         incident.Priority != null
           ? (CM_PRIORITY_CODES[incident.Priority] ?? null)
           : null,
+      ...toCategoryRefs(incident),
       createdAt: incident.OpeningDate ?? null,
       plannedStart: incident.ExpExecStartDate ?? null,
       execStartDate: incident.ExecStartDate ?? null,
@@ -425,11 +453,22 @@ export class IncidentsService {
   async createIncident(
     sessionId: string,
     employeeId: number,
-    dto: CreateIncidentDto,
+    dto: NewIncident,
     images: UploadedImage[] = [],
   ) {
-    if (!(dto.shortDescription ?? dto.floorArea ?? '').trim()) {
+    const category = await this.resolveCategory(dto);
+    const shortDescr = category
+      ? correctiveTitle(category.subcategory, dto.shortDescription)
+      : (dto.shortDescription ?? dto.floorArea ?? '').trim();
+
+    if (!shortDescr) {
       throw new BadRequestException('La breve descripción es obligatoria');
+    }
+
+    if (shortDescr.length > SHORT_DESCRIPTION_MAX) {
+      throw new BadRequestException(
+        `La breve descripción admite hasta ${SHORT_DESCRIPTION_MAX} caracteres`,
+      );
     }
 
     const incidentResponse =
@@ -439,7 +478,7 @@ export class IncidentsService {
           _activity: 'CM01-Opening',
           _advance: true,
           OpeningDate: new Date().toISOString(),
-          ShortDescr: (dto.shortDescription ?? dto.floorArea ?? '').trim(),
+          ShortDescr: shortDescr,
           ProcessNotes: dto.notes,
           Requester: employeeId,
           Type: 268288,
@@ -450,8 +489,13 @@ export class IncidentsService {
           ...(dto.floorId ? { Floor: dto.floorId } : {}),
           ...(dto.unitId ? { Unit: dto.unitId } : {}),
           ...(dto.commonAreaId ? { CommonArea: dto.commonAreaId } : {}),
-          Category: 1460015,
-          Subcategory: 1460074,
+          // Sin categoría (portal del huésped) la elige el supervisor al asignar.
+          ...(category
+            ? {
+                Category: category.category.id,
+                Subcategory: category.subcategory.id,
+              }
+            : {}),
           ProcessStatus: 277461,
         },
         sessionId,
@@ -509,7 +553,7 @@ export class IncidentsService {
   private async sendIncidentNotificationInBackground(
     incidentId: number,
     employeeId: number,
-    dto: CreateIncidentDto,
+    dto: NewIncident,
     sessionId: string,
   ): Promise<void> {
     try {

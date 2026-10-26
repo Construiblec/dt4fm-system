@@ -149,6 +149,111 @@ describe('MaintenanceSupervisionController (e2e)', () => {
       );
     });
 
+    it('201: cambia la subcategoría y con ella el título', async () => {
+      mocks.correctiveOpenmaint.findWithTasklist.mockResolvedValueOnce(
+        correctiveResponse({ status: CM_STATUS_IDS.ASSIGNMENT }),
+      );
+      mocks.correctiveOpenmaint.advance.mockResolvedValueOnce({ data: {} });
+      mocks.correctiveOpenmaint.findById.mockResolvedValueOnce(
+        correctiveResponse({
+          status: CM_STATUS_IDS.EXECUTION,
+          execStartDate: null,
+          category: 2,
+          subcategory: 21,
+          shortDescr: 'Manchas',
+        }),
+      );
+
+      const res = await request(app.getHttpServer())
+        .post('/maintenance-supervision/corrective/12345/assign')
+        .set('authorization', 'mock-session-id')
+        .send({
+          assigneeId: 1456396,
+          plannedStart: '2026-08-25T09:00:00.000Z',
+          priority: 'Low',
+          categoryId: 2,
+          subcategoryId: 21,
+        })
+        .expect(201);
+
+      expect(mocks.correctiveOpenmaint.advance).toHaveBeenCalledWith(
+        'mock-session-id',
+        12345,
+        expect.objectContaining({
+          fields: expect.objectContaining({
+            Category: 2,
+            Subcategory: 21,
+            ShortDescr: 'Manchas',
+          }),
+        }),
+      );
+      expect(res.body.data).toMatchObject({
+        subject: 'Manchas',
+        category: { id: 2, name: 'Limpieza' },
+        subcategory: { id: 21, name: 'Manchas', isOther: false },
+      });
+    });
+
+    it('201: con «Otro» sin texto nuevo conserva el título', async () => {
+      mocks.correctiveOpenmaint.findWithTasklist.mockResolvedValueOnce(
+        correctiveResponse({
+          status: CM_STATUS_IDS.ASSIGNMENT,
+          subcategory: 19,
+          shortDescr: 'Puerta descuadrada',
+        }),
+      );
+      mocks.correctiveOpenmaint.advance.mockResolvedValueOnce({ data: {} });
+      mocks.correctiveOpenmaint.findById.mockResolvedValueOnce(
+        correctiveResponse({
+          status: CM_STATUS_IDS.EXECUTION,
+          execStartDate: null,
+        }),
+      );
+
+      await request(app.getHttpServer())
+        .post('/maintenance-supervision/corrective/12345/assign')
+        .set('authorization', 'mock-session-id')
+        .send({
+          assigneeId: 1456396,
+          plannedStart: '2026-08-25T09:00:00.000Z',
+          priority: 'Low',
+        })
+        .expect(201);
+
+      expect(mocks.correctiveOpenmaint.advance).toHaveBeenCalledWith(
+        'mock-session-id',
+        12345,
+        expect.objectContaining({
+          fields: expect.objectContaining({
+            Subcategory: 19,
+            ShortDescr: 'Puerta descuadrada',
+          }),
+        }),
+      );
+    });
+
+    it('400 si el correctivo no tiene categoría y no se elige', async () => {
+      mocks.correctiveOpenmaint.findWithTasklist.mockResolvedValueOnce(
+        correctiveResponse({
+          status: CM_STATUS_IDS.ASSIGNMENT,
+          category: null,
+          subcategory: null,
+        }),
+      );
+
+      await request(app.getHttpServer())
+        .post('/maintenance-supervision/corrective/12345/assign')
+        .set('authorization', 'mock-session-id')
+        .send({
+          assigneeId: 1456396,
+          plannedStart: '2026-08-25T09:00:00.000Z',
+          priority: 'Low',
+        })
+        .expect(400);
+
+      expect(mocks.correctiveOpenmaint.advance).not.toHaveBeenCalled();
+    });
+
     it('400 sin prioridad ni en el body ni en la tarjeta', async () => {
       mocks.correctiveOpenmaint.findWithTasklist.mockResolvedValueOnce(
         correctiveResponse({

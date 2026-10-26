@@ -90,6 +90,34 @@ describe('PreventiveMaintenanceController (e2e)', () => {
     });
   });
 
+  describe('POST /preventive-maintenance/:id/open', () => {
+    it('201: en Acceptance devuelve el detalle sin avanzar el flujo', async () => {
+      mocks.preventiveOpenmaint.findById.mockResolvedValueOnce(
+        preventiveResponse({ status: PM_STATUS_IDS.ACCEPTANCE }),
+      );
+
+      const res = await request(app.getHttpServer())
+        .post('/preventive-maintenance/54321/open')
+        .set('authorization', 'mock-session-id')
+        .expect(201);
+
+      expect(res.body.data.statusCode).toBe('Acceptance');
+      expect(mocks.preventiveOpenmaint.advance).not.toHaveBeenCalled();
+      expect(mocks.preventiveOpenmaint.saveFields).not.toHaveBeenCalled();
+    });
+
+    it('404 si el mantenimiento no existe', async () => {
+      mocks.preventiveOpenmaint.findById.mockRejectedValueOnce({
+        response: { status: 404 },
+      });
+
+      await request(app.getHttpServer())
+        .post('/preventive-maintenance/999999/open')
+        .set('authorization', 'mock-session-id')
+        .expect(404);
+    });
+  });
+
   describe('POST /preventive-maintenance/:id/start', () => {
     it('200: Acceptance → Execution avanza y relee dos veces', async () => {
       mocks.preventiveOpenmaint.findWithTasklist

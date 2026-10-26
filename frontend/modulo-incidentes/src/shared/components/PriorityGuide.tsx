@@ -4,37 +4,7 @@ import {
   PRIORITY_GUIDE,
   PRIORITY_GUIDE_CLASSES,
   PRIORITY_ORDER,
-  type PriorityCode,
 } from "@/shared/constants/priority";
-
-type HintProps = {
-  value: PriorityCode;
-  /** El supervisor lee «Atender en…»; quien reporta, el plazo que puede esperar. */
-  variant?: "assign" | "report";
-};
-
-/** Plazo, acción y ejemplos del nivel elegido, bajo los botones de prioridad. */
-export const PriorityHint = ({ value, variant = "assign" }: HintProps) => {
-  const guide = PRIORITY_GUIDE[value];
-  const styles = PRIORITY_GUIDE_CLASSES[value];
-
-  return (
-    <div
-      aria-live="polite"
-      className={`space-y-1 rounded-xl border p-3 ${styles.box}`}
-    >
-      <p className={`text-sm font-bold ${styles.title}`}>
-        {variant === "assign"
-          ? `Atender en ${guide.sla}`
-          : `Plazo de atención: ${guide.sla}`}
-      </p>
-      <p className="text-[13px] leading-snug text-slate-700">{guide.action}</p>
-      <p className="text-[13px] leading-snug text-slate-600">
-        Ej.: {guide.examples}
-      </p>
-    </div>
-  );
-};
 
 type SheetProps = {
   open: boolean;

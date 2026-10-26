@@ -74,6 +74,29 @@ export class IncidentsController {
     return this.incidentsService.getMyIncidents(employeeId, sessionId);
   }
 
+  @Get('categories')
+  @ApiOperation({
+    summary:
+      'Categorías y subcategorías de mantenimiento para clasificar un reporte',
+  })
+  @ApiHeader({
+    name: 'authorization',
+    description: 'Token de sesión de OpenMAINT',
+    required: true,
+  })
+  @ApiResponse({
+    status: 200,
+    description:
+      'Categorías con sus subcategorías; «Otro» va al final y lleva isOther=true',
+  })
+  async getCategories(@Headers('authorization') sessionId: string) {
+    if (!sessionId) {
+      throw new BadRequestException('Authorization header is required');
+    }
+
+    return this.incidentsService.listCategories();
+  }
+
   @Get('reported')
   @ApiOperation({
     summary: 'Obtener las incidencias que reportó el empleado autenticado',
@@ -256,10 +279,21 @@ export class IncidentsController {
           description: 'ID del edificio',
           example: 3456,
         },
+        categoryId: {
+          type: 'integer',
+          description: 'ID de la categoría (GET /incidents/categories)',
+          example: 1460015,
+        },
+        subcategoryId: {
+          type: 'integer',
+          description: 'ID de la subcategoría de esa categoría',
+          example: 1460074,
+        },
         shortDescription: {
           type: 'string',
-          description: 'Breve descripción (título de la tarjeta, máx. 80)',
-          example: 'Tomacorriente sin energía',
+          description:
+            'Solo con la subcategoría «Otro» (máx. 80). En las demás el título es la subcategoría',
+          example: 'Puerta del clóset descuadrada',
         },
         notes: {
           type: 'string',
@@ -278,7 +312,7 @@ export class IncidentsController {
           description: 'Imágenes del incidente (máx 6)',
         },
       },
-      required: ['buildingId', 'shortDescription', 'notes'],
+      required: ['buildingId', 'categoryId', 'subcategoryId', 'notes'],
     },
   })
   @ApiResponse({ status: 201, description: 'Incidencia creada con éxito' })
