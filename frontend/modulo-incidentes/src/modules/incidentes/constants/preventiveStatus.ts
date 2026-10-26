@@ -1,5 +1,6 @@
 import {
   badgeClass,
+  barClass,
   borderClass,
   pillClass,
   type StatusLevel,
@@ -52,6 +53,10 @@ export const getPreventiveStatusPill = (statusCode: string | null) =>
 /** Borde izquierdo de la tarjeta del dashboard. */
 export const getPreventiveStatusBorder = (statusCode: string | null) =>
   borderClass(getPreventiveStatusLevel(statusCode));
+
+/** Barra lateral de la tarjeta. */
+export const getPreventiveStatusBar = (statusCode: string | null) =>
+  barClass(getPreventiveStatusLevel(statusCode));
 
 export const getPreventiveStatusLabel = (
   statusCode: string | null,

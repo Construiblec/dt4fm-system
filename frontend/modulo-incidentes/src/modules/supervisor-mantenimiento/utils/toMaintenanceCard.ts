@@ -21,9 +21,11 @@ export const toCardData = (
   target: null,
   assignee: maintenance.assignee?.name ?? null,
   priorityCode: maintenance.priority?.code ?? null,
-  openingDate: maintenance.openingDate,
   plannedStart: maintenance.plannedStart,
   dueDate: maintenance.dueDate,
+  execStartDate: maintenance.execStartDate,
+  execEndDate: maintenance.execEndDate,
+  suspensionReason: maintenance.suspensionReason ?? null,
   isOverdue: maintenance.isOverdue,
 });
 

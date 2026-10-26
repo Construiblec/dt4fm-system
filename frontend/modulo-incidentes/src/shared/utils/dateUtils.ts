@@ -19,16 +19,8 @@ export const formatDuration = (milliseconds: number): string => {
   return `${seconds}s`;
 };
 
-/** Duración entre dos instantes: «2 h 25 min», «50 min», «1 d 3 h». `null` si no hay ambos. */
-export const formatElapsed = (
-  start: string | null | undefined,
-  end: string | null | undefined,
-): string | null => {
-  if (!start || !end) return null;
-  const ms = new Date(end).getTime() - new Date(start).getTime();
-  if (!Number.isFinite(ms) || ms < 0) return null;
-
-  const total = Math.round(ms / 60_000);
+/** Minutos enteros como «2 h 25 min», «50 min», «1 d 3 h». */
+export const formatMinutes = (total: number): string => {
   const days = Math.floor(total / 1440);
   const hours = Math.floor((total % 1440) / 60);
   const minutes = total % 60;
@@ -39,6 +31,28 @@ export const formatElapsed = (
   ].filter(Boolean);
 
   return parts.join(" ");
+};
+
+/** Duración entre dos instantes: «2 h 25 min», «50 min», «1 d 3 h». `null` si no hay ambos. */
+export const formatElapsed = (
+  start: string | null | undefined,
+  end: string | null | undefined,
+): string | null => {
+  if (!start || !end) return null;
+  const ms = new Date(end).getTime() - new Date(start).getTime();
+  if (!Number.isFinite(ms) || ms < 0) return null;
+
+  return formatMinutes(Math.round(ms / 60_000));
+};
+
+/** Atraso en unidades gruesas: «35 min», «18 h», «2 d 4 h». */
+export const formatLate = (ms: number): string => {
+  const minutes = Math.floor(ms / 60_000);
+  if (minutes < 60) return `${Math.max(minutes, 1)} min`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} h`;
+  const rest = hours % 24;
+  return `${Math.floor(hours / 24)} d${rest ? ` ${rest} h` : ""}`;
 };
 
 // ── Formateo de fechas (DD/MM/YYYY, español) ─────────────────────────────────

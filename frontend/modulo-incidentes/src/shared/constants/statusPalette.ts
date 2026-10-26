@@ -64,7 +64,7 @@ export const STATUS_LEVELS: Record<StatusLevel, LevelStyle> = {
     border: "border-blue-500",
     bar: "bg-blue-500",
   },
-  /** Detenido temporalmente, se retomará */
+  /** Detenido temporalmente, se retomará (suspensión del preventivo, pausa de limpieza) */
   paused: {
     badge: "bg-violet-100 text-violet-700",
     pill: "bg-violet-100 text-violet-700",
@@ -125,9 +125,10 @@ export const UNKNOWN_STATUS: LevelStyle = STATUS_LEVELS.pending;
 export const OVERDUE_STYLE = {
   badge: "bg-red-100 text-red-700",
   border: "border-red-500",
+  bar: "bg-red-500",
 } as const;
 
-/** Atraso de un correctivo asignado que no arrancó; naranja como en limpieza. */
+/** Atraso de una tarea asignada que no arrancó (correctivo y limpieza); naranja. */
 export const LATE_START_STYLE = {
   badge: "bg-orange-100 text-orange-800",
   bar: "bg-orange-500",
