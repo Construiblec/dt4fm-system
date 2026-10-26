@@ -27,13 +27,16 @@ attachSessionRenewal(incidentsApi, "authorization");
 
 export type CreateIncidentPayload = {
   buildingId: string;
-  /** Breve descripción: título de la tarjeta */
+  categoryId: number;
+  subcategoryId: number;
+  /** Título de la tarjeta; el backend solo lo usa con la subcategoría «Otro» */
   shortDescription: string;
   /** Ubicación estructurada; se omite lo que el usuario no haya elegido */
   floorId?: number | null;
   unitId?: number | null;
   commonAreaId?: number | null;
-  priority: number;
+  /** Sin prioridad la fija el supervisor al asignar */
+  priority?: number;
   notes: string;
   images?: File[];
 };
@@ -50,6 +53,8 @@ type GetMyIncidentsResponse = {
 
 export const createIncident = async ({
   buildingId,
+  categoryId,
+  subcategoryId,
   shortDescription,
   floorId,
   unitId,
@@ -69,8 +74,10 @@ export const createIncident = async ({
 
   const formData = new FormData();
   formData.append("buildingId", buildingId);
-  formData.append("shortDescription", shortDescription);
-  formData.append("priority", String(Number(priority)));
+  formData.append("categoryId", String(categoryId));
+  formData.append("subcategoryId", String(subcategoryId));
+  if (shortDescription) formData.append("shortDescription", shortDescription);
+  if (priority) formData.append("priority", String(priority));
   formData.append("notes", notes);
 
   // Nunca enviar cadenas vacías: el DTO las convertiría en 0 y fallaría el @Min(1)

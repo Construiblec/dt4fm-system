@@ -8,6 +8,7 @@ import { OpenmaintServiceSession } from './openmaint.service-session';
 import { OpenmaintUsersService } from './openmaint.users.service';
 import { SessionRoleService } from './session-role.service';
 import { UnitResolverService } from './unit-resolver.service';
+import { MaintCategoryCatalogService } from './maint-category-catalog.service';
 
 @Module({
   imports: [HttpModule],
@@ -20,6 +21,7 @@ import { UnitResolverService } from './unit-resolver.service';
     OpenmaintUsersService,
     SessionRoleService,
     UnitResolverService,
+    MaintCategoryCatalogService,
   ],
   exports: [
     OpenmaintClient,
@@ -30,6 +32,7 @@ import { UnitResolverService } from './unit-resolver.service';
     OpenmaintUsersService,
     SessionRoleService,
     UnitResolverService,
+    MaintCategoryCatalogService,
   ],
 })
 export class OpenmaintModule {}

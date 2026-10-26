@@ -168,9 +168,27 @@ export class PreventiveMaintenanceService {
   }
 
   /**
-   * Abre el mantenimiento para el técnico: si está en Aceptación lo avanza a
-   * Ejecución. Es idempotente — si ya está en ejecución o cerrado devuelve el
-   * detalle sin tocar el flujo.
+   * Abre el mantenimiento para el técnico sin mover el flujo: uno en Aceptación
+   * sigue ahí hasta que pulse «Iniciar mantenimiento» (`startExecution`).
+   *
+   * Al volver de una suspensión las actividades siguen marcadas como N.D.: se
+   * limpian para que vuelvan a presentarse por completar. Por esa escritura es
+   * un POST y no el `GET /:id`.
+   */
+  async openMaintenance(sessionId: string, id: number) {
+    const card = await this.fetchCard(sessionId, id);
+
+    if (card.ProcessStatus === PM_STATUS_IDS.EXECUTION) {
+      await this.clearNotDoneOnResume(sessionId, id);
+    }
+
+    return { success: true, data: await this.toDetail(sessionId, card) };
+  }
+
+  /**
+   * Inicia la ejecución cuando el técnico lo pide: si está en Aceptación lo
+   * avanza a Ejecución y sella la hora real de inicio. Es idempotente — si ya
+   * está en ejecución o cerrado devuelve el detalle sin tocar el flujo.
    *
    * Un mantenimiento suspendido no se reanuda desde aquí: esa transición se
    * hace en OpenMAINT.
@@ -206,15 +224,8 @@ export class PreventiveMaintenanceService {
       }
     }
 
-    const updated = await this.fetchCard(sessionId, id);
-
-    // Al volver de una suspensión las actividades siguen marcadas como N.D.:
-    // se limpian para que vuelvan a presentarse por completar.
-    if (updated.ProcessStatus === PM_STATUS_IDS.EXECUTION) {
-      await this.clearNotDoneOnResume(sessionId, id);
-    }
-
-    return { success: true, data: await this.toDetail(sessionId, updated) };
+    // Relee la ficha ya avanzada y, como al abrir, limpia el N.D. pendiente
+    return this.openMaintenance(sessionId, id);
   }
 
   /** Guarda las respuestas del checklist y devuelve su estado actualizado. */
