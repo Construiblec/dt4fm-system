@@ -1,6 +1,6 @@
 <mxfile host="65bd71144e">
     <diagram id="v2p0" name="Vista general">
-        <mxGraphModel dx="876" dy="642" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1700" pageHeight="2400" math="0" shadow="0">
+        <mxGraphModel dx="460" dy="178" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1700" pageHeight="2400" math="0" shadow="0">
             <root>
                 <mxCell id="0"/>
                 <mxCell id="1" parent="0"/>
@@ -430,7 +430,7 @@
         </mxGraphModel>
     </diagram>
     <diagram id="v2p2" name="Planificación y ejecución">
-        <mxGraphModel dx="876" dy="642" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1700" pageHeight="2400" math="0" shadow="0">
+        <mxGraphModel dx="2672" dy="1037" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1700" pageHeight="2400" math="0" shadow="0">
             <root>
                 <mxCell id="0"/>
                 <mxCell id="1" parent="0"/>
@@ -915,7 +915,7 @@
         </mxGraphModel>
     </diagram>
     <diagram id="v2p3" name="Proyectos">
-        <mxGraphModel dx="1537" dy="1126" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1700" pageHeight="2400" math="0" shadow="0">
+        <mxGraphModel dx="2091" dy="812" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1700" pageHeight="2400" math="0" shadow="0">
             <root>
                 <mxCell id="0"/>
                 <mxCell id="1" parent="0"/>
@@ -1391,7 +1391,7 @@
         </mxGraphModel>
     </diagram>
     <diagram id="v2p5" name="Conocimiento y PTE">
-        <mxGraphModel dx="876" dy="642" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1700" pageHeight="2400" math="0" shadow="0">
+        <mxGraphModel dx="748" dy="290" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1700" pageHeight="2400" math="0" shadow="0">
             <root>
                 <mxCell id="0"/>
                 <mxCell id="1" parent="0"/>
@@ -1730,7 +1730,7 @@
         </mxGraphModel>
     </diagram>
     <diagram id="v2p6" name="Competencias">
-        <mxGraphModel dx="1537" dy="1126" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1700" pageHeight="2400" math="0" shadow="0">
+        <mxGraphModel dx="2154" dy="836" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1700" pageHeight="2400" math="0" shadow="0">
             <root>
                 <mxCell id="0"/>
                 <mxCell id="1" parent="0"/>
@@ -1952,7 +1952,7 @@
         </mxGraphModel>
     </diagram>
     <diagram id="v2lk" name="Catálogos (lookups)">
-        <mxGraphModel dx="1460" dy="1070" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1700" pageHeight="650" math="0" shadow="0">
+        <mxGraphModel dx="1698" dy="659" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1700" pageHeight="650" math="0" shadow="0">
             <root>
                 <mxCell id="0"/>
                 <mxCell id="1" parent="0"/>
@@ -1966,7 +1966,7 @@
         </mxGraphModel>
     </diagram>
     <diagram id="v2sp" name="Simplificación v1 → v2">
-        <mxGraphModel dx="506" dy="371" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1700" pageHeight="3020" math="0" shadow="0">
+        <mxGraphModel dx="8017" dy="3111" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1700" pageHeight="3020" math="0" shadow="0">
             <root>
                 <mxCell id="0"/>
                 <mxCell id="1" parent="0"/>
@@ -1980,7 +1980,7 @@
         </mxGraphModel>
     </diagram>
     <diagram id="v2rf" name="Matriz RF - clases">
-        <mxGraphModel dx="5852" dy="2791" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1700" pageHeight="2780" math="0" shadow="0">
+        <mxGraphModel dx="7215" dy="2800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1700" pageHeight="2780" math="0" shadow="0">
             <root>
                 <mxCell id="0"/>
                 <mxCell id="1" parent="0"/>
