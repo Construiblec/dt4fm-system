@@ -322,7 +322,8 @@ export const CoordinatorLayout = () => {
       ) : null}
 
       <div className="lg:pl-64">
-        <header className="sticky top-0 z-20 border-b border-slate-200 bg-gray-100/90 backdrop-blur">
+        {/* Solo en móvil: en escritorio el menú y el título ya están en la barra lateral */}
+        <header className="sticky top-0 z-20 border-b border-slate-200 bg-gray-100/90 backdrop-blur lg:hidden">
           <div className="mx-auto flex h-14 max-w-[1440px] items-center gap-3 px-4 sm:px-6 lg:px-8">
             <button
               type="button"

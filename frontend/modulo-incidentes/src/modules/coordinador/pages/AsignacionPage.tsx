@@ -18,7 +18,12 @@ import {
   useInvalidateCoord,
 } from "../hooks/useCoordData";
 import { useNow } from "../hooks/useNow";
-import { formatPersonName, isoAt, todayYmd } from "../domain/dates";
+import {
+  formatPersonName,
+  formatRange,
+  isoAt,
+  todayYmd,
+} from "../domain/dates";
 import { conflictsFor } from "../domain/tasks";
 import {
   draftFor,
@@ -111,7 +116,7 @@ const TaskAccordion = ({
       setError(null);
       await updateTask(task.id, result.payload);
       await invalidate();
-      flash("success", `${task.taskNumber} quedó planificada.`);
+      flash("success", `${placeLabel(task)} quedó planificada.`);
     } catch (e) {
       setError(describeApiError(e, "No se pudo guardar la limpieza."));
     } finally {
@@ -142,12 +147,10 @@ const TaskAccordion = ({
           <ChevronRight className="h-4 w-4 shrink-0 text-slate-600" aria-hidden="true" />
         )}
         <span className="min-w-0 flex-1 truncate text-sm">
-          <span className="font-bold text-slate-900">{task.taskNumber}</span>
-          <span className="text-slate-500">
-            {" "}
-            {task.description?.replace(/^Limpieza - /, "") ?? "Limpieza"} ·{" "}
-            {placeLabel(task)}
+          <span className="font-bold text-slate-900">
+            {task.description?.replace(/^Limpieza - /, "") ?? "Limpieza"}
           </span>
+          <span className="text-slate-500"> · {placeLabel(task)}</span>
         </span>
         <span
           className={cx(
@@ -197,8 +200,14 @@ const TaskAccordion = ({
 
           {conflicts.length ? (
             <InlineAlert tone="warning" icon={TriangleAlert}>
-              Se cruza con {conflicts.map((c) => c.taskNumber).join(", ")} del
-              mismo operador.
+              Se cruza con{" "}
+              {conflicts
+                .map(
+                  (c) =>
+                    `${placeLabel(c)} (${formatRange(c.plannedStartTime, c.plannedEndTime)})`,
+                )
+                .join(", ")}{" "}
+              del mismo operador.
             </InlineAlert>
           ) : null}
           {error ? <InlineAlert tone="error">{error}</InlineAlert> : null}
@@ -557,13 +566,12 @@ export const AsignacionPage = () => {
                         type="checkbox"
                         checked={on}
                         onChange={() => setSelected(toggle(selected, task.id))}
-                        aria-label={`Seleccionar ${task.taskNumber}`}
+                        aria-label={`Seleccionar ${placeLabel(task)}`}
                         className="h-4 w-4 rounded border-slate-300 text-brand"
                       />
                       <GripVertical className="h-4 w-4 shrink-0 text-slate-400" aria-hidden="true" />
                       <span className="min-w-0">
                         <span className="block truncate text-sm font-semibold text-slate-900">
-                          {task.taskNumber} ·{" "}
                           {task.description?.replace(/^Limpieza - /, "") ?? "Limpieza"}
                         </span>
                         <span className="block truncate text-xs text-slate-500">

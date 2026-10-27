@@ -89,6 +89,7 @@ Cada servicio tiene su propia instancia de openMAINT y su propia rama de Neon, a
 | --- | --- | --- |
 | `OPENMAINT_URL` | Instancia de producción | Instancia de desarrollo |
 | `OPENMAINT_USERNAME` / `OPENMAINT_PASSWORD` | Credenciales de esa instancia | Las de la suya |
+| `OPENMAINT_CLEANING_TEAM_ID` | `_id` del equipo «Auxiliar operativo» en esa instancia | El de la suya (staging: `2397132`). Sin ella, el coordinador ve a todos los empleados internos |
 | `DATABASE_URL` | Rama `production`, **con** pooler | Rama `development`, **con** pooler |
 | `DATABASE_URL_DIRECT` | Rama `production`, **sin** pooler | Rama `development`, **sin** pooler |
 | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | Un par propio | Otro par distinto |

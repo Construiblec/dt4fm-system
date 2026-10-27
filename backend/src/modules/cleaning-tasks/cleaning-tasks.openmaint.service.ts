@@ -670,12 +670,28 @@ export class CleaningTasksOpenmaintService {
   /**
    * Empleados internos: los únicos que pueden ser `Employee` de una limpieza
    * (la referencia apunta a `InternalEmployee`). Los proveedores quedan fuera
-   * por construcción. Sesión interna: es dato de referencia.
+   * por construcción. Con `teamId`, solo los de ese equipo. Sesión interna: es
+   * dato de referencia.
    */
-  async listInternalEmployees(): Promise<{ data: EmployeeCard[] }> {
+  async listInternalEmployees(
+    teamId?: number,
+  ): Promise<{ data: EmployeeCard[] }> {
     return this.executeWithRetry(async (sessionId) => {
+      const filter = teamId
+        ? `&filter=${encodeURIComponent(
+            JSON.stringify({
+              attribute: {
+                simple: {
+                  attribute: 'Team',
+                  operator: 'equal',
+                  value: [String(teamId)],
+                },
+              },
+            }),
+          )}`
+        : '';
       return (await this.client.get(
-        '/classes/InternalEmployee/cards?limit=500',
+        `/classes/InternalEmployee/cards?limit=500${filter}`,
         sessionId,
       )) as { data: EmployeeCard[] };
     }, 'listInternalEmployees').catch((error) => {
