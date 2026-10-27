@@ -209,9 +209,7 @@ const DoorRow = ({
                 ? "bg-amber-600 hover:bg-amber-700"
                 : action === "close"
                   ? "bg-slate-800 hover:bg-slate-700"
-                  : pedestrian
-                    ? "bg-cyan-600 hover:bg-cyan-700"
-                    : "bg-brand hover:bg-brand-hover"
+                  : "bg-brand hover:bg-brand-hover"
             }`}
           >
             {pendingAction ? (

@@ -269,7 +269,7 @@ panel. Queda pendiente con IoT si pasa sola a `ready` al vencer el cierre autom�
 IoT habilitó `trigger` sobre `kind: "terminal"` con `scope: "pedestrian"` en Inglaterra y Pradera.
 
 - **Solo el Supervisor CAV.** El portal del huésped no cambia: su PIN ya abre la peatonal.
-- **Siempre «Abrir», sin fase**, con el color del rol para distinguirlo de la barrera. No hay Abrir/Cerrar ni `vehicular_gate_phase`; `close`
+- **Siempre «Abrir», sin fase**, con el mismo color que el resto de botones. No hay Abrir/Cerrar ni `vehicular_gate_phase`; `close`
   sobre una peatonal es un `422`. No hace falta medir tiempos.
 - **Bloqueo de 5 s** del botón tras cada clic, y **enfriamiento de 5 s por puerta** contado en la
   base (`429`). IoT pide al menos 3 s; se eligieron 5. El cooldown autoritativo es del gateway: si aún tiene una operación en curso
