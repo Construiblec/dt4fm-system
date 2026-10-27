@@ -271,6 +271,7 @@ const FlashBar = () => {
 export const CoordinatorLayout = () => {
   const [navOpen, setNavOpen] = useState(false);
   const { pathname } = useLocation();
+  const fillsViewport = pathname === "/coordinador/asignacion";
   const clearFlash = useCoordFlash((s) => s.clear);
 
   // Un aviso sobrevive al cambio de sección ("Limpieza creada" se lee ya en la
@@ -345,7 +346,12 @@ export const CoordinatorLayout = () => {
         <main
           id="contenido"
           tabIndex={-1}
-          className="mx-auto w-full max-w-[1440px] px-4 pb-24 pt-6 outline-none sm:px-6 lg:px-8"
+          className={cx(
+            "mx-auto w-full max-w-[1440px] px-4 pb-24 pt-6 outline-none sm:px-6 lg:px-8",
+            // El tablero de asignación ocupa la ventana en escritorio: cada
+            // columna desplaza su lista en vez de desplazarse la página entera.
+            fillsViewport && "lg:flex lg:h-dvh lg:flex-col lg:pb-6",
+          )}
         >
           <FlashBar />
           {/* La clave fuerza un montaje limpio al cambiar de sección. */}
