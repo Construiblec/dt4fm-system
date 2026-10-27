@@ -22,6 +22,7 @@ import {
   ymdOf,
 } from "../domain/dates";
 import { conflictsFor, taskDate } from "../domain/tasks";
+import { breaksCrossed, breakWarning } from "../domain/breaks";
 import { useNow } from "../hooks/useNow";
 import {
   BuildingUnitPicker,
@@ -130,6 +131,9 @@ export const TaskForm = ({
       : [];
 
   const warnings: string[] = [];
+  // Solo avisa: una urgencia puede cruzar la pausa del equipo
+  const breakNotice = breakWarning(breaksCrossed(startIso, endIso));
+  if (breakNotice) warnings.push(breakNotice);
   if (startIso && employeeId && Date.parse(startIso) < nowMs) {
     warnings.push(
       "El inicio ya pasó: la limpieza aparecerá como atrasada apenas la guardes.",

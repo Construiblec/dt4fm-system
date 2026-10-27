@@ -247,9 +247,12 @@ const FlashBar = () => {
   const clear = useCoordFlash((s) => s.clear);
   if (!flash) return null;
 
+  // Flota arriba al centro del área de contenido: no empuja la pantalla.
+  // Por encima del panel lateral (z-40) y de los modales (z-50).
   return (
-    <div className="mb-6">
+    <div className="pointer-events-none fixed inset-x-0 top-[4.5rem] z-[60] flex justify-center px-4 lg:left-64 lg:top-6">
       <InlineAlert
+        className="pointer-events-auto max-w-lg shadow-lg"
         tone={flash.tone}
         action={
           <button
@@ -271,7 +274,8 @@ const FlashBar = () => {
 export const CoordinatorLayout = () => {
   const [navOpen, setNavOpen] = useState(false);
   const { pathname } = useLocation();
-  const fillsViewport = pathname === "/coordinador/asignacion";
+  // Misma regla con la que la barra lateral marca la sección activa
+  const fillsViewport = pathname.startsWith("/coordinador/asignacion");
   const clearFlash = useCoordFlash((s) => s.clear);
 
   // Un aviso sobrevive al cambio de sección ("Limpieza creada" se lee ya en la
@@ -350,15 +354,15 @@ export const CoordinatorLayout = () => {
             "mx-auto w-full max-w-[1440px] px-4 pb-24 pt-6 outline-none sm:px-6 lg:px-8",
             // El tablero de asignación ocupa la ventana en escritorio: cada
             // columna desplaza su lista en vez de desplazarse la página entera.
-            fillsViewport && "lg:flex lg:h-dvh lg:flex-col lg:pb-6",
+            fillsViewport && "lg:flex lg:h-screen lg:flex-col lg:pb-6",
           )}
         >
-          <FlashBar />
           {/* La clave fuerza un montaje limpio al cambiar de sección. */}
           <Outlet key={pathname} />
         </main>
       </div>
 
+      <FlashBar />
       <TaskPanel />
       <FloatingReportButton corner />
     </div>

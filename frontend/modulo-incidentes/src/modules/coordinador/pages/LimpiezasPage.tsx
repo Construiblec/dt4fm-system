@@ -21,10 +21,12 @@ import {
   formatPersonName,
   formatRange,
   hmOf,
+  isoAt,
   minutesOfDay,
   todayYmd,
   ymdOf,
 } from "../domain/dates";
+import { BREAKS } from "../domain/breaks";
 import {
   findOverlaps,
   isOverdue,
@@ -346,6 +348,11 @@ const NAME_COL = 224;
 const MIN_BLOCK_W = 160;
 const DAY_START_HOUR = 7;
 const DAY_END_HOUR = 17;
+/** Rayado de las pausas del equipo: se distingue del fondo sin tapar las horas. */
+const BREAK_STRIPES = {
+  backgroundImage:
+    "repeating-linear-gradient(135deg, rgb(203 213 225 / 0.6) 0, rgb(203 213 225 / 0.6) 4px, transparent 4px, transparent 8px)",
+};
 
 const blockWidth = (startMin: number, endMin: number) =>
   Math.max(((endMin - startMin) / 60) * HOUR_PX - 4, MIN_BLOCK_W);
@@ -549,6 +556,15 @@ const AgendaView = ({
   });
   const timelineW = (endHour - startHour) * HOUR_PX;
   const px = (minutes: number) => ((minutes - startHour * 60) / 60) * HOUR_PX;
+  // Las pausas del equipo, como franjas en todas las filas del día
+  const breakBands = BREAKS.map((b) => {
+    const left = px(minutesOfDay(isoAt(day, b.start)) ?? 0);
+    return {
+      ...b,
+      left,
+      width: px(minutesOfDay(isoAt(day, b.end)) ?? 0) - left,
+    };
+  });
   const hours: number[] = [];
   for (let h = startHour; h <= endHour; h += 1) hours.push(h);
   const grid = {
@@ -702,6 +718,15 @@ const AgendaView = ({
                   Empleado
                 </div>
                 <div className="relative h-8" style={{ width: timelineW }}>
+                  {breakBands.map((b) => (
+                    <span
+                      key={b.label}
+                      aria-hidden="true"
+                      title={`${b.label} · ${b.start}–${b.end}`}
+                      className="absolute inset-y-0 bg-slate-100/70"
+                      style={{ left: b.left, width: b.width, ...BREAK_STRIPES }}
+                    />
+                  ))}
                   {hours.map((h) => (
                     <span
                       key={h}
@@ -765,6 +790,15 @@ const AgendaView = ({
                             ...grid,
                           }}
                         >
+                          {breakBands.map((b) => (
+                            <span
+                              key={b.label}
+                              aria-hidden="true"
+                              title={`${b.label} · ${b.start}–${b.end}`}
+                              className="absolute inset-y-0 bg-slate-100/70"
+                              style={{ left: b.left, width: b.width, ...BREAK_STRIPES }}
+                            />
+                          ))}
                           {nowLeft !== null ? (
                             <span
                               aria-hidden="true"
@@ -817,6 +851,16 @@ const AgendaView = ({
         <span className="inline-flex items-center gap-1.5">
           <span className="h-1 w-6 rounded-full bg-blue-500" />
           Ejecución real
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span
+            className="h-3 w-6 rounded-sm bg-slate-100/70 ring-1 ring-slate-200"
+            style={BREAK_STRIPES}
+          />
+          Pausa del equipo:{" "}
+          {BREAKS.map((b) => `${b.label.toLowerCase()} ${b.start}–${b.end}`).join(
+            " · ",
+          )}
         </span>
       </div>
     </div>
