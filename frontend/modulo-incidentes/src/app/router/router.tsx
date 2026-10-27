@@ -38,6 +38,7 @@ import { GuestShortLinkPage } from "@/modules/guest/pages/GuestShortLinkPage";
 import { CoordinatorLayout } from "@/modules/coordinador/layout/CoordinatorLayout";
 import { PendientesPage } from "@/modules/coordinador/pages/PendientesPage";
 import { LimpiezasPage } from "@/modules/coordinador/pages/LimpiezasPage";
+import { AsignacionPage } from "@/modules/coordinador/pages/AsignacionPage";
 import { SincronizacionPage } from "@/modules/coordinador/pages/SincronizacionPage";
 import { PerfilPage } from "@/modules/coordinador/pages/PerfilPage";
 import { NuevaPage } from "@/modules/coordinador/pages/NuevaPage";
@@ -129,6 +130,7 @@ export const router = createBrowserRouter([
       { path: "pendientes", element: <PendientesPage /> },
       { path: "limpiezas", element: <LimpiezasPage /> },
       { path: "agenda", element: <LimpiezasPage /> },
+      { path: "asignacion", element: <AsignacionPage /> },
       { path: "sincronizacion", element: <SincronizacionPage /> },
       { path: "nueva", element: <NuevaPage /> },
       { path: "checklists", element: <ChecklistsPage /> },
