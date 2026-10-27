@@ -59,7 +59,7 @@ import { useCoordFlash } from "../layout/flash";
 const DRAG_TYPE = "application/x-coord-tasks";
 
 const LIMIT_OPTIONS: Array<{ value: string; label: string }> = [
-  { value: "4", label: "4" },
+  { value: "5", label: "5" },
   { value: "6", label: "6" },
   { value: "8", label: "8" },
   { value: "all", label: "Todos" },
@@ -383,7 +383,7 @@ export const AsignacionPage = () => {
 
   const [q, setQ] = useState("");
   const [selected, setSelected] = useState<Set<number>>(new Set());
-  const [limit, setLimit] = useState<EmployeeLimit>(4);
+  const [limit, setLimit] = useState<EmployeeLimit>(5);
   const [employeeQ, setEmployeeQ] = useState("");
   const [openEmployees, setOpenEmployees] = useState<Set<number>>(new Set());
   const [openTask, setOpenTask] = useState<number | null>(null);
