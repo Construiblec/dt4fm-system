@@ -1771,7 +1771,8 @@ export class CleaningTasksService {
    * puede editar lo que todavía no empezó, y nunca la fase ni los tiempos de
    * ejecución (eso lo escribe la app del empleado).
    *
-   * Un valor `null` en unidad, checklist u observaciones lo borra.
+   * Un valor `null` en empleado, unidad, checklist u observaciones lo borra.
+   * Sin empleado, una limpieza sin empezar vuelve a Pendientes.
    */
   async updateCleaningTask(
     taskId: number,
@@ -1818,7 +1819,7 @@ export class CleaningTasksService {
 
     const body: Record<string, unknown> = {};
     if (dto.phase) body.phase = dto.phase;
-    if (dto.employeeId) body.Employee = dto.employeeId;
+    if (dto.employeeId !== undefined) body.Employee = dto.employeeId;
     if (dto.plannedStartTime) body.PlannedStartTime = dto.plannedStartTime;
     if (dto.plannedEndTime) body.PlannedEndTime = dto.plannedEndTime;
     if (dto.actualStartTime) body.ActualStartTime = dto.actualStartTime;

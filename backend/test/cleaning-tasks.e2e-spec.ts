@@ -775,6 +775,23 @@ describe('CleaningTasksController (e2e)', () => {
         });
       });
 
+      it('null quita el empleado sin avisar a nadie', async () => {
+        asCoordinator();
+        mocks.cleaningTasksOpenmaint.getTaskByIdWithSession.mockResolvedValue(
+          cleaningTaskResponse({ phase: PHASE_IDS.ASSIGNED, employee: 7004 }),
+        );
+
+        const res = await put({ employeeId: null }).expect(200);
+
+        expect(res.body.notified).toBeNull();
+        expect(
+          mocks.cleaningTasksOpenmaint.updateCleaningTask,
+        ).toHaveBeenCalledWith(777, { Employee: null });
+        expect(
+          mocks.pushDispatch.notifyCleaningAssigned,
+        ).not.toHaveBeenCalled();
+      });
+
       it('400 si el fin no es posterior al inicio', async () => {
         asCoordinator();
         mocks.cleaningTasksOpenmaint.getTaskByIdWithSession.mockResolvedValue(
