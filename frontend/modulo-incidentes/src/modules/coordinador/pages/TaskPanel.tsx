@@ -113,10 +113,69 @@ const CancelModal = ({
   );
 };
 
+/** Quitar el empleado devuelve la limpieza a Pendientes; al empleado no se le avisa. */
+const UnassignModal = ({
+  task,
+  onClose,
+  onDone,
+}: {
+  task: CoordTaskDetail;
+  onClose: () => void;
+  onDone: () => void;
+}) => {
+  const [error, setError] = useState<string | null>(null);
+  const invalidate = useInvalidateCoord();
+  const flash = useCoordFlash((s) => s.show);
+
+  const mutation = useMutation({
+    mutationFn: () => updateTask(task.id, { employeeId: null }),
+    onSuccess: async () => {
+      await invalidate();
+      flash("success", `${task.taskNumber} volvió a Pendientes sin empleado.`);
+      onDone();
+    },
+    onError: (e) =>
+      setError(describeApiError(e, "No se pudo quitar el empleado.")),
+  });
+
+  return (
+    <Modal
+      title={`Quitar empleado de ${task.taskNumber}`}
+      onClose={onClose}
+      footer={
+        <>
+          <Button onClick={onClose} disabled={mutation.isPending}>
+            Volver
+          </Button>
+          <Button
+            variant="danger"
+            loading={mutation.isPending}
+            disabled={mutation.isPending}
+            onClick={() => {
+              setError(null);
+              mutation.mutate();
+            }}
+          >
+            Quitar empleado
+          </Button>
+        </>
+      }
+    >
+      <p>
+        <strong>{employeeName(task.employee)}</strong> dejará de tener esta
+        limpieza y volverá a <strong>Pendientes</strong> para asignarla de
+        nuevo. El horario se conserva.
+      </p>
+      {error ? <p className="text-sm text-red-700">{error}</p> : null}
+    </Modal>
+  );
+};
+
 const PanelBody = ({ task }: { task: CoordTaskDetail }) => {
   const { close, mode } = useOpenTask();
   const [editing, setEditing] = useState(mode === "editar");
   const [cancelOpen, setCancelOpen] = useState(false);
+  const [unassignOpen, setUnassignOpen] = useState(false);
   const nowMs = useNow();
   const invalidate = useInvalidateCoord();
   const flash = useCoordFlash((s) => s.show);
@@ -246,9 +305,29 @@ const PanelBody = ({ task }: { task: CoordTaskDetail }) => {
             <Skeleton rows={6} />
           )
         ) : (
-          <TaskView task={task} employees={employees} nowMs={nowMs} />
+          <TaskView
+            task={task}
+            employees={employees}
+            nowMs={nowMs}
+            onUnassign={
+              editable && task.employee
+                ? () => setUnassignOpen(true)
+                : undefined
+            }
+          />
         )}
       </Drawer>
+
+      {unassignOpen ? (
+        <UnassignModal
+          task={task}
+          onClose={() => setUnassignOpen(false)}
+          onDone={() => {
+            setUnassignOpen(false);
+            close();
+          }}
+        />
+      ) : null}
 
       {cancelOpen ? (
         <CancelModal

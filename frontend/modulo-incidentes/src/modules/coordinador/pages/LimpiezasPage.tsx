@@ -337,9 +337,20 @@ const TableView = ({
 
 // ─── Agenda del día ─────────────────────────────────────────────────────────
 
-const LANE = 52;
+const LANE = 70;
+const BLOCK_H = 62;
+/** Ancho de una hora y de la columna de empleados, en px. La agenda se desplaza si no cabe. */
+const HOUR_PX = 92;
+const NAME_COL = 224;
+/** Ancho mínimo de una tarjeta: una limpieza corta sigue siendo legible. */
+const MIN_BLOCK_W = 160;
+const DAY_START_HOUR = 7;
+const DAY_END_HOUR = 17;
 
-/** Reparte las limpiezas de un empleado en carriles para que las que se cruzan no se tapen. */
+const blockWidth = (startMin: number, endMin: number) =>
+  Math.max(((endMin - startMin) / 60) * HOUR_PX - 4, MIN_BLOCK_W);
+
+/** Reparte las limpiezas de un empleado en carriles; cuenta el ancho mínimo para que las seguidas no se tapen. */
 const assignLanes = (list: CoordTask[]) => {
   const lanes: number[] = [];
   const placed = [...list]
@@ -349,13 +360,15 @@ const assignLanes = (list: CoordTask[]) => {
         Date.parse(b.plannedStartTime as string),
     )
     .map((task) => {
-      const start = Date.parse(task.plannedStartTime as string);
-      let lane = lanes.findIndex((end) => end <= start);
+      const startMin = minutesOfDay(task.plannedStartTime) ?? 0;
+      const endMin = minutesOfDay(task.plannedEndTime) ?? startMin;
+      const left = (startMin / 60) * HOUR_PX;
+      let lane = lanes.findIndex((end) => end <= left);
       if (lane === -1) {
         lane = lanes.length;
         lanes.push(0);
       }
-      lanes[lane] = Date.parse(task.plannedEndTime as string);
+      lanes[lane] = left + blockWidth(startMin, endMin) + 4;
       return { task, lane };
     });
   return { placed, laneCount: Math.max(1, lanes.length) };
@@ -364,13 +377,13 @@ const assignLanes = (list: CoordTask[]) => {
 const Block = ({
   task,
   lane,
-  pct,
+  px,
   overlapping,
   nowMs,
 }: {
   task: CoordTask;
   lane: number;
-  pct: (minutes: number) => number;
+  px: (minutes: number) => number;
   overlapping: boolean;
   nowMs: number;
 }) => {
@@ -380,8 +393,8 @@ const Block = ({
   const startMin = minutesOfDay(task.plannedStartTime) ?? 0;
   const endMin = minutesOfDay(task.plannedEndTime) ?? startMin;
   const overdue = overdueMinutes(task, nowMs);
-  const left = pct(startMin);
-  const width = Math.max(pct(endMin) - left, 4);
+  const left = px(startMin);
+  const width = blockWidth(startMin, endMin);
 
   let actual: { left: number; width: number; done: boolean } | null = null;
   if (
@@ -396,8 +409,8 @@ const Block = ({
         : null;
     if (aEnd !== null && aEnd > aStart) {
       actual = {
-        left: pct(aStart),
-        width: Math.max(pct(aEnd) - pct(aStart), 0.6),
+        left: px(aStart),
+        width: Math.max(px(aEnd) - px(aStart), 4),
         done: Boolean(task.actualEndTime),
       };
     }
@@ -416,13 +429,13 @@ const Block = ({
         onClick={() => open(task.id)}
         title={tooltip}
         style={{
-          left: `${left}%`,
-          width: `${width}%`,
+          left: left + 2,
+          width,
           top: 4 + lane * LANE,
-          height: LANE - 12,
+          height: BLOCK_H,
         }}
         className={cx(
-          "absolute overflow-hidden rounded-lg border-l-4 bg-white px-2 py-1 text-left text-xs shadow-sm transition hover:z-10 hover:shadow-md",
+          "absolute overflow-hidden rounded-lg border-l-4 bg-white px-2.5 py-1 text-left text-xs shadow-sm transition hover:z-10 hover:shadow-md",
           FOCUS,
           STATUS_LEVELS[level].border,
           overlapping
@@ -455,8 +468,11 @@ const Block = ({
             {formatRange(task.plannedStartTime, task.plannedEndTime)}
           </span>
         </span>
-        <span className="block truncate text-slate-500">
+        <span className="block truncate text-slate-600">
           {`${task.unit ? task.unit.code : placeLabel(task)} · ${task.taskNumber}`}
+        </span>
+        <span className="block truncate font-semibold text-slate-600">
+          {STATUS[key].label}
         </span>
       </button>
       {actual ? (
@@ -467,9 +483,9 @@ const Block = ({
             actual.done ? "bg-emerald-500" : "bg-blue-500",
           )}
           style={{
-            left: `${actual.left}%`,
-            width: `${actual.width}%`,
-            top: 4 + lane * LANE + (LANE - 10),
+            left: actual.left + 2,
+            width: actual.width,
+            top: 4 + lane * LANE + BLOCK_H + 1,
           }}
         />
       ) : null}
@@ -513,26 +529,30 @@ const AgendaView = ({
   );
   const pendingTotal = tasks.filter(isPending).length;
 
-  // La escala va de 06:00 a 20:00 y se amplía si alguna limpieza cae fuera.
-  let startHour = 6;
-  let endHour = 20;
+  // La escala va de 07:00 a 17:00 y se amplía (con desplazamiento) si alguna limpieza cae fuera.
+  let startHour = DAY_START_HOUR;
+  let endHour = DAY_END_HOUR;
   planned.forEach((t) => {
     startHour = Math.min(
       startHour,
-      Math.floor((minutesOfDay(t.plannedStartTime) ?? 360) / 60),
+      Math.floor((minutesOfDay(t.plannedStartTime) ?? 0) / 60),
     );
     endHour = Math.max(
       endHour,
-      Math.ceil((minutesOfDay(t.plannedEndTime) ?? 1200) / 60),
+      Math.ceil(
+        Math.max(
+          (minutesOfDay(t.plannedEndTime) ?? 0) / 60,
+          (minutesOfDay(t.plannedStartTime) ?? 0) / 60 + MIN_BLOCK_W / HOUR_PX,
+        ),
+      ),
     );
   });
-  const total = (endHour - startHour) * 60;
-  const pct = (minutes: number) =>
-    Math.min(100, Math.max(0, ((minutes - startHour * 60) / total) * 100));
+  const timelineW = (endHour - startHour) * HOUR_PX;
+  const px = (minutes: number) => ((minutes - startHour * 60) / 60) * HOUR_PX;
   const hours: number[] = [];
   for (let h = startHour; h <= endHour; h += 1) hours.push(h);
   const grid = {
-    backgroundImage: `repeating-linear-gradient(to right, rgb(226 232 240) 0, rgb(226 232 240) 1px, transparent 1px, transparent calc(100% / ${endHour - startHour}))`,
+    backgroundImage: `repeating-linear-gradient(to right, rgb(226 232 240) 0, rgb(226 232 240) 1px, transparent 1px, transparent ${HOUR_PX}px)`,
   };
 
   const groups = useMemo(() => {
@@ -568,7 +588,7 @@ const AgendaView = ({
   }, [planned, employees]);
 
   const nowIso = new Date(nowMs).toISOString();
-  const nowLeft = day === today ? pct(minutesOfDay(nowIso) ?? 0) : null;
+  const nowLeft = day === today ? px(minutesOfDay(nowIso) ?? 0) : null;
 
   return (
     <div className="space-y-4">
@@ -661,25 +681,21 @@ const AgendaView = ({
             }
           />
         ) : (
-          <div className="relative overflow-x-auto">
-            <div className="min-w-[1000px]">
-              <div className="flex border-b border-slate-200 bg-slate-50">
-                <div className="sticky left-0 z-20 w-56 shrink-0 bg-slate-50 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+          <div className="relative max-h-[60vh] overflow-auto">
+            <div style={{ width: NAME_COL + timelineW }}>
+              <div className="sticky top-0 z-30 flex border-b border-slate-200 bg-slate-50">
+                <div
+                  className="sticky left-0 z-20 shrink-0 bg-slate-50 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-500"
+                  style={{ width: NAME_COL }}
+                >
                   Empleado
                 </div>
-                <div className="relative h-8 flex-1">
+                <div className="relative h-8" style={{ width: timelineW }}>
                   {hours.map((h) => (
                     <span
                       key={h}
-                      className={cx(
-                        "absolute top-2 text-xs tabular-nums text-slate-500",
-                        h === startHour
-                          ? "pl-1"
-                          : h === endHour
-                            ? "-translate-x-full pr-1"
-                            : "-translate-x-1/2",
-                      )}
-                      style={{ left: `${pct(h * 60)}%` }}
+                      className="absolute top-2 pl-1.5 text-xs tabular-nums text-slate-500"
+                      style={{ left: px(h * 60) }}
                     >
                       {String(h).padStart(2, "0")}:00
                     </span>
@@ -687,7 +703,7 @@ const AgendaView = ({
                   {nowLeft !== null ? (
                     <span
                       className="absolute top-1 z-10 -translate-x-1/2 rounded bg-red-600 px-1 text-[10px] font-bold tabular-nums text-white"
-                      style={{ left: `${nowLeft}%` }}
+                      style={{ left: nowLeft }}
                     >
                       {hmOf(nowIso)}
                     </span>
@@ -715,7 +731,10 @@ const AgendaView = ({
                         key={row.employee ? row.employee.id : "sin"}
                         className="flex border-b border-slate-100"
                       >
-                        <div className="sticky left-0 z-20 w-56 shrink-0 bg-white px-4 py-3">
+                        <div
+                          className="sticky left-0 z-20 shrink-0 bg-white px-4 py-3"
+                          style={{ width: NAME_COL }}
+                        >
                           <p className="text-sm font-semibold text-slate-900">
                             {row.employee
                               ? formatPersonName(row.employee.name)
@@ -728,14 +747,18 @@ const AgendaView = ({
                           </p>
                         </div>
                         <div
-                          className="relative flex-1"
-                          style={{ height: laneCount * LANE + 8, ...grid }}
+                          className="relative"
+                          style={{
+                            width: timelineW,
+                            height: laneCount * LANE + 8,
+                            ...grid,
+                          }}
                         >
                           {nowLeft !== null ? (
                             <span
                               aria-hidden="true"
                               className="absolute inset-y-0 z-10 w-px bg-red-500"
-                              style={{ left: `${nowLeft}%` }}
+                              style={{ left: nowLeft }}
                             />
                           ) : null}
                           {placed.map(({ task, lane }) => (
@@ -743,7 +766,7 @@ const AgendaView = ({
                               key={task.id}
                               task={task}
                               lane={lane}
-                              pct={pct}
+                              px={px}
                               overlapping={overlaps.has(task.id)}
                               nowMs={nowMs}
                             />

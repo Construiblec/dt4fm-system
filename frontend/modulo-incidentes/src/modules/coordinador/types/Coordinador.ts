@@ -136,7 +136,8 @@ export type UpdateTaskPayload = {
   unitId?: number | null;
   plannedStartTime?: string;
   plannedEndTime?: string;
-  employeeId?: number;
+  /** `null` quita el empleado: la limpieza vuelve a Pendientes */
+  employeeId?: number | null;
   cleaningChecklistId?: number | null;
   observations?: string | null;
 };

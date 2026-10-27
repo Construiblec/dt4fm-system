@@ -42,7 +42,8 @@ import { inputClass } from "./uiUtils";
  *   corregir el checkout) y sigue en Pendientes hasta tener empleado y horario.
  *   Elegir empleado sí exige el horario: el backend le avisa al empleado apenas
  *   se le asigna, y no debe recibir una limpieza sin hora.
- * - editar: una asignada que no empezó. No puede perder el empleado.
+ * - editar: una asignada que no empezó. Aquí no puede perder el empleado:
+ *   quitarlo es una acción aparte (la X de la ficha) que la devuelve a Pendientes.
  */
 export type TaskFormVariant = "nueva" | "completar" | "editar";
 

@@ -11,6 +11,7 @@ import {
   Plus,
   RefreshCw,
   UserRound,
+  UsersRound,
   X,
 } from "lucide-react";
 import { useLogout } from "@/modules/auth/hooks/useLogout";
@@ -47,6 +48,12 @@ const NAV = [
     label: "Limpiezas",
     icon: CalendarDays,
     match: ["/coordinador/limpiezas", "/coordinador/agenda"],
+  },
+  {
+    to: "/coordinador/asignacion",
+    label: "Asignación",
+    icon: UsersRound,
+    match: ["/coordinador/asignacion"],
   },
   {
     to: "/coordinador/sincronizacion",
