@@ -2,12 +2,14 @@ import { useMemo, useState, type DragEvent } from "react";
 import {
   CalendarDays,
   Check,
+  Coffee,
   ChevronDown,
   ChevronRight,
   GripVertical,
   Search,
   TriangleAlert,
   UsersRound,
+  X,
 } from "lucide-react";
 import type { CoordTask, EmployeeOption } from "../types/Coordinador";
 import { describeApiError, updateTask } from "../services/coordinadorService";
@@ -25,6 +27,7 @@ import {
   todayYmd,
 } from "../domain/dates";
 import { conflictsFor } from "../domain/tasks";
+import { breaksCrossed, breakWarning } from "../domain/breaks";
 import {
   draftFor,
   dragIds,
@@ -37,7 +40,11 @@ import {
   type EmployeeLimit,
   type PlanDraft,
 } from "../domain/assignment";
-import { placeLabel, matchesSearch } from "../components/taskLabels";
+import {
+  employeeName,
+  placeLabel,
+  matchesSearch,
+} from "../components/taskLabels";
 import { DateField } from "../components/DateField";
 import { TimeField } from "../components/TimeField";
 import { ChecklistSelect } from "../components/pickers";
@@ -96,14 +103,37 @@ const TaskAccordion = ({
   const [error, setError] = useState<string | null>(null);
   const chip = scheduleChip(task);
   const dirty = isDirty(draft, task, today);
+  const draftStart = draft.date && draft.start ? isoAt(draft.date, draft.start) : null;
+  const draftEnd = draft.date && draft.end ? isoAt(draft.date, draft.end) : null;
   const conflicts = conflictsFor(
     task.employee?.id ?? null,
-    draft.date && draft.start ? isoAt(draft.date, draft.start) : null,
-    draft.date && draft.end ? isoAt(draft.date, draft.end) : null,
+    draftStart,
+    draftEnd,
     tasks,
     [task.id],
   );
+  const breakNotice = breakWarning(breaksCrossed(draftStart, draftEnd));
   const panelId = `asignacion-tarea-${task.id}`;
+  const title = task.description?.replace(/^Limpieza - /, "") ?? "Limpieza";
+  const place = placeLabel(task);
+  const [unassigning, setUnassigning] = useState(false);
+
+  // Sin confirmación: se deshace arrastrándola de vuelta al operador.
+  const unassign = async () => {
+    try {
+      setUnassigning(true);
+      await updateTask(task.id, { employeeId: null });
+      await invalidate();
+      flash("success", `${place} volvió a Sin asignar.`);
+    } catch (e) {
+      // El aviso general se ve aunque la fila esté plegada
+      flash(
+        "error",
+        describeApiError(e, "No se pudo quitar la limpieza del operador."),
+      );
+      setUnassigning(false);
+    }
+  };
 
   const save = async () => {
     const result = planPayload(draft, task);
@@ -131,37 +161,48 @@ const TaskAccordion = ({
         open ? "bg-sky-50 ring-1 ring-sky-300" : "bg-slate-50",
       )}
     >
-      <button
-        type="button"
-        aria-expanded={open}
-        aria-controls={panelId}
-        onClick={onToggle}
-        className={cx(
-          "flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left",
-          FOCUS,
-        )}
-      >
-        {open ? (
-          <ChevronDown className="h-4 w-4 shrink-0 text-slate-600" aria-hidden="true" />
-        ) : (
-          <ChevronRight className="h-4 w-4 shrink-0 text-slate-600" aria-hidden="true" />
-        )}
-        <span className="min-w-0 flex-1 truncate text-sm">
-          <span className="font-bold text-slate-900">
-            {task.description?.replace(/^Limpieza - /, "") ?? "Limpieza"}
-          </span>
-          <span className="text-slate-500"> · {placeLabel(task)}</span>
-        </span>
-        <span
+      <div className="flex items-center gap-1 pr-2">
+        <button
+          type="button"
+          aria-expanded={open}
+          aria-controls={panelId}
+          onClick={onToggle}
           className={cx(
-            "inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold tabular-nums",
-            chip ? "bg-blue-100 text-blue-700" : "bg-amber-100 text-amber-800",
+            "flex min-w-0 flex-1 items-center gap-3 rounded-xl px-3 py-2.5 text-left",
+            FOCUS,
           )}
         >
-          <CalendarDays className="h-3.5 w-3.5" aria-hidden="true" />
-          {chip ?? "Sin fecha ni hora"}
-        </span>
-      </button>
+          {open ? (
+            <ChevronDown className="h-4 w-4 shrink-0 text-slate-600" aria-hidden="true" />
+          ) : (
+            <ChevronRight className="h-4 w-4 shrink-0 text-slate-600" aria-hidden="true" />
+          )}
+          <span className="min-w-0 flex-1 truncate text-sm">
+            <span className="font-bold text-slate-900">{title}</span>
+            {/* Sin unidad, el lugar es la misma descripción: no se repite */}
+            {place !== title ? (
+              <span className="text-slate-500"> · {place}</span>
+            ) : null}
+          </span>
+          <span className="inline-flex shrink-0 items-center gap-1.5 text-xs tabular-nums text-slate-500">
+            <CalendarDays className="h-3.5 w-3.5" aria-hidden="true" />
+            {chip ?? "Sin fecha ni hora"}
+          </span>
+        </button>
+        <button
+          type="button"
+          onClick={() => void unassign()}
+          disabled={unassigning}
+          aria-label={`Quitar ${title} de ${employeeName(task.employee)}`}
+          title="Quitar del operador"
+          className={cx(
+            "inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-slate-500 transition hover:bg-red-50 hover:text-red-700 disabled:opacity-50",
+            FOCUS,
+          )}
+        >
+          <X className="h-4 w-4" aria-hidden="true" />
+        </button>
+      </div>
 
       {open ? (
         <div id={panelId} className="space-y-3 px-3 pb-3">
@@ -208,6 +249,11 @@ const TaskAccordion = ({
                 )
                 .join(", ")}{" "}
               del mismo operador.
+            </InlineAlert>
+          ) : null}
+          {breakNotice ? (
+            <InlineAlert tone="warning" icon={Coffee}>
+              {breakNotice} Se puede guardar igual.
             </InlineAlert>
           ) : null}
           {error ? <InlineAlert tone="error">{error}</InlineAlert> : null}
@@ -293,7 +339,8 @@ const EmployeeAccordion = ({
       }}
       onDrop={onDrop}
       className={cx(
-        "rounded-2xl border bg-white shadow-sm transition",
+        // Sin sombra: va dentro de la tarjeta Operadores, basta el borde
+        "rounded-2xl border bg-white transition",
         over
           ? "border-2 border-brand bg-blue-50/60"
           : dragging
@@ -433,7 +480,21 @@ export const AsignacionPage = () => {
         )}`,
       );
     } else {
-      flash("success", `${ids.length} ${ids.length === 1 ? "limpieza asignada" : "limpiezas asignadas"}. Ahora define su hora.`);
+      const done = `${ids.length} ${ids.length === 1 ? "limpieza asignada" : "limpiezas asignadas"}.`;
+      // Las que ya traían horario se avisan aquí: al soltarlas no se abre su hora
+      const crossing = (tasks ?? []).filter(
+        (t) =>
+          ids.includes(t.id) &&
+          breaksCrossed(t.plannedStartTime, t.plannedEndTime).length > 0,
+      );
+      if (crossing.length) {
+        flash(
+          "warning",
+          `${done} ${crossing.map(placeLabel).join(", ")} ${crossing.length === 1 ? "cruza" : "cruzan"} una pausa del equipo: revisa su hora.`,
+        );
+      } else {
+        flash("success", `${done} Ahora define su hora.`);
+      }
     }
   };
 
@@ -577,9 +638,12 @@ export const AsignacionPage = () => {
                         <span className="block truncate text-sm font-semibold text-slate-900">
                           {task.description?.replace(/^Limpieza - /, "") ?? "Limpieza"}
                         </span>
-                        <span className="block truncate text-xs text-slate-500">
-                          {placeLabel(task)}
-                        </span>
+                        {placeLabel(task) !==
+                        (task.description?.replace(/^Limpieza - /, "") ?? "Limpieza") ? (
+                          <span className="block truncate text-xs text-slate-500">
+                            {placeLabel(task)}
+                          </span>
+                        ) : null}
                       </span>
                     </li>
                   );
@@ -588,28 +652,30 @@ export const AsignacionPage = () => {
             )}
           </Card>
 
-          <div className="min-w-0 space-y-3 lg:flex lg:min-h-0 lg:flex-col">
-            <div className="flex flex-wrap items-end justify-between gap-3">
-              <div>
-                <h2 className="text-lg font-bold text-slate-900">Operadores</h2>
-                <p className="text-sm text-slate-500">
-                  Mostrando {shown.length} de {total}
-                  {total > shown.length ? (
-                    <>
-                      {" "}
-                      · {total - shown.length} ocultos por el filtro.{" "}
-                      <button
-                        type="button"
-                        onClick={() => setLimit("all")}
-                        className={cx("font-semibold text-brand", FOCUS)}
-                      >
-                        Mostrar todos
-                      </button>
-                    </>
-                  ) : null}
-                </p>
-              </div>
-              <div className="flex flex-wrap items-center gap-3">
+          {/* Tarjeta como «Sin asignar»: las dos llegan abajo a la misma altura */}
+          <Card
+            className="lg:flex lg:min-h-0 lg:flex-col"
+            title="Operadores"
+            subtitle={
+              <>
+                Mostrando {shown.length} de {total}
+                {total > shown.length ? (
+                  <>
+                    {" "}
+                    · {total - shown.length} ocultos por el filtro.{" "}
+                    <button
+                      type="button"
+                      onClick={() => setLimit("all")}
+                      className={cx("font-semibold text-brand", FOCUS)}
+                    >
+                      Mostrar todos
+                    </button>
+                  </>
+                ) : null}
+              </>
+            }
+            actions={
+              <>
                 <span className="text-sm font-semibold text-slate-600">Mostrar</span>
                 <Segmented<string>
                   label="Cantidad de operadores"
@@ -631,15 +697,14 @@ export const AsignacionPage = () => {
                     onChange={(e) => setEmployeeQ(e.target.value)}
                   />
                 </label>
-              </div>
-            </div>
-
+              </>
+            }
+            bodyClass="space-y-3 px-4 py-4 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col"
+          >
             {error ? <InlineAlert tone="error">{error}</InlineAlert> : null}
 
             {shown.length === 0 ? (
-              <Card>
-                <EmptyState icon={UsersRound} title="Ningún operador coincide con la búsqueda." />
-              </Card>
+              <EmptyState icon={UsersRound} title="Ningún operador coincide con la búsqueda." />
             ) : (
               // El respiro final deja el último operador por encima del botón flotante de novedades
               <div className="max-h-[70vh] space-y-2 overflow-y-auto pr-1 lg:max-h-none lg:min-h-0 lg:flex-1 lg:pb-20">
@@ -664,7 +729,7 @@ export const AsignacionPage = () => {
                 ))}
               </div>
             )}
-          </div>
+          </Card>
         </div>
       )}
     </div>
