@@ -46,7 +46,7 @@ export const tasksByEmployee = (tasks: CoordTask[]): Map<number, CoordTask[]> =>
   return map;
 };
 
-export type EmployeeLimit = 4 | 6 | 8 | "all";
+export type EmployeeLimit = 5 | 6 | 8 | "all";
 
 const fold = (value: string) =>
   value.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();

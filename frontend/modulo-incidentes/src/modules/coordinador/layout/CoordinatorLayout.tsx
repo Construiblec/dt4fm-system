@@ -271,6 +271,7 @@ const FlashBar = () => {
 export const CoordinatorLayout = () => {
   const [navOpen, setNavOpen] = useState(false);
   const { pathname } = useLocation();
+  const fillsViewport = pathname === "/coordinador/asignacion";
   const clearFlash = useCoordFlash((s) => s.clear);
 
   // Un aviso sobrevive al cambio de sección ("Limpieza creada" se lee ya en la
@@ -322,7 +323,8 @@ export const CoordinatorLayout = () => {
       ) : null}
 
       <div className="lg:pl-64">
-        <header className="sticky top-0 z-20 border-b border-slate-200 bg-gray-100/90 backdrop-blur">
+        {/* Solo en móvil: en escritorio el menú y el título ya están en la barra lateral */}
+        <header className="sticky top-0 z-20 border-b border-slate-200 bg-gray-100/90 backdrop-blur lg:hidden">
           <div className="mx-auto flex h-14 max-w-[1440px] items-center gap-3 px-4 sm:px-6 lg:px-8">
             <button
               type="button"
@@ -344,7 +346,12 @@ export const CoordinatorLayout = () => {
         <main
           id="contenido"
           tabIndex={-1}
-          className="mx-auto w-full max-w-[1440px] px-4 pb-24 pt-6 outline-none sm:px-6 lg:px-8"
+          className={cx(
+            "mx-auto w-full max-w-[1440px] px-4 pb-24 pt-6 outline-none sm:px-6 lg:px-8",
+            // El tablero de asignación ocupa la ventana en escritorio: cada
+            // columna desplaza su lista en vez de desplazarse la página entera.
+            fillsViewport && "lg:flex lg:h-dvh lg:flex-col lg:pb-6",
+          )}
         >
           <FlashBar />
           {/* La clave fuerza un montaje limpio al cambiar de sección. */}

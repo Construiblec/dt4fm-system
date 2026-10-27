@@ -6,6 +6,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { HostawayService } from '../../integrations/hostaway/hostaway.service';
 import { PushDispatchService } from '../push-notifications/push-dispatch.service';
 import {
@@ -311,6 +312,7 @@ export class CleaningTasksService {
     private readonly hostawayService: HostawayService,
     private readonly openmaintService: CleaningTasksOpenmaintService,
     private readonly pushDispatch: PushDispatchService,
+    private readonly configService: ConfigService,
   ) {}
 
   /**
@@ -1902,9 +1904,15 @@ export class CleaningTasksService {
     };
   }
 
-  /** Empleados de limpieza que se pueden asignar: internos, sin proveedores. */
+  /**
+   * Empleados de limpieza que se pueden asignar: internos, sin proveedores, y
+   * solo los del equipo de `OPENMAINT_CLEANING_TEAM_ID` (Auxiliar operativo).
+   * Sin la variable se listan todos, como antes, y queda un aviso en el log.
+   */
   async listCleaningEmployees() {
-    const response = await this.openmaintService.listInternalEmployees();
+    const response = await this.openmaintService.listInternalEmployees(
+      this.cleaningTeamId(),
+    );
     const data = (response.data ?? []).map((e) => ({
       id: e._id,
       name: e.Description ?? String(e._id),
@@ -1914,6 +1922,22 @@ export class CleaningTasksService {
           : null,
     }));
     return { success: true, data, meta: { total: data.length } };
+  }
+
+  /** `_id` del equipo de operarios de limpieza; cambia entre staging y producción. */
+  private cleaningTeamId(): number | undefined {
+    const value = Number(
+      this.configService.get<string>('OPENMAINT_CLEANING_TEAM_ID'),
+    );
+
+    if (!Number.isInteger(value) || value <= 0) {
+      this.logger.warn(
+        'Falta OPENMAINT_CLEANING_TEAM_ID: se listan todos los empleados internos, no solo Auxiliar operativo',
+      );
+      return undefined;
+    }
+
+    return value;
   }
 
   /**

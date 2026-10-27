@@ -1036,6 +1036,39 @@ describe('CleaningTasksController (e2e)', () => {
           .set('x-session-token', token)
           .expect(403);
       });
+
+      describe('equipo de operarios', () => {
+        afterEach(() => {
+          delete process.env.OPENMAINT_CLEANING_TEAM_ID;
+        });
+
+        it('pide solo los del equipo de OPENMAINT_CLEANING_TEAM_ID', async () => {
+          process.env.OPENMAINT_CLEANING_TEAM_ID = '2397132';
+          asCoordinator();
+
+          await request(app.getHttpServer())
+            .get('/cleaning-tasks/employees')
+            .set('x-session-token', token)
+            .expect(200);
+
+          expect(
+            mocks.cleaningTasksOpenmaint.listInternalEmployees,
+          ).toHaveBeenCalledWith(2397132);
+        });
+
+        it('sin la variable, los pide todos', async () => {
+          asCoordinator();
+
+          await request(app.getHttpServer())
+            .get('/cleaning-tasks/employees')
+            .set('x-session-token', token)
+            .expect(200);
+
+          expect(
+            mocks.cleaningTasksOpenmaint.listInternalEmployees,
+          ).toHaveBeenCalledWith(undefined);
+        });
+      });
     });
 
     describe('Checklists', () => {

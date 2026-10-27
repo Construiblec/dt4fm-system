@@ -18,7 +18,12 @@ import {
   useInvalidateCoord,
 } from "../hooks/useCoordData";
 import { useNow } from "../hooks/useNow";
-import { formatPersonName, isoAt, todayYmd } from "../domain/dates";
+import {
+  formatPersonName,
+  formatRange,
+  isoAt,
+  todayYmd,
+} from "../domain/dates";
 import { conflictsFor } from "../domain/tasks";
 import {
   draftFor,
@@ -54,7 +59,7 @@ import { useCoordFlash } from "../layout/flash";
 const DRAG_TYPE = "application/x-coord-tasks";
 
 const LIMIT_OPTIONS: Array<{ value: string; label: string }> = [
-  { value: "4", label: "4" },
+  { value: "5", label: "5" },
   { value: "6", label: "6" },
   { value: "8", label: "8" },
   { value: "all", label: "Todos" },
@@ -111,7 +116,7 @@ const TaskAccordion = ({
       setError(null);
       await updateTask(task.id, result.payload);
       await invalidate();
-      flash("success", `${task.taskNumber} quedó planificada.`);
+      flash("success", `${placeLabel(task)} quedó planificada.`);
     } catch (e) {
       setError(describeApiError(e, "No se pudo guardar la limpieza."));
     } finally {
@@ -142,12 +147,10 @@ const TaskAccordion = ({
           <ChevronRight className="h-4 w-4 shrink-0 text-slate-600" aria-hidden="true" />
         )}
         <span className="min-w-0 flex-1 truncate text-sm">
-          <span className="font-bold text-slate-900">{task.taskNumber}</span>
-          <span className="text-slate-500">
-            {" "}
-            {task.description?.replace(/^Limpieza - /, "") ?? "Limpieza"} ·{" "}
-            {placeLabel(task)}
+          <span className="font-bold text-slate-900">
+            {task.description?.replace(/^Limpieza - /, "") ?? "Limpieza"}
           </span>
+          <span className="text-slate-500"> · {placeLabel(task)}</span>
         </span>
         <span
           className={cx(
@@ -197,8 +200,14 @@ const TaskAccordion = ({
 
           {conflicts.length ? (
             <InlineAlert tone="warning" icon={TriangleAlert}>
-              Se cruza con {conflicts.map((c) => c.taskNumber).join(", ")} del
-              mismo operador.
+              Se cruza con{" "}
+              {conflicts
+                .map(
+                  (c) =>
+                    `${placeLabel(c)} (${formatRange(c.plannedStartTime, c.plannedEndTime)})`,
+                )
+                .join(", ")}{" "}
+              del mismo operador.
             </InlineAlert>
           ) : null}
           {error ? <InlineAlert tone="error">{error}</InlineAlert> : null}
@@ -374,7 +383,7 @@ export const AsignacionPage = () => {
 
   const [q, setQ] = useState("");
   const [selected, setSelected] = useState<Set<number>>(new Set());
-  const [limit, setLimit] = useState<EmployeeLimit>(4);
+  const [limit, setLimit] = useState<EmployeeLimit>(5);
   const [employeeQ, setEmployeeQ] = useState("");
   const [openEmployees, setOpenEmployees] = useState<Set<number>>(new Set());
   const [openTask, setOpenTask] = useState<number | null>(null);
@@ -436,8 +445,10 @@ export const AsignacionPage = () => {
 
   const failed = (tasksQ.isError && !tasks) || (employeesQ.isError && !employees);
 
+  // En escritorio el layout le da a la página el alto de la ventana: el tablero
+  // ocupa lo que sobra y cada columna desplaza su propia lista.
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col lg:gap-6 lg:space-y-0">
       <PageHeader
         title="Asignación de limpiezas"
         subtitle="Arrastra las limpiezas a un operador y define su fecha, hora y checklist en el mismo tablero."
@@ -458,8 +469,9 @@ export const AsignacionPage = () => {
           <Skeleton rows={8} />
         </Card>
       ) : (
-        <div className="grid items-start gap-6 lg:grid-cols-[22rem_minmax(0,1fr)]">
+        <div className="grid items-start gap-6 lg:min-h-0 lg:flex-1 lg:grid-cols-[22rem_minmax(0,1fr)] lg:grid-rows-[minmax(0,1fr)] lg:items-stretch">
           <Card
+            className="lg:flex lg:min-h-0 lg:flex-col"
             title={
               <span className="flex items-center gap-2">
                 Sin asignar
@@ -468,7 +480,7 @@ export const AsignacionPage = () => {
                 </span>
               </span>
             }
-            bodyClass="space-y-3 px-4 py-4"
+            bodyClass="space-y-3 px-4 py-4 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col"
           >
             <label className="relative block" htmlFor="asignacion-buscar">
               <span className="sr-only">Buscar limpieza o ubicación</span>
@@ -539,7 +551,7 @@ export const AsignacionPage = () => {
                 title={q ? "Ninguna limpieza coincide." : "No hay limpiezas sin asignar."}
               />
             ) : (
-              <ul className="max-h-[calc(100vh-22rem)] space-y-2 overflow-y-auto pr-1">
+              <ul className="max-h-[60vh] space-y-2 overflow-y-auto pr-1 lg:max-h-none lg:min-h-0 lg:flex-1">
                 {unassigned.map((task) => {
                   const on = selected.has(task.id);
                   return (
@@ -557,13 +569,12 @@ export const AsignacionPage = () => {
                         type="checkbox"
                         checked={on}
                         onChange={() => setSelected(toggle(selected, task.id))}
-                        aria-label={`Seleccionar ${task.taskNumber}`}
+                        aria-label={`Seleccionar ${placeLabel(task)}`}
                         className="h-4 w-4 rounded border-slate-300 text-brand"
                       />
                       <GripVertical className="h-4 w-4 shrink-0 text-slate-400" aria-hidden="true" />
                       <span className="min-w-0">
                         <span className="block truncate text-sm font-semibold text-slate-900">
-                          {task.taskNumber} ·{" "}
                           {task.description?.replace(/^Limpieza - /, "") ?? "Limpieza"}
                         </span>
                         <span className="block truncate text-xs text-slate-500">
@@ -577,7 +588,7 @@ export const AsignacionPage = () => {
             )}
           </Card>
 
-          <div className="min-w-0 space-y-3">
+          <div className="min-w-0 space-y-3 lg:flex lg:min-h-0 lg:flex-col">
             <div className="flex flex-wrap items-end justify-between gap-3">
               <div>
                 <h2 className="text-lg font-bold text-slate-900">Operadores</h2>
@@ -630,7 +641,8 @@ export const AsignacionPage = () => {
                 <EmptyState icon={UsersRound} title="Ningún operador coincide con la búsqueda." />
               </Card>
             ) : (
-              <div className="max-h-[calc(100vh-17rem)] space-y-2 overflow-y-auto pr-1">
+              // El respiro final deja el último operador por encima del botón flotante de novedades
+              <div className="max-h-[70vh] space-y-2 overflow-y-auto pr-1 lg:max-h-none lg:min-h-0 lg:flex-1 lg:pb-20">
                 {shown.map((employee) => (
                   <EmployeeAccordion
                     key={employee.id}

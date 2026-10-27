@@ -578,6 +578,17 @@ const AgendaView = ({
       team,
       rows,
     }));
+    // La lista solo trae al equipo de operarios: una limpieza que ya tenía a
+    // alguien de fuera se agenda aparte en vez de desaparecer.
+    const listed = new Set(employees.map((e) => e.id));
+    const outside = Array.from(byEmployee.entries()).flatMap(([key, tasks]) =>
+      key === "sin" || listed.has(key)
+        ? []
+        : [{ employee: { ...tasks[0].employee!, team: null }, tasks }],
+    );
+    if (outside.length) {
+      result.push({ team: "Fuera del equipo de operarios", rows: outside });
+    }
     if (byEmployee.has("sin")) {
       result.push({
         team: "Sin empleado",
