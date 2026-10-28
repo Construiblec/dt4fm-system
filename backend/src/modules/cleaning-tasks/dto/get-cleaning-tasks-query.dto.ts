@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsInt, Min } from 'class-validator';
+import { IsOptional, IsInt, Min, IsIn } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class GetCleaningTasksQueryDto {
@@ -24,4 +24,13 @@ export class GetCleaningTasksQueryDto {
   @IsInt()
   @Min(0)
   offset?: number = 0;
+
+  @ApiPropertyOptional({
+    description:
+      "Orden: 'newest' = recién creadas primero. Sin él, openMAINT no ordena y el límite puede dejar fuera las de hoy",
+    enum: ['newest'],
+  })
+  @IsOptional()
+  @IsIn(['newest'])
+  sort?: 'newest';
 }

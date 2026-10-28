@@ -599,12 +599,14 @@ export class CleaningTasksService {
     sessionToken: string,
     limit = 50,
     offset = 0,
+    sort?: 'newest',
   ) {
     const response = await this.openmaintService.getTasksByEmployee(
       employeeId,
       sessionToken,
       limit,
       offset,
+      sort,
     );
     const rawTasks = response.data ?? [];
     const uniqueUnitIds = [

@@ -19,6 +19,11 @@ import { useListPagination } from "@/modules/incidentes/hooks/useListPagination"
 import { useMyPreventiveMaintenances } from "@/modules/incidentes/hooks/useMyPreventiveMaintenances";
 import { getMyIncidents } from "@/modules/incidentes/services/incidentsService";
 import { sortTasksForOperator } from "@/modules/incidentes/utils/sortCleaningTasks";
+import {
+  filterOperatorTasks,
+  localDay,
+} from "@/modules/incidentes/utils/operatorCleaningFilter";
+import { formatDate } from "@/shared/utils/dateUtils";
 import { fetchMyCleaningTasks } from "@/modules/incidentes/services/cleaningTasksService";
 import type { Incident } from "@/modules/incidentes/types/Incident";
 import type { CleaningTask } from "@/modules/incidentes/types/CleaningTask";
@@ -86,8 +91,12 @@ export const DashboardPage = () => {
   const [cleaningLoading, setCleaningLoading] = useState(true);
   const [cleaningError, setCleaningError] = useState<string | null>(null);
 
-  // Filtros de limpieza
+  // Filtros de limpieza. `null` es hoy: se recalcula en cada render para que,
+  // pasada la medianoche, la vista por defecto siga siendo el día en curso.
   const [phaseFilter, setPhaseFilter] = useState<string>("ALL");
+  const [cleaningDay, setCleaningDay] = useState<string | null>(null);
+  const today = localDay(new Date()) as string;
+  const viewDay = cleaningDay ?? today;
 
   // ── Carga de datos ─────────────────────────────────────────────────────────
   useEffect(() => {
@@ -206,12 +215,14 @@ export const DashboardPage = () => {
       maintenance.statusCode === preventiveStatusFilter,
   );
 
-  // En ejecución o en pausa primero; después, de la más reciente a la más antigua.
+  // Las del día elegido (en hoy, también las en curso de otro día); las
+  // completadas solo con su fase. En ejecución o en pausa primero; después, de
+  // la más reciente a la más antigua.
   const filteredCleaningTasks = sortTasksForOperator(
-    cleaningTasks.filter((task) => {
-      const allowedPhases = ["Assigned", "InExecution", "Completed"];
-      if (!allowedPhases.includes(task.phase)) return false;
-      return phaseFilter === "ALL" || task.phase === phaseFilter;
+    filterOperatorTasks(cleaningTasks, {
+      phase: phaseFilter,
+      day: viewDay,
+      today,
     }),
   );
 
@@ -231,7 +242,7 @@ export const DashboardPage = () => {
   const cleaningPagination = useListPagination(
     filteredCleaningTasks,
     ITEMS_PER_PAGE,
-    phaseFilter,
+    `${phaseFilter}|${viewDay}`,
   );
 
   // ── Render ─────────────────────────────────────────────────────────────────
@@ -463,7 +474,15 @@ export const DashboardPage = () => {
                   <CleaningFilters
                     phaseFilter={phaseFilter}
                     onPhaseChange={setPhaseFilter}
-                    onClear={() => setPhaseFilter("ALL")}
+                    day={viewDay}
+                    today={today}
+                    onDayChange={(day) =>
+                      setCleaningDay(day === today ? null : day)
+                    }
+                    onClear={() => {
+                      setPhaseFilter("ALL");
+                      setCleaningDay(null);
+                    }}
                   />
                 ) : null}
 
@@ -474,7 +493,11 @@ export const DashboardPage = () => {
                   hasNoMatches={filteredCleaningTasks.length === 0}
                   loadingMessage="Cargando tareas de limpieza..."
                   emptyMessage="No tienes tareas de limpieza asignadas"
-                  noMatchesMessage="No hay tareas que coincidan con los filtros"
+                  noMatchesMessage={`${
+                    viewDay === today
+                      ? "No tienes limpiezas para hoy"
+                      : `No hay limpiezas el ${formatDate(viewDay)}`
+                  }${phaseFilter === "ALL" ? "" : " con ese filtro"}`}
                 />
 
                 {!cleaningLoading &&

@@ -90,6 +90,26 @@ describe('CleaningTasksController (e2e)', () => {
         .expect(200);
     });
 
+    it('pasa el límite y el orden «recién creadas primero» a openMAINT', async () => {
+      await request(app.getHttpServer())
+        .get('/cleaning-tasks/mine?limit=200&sort=newest')
+        .set('x-session-token', 'mock-session-token')
+        .set('x-cleaning-employee-id', '4567')
+        .expect(200);
+
+      expect(
+        mocks.cleaningTasksOpenmaint.getTasksByEmployee,
+      ).toHaveBeenCalledWith(4567, 'mock-session-token', 200, 0, 'newest');
+    });
+
+    it('400 con un orden desconocido', async () => {
+      await request(app.getHttpServer())
+        .get('/cleaning-tasks/mine?sort=oldest')
+        .set('x-session-token', 'mock-session-token')
+        .set('x-cleaning-employee-id', '4567')
+        .expect(400);
+    });
+
     it('401 sin token de sesión', async () => {
       await request(app.getHttpServer())
         .get('/cleaning-tasks/mine')
