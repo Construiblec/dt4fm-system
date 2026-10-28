@@ -127,3 +127,28 @@ describe('CleaningTasksOpenmaintService — empleados asignables', () => {
     );
   });
 });
+
+describe('CleaningTasksOpenmaintService — limpiezas del operario', () => {
+  it('con newest, pide las recién creadas primero', async () => {
+    const get = jest.fn().mockResolvedValue({ data: [] });
+    const service = buildService(get);
+
+    await service.getTasksByEmployee(4567, 'token', 200, 0, 'newest');
+
+    const [[path]] = get.mock.calls as [[string, string]];
+    expect(path).toContain('&limit=200&start=0&sort=');
+    expect(JSON.parse(decodeURIComponent(path.split('sort=')[1]))).toEqual([
+      { property: '_id', direction: 'DESC' },
+    ]);
+  });
+
+  it('sin orden, no añade sort', async () => {
+    const get = jest.fn().mockResolvedValue({ data: [] });
+    const service = buildService(get);
+
+    await service.getTasksByEmployee(4567, 'token', 50, 0);
+
+    const [[path]] = get.mock.calls as [[string, string]];
+    expect(path).not.toContain('sort=');
+  });
+});
