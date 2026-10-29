@@ -101,6 +101,47 @@ describe("parseCleaningChecklist — separador", () => {
     expect(section.items[0].minutes).toBe(3);
   });
 
+  // Las plantillas reales (DEP 2/3/4, Estudio, Suite): "Sección ; Actividad",
+  // sin minutos ni cabecera. Antes ganaba la coma en cuanto una actividad traía
+  // dos comas, y el checklist salía partido en secciones inventadas.
+  it("lee «Sección ; Actividad» sin minutos aunque las actividades lleven comas", () => {
+    const sections = parseCleaningChecklist([
+      "Preparación ; Trasladarse al proyecto asignado.",
+      "Preparación ; Revisar que el carrito tenga productos de limpieza, guantes, paños y fundas para basura y ropa sucia.",
+      "Preparación ; Comprobar que haya jabón, champú y papel higiénico.",
+      "Dormitorio; Separar ligeramente la cama del espaldar y comprobar que este se encuentre limpio.",
+      "Sala; Retirar el polvo de las superficies, los cuadros, las paredes, el techo, los equipos, los adornos y las mesas.",
+      "Comedor ;Limpiar y desinfectar la mesa y las sillas, retirando el polvo, las manchas y los residuos.",
+      "Inspección final ; Barrer desde el punto más alejado de la entrada hacia la puerta.",
+    ]);
+
+    expect(sections.map((section) => section.title)).toEqual([
+      "Preparación",
+      "Dormitorio",
+      "Sala",
+      "Comedor",
+      "Inspección final",
+    ]);
+    expect(sections[0].items.map((item) => item.text)).toEqual([
+      "Trasladarse al proyecto asignado.",
+      "Revisar que el carrito tenga productos de limpieza, guantes, paños y fundas para basura y ropa sucia.",
+      "Comprobar que haya jabón, champú y papel higiénico.",
+    ]);
+    expect(countChecklistActivities(sections)).toBe(7);
+  });
+
+  it("elige el punto y coma aunque TODAS las actividades lleven comas", () => {
+    // Las dos opciones parten todas las filas: decide que con `;` salen parejas.
+    const sections = parseCleaningChecklist([
+      "Baño; Limpiar el lavamanos, el espejo y el tocador.",
+      "Baño; Reponer toallas, jabón, champú y papel higiénico.",
+      "Cocina; Lavar, secar y guardar los platos.",
+    ]);
+
+    expect(sections.map((section) => section.title)).toEqual(["Baño", "Cocina"]);
+    expect(sections[1].items[0].text).toBe("Lavar, secar y guardar los platos.");
+  });
+
   it("respeta las comillas también con punto y coma", () => {
     const [section] = parseCleaningChecklist([
       'Baño;"Frotar paredes; azulejos y grifería";8',

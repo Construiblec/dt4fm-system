@@ -147,37 +147,51 @@ export const splitCsvLine = (
  *
  * No se cuenta cuál carácter aparece más: un texto lleno de comas dentro de una
  * plantilla separada por `;` ganaría por goleada y elegiría mal. Se mira con cuál
- * separador la plantilla entera tiene sentido, en tres niveles de desempate:
+ * separador la plantilla entera tiene sentido, en cuatro niveles de desempate:
  *
  * 1. Filas que terminan en un número. Es la señal más fuerte, porque `Minutos`
  *    es la última columna: partir `Baño;Frotar paredes, azulejos;8` por coma
  *    también da 3 campos, pero el último queda `azulejos;8`, que no es un número.
- * 2. Filas con exactamente 3 campos.
- * 3. Filas que al menos se partieron en dos (cubre plantillas sin minutos).
+ * 2. Filas que se parten en dos o más. El separador real parte TODAS las filas,
+ *    porque toda fila trae su sección; una coma dentro del texto solo parte las
+ *    que la tienen.
+ * 3. Filas con la cantidad de campos más repetida. Con el separador real las
+ *    filas salen parejas; con una coma del texto, cada una sale distinta.
+ * 4. Filas con exactamente 3 campos, el formato documentado. Desempata
+ *    `Baño;Barrer;2,5`: partida por la coma también termina en número ("5").
+ *
+ * Antes "exactamente 3 campos" iba segundo, y eso elegía la coma en las
+ * plantillas "Sección ; Actividad" sin minutos: con `;` daban 2 campos, y
+ * bastaba una actividad con dos comas ("de limpieza, guantes, paños y fundas")
+ * para que la coma ganara y partiera el checklist entero.
  *
  * Ante un empate total gana la coma, que es el formato documentado.
  */
 export const detectDelimiter = (activities: string[]): Delimiter => {
-  const score = (delimiter: Delimiter) =>
-    activities.reduce(
-      (totals, line) => {
-        const fields = splitCsvLine(line, delimiter);
-        const endsInNumber =
-          fields.length >= 2 && parseMinutes(fields[fields.length - 1]) !== null;
+  const score = (delimiter: Delimiter) => {
+    const rows = activities
+      .map((line) => splitCsvLine(line, delimiter))
+      .filter((fields) => fields.length >= 2);
+    // Cuántas filas hay de cada ancho: el ancho más repetido es el de la plantilla.
+    const widths = new Map<number, number>();
+    for (const fields of rows) {
+      widths.set(fields.length, (widths.get(fields.length) ?? 0) + 1);
+    }
 
-        return {
-          numeric: totals.numeric + (endsInNumber ? 1 : 0),
-          exact: totals.exact + (fields.length === 3 ? 1 : 0),
-          split: totals.split + (fields.length >= 2 ? 1 : 0),
-        };
-      },
-      { numeric: 0, exact: 0, split: 0 },
-    );
+    return {
+      numeric: rows.filter(
+        (fields) => parseMinutes(fields[fields.length - 1]) !== null,
+      ).length,
+      split: rows.length,
+      uniform: Math.max(0, ...widths.values()),
+      exact: widths.get(3) ?? 0,
+    };
+  };
 
   const comma = score(",");
   const semicolon = score(";");
 
-  for (const key of ["numeric", "exact", "split"] as const) {
+  for (const key of ["numeric", "split", "uniform", "exact"] as const) {
     if (semicolon[key] !== comma[key]) {
       return semicolon[key] > comma[key] ? ";" : ",";
     }
