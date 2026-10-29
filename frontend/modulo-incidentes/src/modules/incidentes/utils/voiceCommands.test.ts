@@ -31,11 +31,22 @@ describe("recognizeCommand — lo que el operario dice de verdad", () => {
     },
   );
 
-  // La pregunta es "¿te acuerdas de los elementos?": esta es la respuesta
-  // natural de alguien que no memorizó nada.
-  it.each(["no me acuerdo", "no sé"])("entiende %s como negación", (dicho) => {
-    expect(recognizeCommand(dicho, TODO)).toBe("NEGACION");
-  });
+  // La pregunta es "¿recuerdas las tareas?": esta es la respuesta natural de
+  // alguien que no memorizó nada.
+  it.each(["no me acuerdo", "no sé", "no recuerdo", "no las recuerdo"])(
+    "entiende %s como negación",
+    (dicho) => {
+      expect(recognizeCommand(dicho, TODO)).toBe("NEGACION");
+    },
+  );
+
+  // Y la de quien sí: contesta con el verbo de la pregunta.
+  it.each(["recuerdo", "las recuerdo", "sí, las recuerdo", "me acuerdo"])(
+    "entiende %s como afirmación",
+    (dicho) => {
+      expect(recognizeCommand(dicho, TODO)).toBe("AFIRMACION");
+    },
+  );
 
   it("no se deja confundir por mayúsculas, tildes ni puntuación", () => {
     expect(recognizeCommand("¡SÍ!", TODO)).toBe("AFIRMACION");

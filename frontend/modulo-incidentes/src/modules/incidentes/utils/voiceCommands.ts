@@ -66,10 +66,13 @@ const INTENT_PHRASES: Record<VoiceIntent, string[]> = {
     "finalizado",
   ],
   NEGACION: [
-    // "no me acuerdo" y "no se" están porque la pregunta es literalmente "¿te
-    // acuerdas de los elementos?": es la respuesta natural de alguien que no
-    // memorizó nada, y sin ellas el asistente no reaccionaría.
+    // "no recuerdo", "no me acuerdo" y "no se" están porque la pregunta es
+    // literalmente "¿recuerdas las tareas?": es la respuesta natural de alguien
+    // que no memorizó nada. Ninguna se lee como el "recuerdo" de AFIRMACION:
+    // "no recuerdo" es más larga, y en "no las recuerdo" gana el "no" porque, a
+    // igual largo, la negación se prueba antes.
     "no me acuerdo",
+    "no recuerdo",
     "no todavia",
     "todavia no",
     "aun no",
@@ -80,6 +83,9 @@ const INTENT_PHRASES: Record<VoiceIntent, string[]> = {
   ],
   AFIRMACION: [
     "asi es",
+    // Contestar la pregunta con su propio verbo: "recuerdo", "me acuerdo".
+    "me acuerdo",
+    "recuerdo",
     // Está acá y NO en FIN: como afirmación solo escucha unos segundos tras una
     // pregunta directa, mientras que en FIN estaría viva los quince minutos que
     // dura el bloque, donde un "listo, pásame el otro" daría trabajo por hecho.

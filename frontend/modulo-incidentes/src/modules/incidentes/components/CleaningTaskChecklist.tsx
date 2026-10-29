@@ -57,8 +57,8 @@ export const CleaningTaskChecklist = ({ activities }: CleaningTaskChecklistProps
    * habilitación de "Finalizar tarea" se actualizan solos: no hay un segundo
    * camino que mantener en sincronía.
    *
-   * Cuál se usa lo decide la respuesta del operario a "¿te acuerdas de los
-   * elementos?": si se las sabe marca el bloque entero, y si no, de a una.
+   * Cuál se usa lo decide la respuesta del operario a "¿recuerdas las
+   * tareas?": si se las sabe marca el bloque entero, y si no, de a una.
    */
   const completeSectionByVoice = useCallback(
     (section: ChecklistSection) => {
