@@ -4,6 +4,7 @@ import {
   formatMinutes,
   getChecklistTotalMinutes,
   parseCleaningChecklist,
+  splitPreparation,
 } from "@/modules/incidentes/utils/cleaningChecklistUtils";
 
 type Props = {
@@ -25,11 +26,13 @@ type Props = {
  *
  * Hasta ahora, tocar "Iniciar" en la tarjeta arrancaba la tarea, marcaba el cero
  * del tiempo y navegaba de un solo golpe: nunca había un momento para mirar a
- * qué se enfrentaba. Acá se muestra el tamaño del trabajo —bloques y minutos— y
- * el arranque queda en sus manos.
+ * qué se enfrentaba. Acá el arranque queda en sus manos.
  *
- * A propósito NO se despliegan las actividades de cada bloque: esto es un
- * vistazo previo, no el checklist. El detalle aparece al empezar a trabajar.
+ * Si la plantilla trae un bloque "Preparación", se listan sus tareas: son las de
+ * antes de entrar a la unidad (calendario, traslado, materiales, llaves), y por
+ * eso ya no están en el checklist de la tarea (`splitPreparation`). Se leen, no
+ * se marcan. Sin ese bloque se muestra el tamaño del trabajo —bloques y
+ * minutos—, sin desplegar actividades: el detalle aparece al empezar.
  */
 export const CleaningTaskPreStart = ({
   activities,
@@ -38,7 +41,11 @@ export const CleaningTaskPreStart = ({
   onStart,
   showVoiceNotice = false,
 }: Props) => {
-  const sections = useMemo(() => parseCleaningChecklist(activities), [activities]);
+  const { preparation, checklist: sections } = useMemo(
+    () => splitPreparation(parseCleaningChecklist(activities)),
+    [activities],
+  );
+  const preparationItems = preparation.flatMap((section) => section.items);
   const total = getChecklistTotalMinutes(sections);
   const couldNotRead = activities.length > 0 && sections.length === 0;
 
@@ -59,6 +66,28 @@ export const CleaningTaskPreStart = ({
           <p className="mt-2 text-sm text-slate-500">
             Esta tarea no tiene checklist asignado.
           </p>
+        ) : preparationItems.length > 0 ? (
+          <>
+            <p className="mt-1 text-sm text-slate-500">
+              {preparation[0].title} · {preparationItems.length}{" "}
+              {preparationItems.length === 1 ? "tarea" : "tareas"}
+            </p>
+
+            <ul className="mt-4 space-y-2 rounded-2xl bg-slate-50 px-4 py-3">
+              {preparationItems.map((item) => (
+                <li
+                  key={item.originalIndex}
+                  className="flex items-start gap-2 text-sm leading-6 text-slate-700"
+                >
+                  <span
+                    aria-hidden
+                    className="mt-2.5 h-1.5 w-1.5 shrink-0 rounded-full bg-slate-400"
+                  />
+                  <span>{item.text}</span>
+                </li>
+              ))}
+            </ul>
+          </>
         ) : (
           <>
             <p className="mt-1 text-sm text-slate-500">

@@ -8,6 +8,7 @@ import {
   getSectionIndices,
   isSectionComplete,
   parseCleaningChecklist,
+  splitPreparation,
   type ChecklistSection,
 } from "@/modules/incidentes/utils/cleaningChecklistUtils";
 
@@ -394,6 +395,68 @@ describe("parseCleaningChecklist — filas raras", () => {
       expect(parseCleaningChecklist(activities)).toEqual([]);
     },
   );
+});
+
+describe("splitPreparation", () => {
+  // Como abren las plantillas DEP, Estudio y Suite.
+  const plantilla = parseCleaningChecklist([
+    " Preparación ; Consultar el calendario diario.",
+    " Preparación ; Trasladarse al proyecto asignado.",
+    "Dormitorio; Separar la cama del espaldar.",
+    "Dormitorio; Tender la cama.",
+    "Baño; Limpiar el lavamanos.",
+  ]);
+
+  it("saca «Preparación» del checklist y la deja aparte, en orden", () => {
+    const { preparation, checklist } = splitPreparation(plantilla);
+
+    expect(preparation.map((section) => section.title)).toEqual(["Preparación"]);
+    expect(flatten(preparation).map((item) => item.text)).toEqual([
+      "Consultar el calendario diario.",
+      "Trasladarse al proyecto asignado.",
+    ]);
+    expect(checklist.map((section) => section.title)).toEqual([
+      "Dormitorio",
+      "Baño",
+    ]);
+  });
+
+  // El store siembra un check por actividad y exige todos para finalizar: un
+  // hueco en los índices dejaría la tarea sin poder cerrarse.
+  it("renumera el checklist desde 0, sin huecos", () => {
+    const { checklist } = splitPreparation(plantilla);
+
+    expect(flatten(checklist).map((item) => item.checkableIndex)).toEqual([0, 1, 2]);
+    expect(countChecklistActivities(checklist)).toBe(3);
+  });
+
+  it("reconoce el título sin tilde y en mayúsculas", () => {
+    const { preparation, checklist } = splitPreparation(
+      parseCleaningChecklist(["PREPARACION;Ponerse la mascarilla", "Baño;Barrer"]),
+    );
+
+    expect(flatten(preparation).map((item) => item.text)).toEqual([
+      "Ponerse la mascarilla",
+    ]);
+    expect(checklist).toHaveLength(1);
+  });
+
+  it("sin «Preparación» deja el checklist como estaba", () => {
+    const sections = parseCleaningChecklist(["Baño;Barrer", "Cocina;Lavar"]);
+    const { preparation, checklist } = splitPreparation(sections);
+
+    expect(preparation).toEqual([]);
+    expect(checklist).toBe(sections);
+  });
+
+  // Sin nada más que marcar, la tarea no se podría finalizar.
+  it("si «Preparación» es lo único, se queda en el checklist", () => {
+    const sections = parseCleaningChecklist(["Preparación;Trasladarse"]);
+    const { preparation, checklist } = splitPreparation(sections);
+
+    expect(preparation).toEqual([]);
+    expect(checklist).toBe(sections);
+  });
 });
 
 describe("checkableIndex", () => {

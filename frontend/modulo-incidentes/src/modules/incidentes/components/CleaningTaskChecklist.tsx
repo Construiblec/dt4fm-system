@@ -7,6 +7,7 @@ import {
   getSectionIndices,
   isSectionComplete,
   parseCleaningChecklist,
+  splitPreparation,
   type ChecklistActivity,
   type ChecklistSection,
 } from "@/modules/incidentes/utils/cleaningChecklistUtils";
@@ -46,7 +47,12 @@ export const CleaningTaskChecklist = ({ activities }: CleaningTaskChecklistProps
     (state) => state.progressResetByFormatChange,
   );
 
-  const sections = useMemo(() => parseCleaningChecklist(activities), [activities]);
+  // "Preparación" se lee antes de iniciar (`CleaningTaskPreStart`): ni se
+  // marca acá ni la dice el asistente de voz.
+  const sections = useMemo(
+    () => splitPreparation(parseCleaningChecklist(activities)).checklist,
+    [activities],
+  );
   const completedSections = countCompletedSections(sections, checklistProgress);
   const progressPercentage =
     sections.length > 0 ? Math.round((completedSections / sections.length) * 100) : 0;

@@ -21,6 +21,7 @@ import {
   countCompletedSections,
   getChecklistSignature,
   parseCleaningChecklist,
+  splitPreparation,
 } from "@/modules/incidentes/utils/cleaningChecklistUtils";
 
 const toActiveTask = (task: CleaningTaskExecutionDetail): ActiveCleaningTask => ({
@@ -71,8 +72,13 @@ export const useCleaningTaskExecution = (taskId: number) => {
 
   // Se parsea una sola vez por cambio de datos, no dos veces por render: lo
   // consumen tanto el efecto de inicialización como los contadores de abajo.
+  // Sin "Preparación", igual que `CleaningTaskChecklist`: si uno la contara y
+  // el otro no, quedarían checks sin forma de marcarse.
   const checklistSections = useMemo(
-    () => parseCleaningChecklist(detailQuery.data?.checklistDetail?.activities ?? []),
+    () =>
+      splitPreparation(
+        parseCleaningChecklist(detailQuery.data?.checklistDetail?.activities ?? []),
+      ).checklist,
     [detailQuery.data],
   );
   const checklistSignature = getChecklistSignature(checklistSections);

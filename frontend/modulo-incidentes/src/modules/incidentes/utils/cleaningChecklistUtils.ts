@@ -316,6 +316,55 @@ export const parseCleaningChecklist = (
   });
 };
 
+/** Título del bloque que se hace antes de entrar a la unidad (comparado con `normalize`). */
+const PREPARATION_TITLE = "preparacion";
+
+export type ChecklistParts = {
+  /** Los bloques "Preparación": se leen en la pantalla previa, no se marcan. */
+  preparation: ChecklistSection[];
+  /** Lo que se marca durante la tarea, con `checkableIndex` denso desde 0. */
+  checklist: ChecklistSection[];
+};
+
+/**
+ * Separa el bloque "Preparación" del checklist de la tarea.
+ *
+ * Son tareas de antes de entrar a la unidad (consultar el calendario,
+ * trasladarse, retirar materiales y llaves), así que se muestran en la pantalla
+ * previa (`CleaningTaskPreStart`) y no dentro de la tarea ni en el asistente de
+ * voz.
+ *
+ * El resto se renumera desde 0: el store siembra un check por actividad y
+ * `isChecklistComplete` exige todos, así que un hueco dejaría la tarea sin poder
+ * finalizarse. Por la misma razón, si "Preparación" es lo único que hay, se
+ * queda en el checklist.
+ */
+export const splitPreparation = (
+  sections: ChecklistSection[],
+): ChecklistParts => {
+  const isPreparation = (section: ChecklistSection) =>
+    section.title !== null && normalize(section.title) === PREPARATION_TITLE;
+
+  const preparation = sections.filter(isPreparation);
+  const rest = sections.filter((section) => !isPreparation(section));
+
+  if (preparation.length === 0 || rest.length === 0) {
+    return { preparation: [], checklist: sections };
+  }
+
+  let checkableIndex = 0;
+  return {
+    preparation,
+    checklist: rest.map((section) => ({
+      ...section,
+      items: section.items.map((item) => ({
+        ...item,
+        checkableIndex: checkableIndex++,
+      })),
+    })),
+  };
+};
+
 /** Cuántos checks tiene el checklist: uno por actividad, sin huecos. */
 export const countChecklistActivities = (
   sections: ChecklistSection[],
