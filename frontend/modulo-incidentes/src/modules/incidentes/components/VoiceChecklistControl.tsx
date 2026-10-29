@@ -36,7 +36,7 @@ const FAILURE_MESSAGES: Record<Exclude<VoiceFailure, "sin-soporte">, string> = {
   "microfono-no-disponible":
     "Asistente en pausa: el micrófono no está disponible. Puede que otra app lo esté usando. Puedes seguir marcando el checklist con el dedo.",
   "voz-bloqueada":
-    "Asistente en pausa: el teléfono no le dejó hablar. Toca «Intentar de nuevo» para activarlo.",
+    "Asistente en pausa: el teléfono no le dejó hablar. Toca la pantalla para activarlo.",
 };
 
 /**

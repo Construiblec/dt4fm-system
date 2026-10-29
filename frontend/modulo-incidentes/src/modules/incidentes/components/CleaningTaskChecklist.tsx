@@ -7,6 +7,7 @@ import {
   getSectionIndices,
   isSectionComplete,
   parseCleaningChecklist,
+  splitPreparation,
   type ChecklistActivity,
   type ChecklistSection,
 } from "@/modules/incidentes/utils/cleaningChecklistUtils";
@@ -46,7 +47,12 @@ export const CleaningTaskChecklist = ({ activities }: CleaningTaskChecklistProps
     (state) => state.progressResetByFormatChange,
   );
 
-  const sections = useMemo(() => parseCleaningChecklist(activities), [activities]);
+  // "Preparación" se lee antes de iniciar (`CleaningTaskPreStart`): ni se
+  // marca acá ni la dice el asistente de voz.
+  const sections = useMemo(
+    () => splitPreparation(parseCleaningChecklist(activities)).checklist,
+    [activities],
+  );
   const completedSections = countCompletedSections(sections, checklistProgress);
   const progressPercentage =
     sections.length > 0 ? Math.round((completedSections / sections.length) * 100) : 0;
@@ -85,9 +91,19 @@ export const CleaningTaskChecklist = ({ activities }: CleaningTaskChecklistProps
   // equivale a "hay que escuchar". Cubre los dos caminos de entrada: el que
   // viene de "Iniciar tarea" (con gesto del usuario, que es lo que el navegador
   // exige para el micrófono) y el de reanudar, donde se intenta igual y si el
-  // navegador lo bloquea queda el botón de encender.
+  // navegador no deja hablar, el primer toque en la pantalla lo enciende.
   const autoStartedRef = useRef(false);
   const { supported: voiceSupported, start: startVoice, complete: checklistComplete } = voice;
+
+  // Al desmontar se suelta la marca. En producción solo pasa al salir de la
+  // pantalla; en desarrollo, StrictMode monta, desmonta y vuelve a montar, y sin
+  // esto el desmontaje lo apagaba y el segundo montaje ya no lo encendía.
+  useEffect(
+    () => () => {
+      autoStartedRef.current = false;
+    },
+    [],
+  );
 
   useEffect(() => {
     if (autoStartedRef.current || !voiceSupported || sections.length === 0) return;
