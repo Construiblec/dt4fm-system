@@ -441,6 +441,24 @@ export const useVoiceChecklist = ({
   }, [stop, supported]);
 
   /**
+   * Tras una recarga —o cuando Android recarga la app al volver a ella— nadie
+   * tocó la página todavía, y Chrome no deja hablar: el arranque automático
+   * termina en `voz-bloqueada`. El primer toque en cualquier parte lo vuelve a
+   * encender, sin tener que buscar "Intentar de nuevo".
+   *
+   * Escucha `click` y no `pointerdown`: en un toque con el dedo, el navegador da
+   * el permiso recién al levantarlo. En captura, para encender antes de lo que
+   * haga el propio toque (marcar un bloque, por ejemplo).
+   */
+  useEffect(() => {
+    if (failure !== "voz-bloqueada") return;
+    const retry = () => start();
+    document.addEventListener("click", retry, { capture: true, once: true });
+    return () =>
+      document.removeEventListener("click", retry, { capture: true });
+  }, [failure, start]);
+
+  /**
    * El motor de la conversación. Reacciona a que cambie lo pendiente, sin
    * importar si cambió por voz o porque el operario marcó con el dedo.
    */

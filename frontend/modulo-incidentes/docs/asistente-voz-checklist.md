@@ -217,7 +217,7 @@ Además:
 - **La frase en curso queda referenciada** mientras suena: Chrome puede liberarla de memoria a media lectura y entonces nunca avisa que terminó.
 - **La voz se elige** entre las del dispositivo (`pickSpanishVoice`): de España si la hay, si no cualquier otra en español, y la instalada antes que la de red. Pedir `es-ES` sin elegir voz falla en silencio en motores que no la tienen, como el propio de algunos Samsung.
 - **El respaldo crece con la frase** (`speechFallbackMs`: 3 s + 90 ms por carácter) y, si al cumplirse la voz sigue sonando, se espera más, hasta el doble. Con un respaldo fijo de 10 s una actividad larga se daba por dicha a media lectura y el micrófono se abría con el teléfono hablando.
-- **Si el navegador no deja hablar** (`not-allowed`: Chrome no deja hablar a una página que nadie tocó todavía, como cuando se recarga sola al volver a la app), el asistente se pausa con `voz-bloqueada`. Un toque en "Intentar de nuevo" lo arregla.
+- **Si el navegador no deja hablar** (`not-allowed`: Chrome no deja hablar a una página que nadie tocó todavía, como cuando se recarga sola al volver a la app), el asistente se pausa con `voz-bloqueada`. El primer toque en cualquier parte de la pantalla lo vuelve a encender (escucha `click` en captura: con el dedo, el navegador da el permiso al levantarlo); "Intentar de nuevo" sigue ahí.
 
 ### Configuración del reconocedor
 
@@ -242,7 +242,8 @@ Algún pitido mientras espera en silencio es de Android y no se puede quitar des
 
 ### Ciclo de vida y limpieza
 
-- El asistente **arranca automáticamente** al montar `CleaningTaskChecklist` (que solo existe mientras la tarea está en ejecución). No hace falta que el operario lo encienda. **Si al montar ya está todo marcado, no arranca**: no queda nada que guiar.
+- El asistente **arranca automáticamente** al montar `CleaningTaskChecklist` (que solo existe mientras la tarea está en ejecución). No hace falta que el operario lo encienda. **Si al montar ya está todo marcado, no arranca**: no queda nada que guiar. La marca de "ya arrancó" se suelta al desmontar: en desarrollo, StrictMode monta, desmonta y vuelve a montar, y sin eso el asistente quedaba apagado en `npm run dev` (en producción no pasaba).
+- Al **recargar la página** con la tarea en curso (o cuando Android la recarga al volver a la app), nadie la tocó todavía y Chrome no deja hablar: el arranque automático queda en pausa con `voz-bloqueada` hasta el primer toque.
 - **Se apaga solo al completar el checklist**, por voz o con el dedo: dice "Acabaste todo. Si no tienes novedades, finaliza la tarea." y llama a `stop()` en lugar de volver a escuchar. Antes se quedaba escuchando (y pitando) hasta salir de la pantalla. El control muestra "Checklist completo" y oculta el botón de encender mientras siga todo marcado.
 - El pedido de permiso de micrófono lo dispara el propio navegador la primera vez que se llama a `recognition.start()` — no hay ningún diálogo propio de la app antes de eso.
 - `start()` llama a `unlockSpeechSynthesis()` (ver `speechUnlock.ts`): cuando viene del botón "Encender" o "Intentar de nuevo", corre dentro del toque, que es la única ocasión de destrabar la voz en iOS.

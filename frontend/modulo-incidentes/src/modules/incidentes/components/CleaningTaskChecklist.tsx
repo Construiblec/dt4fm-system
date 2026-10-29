@@ -91,9 +91,19 @@ export const CleaningTaskChecklist = ({ activities }: CleaningTaskChecklistProps
   // equivale a "hay que escuchar". Cubre los dos caminos de entrada: el que
   // viene de "Iniciar tarea" (con gesto del usuario, que es lo que el navegador
   // exige para el micrófono) y el de reanudar, donde se intenta igual y si el
-  // navegador lo bloquea queda el botón de encender.
+  // navegador no deja hablar, el primer toque en la pantalla lo enciende.
   const autoStartedRef = useRef(false);
   const { supported: voiceSupported, start: startVoice, complete: checklistComplete } = voice;
+
+  // Al desmontar se suelta la marca. En producción solo pasa al salir de la
+  // pantalla; en desarrollo, StrictMode monta, desmonta y vuelve a montar, y sin
+  // esto el desmontaje lo apagaba y el segundo montaje ya no lo encendía.
+  useEffect(
+    () => () => {
+      autoStartedRef.current = false;
+    },
+    [],
+  );
 
   useEffect(() => {
     if (autoStartedRef.current || !voiceSupported || sections.length === 0) return;
