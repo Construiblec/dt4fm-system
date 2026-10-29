@@ -715,6 +715,47 @@ describe('CleaningTasksController (e2e)', () => {
           employee: null,
         });
       });
+
+      // Cada recarga del tablero pedía a openMAINT una llamada por cada unidad
+      // distinta: ahora la unidad se lee una vez y se reutiliza.
+      it('lee cada unidad de openMAINT una sola vez entre recargas', async () => {
+        const card = {
+          ...cleaningTaskCard({ phase: PHASE_IDS.ASSIGNED }),
+          Unit: 987654,
+        };
+        mocks.cleaningTasksOpenmaint.getUnitById.mockResolvedValueOnce({
+          success: true,
+          data: {
+            _id: 987654,
+            Code: 'R315',
+            Description: 'Estudio 15',
+            Building: 3,
+            _Building_description: 'República',
+          },
+        });
+
+        for (let i = 0; i < 2; i += 1) {
+          asCoordinator();
+          mocks.cleaningTasksOpenmaint.getAllTasks.mockResolvedValueOnce({
+            data: [card],
+            meta: { total: 1 },
+          });
+
+          const res = await request(app.getHttpServer())
+            .get('/cleaning-tasks/all')
+            .set('x-session-token', token)
+            .expect(200);
+
+          expect(res.body.data[0].unit).toMatchObject({
+            id: 987654,
+            code: 'R315',
+            building: 'República',
+          });
+        }
+        expect(mocks.cleaningTasksOpenmaint.getUnitById).toHaveBeenCalledTimes(
+          1,
+        );
+      });
     });
 
     describe('PUT /cleaning-tasks/:id', () => {

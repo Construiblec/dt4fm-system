@@ -276,6 +276,24 @@ const MAX_TOTAL_EXECUTION_MINUTES = 1440 * 7;
 /** Ventana máxima consultable de checkouts, para acotar el costo hacia Hostaway. */
 const MAX_CHECKOUT_RANGE_DAYS = 92;
 
+/**
+ * Cuánto se reutilizan los datos de una unidad. Los listados piden una por cada
+ * unidad distinta —19 llamadas a openMAINT en staging, 0,3–0,7 s en cada
+ * recarga del tablero— y una unidad casi nunca cambia de código, nombre ni
+ * edificio.
+ */
+const UNIT_CACHE_MS = 10 * 60_000;
+
+/** Lo que los listados muestran de una unidad. */
+type UnitInfo = {
+  id: number;
+  code: string | null;
+  description: string | null;
+  name: string | null;
+  building: string | null;
+  buildingId: number | null;
+};
+
 /** Fecha de hoy en Guayaquil (YYYY-MM-DD). `toISOString` da el día en UTC, que desde las 19:00 ya es mañana. */
 const guayaquilToday = (): string =>
   new Date().toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' });
@@ -307,6 +325,11 @@ const isUnstartedTask = (task: {
 @Injectable()
 export class CleaningTasksService {
   private readonly logger = new Logger(CleaningTasksService.name);
+  /** Unidades ya leídas, por id (ver `UNIT_CACHE_MS`). */
+  private readonly unitCache = new Map<
+    number,
+    { value: UnitInfo; expiresAt: number }
+  >();
 
   constructor(
     private readonly hostawayService: HostawayService,
@@ -742,15 +765,22 @@ export class CleaningTasksService {
     };
   }
 
-  private async fetchUnitInfo(unitId: number, sessionToken: string) {
+  private async fetchUnitInfo(
+    unitId: number,
+    sessionToken: string,
+  ): Promise<UnitInfo | null> {
+    const cached = this.unitCache.get(unitId);
+    if (cached && cached.expiresAt > Date.now()) return cached.value;
+
     try {
       const response = await this.openmaintService.getUnitById(
         unitId,
         sessionToken,
       );
       const unit = response?.data;
+      // Una unidad que no llegó no se guarda: la próxima lectura lo reintenta.
       if (!unit) return null;
-      return {
+      const value: UnitInfo = {
         id: unit._id,
         code: unit.Code ?? null,
         description: unit.Description ?? null,
@@ -758,6 +788,11 @@ export class CleaningTasksService {
         building: unit._Building_description ?? null,
         buildingId: unit.Building ?? null,
       };
+      this.unitCache.set(unitId, {
+        value,
+        expiresAt: Date.now() + UNIT_CACHE_MS,
+      });
+      return value;
     } catch {
       return null;
     }
