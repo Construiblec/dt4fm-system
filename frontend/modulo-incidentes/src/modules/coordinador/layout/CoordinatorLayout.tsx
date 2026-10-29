@@ -11,6 +11,7 @@ import {
   Plus,
   RefreshCw,
   UserRound,
+  UsersRound,
   X,
 } from "lucide-react";
 import { useLogout } from "@/modules/auth/hooks/useLogout";
@@ -47,6 +48,12 @@ const NAV = [
     label: "Limpiezas",
     icon: CalendarDays,
     match: ["/coordinador/limpiezas", "/coordinador/agenda"],
+  },
+  {
+    to: "/coordinador/asignacion",
+    label: "Asignación",
+    icon: UsersRound,
+    match: ["/coordinador/asignacion"],
   },
   {
     to: "/coordinador/sincronizacion",
@@ -240,9 +247,12 @@ const FlashBar = () => {
   const clear = useCoordFlash((s) => s.clear);
   if (!flash) return null;
 
+  // Flota arriba al centro del área de contenido: no empuja la pantalla.
+  // Por encima del panel lateral (z-40) y de los modales (z-50).
   return (
-    <div className="mb-6">
+    <div className="pointer-events-none fixed inset-x-0 top-[4.5rem] z-[60] flex justify-center px-4 lg:left-64 lg:top-6">
       <InlineAlert
+        className="pointer-events-auto max-w-lg shadow-lg"
         tone={flash.tone}
         action={
           <button
@@ -264,6 +274,8 @@ const FlashBar = () => {
 export const CoordinatorLayout = () => {
   const [navOpen, setNavOpen] = useState(false);
   const { pathname } = useLocation();
+  // Misma regla con la que la barra lateral marca la sección activa
+  const fillsViewport = pathname.startsWith("/coordinador/asignacion");
   const clearFlash = useCoordFlash((s) => s.clear);
 
   // Un aviso sobrevive al cambio de sección ("Limpieza creada" se lee ya en la
@@ -315,7 +327,8 @@ export const CoordinatorLayout = () => {
       ) : null}
 
       <div className="lg:pl-64">
-        <header className="sticky top-0 z-20 border-b border-slate-200 bg-gray-100/90 backdrop-blur">
+        {/* Solo en móvil: en escritorio el menú y el título ya están en la barra lateral */}
+        <header className="sticky top-0 z-20 border-b border-slate-200 bg-gray-100/90 backdrop-blur lg:hidden">
           <div className="mx-auto flex h-14 max-w-[1440px] items-center gap-3 px-4 sm:px-6 lg:px-8">
             <button
               type="button"
@@ -337,14 +350,19 @@ export const CoordinatorLayout = () => {
         <main
           id="contenido"
           tabIndex={-1}
-          className="mx-auto w-full max-w-[1440px] px-4 pb-24 pt-6 outline-none sm:px-6 lg:px-8"
+          className={cx(
+            "mx-auto w-full max-w-[1440px] px-4 pb-24 pt-6 outline-none sm:px-6 lg:px-8",
+            // El tablero de asignación ocupa la ventana en escritorio: cada
+            // columna desplaza su lista en vez de desplazarse la página entera.
+            fillsViewport && "lg:flex lg:h-screen lg:flex-col lg:pb-6",
+          )}
         >
-          <FlashBar />
           {/* La clave fuerza un montaje limpio al cambiar de sección. */}
           <Outlet key={pathname} />
         </main>
       </div>
 
+      <FlashBar />
       <TaskPanel />
       <FloatingReportButton corner />
     </div>

@@ -280,35 +280,51 @@ export const suspendPreventiveMaintenance = async (
 };
 
 /**
- * Aperturas en curso. Abrir avanza el flujo en OpenMAINT, que bloquea el
+ * Aperturas e inicios en curso. Los dos escriben en OpenMAINT, que bloquea el
  * proceso: dos peticiones a la vez compiten por ese bloqueo y una falla, así
- * que la segunda se engancha a la primera. Ocurre con `StrictMode` y con un
- * doble toque.
+ * que la segunda se engancha a la primera. Ocurre con `StrictMode` al abrir y
+ * con un doble toque al iniciar.
  */
-const startRequests = new Map<string, Promise<PreventiveMaintenanceDetail>>();
+const detailRequests = new Map<string, Promise<PreventiveMaintenanceDetail>>();
 
-/**
- * Abre el mantenimiento: si estaba en Asignación pasa a Ejecución también en
- * OpenMAINT. Es idempotente, así que sirve como carga del detalle.
- */
-export const startPreventiveMaintenance = (
+const postDetailOnce = (
   id: string,
+  action: "open" | "start",
 ): Promise<PreventiveMaintenanceDetail> => {
-  const inFlight = startRequests.get(id);
+  const key = `${action}:${id}`;
+  const inFlight = detailRequests.get(key);
 
   if (inFlight) {
     return inFlight;
   }
 
   const request = preventiveMaintenanceApi
-    .post<DetailResponse>(`/preventive-maintenance/${id}/start`, null, {
+    .post<DetailResponse>(`/preventive-maintenance/${id}/${action}`, null, {
       headers: getAuthHeaders(),
     })
     .then(({ data }) => data.data)
     .catch(handleUnauthorized)
-    .finally(() => startRequests.delete(id));
+    .finally(() => detailRequests.delete(key));
 
-  startRequests.set(id, request);
+  detailRequests.set(key, request);
 
   return request;
 };
+
+/**
+ * Carga el detalle sin iniciarlo: uno en Asignación sigue ahí hasta que el
+ * técnico pulse «Iniciar mantenimiento». Al volver de una suspensión devuelve
+ * a pendientes las actividades que quedaron como N.D.
+ */
+export const openPreventiveMaintenance = (
+  id: string,
+): Promise<PreventiveMaintenanceDetail> => postDetailOnce(id, "open");
+
+/**
+ * Inicia el mantenimiento: si estaba en Asignación pasa a Ejecución también en
+ * OpenMAINT y queda registrada la hora real de inicio. Devuelve el detalle ya
+ * actualizado.
+ */
+export const startPreventiveMaintenance = (
+  id: string,
+): Promise<PreventiveMaintenanceDetail> => postDetailOnce(id, "start");

@@ -31,6 +31,7 @@ describe('classifyTriggerError', () => {
     [401, 'unauthorized'],
     [403, 'unauthorized'],
     [404, 'not_found'],
+    [409, 'operation_busy'],
     [500, 'device_ambiguous'],
     [502, 'gateway_rejected'],
     [503, 'operations_disabled'],
@@ -77,6 +78,9 @@ describe('classifyTriggerError', () => {
       outcome: 'uncertain',
     });
     expect(classifyTriggerError(conRespuesta(429))).toEqual({
+      outcome: 'uncertain',
+    });
+    expect(classifyTriggerError(conRespuesta(409))).toEqual({
       outcome: 'uncertain',
     });
   });

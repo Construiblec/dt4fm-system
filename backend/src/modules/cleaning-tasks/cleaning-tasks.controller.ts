@@ -135,6 +135,7 @@ export class CleaningTasksController {
       sessionToken,
       query.limit,
       query.offset,
+      query.sort,
     );
   }
 

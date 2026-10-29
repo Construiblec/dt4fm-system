@@ -1,6 +1,6 @@
 import { ClipboardList } from "lucide-react";
 import { useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import { AppLayout } from "@/app/layout/AppLayout";
 import { FloatingReportButton } from "@/modules/incidentes/components/FloatingReportButton";
 import { ListStateMessage } from "@/modules/incidentes/components/ListStateMessage";
@@ -17,7 +17,6 @@ import { MaintenanceCard } from "@/shared/components/MaintenanceCard";
 import { Pagination } from "@/shared/components/Pagination";
 
 export const MaintenanceSupervisorDashboardPage = () => {
-  const navigate = useNavigate();
   // El deep link de una notificación preselecciona el tipo: ?kind=preventive
   const [searchParams] = useSearchParams();
   const [kind, setKind] = useState<MaintenanceKind>(() =>
@@ -145,12 +144,8 @@ export const MaintenanceSupervisorDashboardPage = () => {
                       ) : (
                         <MaintenanceCard
                           maintenance={toCardData(maintenance)}
-                          showAssignee
-                          onOpen={() =>
-                            navigate(
-                              `/supervisor-mantenimiento/${maintenance.kind}/${maintenance.id}`,
-                            )
-                          }
+                          perspective="supervisor"
+                          to={`/supervisor-mantenimiento/${maintenance.kind}/${maintenance.id}`}
                         />
                       )}
                     </li>

@@ -121,10 +121,10 @@ otra vez sobre una barrera que pudo haberse movido.
    ve el incidente y elige la fase a mano. Nunca se deduce la fase de un `ambiguous`. Queda
    pendiente [quién la libera para los huéspedes](#pendiente-de-acordar).
 
-6. **El Supervisor CAV solo opera barreras vehiculares.** El panel deja de ofrecer apertura
-   remota de puertas peatonales: la API central las rechaza con `400 device_not_compatible` y el
-   gateway solo admite la barrera vehicular de cada edificio. Si hace falta, es un desarrollo
-   nuevo de IoT, no una opción de configuración.
+6. ~~**El Supervisor CAV solo opera barreras vehiculares.**~~ **Sustituida el 26-10-2026:** IoT
+   habilitó `trigger` sobre el terminal peatonal y el Supervisor CAV vuelve a abrir puertas
+   peatonales («Abrir», sin fase). El huésped sigue solo con la vehicular. Ver
+   [D-18](decisiones-arquitectura-y-seguridad.md#d-18--apertura-remota-de-un-toque).
 
 7. **`actor` se queda en el backend.** Ya no viaja, así que la consola local del gateway no sabrá
    quién pulsó. `remote_open_request` es el único registro de quién fue.
@@ -181,7 +181,7 @@ backend sigue contra el mock.
 - [ ] Enfriamiento de 10 s por barrera, contado en la base, para cualquier pulso
 - [ ] `ambiguous` deja la barrera en `uncertain`, sin segundo pulso automático
 - [ ] Sin tiempos medidos, el edificio no muestra el botón
-- [ ] El panel del Supervisor no ofrece apertura remota de puertas peatonales
+- [x] ~~El panel del Supervisor no ofrece apertura remota de puertas peatonales~~ (sustituida, ver regla 6)
 - [ ] El mock implementa `trigger` y responde `404` a `open` y `close`
 - [ ] Ningún texto del portal ni del panel dice que la barrera se abrió o se cerró
 - [ ] **En sitio, con IoT**, en Inglaterra: se mide cuánto tarda la barrera en bajar sola, se

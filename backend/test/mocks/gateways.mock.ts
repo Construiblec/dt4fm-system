@@ -1,3 +1,5 @@
+import { BadRequestException } from '@nestjs/common';
+
 /**
  * Mocks de los gateways HTTP propios de cada módulo (todos hablan con
  * openMAINT directo vía OpenmaintClient, o con un tercero — Contifico,
@@ -315,3 +317,43 @@ export const createGuestLinkChannelMock = () => ({
 export type GuestLinkChannelMock = ReturnType<
   typeof createGuestLinkChannelMock
 >;
+
+// ─── MaintCategoryCatalogService ──────────────────────────────────────────────
+// Catálogo fijo: Mantenimiento (Agua caliente, Otro) y Limpieza (Manchas).
+
+export const MAINT_CATEGORIES = [
+  {
+    id: 2,
+    code: 'LIM',
+    name: 'Limpieza',
+    subcategories: [{ id: 21, name: 'Manchas', isOther: false }],
+  },
+  {
+    id: 1,
+    code: 'MNT',
+    name: 'Mantenimiento',
+    subcategories: [
+      { id: 11, name: 'Sistema de agua caliente', isOther: false },
+      { id: 19, name: 'Otro', isOther: true },
+    ],
+  },
+];
+
+export const createMaintCategoryCatalogMock = () => ({
+  list: jest.fn().mockResolvedValue(MAINT_CATEGORIES),
+  resolve: jest.fn((categoryId: number, subcategoryId: number) => {
+    const category = MAINT_CATEGORIES.find((c) => c.id === categoryId);
+    const subcategory = category?.subcategories.find(
+      (s) => s.id === subcategoryId,
+    );
+    if (!category || !subcategory) {
+      // Mismo error que el servicio real.
+      return Promise.reject(
+        new BadRequestException(
+          'La subcategoría no pertenece a la categoría elegida',
+        ),
+      );
+    }
+    return Promise.resolve({ category, subcategory });
+  }),
+});

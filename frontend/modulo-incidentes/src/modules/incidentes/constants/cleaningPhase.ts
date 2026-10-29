@@ -1,5 +1,6 @@
 import {
   badgeClass,
+  barClass,
   borderClass,
   pillClass,
   type StatusLevel,
@@ -53,6 +54,28 @@ export const getCleaningPhasePill = (phase: string | null | undefined) =>
 
 export const getCleaningPhaseBorder = (phase: string | null | undefined) =>
   borderClass(getCleaningPhaseLevel(phase));
+
+export const getCleaningPhaseBar = (phase: string | null | undefined) =>
+  barClass(getCleaningPhaseLevel(phase));
+
+/** Por qué el operario no puede abrir la tarea, o `null` si sí puede. */
+export const getCleaningBlockedReason = (
+  phase: string | null | undefined,
+): string | null => {
+  switch (phase) {
+    case "Assigned":
+    case "InExecution":
+      return null;
+    case "Completed":
+      return "Pendiente de revisión";
+    case "Reviewed":
+      return "Tarea revisada";
+    case "Cancelled":
+      return "Tarea cancelada";
+    default:
+      return "No disponible";
+  }
+};
 
 /**
  * Etiqueta en castellano. Antes el operario veía la fase en inglés crudo

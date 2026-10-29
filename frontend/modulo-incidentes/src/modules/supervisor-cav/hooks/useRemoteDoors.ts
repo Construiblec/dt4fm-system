@@ -22,7 +22,10 @@ export type PendingCommand = {
   action: DoorAction | "resolve";
 };
 
-const ERROR_FALLBACK = "No se pudo enviar la orden a la barrera";
+const ERROR_FALLBACK = "No se pudo enviar la orden";
+
+const later = (a: string | undefined, b: string) =>
+  a && new Date(a).getTime() > new Date(b).getTime() ? a : b;
 
 export const useRemoteDoors = () => {
   const [overview, setOverview] = useState<DoorsOverview | null>(null);
@@ -50,9 +53,11 @@ export const useRemoteDoors = () => {
     void load();
   }, [load]);
 
+  /** `lockMs`: bloqueo del botón contado desde el clic, pase lo que pase (peatonal). */
   const command = useCallback(
-    async (deviceId: string, action: DoorAction) => {
+    async (deviceId: string, action: DoorAction, lockMs = 0) => {
       const key = `${deviceId}:${action}`;
+      const lockUntil = new Date(Date.now() + lockMs).toISOString();
       const requestId = (requestIds.current[key] ??= crypto.randomUUID());
 
       setPending({ deviceId, action });
@@ -101,6 +106,12 @@ export const useRemoteDoors = () => {
           },
         }));
       } finally {
+        if (lockMs > 0) {
+          setCooldowns((prev) => ({
+            ...prev,
+            [deviceId]: later(prev[deviceId], lockUntil),
+          }));
+        }
         setPending(null);
       }
     },

@@ -31,53 +31,24 @@ import {
 } from "@/shared/auth/session";
 import { ArrowLeft } from "lucide-react";
 import { rememberReturnTo } from "@/shared/auth/returnTo";
+import { PRIORITY_IDS, type PriorityCode } from "@/shared/constants/priority";
+import { PrioritySelector } from "@/shared/components/PrioritySelector";
+import { CategoryPicker } from "@/shared/components/CategoryPicker";
 import {
-  PRIORITY_ADJECTIVES,
-  PRIORITY_IDS,
-  type PriorityCode,
-} from "@/shared/constants/priority";
-import { PriorityHint } from "@/shared/components/PriorityGuide";
+  getCategories,
+  type MaintCategory,
+} from "@/shared/services/categoriesService";
+import { correctiveTitle } from "@/shared/utils/categoryLabel";
 import { useInvalidateReportedIncidents } from "@/modules/incidentes/hooks/useReportedIncidents";
 
-/** IDs del lookup `COMMON - Priority`; en cuadrícula 2×2, de menos a más urgente. */
-const priorities = [
-  {
-    code: "Low" as PriorityCode,
-    id: PRIORITY_IDS.Low,
-    label: PRIORITY_ADJECTIVES.Low,
-    baseClassName:
-      "border-emerald-200 bg-emerald-50 text-emerald-700 hover:border-emerald-300",
-    activeClassName: "border-emerald-500 bg-emerald-500 text-white",
-  },
-  {
-    code: "Medium" as PriorityCode,
-    id: PRIORITY_IDS.Medium,
-    label: PRIORITY_ADJECTIVES.Medium,
-    baseClassName:
-      "border-amber-200 bg-amber-50 text-amber-700 hover:border-amber-300",
-    activeClassName: "border-amber-500 bg-amber-500 text-white",
-  },
-  {
-    code: "High" as PriorityCode,
-    id: PRIORITY_IDS.High,
-    label: PRIORITY_ADJECTIVES.High,
-    baseClassName:
-      "border-orange-200 bg-orange-50 text-orange-700 hover:border-orange-300",
-    activeClassName: "border-orange-500 bg-orange-500 text-white",
-  },
-  {
-    code: "Critical" as PriorityCode,
-    id: PRIORITY_IDS.Critical,
-    label: PRIORITY_ADJECTIVES.Critical,
-    baseClassName: "border-red-200 bg-red-50 text-red-700 hover:border-red-300",
-    activeClassName: "border-red-500 bg-red-500 text-white",
-  },
-] as const;
-
 type FormValues = {
-  /** Breve descripción: es el título de la tarjeta */
-  title: string;
   building: string;
+  /** "" | String(categoría.id) */
+  categoryId: string;
+  /** "" | String(subcategoría.id) */
+  subcategoryId: string;
+  /** Con la subcategoría «Otro»: es el título de la tarjeta */
+  subcategoryOther: string;
   /** "" | String(floor.id) */
   floorId: string;
   /** "" | "Unit:123" | "CommonArea:123" | OTHER_AREA_VALUE */
@@ -111,9 +82,10 @@ export const ReportIncidentPage = () => {
   );
   const [error, setError] = useState<string | null>(null);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
-  const [selectedPriority, setSelectedPriority] = useState<
-    (typeof priorities)[number]
-  >(priorities[1]);
+  // Opcional: si no se elige, la fija el supervisor al asignar.
+  const [priority, setPriority] = useState<PriorityCode | null>(null);
+  const [categories, setCategories] = useState<MaintCategory[]>([]);
+  const [categoriesError, setCategoriesError] = useState(false);
   const [images, setImages] = useState<File[]>([]);
   const [locations, setLocations] = useState<BuildingLocations | null>(null);
   const [locationsLoading, setLocationsLoading] = useState(false);
@@ -129,8 +101,10 @@ export const ReportIncidentPage = () => {
     formState: { errors },
   } = useForm<FormValues>({
     defaultValues: {
-      title: "",
       building: "",
+      categoryId: "",
+      subcategoryId: "",
+      subcategoryOther: "",
       floorId: "",
       areaId: "",
       areaOther: "",
@@ -142,6 +116,31 @@ export const ReportIncidentPage = () => {
   const buildingId = watch("building");
   const floorId = watch("floorId");
   const areaId = watch("areaId");
+  const categoryId = watch("categoryId");
+  const subcategoryId = watch("subcategoryId");
+
+  const selectedCategory = useMemo(
+    () => categories.find((item) => String(item.id) === categoryId) ?? null,
+    [categories, categoryId],
+  );
+
+  const selectedSubcategory = useMemo(
+    () =>
+      selectedCategory?.subcategories.find(
+        (item) => String(item.id) === subcategoryId,
+      ) ?? null,
+    [selectedCategory, subcategoryId],
+  );
+
+  const subcategoryOptions = useMemo<SearchableSelectOption[]>(
+    () =>
+      (selectedCategory?.subcategories ?? []).map((item) => ({
+        value: String(item.id),
+        label: item.name,
+        hint: item.isOther ? "Escribirás qué tipo de novedad es" : undefined,
+      })),
+    [selectedCategory],
+  );
 
   const imagePreviews = useMemo(
     () =>
@@ -189,6 +188,14 @@ export const ReportIncidentPage = () => {
     };
 
     void loadBuildings();
+
+    getCategories()
+      .then((data) => {
+        if (isMounted) setCategories(data);
+      })
+      .catch(() => {
+        if (isMounted) setCategoriesError(true);
+      });
 
     return () => {
       isMounted = false;
@@ -472,11 +479,16 @@ export const ReportIncidentPage = () => {
 
       const response = await createIncident({
         buildingId: values.building,
-        shortDescription: values.title.trim(),
+        categoryId: Number(values.categoryId),
+        subcategoryId: Number(values.subcategoryId),
+        shortDescription: correctiveTitle(
+          selectedSubcategory,
+          values.subcategoryOther,
+        ),
         floorId,
         unitId,
         commonAreaId,
-        priority: Number(selectedPriority.id),
+        priority: priority ? PRIORITY_IDS[priority] : undefined,
         notes,
         images,
       });
@@ -557,42 +569,6 @@ export const ReportIncidentPage = () => {
           }}
           className="space-y-5 px-4 py-5"
         >
-          <section className="space-y-2">
-            <label
-              htmlFor="title"
-              className="text-sm font-semibold text-slate-700"
-            >
-              Breve descripción
-            </label>
-            <input
-              id="title"
-              type="text"
-              maxLength={MAX_TITLE_LENGTH}
-              placeholder="Ej. Fuga de agua bajo el lavamanos"
-              autoComplete="off"
-              aria-invalid={Boolean(errors.title) || undefined}
-              aria-describedby={`title-hint${errors.title ? " title-error" : ""}`}
-              className={FIELD_CLASSES}
-              {...register("title", {
-                validate: (value) =>
-                  value.trim().length > 0 || "Escriba una breve descripción.",
-              })}
-            />
-            <p id="title-hint" className="text-xs text-slate-500">
-              Es el título que verá el equipo de mantenimiento (máx.{" "}
-              {MAX_TITLE_LENGTH} caracteres).
-            </p>
-            {errors.title ? (
-              <p
-                id="title-error"
-                role="alert"
-                className="text-xs font-medium text-red-600"
-              >
-                {errors.title.message}
-              </p>
-            ) : null}
-          </section>
-
           <section className="space-y-2">
             <label
               htmlFor="building"
@@ -776,36 +752,146 @@ export const ReportIncidentPage = () => {
             </>
           )}
 
-          <section className="space-y-3">
+          <section className="space-y-2">
             <p
-              id="priority-label"
+              id="category-label"
               className="text-sm font-semibold text-slate-700"
             >
-              Nivel de prioridad
+              Categoría{" "}
+              <span className="text-red-500" aria-hidden="true">
+                *
+              </span>
             </p>
-            <div
-              role="group"
-              aria-labelledby="priority-label"
-              className="grid grid-cols-2 gap-2"
-            >
-              {priorities.map((priority) => {
-                const isActive = selectedPriority.id === priority.id;
-
-                return (
-                  <button
-                    key={priority.id}
-                    type="button"
-                    aria-pressed={isActive}
-                    onClick={() => setSelectedPriority(priority)}
-                    className={`rounded-2xl border px-3 py-3 text-sm font-semibold transition ${isActive ? priority.activeClassName : priority.baseClassName}`}
-                  >
-                    {priority.label}
-                  </button>
-                );
-              })}
-            </div>
-            <PriorityHint value={selectedPriority.code} variant="report" />
+            <Controller
+              control={control}
+              name="categoryId"
+              rules={{ required: "Elija la categoría." }}
+              render={({ field, fieldState }) => (
+                <CategoryPicker
+                  categories={categories}
+                  value={field.value ? Number(field.value) : null}
+                  onChange={(id) => {
+                    if (String(id) === field.value) return;
+                    field.onChange(String(id));
+                    // Las subcategorías dependen de la categoría.
+                    setValue("subcategoryId", "");
+                    setValue("subcategoryOther", "");
+                  }}
+                  invalid={Boolean(fieldState.error)}
+                  labelledBy="category-label"
+                  describedBy={
+                    fieldState.error ? "categoryId-error" : undefined
+                  }
+                />
+              )}
+            />
+            {categoriesError ? (
+              <p role="alert" className="text-xs font-medium text-red-500">
+                No se pudieron cargar las categorías. Vuelva a intentarlo más
+                tarde.
+              </p>
+            ) : null}
+            {errors.categoryId ? (
+              <p
+                id="categoryId-error"
+                role="alert"
+                className="text-xs font-medium text-red-500"
+              >
+                {errors.categoryId.message}
+              </p>
+            ) : null}
           </section>
+
+          <section className="space-y-2">
+            <label
+              htmlFor="subcategoryId"
+              className="text-sm font-semibold text-slate-700"
+            >
+              Subcategoría{" "}
+              <span className="text-red-500" aria-hidden="true">
+                *
+              </span>
+            </label>
+            <Controller
+              control={control}
+              name="subcategoryId"
+              rules={{ required: "Elija la subcategoría." }}
+              render={({ field, fieldState }) => (
+                <SearchableSelect
+                  id="subcategoryId"
+                  value={field.value}
+                  onChange={field.onChange}
+                  onBlur={field.onBlur}
+                  options={subcategoryOptions}
+                  disabled={!selectedCategory}
+                  required
+                  invalid={Boolean(fieldState.error)}
+                  describedById={
+                    fieldState.error ? "subcategoryId-error" : undefined
+                  }
+                  placeholder={
+                    selectedCategory
+                      ? "Seleccionar subcategoría"
+                      : "Primero elige la categoría"
+                  }
+                  searchPlaceholder="Buscar subcategoría..."
+                  emptyMessage="Sin subcategorías"
+                />
+              )}
+            />
+            {errors.subcategoryId ? (
+              <p
+                id="subcategoryId-error"
+                role="alert"
+                className="text-xs font-medium text-red-500"
+              >
+                {errors.subcategoryId.message}
+              </p>
+            ) : null}
+          </section>
+
+          {selectedSubcategory?.isOther ? (
+            <section className="space-y-2">
+              <label
+                htmlFor="subcategoryOther"
+                className="text-sm font-semibold text-slate-700"
+              >
+                ¿Qué tipo de novedad es?{" "}
+                <span className="text-red-500" aria-hidden="true">
+                  *
+                </span>
+              </label>
+              <input
+                id="subcategoryOther"
+                type="text"
+                maxLength={MAX_TITLE_LENGTH}
+                placeholder="Ej. Puerta del clóset descuadrada"
+                autoComplete="off"
+                aria-invalid={Boolean(errors.subcategoryOther) || undefined}
+                aria-describedby={`subcategoryOther-hint${errors.subcategoryOther ? " subcategoryOther-error" : ""}`}
+                className={FIELD_CLASSES}
+                {...register("subcategoryOther", {
+                  validate: (value) =>
+                    !selectedSubcategory?.isOther ||
+                    value.trim().length > 0 ||
+                    "Escriba qué tipo de novedad es.",
+                })}
+              />
+              <p id="subcategoryOther-hint" className="text-xs text-slate-500">
+                Escríbelo en pocas palabras; será el título del reporte (máx.{" "}
+                {MAX_TITLE_LENGTH} caracteres).
+              </p>
+              {errors.subcategoryOther ? (
+                <p
+                  id="subcategoryOther-error"
+                  role="alert"
+                  className="text-xs font-medium text-red-500"
+                >
+                  {errors.subcategoryOther.message}
+                </p>
+              ) : null}
+            </section>
+          ) : null}
 
           <section className="space-y-2">
             <label
@@ -822,6 +908,14 @@ export const ReportIncidentPage = () => {
               {...register("description")}
             />
           </section>
+
+          <PrioritySelector
+            value={priority}
+            onChange={setPriority}
+            label="Nivel de prioridad"
+            note={null}
+            legendClassName="text-sm font-semibold text-slate-700"
+          />
 
           <section className="space-y-3">
             <div className="flex items-center justify-between">

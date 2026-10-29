@@ -51,7 +51,7 @@ export const getCorrectiveNotice = (
         tone: "amber",
         title: "Falta asignar este correctivo",
         message:
-          "Define la prioridad, la fecha de inicio y el responsable para que el trabajo pueda empezar.",
+          "Revisa la categoría y define la prioridad, la fecha de inicio y el responsable para que el trabajo pueda empezar.",
       };
     case "Assigned":
       return {

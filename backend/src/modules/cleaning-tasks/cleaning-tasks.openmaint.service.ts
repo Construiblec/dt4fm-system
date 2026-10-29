@@ -85,6 +85,11 @@ type CleaningActivityCard = {
  */
 const ACTIVITY_BASIC_ATTRS = 'Id,Code,Description,NombrePlantilla,Detalle';
 
+/** Orden «recién creadas primero» (`_id` descendente) para los listados de limpiezas. */
+const NEWEST_FIRST = `&sort=${encodeURIComponent(
+  JSON.stringify([{ property: '_id', direction: 'DESC' }]),
+)}`;
+
 type BasicActivityRow = Omit<CleaningActivityCard, '_id'> & {
   _id?: number;
   Id?: number;
@@ -268,6 +273,8 @@ export class CleaningTasksOpenmaintService {
     _sessionToken: string,
     limit: number,
     offset: number,
+    /** 'newest': las recién creadas primero, para que el límite no deje fuera las de hoy. */
+    sort?: 'newest',
   ): Promise<OpenmaintCardsResponse> {
     const filter = {
       attribute: {
@@ -281,7 +288,7 @@ export class CleaningTasksOpenmaintService {
 
     const path = `/classes/CleaningTask/cards?filter=${encodeURIComponent(
       JSON.stringify(filter),
-    )}&limit=${limit}&start=${offset}`;
+    )}&limit=${limit}&start=${offset}${sort === 'newest' ? NEWEST_FIRST : ''}`;
 
     return this.executeWithRetry(async (sessionId) => {
       return (await this.client.get(path, sessionId)) as OpenmaintCardsResponse;
@@ -623,10 +630,7 @@ export class CleaningTasksOpenmaintService {
         )}`;
       }
 
-      const sortParam =
-        sort === 'newest'
-          ? `&sort=${encodeURIComponent(JSON.stringify([{ property: '_id', direction: 'DESC' }]))}`
-          : '';
+      const sortParam = sort === 'newest' ? NEWEST_FIRST : '';
       const path = `/classes/CleaningTask/cards?limit=${limit}&start=${offset}${sortParam}${filterParam}`;
       return (await this.client.get(path, sessionId)) as OpenmaintCardsResponse;
     }, 'getAllTasks').catch((error) => {
@@ -670,12 +674,28 @@ export class CleaningTasksOpenmaintService {
   /**
    * Empleados internos: los únicos que pueden ser `Employee` de una limpieza
    * (la referencia apunta a `InternalEmployee`). Los proveedores quedan fuera
-   * por construcción. Sesión interna: es dato de referencia.
+   * por construcción. Con `teamId`, solo los de ese equipo. Sesión interna: es
+   * dato de referencia.
    */
-  async listInternalEmployees(): Promise<{ data: EmployeeCard[] }> {
+  async listInternalEmployees(
+    teamId?: number,
+  ): Promise<{ data: EmployeeCard[] }> {
     return this.executeWithRetry(async (sessionId) => {
+      const filter = teamId
+        ? `&filter=${encodeURIComponent(
+            JSON.stringify({
+              attribute: {
+                simple: {
+                  attribute: 'Team',
+                  operator: 'equal',
+                  value: [String(teamId)],
+                },
+              },
+            }),
+          )}`
+        : '';
       return (await this.client.get(
-        '/classes/InternalEmployee/cards?limit=500',
+        `/classes/InternalEmployee/cards?limit=500${filter}`,
         sessionId,
       )) as { data: EmployeeCard[] };
     }, 'listInternalEmployees').catch((error) => {

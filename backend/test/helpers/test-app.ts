@@ -22,6 +22,7 @@ import { PasswordRecoveryOpenmaintService } from '../../src/modules/password-rec
 import { PaymentsOpenmaintRepository } from '../../src/modules/payments/payments-openmaint.repository';
 import { AccessIotGateway } from '../../src/modules/access-control/access-iot.gateway';
 import { UnitResolverService } from '../../src/integrations/openmaint/unit-resolver.service';
+import { MaintCategoryCatalogService } from '../../src/integrations/openmaint/maint-category-catalog.service';
 import { GUEST_LINK_CHANNEL } from '../../src/modules/guest-link/delivery/guest-link-channel.interface';
 
 import { MailerService } from '../../src/modules/notifications/mail/mailer.service';
@@ -49,6 +50,7 @@ import {
   createAccessIotGatewayMock,
   createUnitResolverServiceMock,
   createGuestLinkChannelMock,
+  createMaintCategoryCatalogMock,
 } from '../mocks/gateways.mock';
 import {
   createMailerServiceMock,
@@ -105,6 +107,7 @@ export interface TestAppMocks {
   accessIot: ReturnType<typeof createAccessIotGatewayMock>;
   unitResolver: ReturnType<typeof createUnitResolverServiceMock>;
   guestLinkChannel: ReturnType<typeof createGuestLinkChannelMock>;
+  maintCategories: ReturnType<typeof createMaintCategoryCatalogMock>;
 }
 
 export const createFreshMocks = (): TestAppMocks => ({
@@ -129,6 +132,7 @@ export const createFreshMocks = (): TestAppMocks => ({
   accessIot: createAccessIotGatewayMock(),
   unitResolver: createUnitResolverServiceMock(),
   guestLinkChannel: createGuestLinkChannelMock(),
+  maintCategories: createMaintCategoryCatalogMock(),
 });
 
 export interface CreateTestAppOptions {
@@ -192,7 +196,9 @@ export async function createTestApp(
     .overrideProvider(UnitResolverService)
     .useValue(mocks.unitResolver)
     .overrideProvider(GUEST_LINK_CHANNEL)
-    .useValue(mocks.guestLinkChannel);
+    .useValue(mocks.guestLinkChannel)
+    .overrideProvider(MaintCategoryCatalogService)
+    .useValue(mocks.maintCategories);
 
   if (!options.realNotificationsService) {
     builder

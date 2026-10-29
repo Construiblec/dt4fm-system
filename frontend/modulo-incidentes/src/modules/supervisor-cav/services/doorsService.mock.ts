@@ -10,6 +10,15 @@ import type {
 const CLOSE_WINDOW_MS = 40_000;
 const AUTO_CLOSE_MS = 90_000;
 const COOLDOWN_MS = 10_000;
+const PEDESTRIAN_COOLDOWN_MS = 5_000;
+
+/** `PRA-PEATONAL-1` rota resultados para ver los tres avisos de la peatonal. */
+const PRA_PEDESTRIAN_CYCLE: { outcome: DoorCommandOutcome; errorCode?: string }[] = [
+  { outcome: "triggered" },
+  { outcome: "failed", errorCode: "operation_busy" },
+  { outcome: "uncertain" },
+];
+let praPedestrianTurn = 0;
 
 const door = (
   deviceId: string,
@@ -20,7 +29,7 @@ const door = (
   kind: scope === "vehicular" ? "barrier" : "terminal",
   scope,
   online,
-  remoteControl: scope === "vehicular",
+  remoteControl: true,
   phase: scope === "vehicular" ? "ready" : null,
   lastCommand: null,
   openUntil: null,
@@ -83,10 +92,35 @@ export const mockCommandDoor = async (
   action: DoorAction,
   requestId: string,
 ): Promise<DoorCommandResult> => {
+  // Como el backend: el enfriamiento cuenta desde que se reserva la orden.
+  const reservedAt = Date.now();
   await delay();
 
   const target = findDoor(deviceId);
   const at = new Date().toISOString();
+
+  if (target?.scope === "pedestrian") {
+    const { outcome, errorCode } =
+      deviceId === "PRA-PEATONAL-1"
+        ? PRA_PEDESTRIAN_CYCLE[praPedestrianTurn++ % PRA_PEDESTRIAN_CYCLE.length]
+        : { outcome: "triggered" as const, errorCode: undefined };
+    const cooldownUntil =
+      outcome === "failed"
+        ? null
+        : new Date(reservedAt + PEDESTRIAN_COOLDOWN_MS).toISOString();
+
+    target.lastCommand = {
+      action: "open",
+      outcome,
+      at,
+      actorType: "staff",
+      actorUsername: "cav.mock",
+    };
+    target.cooldownUntil = cooldownUntil;
+
+    return { requestId, deviceId, outcome, errorCode, at, openUntil: null, cooldownUntil };
+  }
+
   const outcome: DoorCommandOutcome = target?.online ? "triggered" : "failed";
   const opened = outcome === "triggered" && action === "open";
   const openUntil = opened

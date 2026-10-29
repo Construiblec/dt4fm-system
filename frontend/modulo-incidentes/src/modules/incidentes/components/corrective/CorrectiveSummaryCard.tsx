@@ -2,6 +2,7 @@ import {
   CalendarDays,
   Flag,
   MapPin,
+  Tag,
   User,
   Users,
   type LucideIcon,
@@ -23,6 +24,8 @@ export type SummaryExtraRow = {
 type Props = {
   description: string | null;
   priority: string | null | undefined;
+  /** Solo la categoría, o «Categoría · Otro» (ver `categoryLabel`). */
+  category?: string | null;
   location: string | null;
   reporter: string | null;
   reportedAt: string | null;
@@ -52,6 +55,7 @@ const Row = ({
 export const CorrectiveSummaryCard = ({
   description,
   priority,
+  category,
   location,
   reporter,
   reportedAt,
@@ -80,6 +84,9 @@ export const CorrectiveSummaryCard = ({
       </span>
 
       <div className="space-y-3.5">
+        {category ? (
+          <Row icon={Tag} label="Categoría" value={category} />
+        ) : null}
         <Row
           icon={MapPin}
           label="Ubicación"

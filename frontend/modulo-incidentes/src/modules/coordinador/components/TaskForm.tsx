@@ -22,6 +22,7 @@ import {
   ymdOf,
 } from "../domain/dates";
 import { conflictsFor, taskDate } from "../domain/tasks";
+import { breaksCrossed, breakWarning } from "../domain/breaks";
 import { useNow } from "../hooks/useNow";
 import {
   BuildingUnitPicker,
@@ -42,7 +43,8 @@ import { inputClass } from "./uiUtils";
  *   corregir el checkout) y sigue en Pendientes hasta tener empleado y horario.
  *   Elegir empleado sí exige el horario: el backend le avisa al empleado apenas
  *   se le asigna, y no debe recibir una limpieza sin hora.
- * - editar: una asignada que no empezó. No puede perder el empleado.
+ * - editar: una asignada que no empezó. Aquí no puede perder el empleado:
+ *   quitarlo es una acción aparte (la X de la ficha) que la devuelve a Pendientes.
  */
 export type TaskFormVariant = "nueva" | "completar" | "editar";
 
@@ -129,6 +131,9 @@ export const TaskForm = ({
       : [];
 
   const warnings: string[] = [];
+  // Solo avisa: una urgencia puede cruzar la pausa del equipo
+  const breakNotice = breakWarning(breaksCrossed(startIso, endIso));
+  if (breakNotice) warnings.push(breakNotice);
   if (startIso && employeeId && Date.parse(startIso) < nowMs) {
     warnings.push(
       "El inicio ya pasó: la limpieza aparecerá como atrasada apenas la guardes.",

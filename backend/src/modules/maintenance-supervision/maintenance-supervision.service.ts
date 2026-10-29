@@ -19,6 +19,11 @@ import {
 } from '../../common/utils/corrective-reporter.util';
 import { OpenmaintService } from '../../integrations/openmaint/openmaint.service';
 import {
+  correctiveTitle,
+  MaintCategoryCatalogService,
+  toCategoryRefs,
+} from '../../integrations/openmaint/maint-category-catalog.service';
+import {
   PM_ACTIONS,
   PM_STATUS_CODE_TO_NAME,
   PM_STATUS_IDS,
@@ -74,6 +79,9 @@ export type SupervisedMaintenance = {
   reporter?: CorrectiveReporter | null;
   /** Equipo intervenido. Solo correctivos */
   asset?: { id: number; name: string } | null;
+  /** Solo correctivos; la subcategoría es también el título (`subject`). */
+  category?: { id: number; name: string } | null;
+  subcategory?: { id: number; name: string; isOther: boolean } | null;
   assignee: { id: number; name: string } | null;
   team: { id: number; name: string } | null;
   /**
@@ -147,6 +155,7 @@ export class MaintenanceSupervisionService {
     private readonly openmaint: OpenmaintService,
     private readonly pushDispatch: PushDispatchService,
     private readonly equipment: EquipmentOpenmaintService,
+    private readonly categories: MaintCategoryCatalogService,
   ) {}
 
   // ── Listados ───────────────────────────────────────────────────────────────
@@ -441,7 +450,33 @@ export class MaintenanceSupervisionService {
       );
     }
 
-    const fields: Record<string, unknown> = { Assignee: dto.assigneeId };
+    // Los reportes del portal del huésped llegan sin categoría: se elige aquí.
+    const categoryId = dto.categoryId ?? card.Category;
+    const subcategoryId = dto.subcategoryId ?? card.Subcategory;
+
+    if (!categoryId || !subcategoryId) {
+      throw new BadRequestException(
+        'Hay que elegir la categoría y la subcategoría antes de asignar el correctivo',
+      );
+    }
+
+    const { category, subcategory } = await this.categories.resolve(
+      categoryId,
+      subcategoryId,
+    );
+
+    // Con «Otro» sin texto nuevo se conserva el título que ya tenía.
+    const title = correctiveTitle(
+      subcategory,
+      dto.shortDescription ?? (subcategory.isOther ? card.ShortDescr : null),
+    );
+
+    const fields: Record<string, unknown> = {
+      Assignee: dto.assigneeId,
+      Category: category.id,
+      Subcategory: subcategory.id,
+      ShortDescr: title,
+    };
 
     if (dto.priority) {
       fields.Priority = CM_PRIORITY_CODE_TO_ID[dto.priority];
@@ -495,6 +530,15 @@ export class MaintenanceSupervisionService {
     if (dto.priority && assigned.Priority !== fields.Priority) {
       this.logger.warn(
         `OpenMAINT no guardó la prioridad ${dto.priority} del correctivo ${id} al asignar`,
+      );
+    }
+
+    if (
+      assigned.Subcategory !== subcategory.id ||
+      assigned.ShortDescr !== title
+    ) {
+      this.logger.warn(
+        `OpenMAINT no guardó la categoría o el título del correctivo ${id} al asignar`,
       );
     }
 
@@ -668,7 +712,7 @@ export class MaintenanceSupervisionService {
    * `PM.2026.0331`, que volvió a `PM-Execution` con la actividad `PM03`.
    *
    * Las actividades marcadas «N.D.» durante la suspensión no se tocan aquí: se
-   * limpian cuando el técnico abre el mantenimiento, porque `startExecution`
+   * limpian cuando el técnico abre el mantenimiento, porque `openMaintenance`
    * llama a `clearNotDone` en cuanto la ficha está en ejecución.
    */
   async resumePreventive(sessionId: string, id: number) {
@@ -1057,6 +1101,7 @@ export class MaintenanceSupervisionService {
       area: card._Unit_description ?? card._CommonArea_description ?? null,
       reporter: resolveReporter(reportNotes, card._Requester_description),
       asset: this.toRef(card.Asset, card._Asset_description),
+      ...toCategoryRefs(card),
       assignee: this.toRef(card.Assignee, card._Assignee_description),
       team: this.toRef(card.Team, card._Team_description),
       priority: this.toPriority(card),

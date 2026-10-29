@@ -7,8 +7,10 @@ import {
   IsOptional,
   IsPositive,
   IsString,
+  MaxLength,
 } from 'class-validator';
 import { CM_PRIORITY_CODES } from '../constants/corrective-maint.constants';
+import { SHORT_DESCRIPTION_MAX } from '../../incidents/dto/create-incident.dto';
 
 export class AssignAssigneeDto {
   @ApiProperty({
@@ -64,6 +66,38 @@ export class AssignAssigneeDto {
   @IsInt()
   @IsPositive()
   assetId?: number;
+
+  @ApiPropertyOptional({
+    description:
+      'ID de la categoría (`MaintCategory`). Solo correctivos; si no llega se usa la que ya tiene.',
+    example: 1460015,
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @IsPositive()
+  categoryId?: number;
+
+  @ApiPropertyOptional({
+    description:
+      'ID de la subcategoría (`MaintSubcategory`) de esa categoría. Su nombre pasa a ser el título.',
+    example: 1460074,
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @IsPositive()
+  subcategoryId?: number;
+
+  @ApiPropertyOptional({
+    description:
+      'Solo con la subcategoría «Otro»: qué tipo de novedad es (nuevo título).',
+    example: 'Puerta del clóset descuadrada',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(SHORT_DESCRIPTION_MAX)
+  shortDescription?: string;
 
   @ApiPropertyOptional({
     description: 'Nota que se anexa a la bitácora del proceso',

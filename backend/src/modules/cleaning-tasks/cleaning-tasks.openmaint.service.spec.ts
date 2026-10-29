@@ -98,3 +98,57 @@ describe('CleaningTasksOpenmaintService — checklist con el archivo perdido', (
     );
   });
 });
+
+describe('CleaningTasksOpenmaintService — empleados asignables', () => {
+  it('con equipo, filtra InternalEmployee por Team', async () => {
+    const get = jest.fn().mockResolvedValue({ data: [] });
+    const service = buildService(get);
+
+    await service.listInternalEmployees(2397132);
+
+    const [[path]] = get.mock.calls as [[string, string]];
+    expect(path).toContain('/classes/InternalEmployee/cards?limit=500&filter=');
+    expect(JSON.parse(decodeURIComponent(path.split('filter=')[1]))).toEqual({
+      attribute: {
+        simple: { attribute: 'Team', operator: 'equal', value: ['2397132'] },
+      },
+    });
+  });
+
+  it('sin equipo, los pide todos', async () => {
+    const get = jest.fn().mockResolvedValue({ data: [] });
+    const service = buildService(get);
+
+    await service.listInternalEmployees();
+
+    expect(get).toHaveBeenCalledWith(
+      '/classes/InternalEmployee/cards?limit=500',
+      'session',
+    );
+  });
+});
+
+describe('CleaningTasksOpenmaintService — limpiezas del operario', () => {
+  it('con newest, pide las recién creadas primero', async () => {
+    const get = jest.fn().mockResolvedValue({ data: [] });
+    const service = buildService(get);
+
+    await service.getTasksByEmployee(4567, 'token', 200, 0, 'newest');
+
+    const [[path]] = get.mock.calls as [[string, string]];
+    expect(path).toContain('&limit=200&start=0&sort=');
+    expect(JSON.parse(decodeURIComponent(path.split('sort=')[1]))).toEqual([
+      { property: '_id', direction: 'DESC' },
+    ]);
+  });
+
+  it('sin orden, no añade sort', async () => {
+    const get = jest.fn().mockResolvedValue({ data: [] });
+    const service = buildService(get);
+
+    await service.getTasksByEmployee(4567, 'token', 50, 0);
+
+    const [[path]] = get.mock.calls as [[string, string]];
+    expect(path).not.toContain('sort=');
+  });
+});

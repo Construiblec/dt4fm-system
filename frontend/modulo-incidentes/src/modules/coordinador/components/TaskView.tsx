@@ -7,6 +7,7 @@ import {
   FileText,
   Play,
   RotateCcw,
+  X,
 } from "lucide-react";
 import type { CoordTaskDetail, EmployeeOption } from "../types/Coordinador";
 import {
@@ -152,10 +153,13 @@ export const TaskView = ({
   task,
   employees,
   nowMs,
+  onUnassign,
 }: {
   task: CoordTaskDetail;
   employees: EmployeeOption[];
   nowMs: number;
+  /** Solo llega si el empleado se puede quitar (asignada y sin empezar) */
+  onUnassign?: () => void;
 }) => {
   const [showChecklist, setShowChecklist] = useState(false);
   const today = todayYmd(nowMs);
@@ -204,10 +208,23 @@ export const TaskView = ({
     },
     {
       label: "Empleado",
-      value: task.employee
-        ? employeeName(task.employee) +
-          (full?.team ? ` · ${full.team.name}` : "")
-        : null,
+      value: task.employee ? (
+        <span className="inline-flex items-center gap-1.5">
+          {employeeName(task.employee) +
+            (full?.team ? ` · ${full.team.name}` : "")}
+          {onUnassign ? (
+            <button
+              type="button"
+              onClick={onUnassign}
+              aria-label={`Quitar a ${employeeName(task.employee)}`}
+              title="Quitar empleado"
+              className="inline-flex h-6 w-6 items-center justify-center rounded-full text-slate-500 transition hover:bg-red-50 hover:text-red-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-300"
+            >
+              <X className="h-4 w-4" aria-hidden="true" />
+            </button>
+          ) : null}
+        </span>
+      ) : null,
     },
     {
       label: "Checklist",

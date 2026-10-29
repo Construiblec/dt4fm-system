@@ -428,13 +428,52 @@ export class PreventiveMaintenanceController {
     );
   }
 
+  @Post(':id/open')
+  @ApiOperation({
+    summary: 'Abrir el mantenimiento sin iniciarlo',
+    description:
+      'Devuelve el detalle sin avanzar el flujo: uno en Aceptación sigue ' +
+      'ahí hasta que se llame a /start. Si está en Ejecución devuelve a ' +
+      'pendientes las actividades que se marcaron N.D. al suspender, por eso ' +
+      'es POST y no GET.',
+  })
+  @ApiParam({
+    name: 'id',
+    description: 'ID del mantenimiento preventivo',
+    type: 'integer',
+  })
+  @ApiHeader({
+    name: 'authorization',
+    description: 'Token de sesión de OpenMAINT',
+    required: true,
+  })
+  @ApiResponse({ status: 201, description: 'Detalle obtenido con éxito' })
+  @ApiResponse({
+    status: 400,
+    description: 'Cabecera de autorización faltante',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Mantenimiento preventivo no encontrado',
+  })
+  async openMaintenance(
+    @Param('id', ParseIntPipe) id: number,
+    @Headers('authorization') sessionId: string,
+  ) {
+    return this.preventiveMaintenanceService.openMaintenance(
+      this.requireSessionId(sessionId),
+      id,
+    );
+  }
+
   @Post(':id/start')
   @ApiOperation({
-    summary: 'Abrir el mantenimiento e iniciar su ejecución',
+    summary: 'Iniciar la ejecución del mantenimiento',
     description:
       'Si el mantenimiento está en Aceptación lo avanza a Ejecución en ' +
-      'OpenMAINT. Es idempotente: si ya está en ejecución o cerrado, solo ' +
-      'devuelve el detalle. Responde con el detalle ya actualizado.',
+      'OpenMAINT y sella la hora real de inicio. Es idempotente: si ya está ' +
+      'en ejecución o cerrado, solo devuelve el detalle. Responde con el ' +
+      'detalle ya actualizado.',
   })
   @ApiParam({
     name: 'id',

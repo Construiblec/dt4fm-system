@@ -90,6 +90,26 @@ describe('CleaningTasksController (e2e)', () => {
         .expect(200);
     });
 
+    it('pasa el límite y el orden «recién creadas primero» a openMAINT', async () => {
+      await request(app.getHttpServer())
+        .get('/cleaning-tasks/mine?limit=200&sort=newest')
+        .set('x-session-token', 'mock-session-token')
+        .set('x-cleaning-employee-id', '4567')
+        .expect(200);
+
+      expect(
+        mocks.cleaningTasksOpenmaint.getTasksByEmployee,
+      ).toHaveBeenCalledWith(4567, 'mock-session-token', 200, 0, 'newest');
+    });
+
+    it('400 con un orden desconocido', async () => {
+      await request(app.getHttpServer())
+        .get('/cleaning-tasks/mine?sort=oldest')
+        .set('x-session-token', 'mock-session-token')
+        .set('x-cleaning-employee-id', '4567')
+        .expect(400);
+    });
+
     it('401 sin token de sesión', async () => {
       await request(app.getHttpServer())
         .get('/cleaning-tasks/mine')
@@ -695,6 +715,47 @@ describe('CleaningTasksController (e2e)', () => {
           employee: null,
         });
       });
+
+      // Cada recarga del tablero pedía a openMAINT una llamada por cada unidad
+      // distinta: ahora la unidad se lee una vez y se reutiliza.
+      it('lee cada unidad de openMAINT una sola vez entre recargas', async () => {
+        const card = {
+          ...cleaningTaskCard({ phase: PHASE_IDS.ASSIGNED }),
+          Unit: 987654,
+        };
+        mocks.cleaningTasksOpenmaint.getUnitById.mockResolvedValueOnce({
+          success: true,
+          data: {
+            _id: 987654,
+            Code: 'R315',
+            Description: 'Estudio 15',
+            Building: 3,
+            _Building_description: 'República',
+          },
+        });
+
+        for (let i = 0; i < 2; i += 1) {
+          asCoordinator();
+          mocks.cleaningTasksOpenmaint.getAllTasks.mockResolvedValueOnce({
+            data: [card],
+            meta: { total: 1 },
+          });
+
+          const res = await request(app.getHttpServer())
+            .get('/cleaning-tasks/all')
+            .set('x-session-token', token)
+            .expect(200);
+
+          expect(res.body.data[0].unit).toMatchObject({
+            id: 987654,
+            code: 'R315',
+            building: 'República',
+          });
+        }
+        expect(mocks.cleaningTasksOpenmaint.getUnitById).toHaveBeenCalledTimes(
+          1,
+        );
+      });
     });
 
     describe('PUT /cleaning-tasks/:id', () => {
@@ -773,6 +834,23 @@ describe('CleaningTasksController (e2e)', () => {
           CleaningChecklist: null,
           Observations: null,
         });
+      });
+
+      it('null quita el empleado sin avisar a nadie', async () => {
+        asCoordinator();
+        mocks.cleaningTasksOpenmaint.getTaskByIdWithSession.mockResolvedValue(
+          cleaningTaskResponse({ phase: PHASE_IDS.ASSIGNED, employee: 7004 }),
+        );
+
+        const res = await put({ employeeId: null }).expect(200);
+
+        expect(res.body.notified).toBeNull();
+        expect(
+          mocks.cleaningTasksOpenmaint.updateCleaningTask,
+        ).toHaveBeenCalledWith(777, { Employee: null });
+        expect(
+          mocks.pushDispatch.notifyCleaningAssigned,
+        ).not.toHaveBeenCalled();
       });
 
       it('400 si el fin no es posterior al inicio', async () => {
@@ -1018,6 +1096,39 @@ describe('CleaningTasksController (e2e)', () => {
           .get('/cleaning-tasks/employees')
           .set('x-session-token', token)
           .expect(403);
+      });
+
+      describe('equipo de operarios', () => {
+        afterEach(() => {
+          delete process.env.OPENMAINT_CLEANING_TEAM_ID;
+        });
+
+        it('pide solo los del equipo de OPENMAINT_CLEANING_TEAM_ID', async () => {
+          process.env.OPENMAINT_CLEANING_TEAM_ID = '2397132';
+          asCoordinator();
+
+          await request(app.getHttpServer())
+            .get('/cleaning-tasks/employees')
+            .set('x-session-token', token)
+            .expect(200);
+
+          expect(
+            mocks.cleaningTasksOpenmaint.listInternalEmployees,
+          ).toHaveBeenCalledWith(2397132);
+        });
+
+        it('sin la variable, los pide todos', async () => {
+          asCoordinator();
+
+          await request(app.getHttpServer())
+            .get('/cleaning-tasks/employees')
+            .set('x-session-token', token)
+            .expect(200);
+
+          expect(
+            mocks.cleaningTasksOpenmaint.listInternalEmployees,
+          ).toHaveBeenCalledWith(undefined);
+        });
       });
     });
 
