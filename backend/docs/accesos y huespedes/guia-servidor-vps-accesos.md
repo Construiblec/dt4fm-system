@@ -13,8 +13,13 @@ documento divergen, manda este documento.**
 > [nota de cambio](nota-cambio-employeeno.md) y en [§2](#el-employeeno-que-se-escribe-en-el-terminal).
 >
 > **Cambio del 30-09-2026:** `open` y `close` desaparecen; queda
-> [`POST /v1/devices/{deviceId}/trigger`](#post-v1devicesdeviceidtrigger--pulso-a-la-barrera-vehicular),
+> [`POST /v1/devices/{deviceId}/trigger`](#post-v1devicesdeviceidtrigger--pulso-a-la-barrera-vehicular-o-a-la-puerta-peatonal),
 > un pulso a la barrera vehicular. Detalle en la [nota de cambio](nota-cambio-trigger.md).
+>
+> **Cambio del 26-10-2026:** `trigger` admite también el terminal peatonal (`kind: "terminal"`,
+> `scope: "pedestrian"`), solo para el Supervisor CAV, y aparece `operation_busy`. Detalle en
+> [§4](#post-v1devicesdeviceidtrigger--pulso-a-la-barrera-vehicular-o-a-la-puerta-peatonal) y en
+> [D-18](decisiones-arquitectura-y-seguridad.md#d-18--apertura-remota-de-un-toque).
 
 ---
 
@@ -304,12 +309,12 @@ pero el inventario deja de ser fiable sin que nada falle. Y la conciliación del
 que el inventario esté completo: con paginación parcial, reescribiría credenciales por creerlas
 ausentes. **Es prerrequisito, no una mejora paralela.**
 
-### `POST /v1/devices/{deviceId}/trigger` — pulso a la barrera vehicular
+### `POST /v1/devices/{deviceId}/trigger` — pulso a la barrera vehicular o a la puerta peatonal
 
-La única orden física: un pulso de relé a la barrera vehicular de un edificio. La barrera no tiene
-sensor de posición, así que **Abrir** y **Cerrar** son fases de la interfaz que lleva el backend;
-las dos mandan este mismo pulso, cada una con su `requestId`. `open` y `close` responden `404`: no
-hay alias.
+La única orden física: un pulso de relé. Ni la barrera ni la puerta tienen sensor de posición. En
+la barrera, **Abrir** y **Cerrar** son fases de la interfaz que lleva el backend; las dos mandan
+este mismo pulso, cada una con su `requestId`. La peatonal solo tiene **Abrir**, sin fase.
+`open` y `close` responden `404`: no hay alias.
 
 ```json
 { "requestId": "6f1c9a5e-3b2d-4c8e-9a71-0d4e2f5b8c13" }
@@ -322,8 +327,13 @@ hay alias.
 
 - **Solo `requestId`**, UUID canónico en minúsculas, con guiones y sin llaves. Cualquier otro
   campo da `400 invalid_request`. `actor` ya no viaja: quién pulsó queda en `remote_open_request`.
-- **Solo el service token** y **solo barreras vehiculares** (`kind: "barrier"`,
-  `scope: "vehicular"`). Una puerta peatonal da `400 device_not_compatible`.
+- **Solo el service token.** La API central preselecciona exactamente `kind: "barrier"` con
+  `scope: "vehicular"` o `kind: "terminal"` con `scope: "pedestrian"`; cualquier otro da
+  `400 device_not_compatible`. El gateway autoriza en definitiva contra su configuración local
+  (incluido `doorId=1`) antes de tocar el aparato.
+- **El gateway impone el cooldown autoritativo.** Si aún hay una operación en curso responde
+  `409 operation_busy`: confirma que **no** emitió otro pulso. El bloqueo de 5 s del botón peatonal
+  y este cooldown no son el tiempo que la puerta queda abierta.
 - `state` es `triggered` si el pulso salió o `ambiguous` si pudo salir. **Ninguno dice nada sobre la
   posición de la barrera**, y no llega `at`: la hora del pulso la pone el backend.
 - **El gateway deduplica por `(deviceId, requestId)`**, en disco y durante al menos 24 h: repetir
@@ -334,7 +344,8 @@ hay alias.
 
 El backend **no reintenta esta operación**. Tampoco deduce la posición de la barrera: la fase por
 barrera (ventana de cierre, cierre automático medido y enfriamiento de 10 s) vive en su base y es
-solo una ayuda de interfaz. Qué respuestas cuentan como «no hubo pulso» está en la
+solo una ayuda de interfaz. La peatonal no tiene fase: solo un enfriamiento de 5 s por puerta, y un
+`ambiguous` se avisa al Supervisor CAV sin bloquear la puerta. Qué respuestas cuentan como «no hubo pulso» está en la
 [lista blanca](nota-cambio-trigger.md#cómo-leer-la-respuesta) de la nota de cambio.
 
 ---
@@ -353,7 +364,8 @@ alertar**, y sin código no puede.
 | `unauthorized` | Service token inválido | Alerta. No reintenta |
 | `invalid_request` | Cuerpo mal formado | No reintenta |
 | `operations_disabled` | El gateway tiene apagado el control físico | Informa al usuario. No reintenta |
-| `device_not_compatible` | `trigger` sobre algo que no es una barrera vehicular habilitada | Alerta de configuración |
+| `device_not_compatible` | `trigger` sobre algo que no es una barrera vehicular ni un terminal peatonal habilitado | Alerta de configuración |
+| `operation_busy` | `409`: el gateway tenía una operación en curso y **no** pulsó | Informa al usuario. No reintenta |
 
 **Dos formas válidas de devolverlos**, y el backend acepta las dos:
 
@@ -571,7 +583,8 @@ error. El webhook `POST /iot/alarms` que ya existe sigue igual y nada de esto lo
 - [ ] Bloqueo por intentos fallidos activado y **verificado** en cada terminal
 - [ ] `POST /v1/devices/{id}/trigger` deduplica por `(deviceId, requestId)`, en disco y 24 h: la misma orden dos veces da un solo pulso
 - [ ] `trigger` acepta solo `{"requestId"}` y devuelve `triggered` o `ambiguous`, sin `at`; `open` y `close` dan `404`
-- [ ] Solo la barrera vehicular admite `trigger`; una peatonal da `400 device_not_compatible`
+- [ ] `trigger` admite la barrera vehicular y el terminal peatonal; cualquier otro aparato da `400 device_not_compatible`
+- [ ] Un pulso dentro del cooldown del gateway da `409 operation_busy` y no mueve el relé
 - [ ] El control físico del gateway sigue apagado por defecto y responde `503 operations_disabled`
 - [ ] **En sitio:** se mide cuánto tarda cada barrera en bajar sola, un pulso con la barrera arriba la baja y nunca baja sobre un vehículo
 - [ ] Existe un entorno de staging que no toca puertas de edificios habitados

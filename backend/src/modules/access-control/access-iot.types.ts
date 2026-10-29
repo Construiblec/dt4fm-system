@@ -32,6 +32,8 @@ export type AccessIotErrorCode =
   | 'invalid_request'
   | 'device_not_compatible'
   | 'operations_disabled'
+  /** El gateway tenía una operación en curso y no emitió un pulso nuevo. */
+  | 'operation_busy'
   | 'live_capacity_reached'
   | 'live_unavailable'
   | 'internal_error';
@@ -130,7 +132,7 @@ export interface AccessIotHealth {
   buildings: AccessIotHealthBuilding[];
 }
 
-/** Fase de interfaz: la VPS solo conoce `trigger`, un pulso a la barrera. */
+/** Fase de interfaz: la VPS solo conoce `trigger`, un pulso. La peatonal solo usa `open`. */
 export type DoorAction = 'open' | 'close';
 
 /** `triggered` confirma que el pulso salió, nada sobre la posición; `uncertain`, que pudo salir. */

@@ -5,8 +5,11 @@ export const DOOR_SCOPE_LABELS: Record<DoorScope, string> = {
   vehicular: "Vehicular",
 };
 
-/** Fases de interfaz: las dos mandan el mismo pulso a la barrera vehicular. */
+/** Fases de interfaz: las dos mandan el mismo pulso. La peatonal solo usa `open`. */
 export type DoorAction = "open" | "close";
+
+/** Bloqueo del botón peatonal tras cada clic, sea cual sea el resultado. */
+export const PEDESTRIAN_LOCK_MS = 5_000;
 
 /**
  * Fase de la barrera según los pulsos que mandó el backend; no es su posición.
@@ -32,8 +35,9 @@ export type Door = {
   kind: string;
   scope: DoorScope;
   online: boolean;
-  /** Barrera vehicular con tiempos medidos: la única que se pulsa a distancia. */
+  /** Barrera vehicular con tiempos medidos o puerta peatonal: se pulsa a distancia. */
   remoteControl: boolean;
+  /** Nula en las peatonales: no tienen fase Abrir/Cerrar. */
   phase: DoorPhase | null;
   lastCommand: DoorLastCommand | null;
   /** Fin de la ventana de cierre. */

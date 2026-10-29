@@ -45,6 +45,8 @@ const NO_PULSE_CODES: Record<number, AccessIotErrorCode[]> = {
   401: ['unauthorized'],
   403: ['unauthorized'],
   404: ['not_found'],
+  // Confirmado por IoT: el gateway no emitió un pulso nuevo.
+  409: ['operation_busy'],
   500: ['device_ambiguous'],
   502: ['gateway_rejected'],
   503: ['operations_disabled', 'device_unreachable', 'gateway_unreachable'],
