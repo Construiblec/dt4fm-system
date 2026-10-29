@@ -19,6 +19,16 @@ import {
   recognizeCommand,
   type VoiceIntent,
 } from "@/modules/incidentes/utils/voiceCommands";
+import {
+  activityAnnouncement,
+  blockQuestion,
+  COMMAND_HINT,
+  reminderPhrase,
+  resumeBlockPhrase,
+  resumeMode,
+  type BlockMode,
+  type PausedAt,
+} from "@/modules/incidentes/utils/voiceScript";
 
 export type { VoiceFailure } from "@/modules/incidentes/utils/voiceAudio";
 
@@ -81,12 +91,6 @@ const browserAudio = (Ctor: SpeechRecognitionCtor): VoiceAudioDeps => ({
 /** Lo que el operario ve que está pasando. */
 export type VoicePhase = "apagado" | "hablando" | "escuchando";
 
-/**
- * Con qué granularidad se trabaja el bloque en curso. Lo fija la respuesta a
- * "¿te acuerdas de los elementos?" y se reinicia en cada bloque.
- */
-type BlockMode = "bloque" | "actividad";
-
 type Params = {
   sections: ChecklistSection[];
   progress: Record<number, boolean>;
@@ -96,8 +100,6 @@ type Params = {
   onActivityComplete: (activity: ChecklistActivity) => void;
 };
 
-/** La fórmula, repetida en cada anuncio: a los tres bloques ya nadie la recuerda. */
-const COMMAND_HINT = "Di: asistente, acabado cuando finalices.";
 /**
  * Cuánto dura la activación. Si el operario dice "asistente" y hace una pausa
  * antes de "acabado", el reconocedor parte las dos palabras en segmentos
@@ -161,6 +163,8 @@ export const useVoiceChecklist = ({
   const modeRef = useRef<BlockMode | null>(null);
   const announcedSectionRef = useRef<number | null>(null);
   const announcedItemRef = useRef<number | null>(null);
+  /** Dónde iba al apagarlo: al volver a encender se sigue desde ahí. */
+  const pausedAtRef = useRef<PausedAt | null>(null);
   /** Hasta cuándo vale la activación. 0 = hay que volver a decir "asistente". */
   const wakeUntilRef = useRef(0);
   const wakeTimerRef = useRef<number | null>(null);
@@ -226,8 +230,8 @@ export const useVoiceChecklist = ({
    * Dice una o varias frases, con una pausa entre ellas, y recién al terminar
    * vuelve a escuchar.
    *
-   * El micrófono se apaga mientras habla y eso no es una optimización: casi
-   * todas las frases del asistente contienen la palabra "acabado", y si el
+   * El micrófono se apaga mientras habla y eso no es una optimización: la
+   * fórmula con que abre cada bloque dice "asistente, acabado", y si el
    * teléfono se oyera a sí mismo se daría el trabajo por hecho solo. El orden y
    * los tiempos de soltar el micrófono y hablar viven en `voiceAudio`.
    */
@@ -266,7 +270,7 @@ export const useVoiceChecklist = ({
             Date.now() >= wakeUntilRef.current;
 
           if (puedeHablar) {
-            say([`¿Acabaste? ${subject}. Recuerda decir: asistente, acabado.`]);
+            say([reminderPhrase(subject)]);
           }
 
           schedule();
@@ -278,11 +282,14 @@ export const useVoiceChecklist = ({
     [clearReminder, say],
   );
 
-  /** Pasa el control al operario sobre UNA actividad y arranca su reloj. */
+  /**
+   * Pasa el control al operario sobre UNA actividad y arranca su reloj. La
+   * fórmula va solo en la que abre el bloque (`blockStart`).
+   */
   const handOverActivity = useCallback(
-    (activity: ChecklistActivity) => {
+    (activity: ChecklistActivity, blockStart: boolean) => {
       setExpected([]);
-      say([`${activity.text}. ${COMMAND_HINT}`], () => {
+      say([activityAnnouncement(activity.text, blockStart)], () => {
         setExpected(WORKING_INTENTS);
         scheduleReminder(activity.minutes, `Actividad: ${activity.text}`);
       });
@@ -291,6 +298,18 @@ export const useVoiceChecklist = ({
   );
 
   const stop = useCallback(() => {
+    // Se guarda antes de limpiar: es lo que deja seguir donde iba al volver a
+    // encender. Sin modo (la pregunta del bloque seguía sin respuesta) no hay
+    // nada que retomar y se vuelve a preguntar. Solo si estaba encendido: un
+    // segundo `stop()` ya apagado borraría lo guardado por el primero.
+    if (activeRef.current) {
+      const section = announcedSectionRef.current;
+      pausedAtRef.current =
+        modeRef.current !== null && section !== null && section >= 0
+          ? { sectionIndex: section, mode: modeRef.current }
+          : null;
+    }
+
     activeRef.current = false;
     modeRef.current = null;
     announcedSectionRef.current = null;
@@ -359,7 +378,7 @@ export const useVoiceChecklist = ({
         // le toca, con su propio reloj.
         modeRef.current = "actividad";
         announcedItemRef.current = itemIndex;
-        handOverActivity(currentActivity);
+        handOverActivity(currentActivity, true);
         return;
       }
 
@@ -367,14 +386,13 @@ export const useVoiceChecklist = ({
         // Repite solo lo que tiene entre manos: la actividad en curso, o el
         // bloque si dijo que se lo sabía (ahí no hay una actividad en curso:
         // trabaja el bloque entero). No reinicia el reloj ni cambia el modo —
-        // pedir que le repitan algo no es empezarlo de nuevo.
-        const subject =
+        // pedir que le repitan algo no es empezarlo de nuevo. Tampoco repite
+        // la fórmula: esa se dice una vez, al empezar el bloque.
+        const phrase =
           modeRef.current === "bloque"
-            ? (currentSection.title ?? "Este bloque")
-            : currentActivity.text;
-        say([`${subject}. ${COMMAND_HINT}`], () =>
-          setExpected(WORKING_INTENTS),
-        );
+            ? `${currentSection.title ?? "Este bloque"}.`
+            : activityAnnouncement(currentActivity.text, false);
+        say([phrase], () => setExpected(WORKING_INTENTS));
         return;
       }
 
@@ -455,18 +473,41 @@ export const useVoiceChecklist = ({
       const section = sections[sectionIndex];
 
       if (bloqueNuevo) {
-        // Bloque nuevo: vuelve a preguntar, y la respuesta fija la granularidad.
-        modeRef.current = null;
         setExpected([]);
         clearReminder();
+
+        // Se apagó a mitad de este mismo bloque: sigue donde iba, sin volver a
+        // preguntar. Preguntar de nuevo lo hacía empezar desde cero.
+        const retomar = resumeMode(pausedAtRef.current, sectionIndex);
+        pausedAtRef.current = null;
+
+        if (retomar === "actividad") {
+          modeRef.current = "actividad";
+          const activity = section.items[itemIndex];
+          if (activity) handOverActivity(activity, false);
+          return;
+        }
+
+        if (retomar === "bloque") {
+          modeRef.current = "bloque";
+          say([resumeBlockPhrase(section.title)], () => {
+            setExpected(WORKING_INTENTS);
+            scheduleReminder(
+              section.totalMinutes,
+              section.title ?? "este bloque",
+            );
+          });
+          return;
+        }
+
+        // Bloque nuevo: vuelve a preguntar, y la respuesta fija la granularidad.
+        modeRef.current = null;
 
         const frases: string[] = [];
         if (anterior !== null && anterior >= 0 && anterior !== sectionIndex) {
           frases.push(`${sections[anterior].title ?? "Bloque"} listo.`);
         }
-        frases.push(
-          `${section.title ?? "Esta sección"}. ¿Te acuerdas de los elementos?`,
-        );
+        frases.push(blockQuestion(section.title));
 
         say(frases, () => setExpected(ANSWER_INTENTS));
         return;
@@ -476,7 +517,7 @@ export const useVoiceChecklist = ({
       // que lo guíen: si dijo que se las acuerda, el teléfono se calla.
       if (modeRef.current === "actividad") {
         const activity = section.items[itemIndex];
-        if (activity) handOverActivity(activity);
+        if (activity) handOverActivity(activity, false);
       }
     }, 0);
 
@@ -487,6 +528,7 @@ export const useVoiceChecklist = ({
     handOverActivity,
     itemIndex,
     say,
+    scheduleReminder,
     sectionIndex,
     sections,
     setExpected,

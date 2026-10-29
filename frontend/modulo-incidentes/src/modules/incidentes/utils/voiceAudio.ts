@@ -142,7 +142,7 @@ export const pickSpanishVoice = <V extends VoiceInfo>(
  *
  * Crece con la frase. Con un respaldo fijo de 10 s, una actividad larga se daba
  * por dicha a media lectura y el micrófono se abría con el teléfono hablando, y
- * casi todas las frases dicen "asistente, acabado".
+ * la fórmula que abre cada bloque dice "asistente, acabado".
  */
 export const speechFallbackMs = (text: string): number =>
   SPEECH_FALLBACK_BASE_MS + text.length * SPEECH_FALLBACK_PER_CHAR_MS;

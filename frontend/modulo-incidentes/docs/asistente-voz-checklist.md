@@ -28,7 +28,7 @@ El asistente es la primera pieza que la usa de verdad.
 
 Como los minutos de la plantilla vienen **por actividad** (columna `Minutos` del CSV), no por bloque, el asistente necesita saber con qué precisión confirmar para que un recordatorio de tiempo tenga sentido real. Eso lo decide la primera pregunta de cada bloque:
 
-- **"¿Te acuerdas de los elementos?" → sí:** se trabaja el **bloque entero**. El teléfono se calla, el reloj corre con la suma de los minutos del bloque, y un solo "acabado" marca todas las actividades de una vez (`setChecklistItems`, el mismo camino que usa el tap).
+- **"¿Recuerdas las tareas?" → sí:** se trabaja el **bloque entero**. El teléfono se calla, el reloj corre con la suma de los minutos del bloque, y un solo "acabado" marca todas las actividades de una vez (`setChecklistItems`, el mismo camino que usa el tap).
 - **→ no:** se trabaja **actividad por actividad**. El asistente no lee la lista entera: anuncia cada actividad cuando le toca, el reloj corre con los minutos de cada actividad individual, y cada "acabado" marca solo esa (`updateChecklistItem`).
 
 Los dos caminos convergen al mismo estado: el check visual del bloque aparece cuando todas sus actividades están en `true`, sin que a la interfaz le importe si llegaron de a una o de una sola vez.
@@ -49,9 +49,11 @@ Por eso decir "asistente" abre una **ventana de 8 segundos** (`WAKE_WINDOW_MS`) 
 
 La primera implementación hacía que el asistente contestara "Dime" al oír "asistente" solo. Eso también era un bug: con resultados parciales, "asistente, acabado" llega al reconocedor en **dos entregas** — primero `"asistente"`, después `"asistente acabado"` —, así que contestar a la primera entrega apagaba el micrófono para hablar (`say()` siempre lo hace) y se comía el resto del comando. La ventana ahora se abre **en silencio**, sin que el asistente diga nada ni deje de escuchar. Que está esperando el comando se ve en pantalla (`awake`), no se oye.
 
-### Por qué la fórmula se repite en cada anuncio
+### La fórmula, una vez por bloque
 
-*"Di: asistente, acabado cuando finalices."* se dice al final de **cada** anuncio de actividad y de bloque, no solo la primera vez. Un operario que la escuchó al abrir el primer bloque no la recuerda tres bloques después, y sin la palabra de activación un "acabado" sencillo no tiene ningún efecto — la única señal de que algo salió mal sería el silencio.
+*"Di: asistente, acabado cuando finalices."* se dice **al empezar cada bloque**: tras el "sí", o pegada a la primera actividad tras el "no". Las actividades siguientes, "asistente, repite" y el aviso por tiempo ya no la llevan.
+
+Antes iba al final de cada anuncio de actividad: en un bloque de diez actividades se oía diez veces. Se dice una vez por bloque porque un operario que la escuchó al abrir el primero no la recuerda tres bloques después, y sin la palabra de activación un "acabado" sencillo no tiene ningún efecto. Entre bloque y bloque la recuerda la pantalla: mientras el asistente espera el "acabado", `VoiceChecklistControl` muestra *Di: "asistente, acabado"*.
 
 ### El tope de 4 palabras
 
@@ -100,8 +102,8 @@ export type VoiceIntent = "FIN" | "REPETIR" | "NEGACION" | "AFIRMACION";
 
 | Intención | Frases reconocidas | Exige "asistente" | Vive mientras… |
 | --- | --- | --- | --- |
-| `AFIRMACION` | sí, así es, claro, dale, dele, ya, correcto, afirmativo, ok, okey, bueno, exacto, **listo** | No | …dura la pregunta del bloque (segundos) |
-| `NEGACION` | no, todavía no, aún no, no todavía, negativo, nada, no me acuerdo, no sé | No | …dura la pregunta del bloque (segundos) |
+| `AFIRMACION` | sí, así es, claro, dale, dele, ya, correcto, afirmativo, ok, okey, bueno, exacto, recuerdo, me acuerdo, **listo** | No | …dura la pregunta del bloque (segundos) |
+| `NEGACION` | no, todavía no, aún no, no todavía, negativo, nada, no recuerdo, no me acuerdo, no sé | No | …dura la pregunta del bloque (segundos) |
 | `FIN` | acabado, acabé, ya acabé, terminado, terminé, ya terminé, completado, finalizado | **Sí** | …dura todo el bloque o la actividad (minutos) |
 | `REPETIR` | repite, repiteme, repetir, otra vez, de nuevo | **Sí** | …dura todo el bloque o la actividad (minutos) |
 
@@ -130,7 +132,7 @@ export const reminderDelayMs = (
 - A partir del segundo: cada **2 minutos** fijos (`REMINDER_REPEAT_MS`), sin tope — sigue insistiendo hasta que se confirme.
 - `null` (no avisa nunca) si no hay minutos definidos: una plantilla a medio llenar no tiene contra qué comparar, y avisar con un tiempo inventado sería peor que quedarse callado.
 
-El texto dicho es siempre *"¿Acabaste? \<bloque o actividad\>. Recuerda decir: asistente, acabado."* — nombra específicamente qué está pendiente, para que el operario no tenga que mirar la pantalla para saber a qué se refiere.
+El texto dicho es siempre *"¿Acabaste? \<bloque o actividad\>."* — nombra específicamente qué está pendiente, para que el operario no tenga que mirar la pantalla para saber a qué se refiere. No repite la fórmula: se dijo al empezar el bloque y sigue en pantalla (ver "La fórmula, una vez por bloque").
 
 **No tiene ninguna consecuencia ni penalización.** Es exclusivamente un recordatorio hablado; no bloquea nada, no cambia colores, no genera ningún registro distinto al resto del checklist.
 
@@ -158,7 +160,7 @@ La primera actividad sin completar, **derivada del progreso**, nunca de un índi
 ### El flujo completo
 
 ```
-Asistente: "Dormitorio. ¿Te acuerdas de los elementos?"
+Asistente: "Dormitorio. ¿Recuerdas las tareas?"
 
 ── "sí" → se trabaja el bloque completo ──────────────────
 Operario:  "sí"
@@ -167,25 +169,31 @@ Asistente: "Di: asistente, acabado cuando finalices."
 
 Operario:  "asistente, acabado"
                               → marca TODO el bloque
-Asistente: "Dormitorio listo. Baño. ¿Te acuerdas de los elementos?"
+Asistente: "Dormitorio listo. Baño. ¿Recuerdas las tareas?"
 
 ── "no" → se trabaja actividad por actividad ─────────────
 Operario:  "no"
 Asistente: "Separar la cama del espaldar. Di: asistente,
             acabado cuando finalices."
-           (reloj = minutos de ESA actividad)
+           (la fórmula, solo en la primera del bloque;
+            reloj = minutos de ESA actividad)
 
 Operario:  "asistente, acabado"
                               → marca UNA actividad
-Asistente: "Sacar las almohadas de sus fundas. Di: asistente,
-            acabado cuando finalices."
+Asistente: "Sacar las almohadas de sus fundas."
    … (se repite hasta cerrar el bloque)
 
 ── en cualquier momento ───────────────────────────────────
 Operario:  "asistente, repite"  → repite solo lo que tiene entre manos:
                                   la actividad en curso ("no") o el
-                                  nombre del bloque ("sí"). No reinicia
-                                  el reloj ni cambia de modo.
+                                  nombre del bloque ("sí"), sin la
+                                  fórmula. No reinicia el reloj ni
+                                  cambia de modo.
+
+── apagar y volver a encender a mitad del bloque ──────────
+Asistente: "Sacar las almohadas de sus fundas."   (iba con "no")
+           "Seguimos con Dormitorio."              (iba con "sí")
+                              → sigue donde iba, sin volver a preguntar
 
 ── al marcar lo último (por voz o con el dedo) ────────────
 Asistente: "Acabaste todo. Si no tienes novedades, finaliza la tarea."
@@ -195,7 +203,7 @@ Asistente: "Acabaste todo. Si no tienes novedades, finaliza la tarea."
 
 ### Apagar el micrófono mientras habla
 
-`say()` siempre detiene el reconocimiento antes de hablar y lo reanuda al terminar. No es una optimización: casi todas las frases del asistente contienen la palabra "acabado" ("Di: asistente, acabado cuando finalices"), y si el teléfono se oyera a sí mismo se daría el trabajo por hecho solo.
+`say()` siempre detiene el reconocimiento antes de hablar y lo reanuda al terminar. No es una optimización: la fórmula con que abre cada bloque contiene "asistente, acabado" ("Di: asistente, acabado cuando finalices"), y si el teléfono se oyera a sí mismo se daría el trabajo por hecho solo.
 
 El orden importa, y cada paso corrige un fallo visto en Android (`voiceAudio.ts`):
 
@@ -240,7 +248,8 @@ Algún pitido mientras espera en silencio es de Android y no se puede quitar des
 - `start()` llama a `unlockSpeechSynthesis()` (ver `speechUnlock.ts`): cuando viene del botón "Encender" o "Intentar de nuevo", corre dentro del toque, que es la única ocasión de destrabar la voz en iOS.
 - Si algo impide seguir, el hook expone `failure` y deja de intentar: `"sin-soporte"`, `"sin-microfono"`, `"sin-conexion"`, `"microfono-no-disponible"` o `"voz-bloqueada"`. Salvo `sin-soporte`, el aviso trae "Intentar de nuevo". El checklist sigue funcionando 100% por tap, sin ningún bloqueo.
 - Al desmontar la pantalla (`useEffect` de limpieza), se llama `stop()`: aborta el reconocimiento, cancela cualquier síntesis en curso y libera todos los temporizadores. Sin esto, el navegador seguiría mostrando el indicador de "grabando" sobre una pantalla que ya no existe.
-- El botón de apagar en `VoiceChecklistControl` llama al mismo `stop()`; volver a encenderlo es un nuevo `start()` limpio.
+- El botón de apagar en `VoiceChecklistControl` llama al mismo `stop()`. Volver a encenderlo (o "Intentar de nuevo" tras una pausa) **sigue donde iba**: `stop()` guarda el bloque y el modo (`pausedAtRef`) y, al encender, `resumeMode` (`voiceScript.ts`) decide si se retoma. Con "no" relee la actividad pendiente; con "sí" dice "Seguimos con \<bloque\>." y espera el "acabado". Se vuelve a preguntar solo si la pregunta había quedado sin respuesta o si, mientras estaba apagado, el operario marcó el bloque con el dedo. Antes era un `start()` limpio: volvía a preguntar, y si el bloque se trabajaba entero no había ninguna actividad marcada, así que con "no" empezaba a dictar desde la primera.
+- Al salir de la pantalla no se guarda nada: al volver, el asistente pregunta por el bloque pendiente.
 
 ---
 
@@ -273,6 +282,7 @@ Los tests relevantes a la voz:
 | --- | --- |
 | `voiceCommands.test.ts` | Cada intención y sus variantes; palabra de activación (incluye el caso exacto del bug de campo: *"acabado" suelto → null*, *"asistente, acabado" → FIN*); tope de palabras; que las intenciones fuera de lo esperado se ignoren; que "listo" sea afirmación y nunca fin. |
 | `voiceReminder.test.ts` | Primer aviso vs. insistencia; `null` sin minutos; no se rompe con `NaN`/`Infinity`; redondeo de minutos decimales. |
+| `voiceScript.test.ts` | Las frases: la pregunta del bloque, la fórmula solo en la actividad que abre el bloque, el aviso sin fórmula. Desde dónde retoma al volver a encender (`resumeMode`): mismo bloque con su modo, otro bloque o nada que retomar → preguntar. |
 | `voiceAudio.test.ts` | Con un reconocedor y una voz falsos y el reloj de Vitest: que no hable hasta soltar el micrófono (o a los 400 ms); que solo cancele si algo suena, y respire antes de hablar; que una frase nueva anule la anterior (sin seguirla, sin su `onDone`, sin abrir el micrófono); que no abra el micrófono mientras la voz suena; las esperas al reabrir (0,3 / 1 / 3 s) y la pausa al 4.º corte por red o micrófono; la página oculta; la voz bloqueada; el apagado desde `onDone`; la elección de voz. |
 
 La conversación (`useVoiceChecklist`) y el control visual no tienen test automatizado — son React sobre el navegador, y el entorno de test es `node`, sin jsdom. Se verifican a mano.
@@ -285,6 +295,7 @@ La conversación (`useVoiceChecklist`) y el control visual no tienen test automa
 - Tocar un bloque mientras el asistente habla: tiene que pasar limpio al siguiente, sin mezclar frases.
 - Modo avión mientras escucha: en unos segundos, "Asistente en pausa: sin conexión"; con internet de vuelta, "Intentar de nuevo" lo reanuda.
 - Marcar lo último: dice "Acabaste todo…", se apaga y no vuelve a pitar.
+- Apagar y encender a mitad de un bloque: sigue en la misma actividad (con "no") o dice "Seguimos con…" (con "sí"), sin volver a preguntar ni empezar de cero.
 
 ---
 
