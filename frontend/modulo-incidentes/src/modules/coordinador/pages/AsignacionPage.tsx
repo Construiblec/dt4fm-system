@@ -17,7 +17,7 @@ import {
   useChecklists,
   useCoordTasks,
   useEmployees,
-  useInvalidateCoord,
+  useSaveCoordTasks,
 } from "../hooks/useCoordData";
 import { useNow } from "../hooks/useNow";
 import {
@@ -96,7 +96,7 @@ const TaskAccordion = ({
   onToggle: () => void;
   checklists: NonNullable<ReturnType<typeof useChecklists>["data"]>;
 }) => {
-  const invalidate = useInvalidateCoord();
+  const saveTasks = useSaveCoordTasks();
   const flash = useCoordFlash((s) => s.show);
   const [draft, setDraft] = useState<PlanDraft>(() => draftFor(task, today));
   const [saving, setSaving] = useState(false);
@@ -116,22 +116,21 @@ const TaskAccordion = ({
   const panelId = `asignacion-tarea-${task.id}`;
   const title = task.description?.replace(/^Limpieza - /, "") ?? "Limpieza";
   const place = placeLabel(task);
-  const [unassigning, setUnassigning] = useState(false);
 
-  // Sin confirmación: se deshace arrastrándola de vuelta al operador.
+  // Sin confirmación: se deshace arrastrándola de vuelta al operador. Sale del
+  // operador al instante; si openMAINT no lo guarda, vuelve.
   const unassign = async () => {
-    try {
-      setUnassigning(true);
-      await updateTask(task.id, { employeeId: null });
-      await invalidate();
-      flash("success", `${place} volvió a Sin asignar.`);
-    } catch (e) {
+    const [result] = await saveTasks([task.id], { employee: null }, (id) =>
+      updateTask(id, { employeeId: null }),
+    );
+    if (result.status === "rejected") {
       // El aviso general se ve aunque la fila esté plegada
       flash(
         "error",
-        describeApiError(e, "No se pudo quitar la limpieza del operador."),
+        describeApiError(result.reason, "No se pudo quitar la limpieza del operador."),
       );
-      setUnassigning(false);
+    } else {
+      flash("success", `${place} volvió a Sin asignar.`);
     }
   };
 
@@ -141,16 +140,31 @@ const TaskAccordion = ({
       setError(result.error);
       return;
     }
-    try {
-      setSaving(true);
-      setError(null);
-      await updateTask(task.id, result.payload);
-      await invalidate();
+    const { payload } = result;
+    // La fila muestra lo guardado sin esperar la recarga, como al asignar.
+    const patch: Partial<CoordTask> = {};
+    if (payload.plannedStartTime) patch.plannedStartTime = payload.plannedStartTime;
+    if (payload.plannedEndTime) patch.plannedEndTime = payload.plannedEndTime;
+    if (payload.cleaningChecklistId !== undefined) {
+      const checklistId = payload.cleaningChecklistId;
+      patch.checklist =
+        checklistId === null
+          ? null
+          : {
+              id: checklistId,
+              description:
+                checklists.find((c) => c.id === checklistId)?.description ?? null,
+            };
+    }
+
+    setSaving(true);
+    setError(null);
+    const [saved] = await saveTasks([task.id], patch, (id) => updateTask(id, payload));
+    setSaving(false);
+    if (saved.status === "rejected") {
+      setError(describeApiError(saved.reason, "No se pudo guardar la limpieza."));
+    } else {
       flash("success", `${placeLabel(task)} quedó planificada.`);
-    } catch (e) {
-      setError(describeApiError(e, "No se pudo guardar la limpieza."));
-    } finally {
-      setSaving(false);
     }
   };
 
@@ -192,7 +206,6 @@ const TaskAccordion = ({
         <button
           type="button"
           onClick={() => void unassign()}
-          disabled={unassigning}
           aria-label={`Quitar ${title} de ${employeeName(task.employee)}`}
           title="Quitar del operador"
           className={cx(
@@ -425,7 +438,7 @@ export const AsignacionPage = () => {
   const tasksQ = useCoordTasks();
   const employeesQ = useEmployees();
   const checklistsQ = useChecklists();
-  const invalidate = useInvalidateCoord();
+  const saveTasks = useSaveCoordTasks();
   const flash = useCoordFlash((s) => s.show);
 
   const [q, setQ] = useState("");
@@ -435,7 +448,6 @@ export const AsignacionPage = () => {
   const [openEmployees, setOpenEmployees] = useState<Set<number>>(new Set());
   const [openTask, setOpenTask] = useState<number | null>(null);
   const [dragging, setDragging] = useState(false);
-  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [target, setTarget] = useState("");
 
@@ -461,17 +473,19 @@ export const AsignacionPage = () => {
     return next;
   };
 
+  // La tarjeta pasa al operador al instante; el aviso llega cuando openMAINT
+  // confirma, y la que no se guarda vuelve a Sin asignar.
   const assign = async (employeeId: number, ids: number[]) => {
-    setBusy(true);
+    const employee = employees?.find((e) => e.id === employeeId);
     setError(null);
-    const results = await Promise.allSettled(
-      ids.map((id) => updateTask(id, { employeeId })),
-    );
-    const failed = results.filter((r) => r.status === "rejected");
-    await invalidate();
     setSelected(new Set());
     setOpenEmployees((s) => new Set(s).add(employeeId));
-    setBusy(false);
+    const results = await saveTasks(
+      ids,
+      { employee: { id: employeeId, name: employee?.name ?? "" } },
+      (id) => updateTask(id, { employeeId }),
+    );
+    const failed = results.filter((r) => r.status === "rejected");
     if (failed.length) {
       setError(
         `${failed.length} de ${ids.length} limpiezas no se pudieron asignar. ${describeApiError(
@@ -592,8 +606,7 @@ export const AsignacionPage = () => {
                   <Button
                     size="sm"
                     variant="primary"
-                    disabled={!target || busy}
-                    loading={busy}
+                    disabled={!target}
                     onClick={() => void assign(Number(target), [...selected])}
                   >
                     Asignar
@@ -618,7 +631,7 @@ export const AsignacionPage = () => {
                   return (
                     <li
                       key={task.id}
-                      draggable={!busy}
+                      draggable
                       onDragStart={(e) => onDragStart(e, task.id)}
                       onDragEnd={() => setDragging(false)}
                       className={cx(
