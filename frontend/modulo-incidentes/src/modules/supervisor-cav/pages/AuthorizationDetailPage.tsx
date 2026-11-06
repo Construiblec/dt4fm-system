@@ -3,6 +3,7 @@ import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, CheckCircle2, Clock, Info } from "lucide-react";
 import { AppLayout } from "@/app/layout/AppLayout";
 import { AccessLevelSheet } from "@/modules/supervisor-cav/components/AccessLevelSheet";
+import { RenewPinSheet } from "@/modules/supervisor-cav/components/RenewPinSheet";
 import {
   getAuthorization,
   regeneratePin,
@@ -34,6 +35,7 @@ export const AuthorizationDetailPage = () => {
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [showLevelModal, setShowLevelModal] = useState(false);
+  const [showRenewSheet, setShowRenewSheet] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -53,6 +55,8 @@ export const AuthorizationDetailPage = () => {
   }, [load]);
 
   const handleRegenerate = async () => {
+    setShowRenewSheet(false);
+
     try {
       setActionLoading(true);
       setActionError(null);
@@ -193,7 +197,7 @@ export const AuthorizationDetailPage = () => {
               {revoked ? null : (
                 <button
                   type="button"
-                  onClick={() => void handleRegenerate()}
+                  onClick={() => setShowRenewSheet(true)}
                   disabled={actionLoading}
                   className="w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-400"
                 >
@@ -206,6 +210,16 @@ export const AuthorizationDetailPage = () => {
                   <CheckCircle2 className="h-3.5 w-3.5" />
                   <span>{actionMessage}</span>
                 </div>
+              ) : null}
+
+              {showRenewSheet ? (
+                <RenewPinSheet
+                  noticeByHostaway={
+                    authorization.pinNotice?.status !== "not_applicable"
+                  }
+                  onConfirm={() => void handleRegenerate()}
+                  onClose={() => setShowRenewSheet(false)}
+                />
               ) : null}
 
               {showLevelModal ? (
