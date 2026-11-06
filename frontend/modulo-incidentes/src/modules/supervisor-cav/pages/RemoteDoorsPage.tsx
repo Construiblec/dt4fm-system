@@ -198,11 +198,16 @@ const DoorRow = ({
         {door.remoteControl ? (
           <button
             type="button"
-            onClick={() => (phase === "uncertain" ? onResolve() : onCommand(action))}
+            onClick={() =>
+              phase === "uncertain" ? onResolve() : onCommand(action)
+            }
             disabled={
               busy ||
               (phase !== "uncertain" &&
-                (!enabled || !door.online || phase === "settling" || cooldown > 0))
+                (!enabled ||
+                  !door.online ||
+                  phase === "settling" ||
+                  cooldown > 0))
             }
             className={`flex shrink-0 items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-semibold text-white transition disabled:cursor-not-allowed disabled:bg-slate-300 ${
               phase === "uncertain"
@@ -225,17 +230,20 @@ const DoorRow = ({
       {phase === "closable" ? (
         <p className="mt-2 flex items-center gap-1.5 text-xs font-medium text-amber-700">
           <Clock className="h-3.5 w-3.5" />
-          Pulso enviado · se puede cerrar durante {secondsUntil(door.openUntil, now)} s
+          Pulso enviado · se puede cerrar durante{" "}
+          {secondsUntil(door.openUntil, now)} s
         </p>
       ) : phase === "settling" ? (
         <p className="mt-2 flex items-center gap-1.5 text-xs font-medium text-slate-500">
           <Clock className="h-3.5 w-3.5" />
-          Puede estar bajando · nadie pulsa durante {secondsUntil(door.settlesAt, now)} s
+          Puede estar bajando · nadie pulsa durante{" "}
+          {secondsUntil(door.settlesAt, now)} s
         </p>
       ) : phase === "uncertain" ? (
         <p className="mt-2 flex items-start gap-1.5 text-xs font-medium text-amber-700">
           <TriangleAlert className="mt-px h-3.5 w-3.5 shrink-0" />
-          Pulso sin confirmar. Revisa la barrera antes de liberarla para los huéspedes.
+          Pulso sin confirmar. Revisa la barrera antes de liberarla para los
+          huéspedes.
         </p>
       ) : door.scope === "vehicular" && !door.remoteControl ? (
         <p className="mt-2 text-xs text-slate-400">
@@ -309,7 +317,9 @@ export const RemoteDoorsPage = () => {
                 aria-label="Actualizar"
                 className="absolute right-0 top-1/2 -translate-y-1/2 rounded-full p-2 text-slate-500 transition hover:bg-white disabled:opacity-50"
               >
-                <RefreshCw className={`h-5 w-5 ${loading ? "animate-spin" : ""}`} />
+                <RefreshCw
+                  className={`h-5 w-5 ${loading ? "animate-spin" : ""}`}
+                />
               </button>
             </div>
 

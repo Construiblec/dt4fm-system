@@ -149,11 +149,31 @@ de la LAN, y en la respuesta del portal a su dueño.
 
 **Prohibido** en las tres capas: persistirlo en VPS o gateway, registrarlo en logs, devolverlo en
 respuestas de operación (los listados exponen `pinConfigured` booleano), y enviarlo por correo o por
-mensaje de Hostaway — solo viaja el enlace al portal.
+mensaje de Hostaway — solo viaja el enlace al portal. **Enmendado el 2026-11-06:** el PIN sí viaja
+por mensaje de Hostaway; ver la [enmienda](#enmienda-del-2026-11-06--el-pin-por-mensaje-de-hostaway).
 
 **Por qué cifrado y no hasheado.** El portal tiene que mostrárselo al huésped cada vez que abra el
 panel, no solo al emitirlo. Se compensa con clave separada, cifrado autenticado y `decrypt()` en un
 único punto del código.
+
+### Enmienda del 2026-11-06 · el PIN por mensaje de Hostaway
+
+Aprobada por el PO. Al huésped ya no se le envía el enlace al portal: recibe **solo un mensaje con
+su PIN** en la conversación de Hostaway de la reserva.
+
+- **Solo reservas de canal** (Airbnb, Booking, Vrbo…). Las directas no reciben nada por ahora; si
+  se habilita, será otra rama de `pinNoticeChannelFor()`.
+- **Sale cuando la credencial está en la puerta** (`sync_state = 'synced'`), no en el webhook: un
+  `pin_conflict` (D-08) puede cambiar el PIN antes.
+- **Un aviso por credencial y huella.** Si el PIN cambia (renovación del CAV o conflicto), se
+  vuelve a avisar. El registro es `guest_pin_notice` y **no guarda el PIN**.
+- **Solo reservas nuevas:** las credenciales vivas al desplegar quedaron como atendidas
+  (`skipped` / `pre_existing`).
+- **Riesgo asumido:** el PIN queda para siempre en el historial de Hostaway y de la OTA, fuera del
+  control de DT4FM. Con 4 dígitos (D-11), el bloqueo por intentos fallidos en el terminal pasa a
+  ser imprescindible.
+- **Sigue prohibido** guardarlo fuera de `pin_ciphertext`, registrarlo en logs y devolverlo en
+  respuestas de operación. El descifrado sigue en un único punto (`revealPin()`).
 
 ## D-11 · Mitigaciones del PIN de cuatro dígitos
 

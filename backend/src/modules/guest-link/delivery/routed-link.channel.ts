@@ -6,7 +6,7 @@ import {
 } from './guest-link-channel.interface';
 
 /** `channelName` de Hostaway para reservas que no vienen de una OTA. */
-const DIRECT_CHANNEL_NAMES = ['direct'];
+export const DIRECT_CHANNEL_NAMES = ['direct'];
 
 export function isDirectReservation(channelName: string | null): boolean {
   const normalized = channelName?.trim().toLowerCase() ?? '';

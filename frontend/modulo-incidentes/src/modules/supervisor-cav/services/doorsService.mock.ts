@@ -13,18 +13,17 @@ const COOLDOWN_MS = 10_000;
 const PEDESTRIAN_COOLDOWN_MS = 5_000;
 
 /** `PRA-PEATONAL-1` rota resultados para ver los tres avisos de la peatonal. */
-const PRA_PEDESTRIAN_CYCLE: { outcome: DoorCommandOutcome; errorCode?: string }[] = [
+const PRA_PEDESTRIAN_CYCLE: {
+  outcome: DoorCommandOutcome;
+  errorCode?: string;
+}[] = [
   { outcome: "triggered" },
   { outcome: "failed", errorCode: "operation_busy" },
   { outcome: "uncertain" },
 ];
 let praPedestrianTurn = 0;
 
-const door = (
-  deviceId: string,
-  scope: Door["scope"],
-  online = true,
-): Door => ({
+const door = (deviceId: string, scope: Door["scope"], online = true): Door => ({
   deviceId,
   kind: scope === "vehicular" ? "barrier" : "terminal",
   scope,
@@ -74,12 +73,22 @@ export const mockListDoors = async (): Promise<DoorsOverview> => {
 
   const now = Date.now();
   for (const target of overview.buildings.flatMap((b) => b.doors)) {
-    if (target.cooldownUntil && new Date(target.cooldownUntil).getTime() <= now) {
+    if (
+      target.cooldownUntil &&
+      new Date(target.cooldownUntil).getTime() <= now
+    ) {
       target.cooldownUntil = null;
     }
     if (target.settlesAt && new Date(target.settlesAt).getTime() <= now) {
-      Object.assign(target, { phase: "ready", openUntil: null, settlesAt: null });
-    } else if (target.openUntil && new Date(target.openUntil).getTime() <= now) {
+      Object.assign(target, {
+        phase: "ready",
+        openUntil: null,
+        settlesAt: null,
+      });
+    } else if (
+      target.openUntil &&
+      new Date(target.openUntil).getTime() <= now
+    ) {
       Object.assign(target, { phase: "settling", openUntil: null });
     }
   }
@@ -102,7 +111,9 @@ export const mockCommandDoor = async (
   if (target?.scope === "pedestrian") {
     const { outcome, errorCode } =
       deviceId === "PRA-PEATONAL-1"
-        ? PRA_PEDESTRIAN_CYCLE[praPedestrianTurn++ % PRA_PEDESTRIAN_CYCLE.length]
+        ? PRA_PEDESTRIAN_CYCLE[
+            praPedestrianTurn++ % PRA_PEDESTRIAN_CYCLE.length
+          ]
         : { outcome: "triggered" as const, errorCode: undefined };
     const cooldownUntil =
       outcome === "failed"
@@ -118,7 +129,15 @@ export const mockCommandDoor = async (
     };
     target.cooldownUntil = cooldownUntil;
 
-    return { requestId, deviceId, outcome, errorCode, at, openUntil: null, cooldownUntil };
+    return {
+      requestId,
+      deviceId,
+      outcome,
+      errorCode,
+      at,
+      openUntil: null,
+      cooldownUntil,
+    };
   }
 
   const outcome: DoorCommandOutcome = target?.online ? "triggered" : "failed";
@@ -166,5 +185,6 @@ export const mockResolveDoor = async (deviceId: string): Promise<void> => {
   await delay();
 
   const target = findDoor(deviceId);
-  if (target) Object.assign(target, { phase: "ready", openUntil: null, settlesAt: null });
+  if (target)
+    Object.assign(target, { phase: "ready", openUntil: null, settlesAt: null });
 };

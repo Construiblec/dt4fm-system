@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { listAuthorizations } from "@/modules/supervisor-cav/services/authorizationsService";
 import { getApiErrorMessage } from "@/modules/supervisor-cav/services/cavApi";
 import type { Authorization } from "@/modules/supervisor-cav/types/Authorization";
@@ -12,18 +13,28 @@ const defaultRange = () => {
 
   return {
     from: toIsoDate(today.getFullYear(), today.getMonth(), today.getDate()),
-    to: toIsoDate(nextWeek.getFullYear(), nextWeek.getMonth(), nextWeek.getDate()),
+    to: toIsoDate(
+      nextWeek.getFullYear(),
+      nextWeek.getMonth(),
+      nextWeek.getDate(),
+    ),
   };
 };
 
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** El rango vive en la URL para que sobreviva a entrar al detalle y volver. */
 export const useAuthorizations = () => {
+  const [params, setParams] = useSearchParams();
   const initial = defaultRange();
+  const fromParam = params.get("from");
+  const toParam = params.get("to");
+  const from = fromParam && ISO_DATE.test(fromParam) ? fromParam : initial.from;
+  const to = toParam && ISO_DATE.test(toParam) ? toParam : initial.to;
 
   const [items, setItems] = useState<Authorization[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [from, setFrom] = useState(initial.from);
-  const [to, setTo] = useState(initial.to);
 
   const load = useCallback(async () => {
     try {
@@ -47,10 +58,12 @@ export const useAuthorizations = () => {
   }, [load]);
 
   /** Se aplica al pulsar «Filtrar», no al teclear cada fecha. */
-  const applyDateRange = useCallback((nextFrom: string, nextTo: string) => {
-    setFrom(nextFrom);
-    setTo(nextTo);
-  }, []);
+  const applyDateRange = useCallback(
+    (nextFrom: string, nextTo: string) => {
+      setParams({ from: nextFrom, to: nextTo }, { replace: true });
+    },
+    [setParams],
+  );
 
   return { items, loading, error, from, to, applyDateRange, reload: load };
 };

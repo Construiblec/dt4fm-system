@@ -59,6 +59,13 @@ export class GuestStay {
   @Column({ name: 'departure_date', type: 'date' })
   departureDate: string;
 
+  /** Check-in y check-out de la reserva, sin márgenes. Nulos en estancias anteriores a la columna. */
+  @Column({ name: 'check_in_at', type: 'timestamptz', nullable: true })
+  checkInAt: Date | null;
+
+  @Column({ name: 'check_out_at', type: 'timestamptz', nullable: true })
+  checkOutAt: Date | null;
+
   /** Vigencia real con los márgenes ya aplicados, para que credencial y panel no discrepen. */
   @Column({ name: 'access_valid_from', type: 'timestamptz' })
   accessValidFrom: Date;
@@ -68,6 +75,13 @@ export class GuestStay {
 
   @Column({ name: 'status', type: 'text' })
   status: 'pending' | 'active' | 'completed' | 'cancelled';
+
+  /** El CAV le quitó el acceso a todas las puertas: la sincronización con Hostaway no lo reemite. */
+  @Column({ name: 'access_suspended_at', type: 'timestamptz', nullable: true })
+  accessSuspendedAt: Date | null;
+
+  @Column({ name: 'access_suspended_by', type: 'text', nullable: true })
+  accessSuspendedBy: string | null;
 
   /** Incrementarlo invalidará todos los enlaces emitidos. Ver el portal, diferido. */
   @Column({ name: 'token_version', type: 'int', default: 1 })

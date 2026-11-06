@@ -11,7 +11,7 @@ import {
   isCavMock as useMock,
 } from "@/modules/supervisor-cav/services/cavApi";
 import type {
-  AccessLevel,
+  AccessLevelChoice,
   AuthorizationResponse,
   ListAuthorizationsParams,
   ListAuthorizationsResponse,
@@ -23,10 +23,9 @@ import type {
  *   GET  /access-authorizations?from&to             próximos check-ins
  *   GET  /access-authorizations/:stayId             detalle (nunca trae el PIN)
  *   POST /access-authorizations/:stayId/regenerate  renueva el PIN
- *   POST /access-authorizations/:stayId/access-level { accessLevel }
+ *   POST /access-authorizations/:stayId/access-level { accessLevel }  (`none` revoca)
  *
- * No hay endpoint de envío: el PIN se actualiza en la base y el huésped lo ve
- * en su portal la próxima vez que abre su enlace, que nunca cambia.
+ * El PIN le llega al huésped por mensaje de Hostaway; lo manda el backend.
  *
  * Con `VITE_CAV_MOCK=true` ninguno llega a tocar la red: se resuelven con los
  * datos quemados de `authorizationsService.mock.ts`.
@@ -72,10 +71,7 @@ export const getAuthorization = async (
   }
 };
 
-/**
- * Reemplaza el PIN vigente por uno nuevo. No hay nada que enviar después: el
- * portal del huésped lee el PIN vigente cada vez que se abre.
- */
+/** Reemplaza el PIN vigente; el backend avisa al huésped del nuevo. */
 export const regeneratePin = async (
   id: string,
 ): Promise<AuthorizationResponse> => {
@@ -93,10 +89,10 @@ export const regeneratePin = async (
   }
 };
 
-/** A qué tipo de acceso habilita el PIN: peatonal, vehicular, o ambos. */
+/** Peatonal, vehicular o ambos; `none` revoca y un nivel sobre un revocado lo restaura. */
 export const updateAccessLevel = async (
   id: string,
-  accessLevel: AccessLevel,
+  accessLevel: AccessLevelChoice,
 ): Promise<AuthorizationResponse> => {
   if (useMock) return mockUpdateAccessLevel(id, accessLevel);
 

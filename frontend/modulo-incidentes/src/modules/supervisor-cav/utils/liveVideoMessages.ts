@@ -10,7 +10,8 @@ const UNAVAILABLE: LiveVideoFailure = {
 };
 
 const CAPACITY: LiveVideoFailure = {
-  message: "Hay demasiadas cámaras abiertas. Cierra otra o inténtalo en unos minutos.",
+  message:
+    "Hay demasiadas cámaras abiertas. Cierra otra o inténtalo en unos minutos.",
   action: "retry",
 };
 
@@ -48,7 +49,8 @@ const WHEP_FAILURES: Record<string, LiveVideoFailure> = {
     action: "retry",
   },
   live_capacity_reached: {
-    message: "Hay demasiadas cámaras abiertas o esta ya tiene dos espectadores.",
+    message:
+      "Hay demasiadas cámaras abiertas o esta ya tiene dos espectadores.",
     action: "retry",
   },
   live_unavailable: UNAVAILABLE,
@@ -69,7 +71,10 @@ export const backendFailure = (
 ): LiveVideoFailure => {
   if (code && BACKEND_FAILURES[code]) return BACKEND_FAILURES[code];
   if (status === 403) {
-    return { message: "No tienes permiso para ver las cámaras.", action: "none" };
+    return {
+      message: "No tienes permiso para ver las cámaras.",
+      action: "none",
+    };
   }
 
   return UNAVAILABLE;
@@ -79,7 +84,8 @@ export const backendFailure = (
 export const whepFailure = (status: number, code: string): LiveVideoFailure => {
   if (status === 403) {
     return {
-      message: "Este sitio no está autorizado para ver video. Avisa a Sistemas.",
+      message:
+        "Este sitio no está autorizado para ver video. Avisa a Sistemas.",
       action: "none",
     };
   }

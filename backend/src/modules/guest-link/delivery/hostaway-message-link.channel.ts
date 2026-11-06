@@ -9,10 +9,7 @@ import {
 /** La reserva existe pero Hostaway aún no le abrió conversación. */
 export const CONVERSATION_NOT_FOUND = 'conversation_not_found';
 
-/**
- * Texto del mensaje. Bilingüe porque los huéspedes de Airbnb y Booking suelen
- * ser extranjeros. Solo lleva la URL: el PIN se ve dentro del portal (D-10).
- */
+/** Texto del mensaje con el enlace, bilingüe. Solo lleva la URL; el PIN va aparte. */
 export function buildGuestLinkMessage(payload: GuestLinkPayload): string {
   const nombre = payload.stay.guestName.trim() || 'Huésped';
 

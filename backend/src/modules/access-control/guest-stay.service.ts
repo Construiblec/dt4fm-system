@@ -10,7 +10,6 @@ import {
   UnitLocation,
   UnitResolverService,
 } from '../../integrations/openmaint/unit-resolver.service';
-import { GuestLinkService } from '../guest-link/guest-link.service';
 import { BuildingCatalogService } from './building-catalog.service';
 import { CredentialService } from './credential.service';
 import { GuestStay } from './entities/guest-stay.entity';
@@ -45,7 +44,7 @@ export interface ReservationInput {
   guestName: string;
   guestEmail?: string | null;
   guestPhone?: string | null;
-  /** `channelName` de Hostaway. Decide por dónde se entrega el enlace. */
+  /** `channelName` de Hostaway. Decide si se avisa del PIN y por dónde. */
   channelName?: string | null;
   arrivalDate: string;
   departureDate: string;
@@ -69,7 +68,6 @@ export class GuestStayService {
     private readonly unitResolver: UnitResolverService,
     private readonly catalog: BuildingCatalogService,
     private readonly credentialService: CredentialService,
-    private readonly guestLink: GuestLinkService,
     private readonly configService: ConfigService,
   ) {}
 
@@ -90,7 +88,7 @@ export class GuestStayService {
       return null;
     }
 
-    const { stay, created } = await this.persist(input);
+    const stay = await this.persist(input);
 
     if (this.isCancelled(input.status)) {
       const revoked = await this.credentialService.revokeByGuestStay(
@@ -110,69 +108,34 @@ export class GuestStayService {
 
     await this.syncCredential(stay, input.issuedBy, input.deferSync);
 
-    // `deliver()` es idempotente: salta si ya hubo un envío correcto, así que
-    // una modificación no reenvía un enlace ya entregado (sigue valiendo porque
-    // no lleva fechas dentro). Llamarlo también en las actualizaciones es lo
-    // que reintenta los fallos —p. ej. la conversación de Airbnb que aún no
-    // existía en `reservation.created`—. Se entrega aunque el edificio no
-    // tenga lector, porque el portal es más que el PIN.
-    // TEMPORAL: con el canal `hostaway` solo se entrega a la reserva de prueba
-    // para no escribir a huéspedes reales. Quitar al terminar la prueba piloto.
-    const viaHostaway =
-      (
-        this.configService.get<string>('GUEST_LINK_CHANNEL') ?? ''
-      ).toLowerCase() === 'hostaway';
-    if (
-      (created || stay.status !== 'completed') &&
-      (!viaHostaway || stay.guestName?.includes('Pame'))
-    ) {
-      await this.deliverLink(stay);
-    }
-
+    // El aviso del PIN lo manda `GuestPinNoticeService` cuando la credencial llega a la puerta.
     return stay;
   }
 
-  /**
-   * Best-effort, igual que el webhook de reservas: un canal de entrega caído no
-   * puede impedir que la estancia y su PIN existan. El fallo queda registrado
-   * en `guest_link_delivery` para reenviarlo a mano.
-   */
-  private async deliverLink(stay: GuestStay): Promise<void> {
-    try {
-      await this.guestLink.deliver(stay);
-    } catch (error) {
-      this.logger.error(
-        `No se pudo entregar el enlace de la estancia ${stay.id}: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
-    }
-  }
-
-  private async persist(
-    input: ReservationInput,
-  ): Promise<{ stay: GuestStay; created: boolean }> {
+  private async persist(input: ReservationInput): Promise<GuestStay> {
     const existing = await this.stays.findOne({
       where: { hostawayReservationId: input.hostawayReservationId },
     });
 
     const location = await this.resolveLocation(input, existing);
+    const checkInHour = this.reservationHour(
+      input.checkInTime,
+      'ACCESS_CHECKIN_HOUR',
+      DEFAULT_CHECKIN_HOUR,
+    );
+    const checkOutHour = this.reservationHour(
+      input.checkOutTime,
+      'ACCESS_CHECKOUT_HOUR',
+      DEFAULT_CHECKOUT_HOUR,
+    );
     const accessValidFrom = atLocalHour(
       input.arrivalDate,
-      this.reservationHour(
-        input.checkInTime,
-        'ACCESS_CHECKIN_HOUR',
-        DEFAULT_CHECKIN_HOUR,
-      ),
+      checkInHour,
       -leadHours(this.configService),
     );
     const accessValidTo = atLocalHour(
       input.departureDate,
-      this.reservationHour(
-        input.checkOutTime,
-        'ACCESS_CHECKOUT_HOUR',
-        DEFAULT_CHECKOUT_HOUR,
-      ),
+      checkOutHour,
       graceHours(this.configService),
     );
 
@@ -191,6 +154,8 @@ export class GuestStayService {
       channelName: input.channelName?.trim() || existing?.channelName || null,
       arrivalDate: input.arrivalDate,
       departureDate: input.departureDate,
+      checkInAt: atLocalHour(input.arrivalDate, checkInHour, 0),
+      checkOutAt: atLocalHour(input.departureDate, checkOutHour, 0),
       accessValidFrom,
       accessValidTo,
       status: this.isCancelled(input.status)
@@ -198,7 +163,7 @@ export class GuestStayService {
         : this.statusFromDates(accessValidFrom, accessValidTo),
     });
 
-    return { stay: await this.stays.save(stay), created: existing === null };
+    return this.stays.save(stay);
   }
 
   /** Emite si no había credencial, y solo mueve la vigencia si ya la había. */
@@ -207,6 +172,13 @@ export class GuestStayService {
     issuedBy: string,
     deferSync?: boolean,
   ): Promise<void> {
+    if (stay.accessSuspendedAt) {
+      this.logger.log(
+        `Reserva ${stay.hostawayReservationId}: acceso revocado por el CAV, no se emite`,
+      );
+      return;
+    }
+
     if (stay.buildingId === null) {
       this.logger.warn(
         `Reserva ${stay.hostawayReservationId}: sin edificio resuelto, no se emite credencial`,
