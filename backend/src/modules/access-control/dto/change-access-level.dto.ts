@@ -3,16 +3,16 @@ import { IsIn } from 'class-validator';
 
 /**
  * El equivalente de `ChangeScopeDto` para la pantalla del Supervisor CAV, que
- * llama al campo `accessLevel` en vez de `scope`. Los valores son los mismos:
- * son el `CredentialScope` de siempre.
+ * llama al campo `accessLevel` en vez de `scope`. Son el `CredentialScope` más
+ * `none`, que revoca todas las puertas.
  */
 export class ChangeAccessLevelDto {
   @ApiProperty({
     description:
-      'A qué habilita el PIN. Ampliar escribe en las puertas nuevas; reducir lo retira de las que dejan de estar en el ámbito. El PIN no cambia.',
-    enum: ['pedestrian', 'vehicular', 'both'],
+      'A qué habilita el PIN. `none` lo retira de todas las puertas; un nivel sobre un acceso revocado lo restaura con el mismo PIN.',
+    enum: ['pedestrian', 'vehicular', 'both', 'none'],
     example: 'both',
   })
-  @IsIn(['pedestrian', 'vehicular', 'both'])
-  accessLevel: 'pedestrian' | 'vehicular' | 'both';
+  @IsIn(['pedestrian', 'vehicular', 'both', 'none'])
+  accessLevel: 'pedestrian' | 'vehicular' | 'both' | 'none';
 }

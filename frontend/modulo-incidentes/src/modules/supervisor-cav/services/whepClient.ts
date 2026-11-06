@@ -44,7 +44,11 @@ const readError = async (response: Response) => {
       body.message ?? response.statusText,
     );
   } catch {
-    return new WhepError(response.status, `http_${response.status}`, response.statusText);
+    return new WhepError(
+      response.status,
+      `http_${response.status}`,
+      response.statusText,
+    );
   }
 };
 
@@ -93,7 +97,10 @@ export const watchCamera = async (
   // Así termina la sesión cuando la VPS corta a los 300 s.
   pc.onconnectionstatechange = () => {
     if (closed) return;
-    if (pc.connectionState === "disconnected" || pc.connectionState === "failed") {
+    if (
+      pc.connectionState === "disconnected" ||
+      pc.connectionState === "failed"
+    ) {
       onEnded();
     }
   };
@@ -106,8 +113,14 @@ export const watchCamera = async (
     if (response.status !== 201) throw await readError(response);
 
     // `Location` es relativa al hostname de video.
-    const resource = new URL(response.headers.get("Location") ?? "", session.whepUrl);
-    await pc.setRemoteDescription({ type: "answer", sdp: await response.text() });
+    const resource = new URL(
+      response.headers.get("Location") ?? "",
+      session.whepUrl,
+    );
+    await pc.setRemoteDescription({
+      type: "answer",
+      sdp: await response.text(),
+    });
 
     return {
       async close() {
@@ -115,7 +128,9 @@ export const watchCamera = async (
         closed = true;
         pc.close();
         // keepalive: que el cierre salga aunque la página se esté yendo.
-        await fetch(resource, { method: "DELETE", keepalive: true }).catch(() => {});
+        await fetch(resource, { method: "DELETE", keepalive: true }).catch(
+          () => {},
+        );
       },
     };
   } catch (error) {

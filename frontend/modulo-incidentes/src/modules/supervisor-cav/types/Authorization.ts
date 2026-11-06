@@ -7,6 +7,9 @@
  */
 export type AccessLevel = "pedestrian" | "vehicular" | "both";
 
+/** Lo que se envía al backend: `none` revoca el acceso a todas las puertas. */
+export type AccessLevelChoice = AccessLevel | "none";
+
 export const ACCESS_LEVEL_LABELS: Record<AccessLevel, string> = {
   pedestrian: "Acceso peatonal",
   vehicular: "Acceso vehicular",
@@ -21,11 +24,16 @@ export type Authorization = {
   guestName: string;
   /** "Pradera · UI R302", ya compuesto por el backend. */
   unitLabel: string;
-  /** ISO con zona. Inicio de la ventana de acceso. */
+  /** Check-in y check-out de la reserva, ISO con zona. */
   checkIn: string;
-  /** ISO con zona; también la fecha hasta la que el PIN es válido. */
   checkOut: string;
-  accessLevel: AccessLevel;
+  /** Vigencia del PIN: la reserva con márgenes antes y después, ISO con zona. */
+  pinValidFrom: string;
+  pinValidTo: string;
+  /** `null` si el CAV revocó el acceso. */
+  accessLevel: AccessLevel | null;
+  /** Quién y cuándo lo revocó; `null` si el acceso está vigente. */
+  accessRevoked: { at: string; by: string | null } | null;
 };
 
 export type ListAuthorizationsParams = {

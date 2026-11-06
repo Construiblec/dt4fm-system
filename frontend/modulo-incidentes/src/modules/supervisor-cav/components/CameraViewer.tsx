@@ -68,9 +68,17 @@ const Overlay = ({
           <CircleAlert className="mb-2 h-8 w-8 text-red-400" />
           <p role="alert">{failure?.message ?? "Video no disponible."}</p>
           {failure?.action === "retry" ? (
-            <ActionButton label="Reintentar" Icon={RefreshCw} onClick={onRetry} />
+            <ActionButton
+              label="Reintentar"
+              Icon={RefreshCw}
+              onClick={onRetry}
+            />
           ) : failure?.action === "refresh" ? (
-            <ActionButton label="Actualizar lista" Icon={RefreshCw} onClick={onRefresh} />
+            <ActionButton
+              label="Actualizar lista"
+              Icon={RefreshCw}
+              onClick={onRefresh}
+            />
           ) : null}
         </>
       )}
@@ -110,7 +118,9 @@ export const CameraViewer = ({
         <span className="absolute left-3 top-3 flex items-center gap-1.5 rounded-full bg-red-600 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-white">
           <span className="h-1.5 w-1.5 rounded-full bg-white" />
           En vivo
-          {remainingSeconds !== null ? ` · ${formatRemaining(remainingSeconds)}` : null}
+          {remainingSeconds !== null
+            ? ` · ${formatRemaining(remainingSeconds)}`
+            : null}
         </span>
       ) : null}
     </div>

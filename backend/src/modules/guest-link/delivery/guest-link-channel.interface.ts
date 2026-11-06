@@ -7,7 +7,7 @@
  * `guest-link.module.ts`; nada más cambia.
  */
 
-/** Lo que viaja al canal. **Nunca** lleva el PIN ni el token suelto: solo la URL. */
+/** Lo que viaja al canal: solo la URL, nunca el PIN ni el token suelto. El PIN lo avisa `GuestPinNoticeService`. */
 export interface GuestLinkPayload {
   event: 'guest-link.issued';
   /** Instante de emisión, ISO. */

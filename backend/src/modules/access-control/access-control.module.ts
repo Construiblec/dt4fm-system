@@ -4,7 +4,6 @@ import { ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { HostawayModule } from '../../integrations/hostaway/hostaway.module';
 import { OpenmaintModule } from '../../integrations/openmaint/openmaint.module';
-import { GuestLinkModule } from '../guest-link/guest-link.module';
 import { AccessControlController } from './access-control.controller';
 import { AuthorizationsController } from './authorizations.controller';
 import { AuthorizationsService } from './authorizations.service';
@@ -15,11 +14,13 @@ import { AccessIotGateway } from './access-iot.gateway';
 import { AccessIotMockGateway } from './access-iot.mock';
 import { BuildingCatalogService } from './building-catalog.service';
 import { CredentialService } from './credential.service';
+import { GuestPinNoticeService } from './guest-pin-notice.service';
 import { GuestPortalDataService } from './guest-portal-data.service';
 import { GuestStayService } from './guest-stay.service';
 import { ReservationSweepService } from './reservation-sweep.service';
 import { ReservationsController } from './reservations.controller';
 import { AccessCredential } from './entities/access-credential.entity';
+import { GuestPinNotice } from './entities/guest-pin-notice.entity';
 import { GuestStay } from './entities/guest-stay.entity';
 import { RemoteOpenRequest } from './entities/remote-open-request.entity';
 import { VehicularGatePhase } from './entities/vehicular-gate-phase.entity';
@@ -33,15 +34,13 @@ import { SyncRetryService } from './sync-retry.service';
     TypeOrmModule.forFeature([
       AccessCredential,
       GuestStay,
+      GuestPinNotice,
       RemoteOpenRequest,
       VehicularGatePhase,
     ]),
     HttpModule,
     OpenmaintModule,
     HostawayModule,
-    // Para entregar el enlace del portal cuando nace una estancia. No crea
-    // ciclo: guest-link no importa nada de este módulo.
-    GuestLinkModule,
   ],
   controllers: [
     AccessControlController,
@@ -56,6 +55,7 @@ import { SyncRetryService } from './sync-retry.service';
     CredentialService,
     SyncRetryService,
     GuestStayService,
+    GuestPinNoticeService,
     GuestPortalDataService,
     AuthorizationsService,
     ReservationSweepService,

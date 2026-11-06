@@ -1,4 +1,10 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import {
   Between,
@@ -15,11 +21,29 @@ import {
   CredentialScope,
 } from './entities/access-credential.entity';
 import { GuestStay } from './entities/guest-stay.entity';
+import { graceHours, leadHours } from './guest-stay-timing';
+import {
+  GuestPinNoticeService,
+  PinNoticeResult,
+  PinNoticeView,
+} from './guest-pin-notice.service';
 
 /** Tope defensivo: la pantalla filtra por rango, no pagina. */
 const MAX_RESULTS = 200;
 
 const UNIT_CACHE_TTL_MS = 5 * 60 * 1000;
+
+/** `revoked_reason` de las credenciales que el CAV retira desde Autorizaciones. */
+export const CAV_SUSPENDED_REASON = 'cav_suspended';
+
+/** Lo que acepta «Cambiar nivel de accesos»: `none` revoca todas las puertas. */
+export type AccessLevelChoice = CredentialScope | 'none';
+
+const NOT_APPLICABLE: PinNoticeView = {
+  status: 'not_applicable',
+  at: null,
+  error: null,
+};
 
 /** Lo que ve el supervisor de CAV. **Nunca incluye el PIN.** */
 export interface AuthorizationView {
@@ -28,11 +52,17 @@ export interface AuthorizationView {
   guestName: string;
   /** "Pradera · UI R302", ya compuesto aquí para que el frontend no ensamble. */
   unitLabel: string;
-  /** Inicio de la ventana de acceso, ISO. */
+  /** Check-in y check-out de la reserva, ISO. */
   checkIn: string;
-  /** Fin de la ventana: es el "válido hasta" que muestra la pantalla, ISO. */
   checkOut: string;
-  accessLevel: CredentialScope;
+  /** Vigencia del PIN (la reserva con los márgenes), ISO. */
+  pinValidFrom: string;
+  pinValidTo: string;
+  /** `null` si el CAV revocó el acceso. */
+  accessLevel: CredentialScope | null;
+  accessRevoked: { at: string; by: string | null } | null;
+  /** Si el mensaje de Hostaway con el PIN llegó. */
+  pinNotice: PinNoticeView;
 }
 
 type OpenmaintUnitCard = {
@@ -70,6 +100,8 @@ export class AuthorizationsService {
     private readonly credentialService: CredentialService,
     private readonly catalog: BuildingCatalogService,
     private readonly openmaint: OpenmaintService,
+    private readonly pinNotice: GuestPinNoticeService,
+    private readonly config: ConfigService,
   ) {}
 
   /**
@@ -111,17 +143,29 @@ export class AuthorizationsService {
     });
 
     const porReserva = new Map(vivas.map((c) => [c.subjectRef, c]));
-    const conCredencial = stays.filter((stay) =>
-      porReserva.has(stay.hostawayReservationId),
+    // Las revocadas por el CAV siguen en la lista para poder restaurarlas.
+    const visibles = stays.filter(
+      (stay) =>
+        stay.accessSuspendedAt || porReserva.has(stay.hostawayReservationId),
     );
 
-    const etiquetas = await this.labelsFor(conCredencial, sessionId);
+    const etiquetas = await this.labelsFor(visibles, sessionId);
+    const pares = visibles
+      .filter((stay) => !stay.accessSuspendedAt)
+      .map((stay) => ({
+        stay,
+        credential: porReserva.get(stay.hostawayReservationId)!,
+      }));
+    const avisos = await this.pinNotice.statusFor(pares);
 
-    return conCredencial.map((stay) =>
+    return visibles.map((stay) =>
       this.toView(
         stay,
-        porReserva.get(stay.hostawayReservationId)!,
+        stay.accessSuspendedAt
+          ? null
+          : porReserva.get(stay.hostawayReservationId)!,
         etiquetas.get(stay.id) ?? '',
+        avisos.get(stay.id) ?? NOT_APPLICABLE,
       ),
     );
   }
@@ -129,21 +173,26 @@ export class AuthorizationsService {
   async detail(stayId: string, sessionId: string): Promise<AuthorizationView> {
     const { stay, credential } = await this.resolve(stayId);
     const etiquetas = await this.labelsFor([stay], sessionId);
+    const avisos = credential
+      ? await this.pinNotice.statusFor([{ stay, credential }])
+      : new Map<string, PinNoticeView>();
 
-    return this.toView(stay, credential, etiquetas.get(stay.id) ?? '');
+    return this.toView(
+      stay,
+      credential,
+      etiquetas.get(stay.id) ?? '',
+      avisos.get(stay.id) ?? NOT_APPLICABLE,
+    );
   }
 
   // ── Acciones ──────────────────────────────────────────────────────────────
 
-  /**
-   * Renueva el PIN. No devuelve el código: el supervisor solo necesita saber
-   * que se hizo, y el huésped lo ve en su portal en la siguiente visita.
-   */
+  /** Renueva el PIN y avisa al huésped del nuevo. Nunca devuelve el código. */
   async regenerate(
     stayId: string,
     sessionId: string,
   ): Promise<AuthorizationView> {
-    const { stay, credential } = await this.resolve(stayId);
+    const { stay, credential } = this.requireLive(await this.resolve(stayId));
 
     await this.credentialService.regeneratePin(credential.id);
 
@@ -151,17 +200,67 @@ export class AuthorizationsService {
       `PIN renovado desde Autorizaciones para la estancia ${stay.id}`,
     );
 
+    await this.pinNotice.notify(stay.id);
+
     return this.detail(stayId, sessionId);
   }
 
+  /** Reenvía el mensaje con el PIN aunque ya se hubiera enviado. */
+  async resendPinNotice(stayId: string): Promise<PinNoticeResult> {
+    const { stay } = this.requireLive(await this.resolve(stayId));
+
+    return this.pinNotice.notify(stay.id, { force: true });
+  }
+
+  /**
+   * `none` revoca todas las puertas y marca la estancia para que Hostaway no la
+   * reemita. Un nivel sobre una estancia revocada la restaura con el mismo PIN.
+   */
   async changeAccessLevel(
     stayId: string,
-    accessLevel: CredentialScope,
+    accessLevel: AccessLevelChoice,
     sessionId: string,
+    username: string | null = null,
   ): Promise<AuthorizationView> {
-    const { credential } = await this.resolve(stayId);
+    const { stay, credential } = await this.resolve(stayId);
 
-    await this.credentialService.changeScope(credential.id, accessLevel);
+    if (accessLevel === 'none') {
+      if (!stay.accessSuspendedAt) {
+        // La marca va antes del DELETE: un webhook en medio no debe reemitir.
+        stay.accessSuspendedAt = new Date();
+        stay.accessSuspendedBy = username;
+        await this.stays.save(stay);
+      }
+
+      for (const viva of await this.credentialService.findLiveForGuest(
+        stay.hostawayReservationId,
+      )) {
+        await this.credentialService.revoke(viva.id, CAV_SUSPENDED_REASON);
+      }
+
+      this.logger.log(`Acceso revocado por el CAV en la estancia ${stay.id}`);
+    } else if (!credential) {
+      const revocada = await this.lastSuspended(stay);
+
+      if (!revocada) {
+        throw new NotFoundException('No hay credencial que restaurar');
+      }
+
+      await this.credentialService.reactivate(
+        revocada.id,
+        accessLevel,
+        stay.accessValidFrom,
+        stay.accessValidTo,
+      );
+
+      stay.accessSuspendedAt = null;
+      stay.accessSuspendedBy = null;
+      await this.stays.save(stay);
+
+      this.logger.log(`Acceso restaurado por el CAV en la estancia ${stay.id}`);
+    } else {
+      await this.credentialService.changeScope(credential.id, accessLevel);
+    }
 
     return this.detail(stayId, sessionId);
   }
@@ -169,17 +268,20 @@ export class AuthorizationsService {
   // ── Interno ───────────────────────────────────────────────────────────────
 
   /**
-   * Estancia + su credencial viva. Que falte la credencial no es un error del
-   * sistema: es un edificio sin control de accesos, y para esta pantalla
-   * equivale a que la autorización no exista.
+   * Estancia + su credencial viva, o `null` si el CAV la revocó. Sin credencial
+   * ni revocación es un edificio sin control de accesos: para esta pantalla, 404.
    */
   private async resolve(
     stayId: string,
-  ): Promise<{ stay: GuestStay; credential: AccessCredential }> {
+  ): Promise<{ stay: GuestStay; credential: AccessCredential | null }> {
     const stay = await this.stays.findOne({ where: { id: stayId } });
 
     if (!stay) {
       throw new NotFoundException('La autorización no existe');
+    }
+
+    if (stay.accessSuspendedAt) {
+      return { stay, credential: null };
     }
 
     const credential = await this.credentialService.findLiveBySubject(
@@ -196,6 +298,45 @@ export class AuthorizationsService {
     return { stay, credential };
   }
 
+  /** Las estancias anteriores a `check_in_at` la deducen quitando los márgenes actuales. */
+  private checkTimes(stay: GuestStay): { checkIn: Date; checkOut: Date } {
+    const hour = 60 * 60 * 1000;
+
+    return {
+      checkIn:
+        stay.checkInAt ??
+        new Date(
+          stay.accessValidFrom.getTime() + leadHours(this.config) * hour,
+        ),
+      checkOut:
+        stay.checkOutAt ??
+        new Date(stay.accessValidTo.getTime() - graceHours(this.config) * hour),
+    };
+  }
+
+  private requireLive(resolved: {
+    stay: GuestStay;
+    credential: AccessCredential | null;
+  }): { stay: GuestStay; credential: AccessCredential } {
+    if (!resolved.credential) {
+      throw new BadRequestException('El acceso está revocado');
+    }
+
+    return { stay: resolved.stay, credential: resolved.credential };
+  }
+
+  private lastSuspended(stay: GuestStay): Promise<AccessCredential | null> {
+    return this.credentials.findOne({
+      where: {
+        subjectType: 'guest',
+        subjectRef: stay.hostawayReservationId,
+        status: 'revoked',
+        revokedReason: CAV_SUSPENDED_REASON,
+      },
+      order: { updatedAt: 'DESC' },
+    });
+  }
+
   private arrivalFilter(from?: string, to?: string) {
     if (from && to) return { arrivalDate: Between(from, to) };
     if (from) return { arrivalDate: MoreThanOrEqual(from) };
@@ -206,16 +347,26 @@ export class AuthorizationsService {
 
   private toView(
     stay: GuestStay,
-    credential: AccessCredential,
+    credential: AccessCredential | null,
     unitLabel: string,
+    pinNotice: PinNoticeView,
   ): AuthorizationView {
     return {
       id: stay.id,
       guestName: stay.guestName,
       unitLabel,
-      checkIn: stay.accessValidFrom.toISOString(),
-      checkOut: stay.accessValidTo.toISOString(),
-      accessLevel: credential.scope,
+      checkIn: this.checkTimes(stay).checkIn.toISOString(),
+      checkOut: this.checkTimes(stay).checkOut.toISOString(),
+      pinValidFrom: stay.accessValidFrom.toISOString(),
+      pinValidTo: stay.accessValidTo.toISOString(),
+      accessLevel: credential?.scope ?? null,
+      accessRevoked: stay.accessSuspendedAt
+        ? {
+            at: stay.accessSuspendedAt.toISOString(),
+            by: stay.accessSuspendedBy,
+          }
+        : null,
+      pinNotice,
     };
   }
 

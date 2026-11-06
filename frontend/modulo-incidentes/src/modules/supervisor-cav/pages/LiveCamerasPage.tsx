@@ -69,7 +69,9 @@ export const LiveCamerasPage = () => {
                 aria-label="Actualizar"
                 className="absolute right-0 top-1/2 -translate-y-1/2 rounded-full p-2 text-slate-500 transition hover:bg-white disabled:opacity-50"
               >
-                <RefreshCw className={`h-5 w-5 ${loading ? "animate-spin" : ""}`} />
+                <RefreshCw
+                  className={`h-5 w-5 ${loading ? "animate-spin" : ""}`}
+                />
               </button>
             </div>
 
@@ -86,7 +88,8 @@ export const LiveCamerasPage = () => {
               <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
                 <TriangleAlert className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
                 <p className="text-sm text-amber-700">
-                  No se pudo actualizar la lista: se muestran las cámaras conocidas.
+                  No se pudo actualizar la lista: se muestran las cámaras
+                  conocidas.
                 </p>
               </div>
             ) : null}
@@ -136,10 +139,15 @@ export const LiveCamerasPage = () => {
                     {selected.cameras.map((camera) => {
                       const watching =
                         camera.cameraId === live.cameraId &&
-                        ["requesting", "connecting", "live"].includes(live.state);
+                        ["requesting", "connecting", "live"].includes(
+                          live.state,
+                        );
 
                       return (
-                        <li key={camera.cameraId} className="py-3 first:pt-0 last:pb-0">
+                        <li
+                          key={camera.cameraId}
+                          className="py-3 first:pt-0 last:pb-0"
+                        >
                           <div className="flex items-center gap-3">
                             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand/10">
                               <Cctv className="h-5 w-5 text-brand" />

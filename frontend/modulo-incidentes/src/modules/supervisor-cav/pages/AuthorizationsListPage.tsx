@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { CalendarClock } from "lucide-react";
 import { AppLayout } from "@/app/layout/AppLayout";
 import { useAuthorizations } from "@/modules/supervisor-cav/hooks/useAuthorizations";
@@ -7,13 +7,14 @@ import { AppHeader } from "@/shared/components/AppHeader";
 import { FloatingReportButton } from "@/modules/incidentes/components/FloatingReportButton";
 import { DateField } from "@/shared/components/DateField";
 import { ListStateMessage } from "@/modules/incidentes/components/ListStateMessage";
-import { formatMediumDate } from "@/shared/utils/dateUtils";
+import { formatDayMonthYearTime } from "@/shared/utils/dateUtils";
 
 const inputLabel =
   "mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-500";
 
 export const AuthorizationsListPage = () => {
   const navigate = useNavigate();
+  const { search } = useLocation();
   const { items, loading, error, from, to, applyDateRange } =
     useAuthorizations();
 
@@ -22,7 +23,8 @@ export const AuthorizationsListPage = () => {
   const [draftFrom, setDraftFrom] = useState(from);
   const [draftTo, setDraftTo] = useState(to);
 
-  const rangoInvertido = Boolean(draftFrom) && Boolean(draftTo) && draftFrom > draftTo;
+  const rangoInvertido =
+    Boolean(draftFrom) && Boolean(draftTo) && draftFrom > draftTo;
   const sinCambios = draftFrom === from && draftTo === to;
 
   return (
@@ -53,7 +55,11 @@ export const AuthorizationsListPage = () => {
                   <label htmlFor="autHasta" className={inputLabel}>
                     Hasta
                   </label>
-                  <DateField id="autHasta" value={draftTo} onChange={setDraftTo} />
+                  <DateField
+                    id="autHasta"
+                    value={draftTo}
+                    onChange={setDraftTo}
+                  />
                 </div>
               </div>
 
@@ -107,23 +113,38 @@ export const AuthorizationsListPage = () => {
                   <div className="mt-3 space-y-1.5 text-sm text-slate-600">
                     <div className="flex items-center gap-2">
                       <CalendarClock className="h-4 w-4 shrink-0" />
-                      <span>Check-in {formatMediumDate(item.checkIn)}</span>
+                      <span>
+                        Check-in {formatDayMonthYearTime(item.checkIn)}
+                      </span>
                     </div>
                     <div className="flex items-center gap-2">
                       <CalendarClock className="h-4 w-4 shrink-0" />
-                      <span>Check-out {formatMediumDate(item.checkOut)}</span>
+                      <span>
+                        Check-out {formatDayMonthYearTime(item.checkOut)}
+                      </span>
                     </div>
                   </div>
 
                   <div className="mt-4 flex items-center justify-between gap-3">
-                    <span className="min-w-0 truncate text-xs text-slate-500">
-                      Válido hasta {formatMediumDate(item.checkOut)}
-                    </span>
+                    {item.accessRevoked ? (
+                      <span className="rounded-full border border-red-200 bg-red-50 px-2.5 py-0.5 text-xs font-semibold text-red-700">
+                        Acceso revocado
+                      </span>
+                    ) : (
+                      <span className="min-w-0 truncate text-xs text-slate-500">
+                        PIN válido hasta{" "}
+                        {formatDayMonthYearTime(item.pinValidTo)}
+                      </span>
+                    )}
 
                     <button
                       type="button"
                       onClick={() =>
-                        navigate(`/supervisor-cav/autorizaciones/${item.id}`)
+                        navigate(`/supervisor-cav/autorizaciones/${item.id}`, {
+                          state: {
+                            backTo: `/supervisor-cav/autorizaciones${search}`,
+                          },
+                        })
                       }
                       className="shrink-0 rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-hover"
                     >

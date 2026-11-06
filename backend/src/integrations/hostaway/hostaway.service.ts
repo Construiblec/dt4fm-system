@@ -612,8 +612,8 @@ export class HostawayService {
   //
   // Sin reintentos a propósito: quien llama es la proyección de una reserva,
   // que Hostaway espera con plazo (ver `deferSync`), y reintentar el POST de un
-  // mensaje puede duplicarlo. Un fallo queda en `guest_link_delivery` y se
-  // reintenta en la siguiente actualización de la reserva.
+  // mensaje puede duplicarlo. Un fallo queda en `guest_link_delivery` o en
+  // `guest_pin_notice` y se reintenta después.
 
   /**
    * Conversación de Hostaway asociada a una reserva, o `null` si aún no existe

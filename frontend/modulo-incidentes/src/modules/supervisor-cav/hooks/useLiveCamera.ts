@@ -16,12 +16,7 @@ import {
 } from "@/modules/supervisor-cav/utils/liveVideoMessages";
 
 export type LiveCameraState =
-  | "idle"
-  | "requesting"
-  | "connecting"
-  | "live"
-  | "ended"
-  | "error";
+  "idle" | "requesting" | "connecting" | "live" | "ended" | "error";
 
 const watch: typeof watchCamera = isCavMock ? watchCameraMock : watchCamera;
 

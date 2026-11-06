@@ -144,6 +144,18 @@ por `Unit.HostawayListingID` en openMAINT, calcula la vigencia y emite. Reserva 
 Emite **siempre `pedestrian`**: no hay ninguna fuente que diga si el huésped trae vehículo. Ampliarlo
 es manual, con `POST /access/credentials/:id/scope`.
 
+**Aviso del PIN.** No se envía el enlace al portal: cuando la credencial queda `synced`,
+[guest-pin-notice.service.ts](../../src/modules/access-control/guest-pin-notice.service.ts) manda
+un mensaje con el PIN por la conversación de Hostaway, solo a reservas de canal. Un aviso por
+credencial y huella, registrado en `guest_pin_notice`; si el PIN cambia, se vuelve a avisar. Ver la
+[enmienda a D-10](decisiones-arquitectura-y-seguridad.md#enmienda-del-2026-11-06--el-pin-por-mensaje-de-hostaway).
+
+**Revocar y restaurar desde Autorizaciones.** `POST /access-authorizations/:stayId/access-level`
+con `accessLevel: 'none'` revoca la credencial en todas las puertas y marca la estancia
+(`access_suspended_at/by`): Hostaway y el barrido no la reemiten y sigue en la lista con
+`accessLevel: null`. Un nivel sobre una estancia revocada la reactiva **con el mismo PIN**, sin aviso
+nuevo; si la VPS responde `pin_conflict`, se rota y sale el aviso del PIN nuevo.
+
 **Manual — `POST /access/credentials`.** Para residentes y personal, y para cualquier caso que el
 webhook no cubra.
 
@@ -183,6 +195,7 @@ nada.
 | Cuándo | Qué hace |
 |---|---|
 | `*/10 * * * *` | Reintenta lo no sincronizado. Agotado `ACCESS_SYNC_MAX_ATTEMPTS`, marca `failed` |
+| `*/10 * * * *` | Avisa del PIN a las estancias con credencial `synced` sin aviso para su PIN vigente. Además exige `GUEST_PIN_NOTICE_ENABLED` |
 | `10 * * * *` | Marca `expired` lo vencido. Contabilidad: el terminal ya lo ignora solo |
 | `0 3 * * *` | Purga: `DELETE` de lo `expired`/`revoked` aún escrito. Sin esto el terminal se llena y **rechaza altas** |
 | `30 3 * * *` | Concilia contra el inventario real de cada dispositivo |
@@ -221,6 +234,9 @@ Definidas en [.env.example](../../.env.example).
 | `ACCESS_SCHEDULER_ENABLED` | `false`. Solo `true` activa los barridos |
 | `ACCESS_CHECKIN_HOUR` / `ACCESS_CHECKOUT_HOUR` | `15` / `11`. **Solo respaldo**: manda el `checkInTime` de la reserva |
 | `ACCESS_GUEST_LEAD_HOURS` / `ACCESS_GUEST_GRACE_HOURS` | Margen antes de llegada y después de salida |
+| `GUEST_PIN_NOTICE_ENABLED` | `false`. `true` envía el PIN por mensaje de Hostaway |
+| `GUEST_PIN_NOTICE_RETRY_COOLDOWN_MINUTES` | `30`. Espera tras un envío fallido antes de reintentar |
+| `GUEST_PIN_NOTICE_CHANNEL` / `GUEST_PIN_NOTICE_WEBHOOK_URL` | **Solo pruebas.** `webhook` manda el mensaje con el PIN a esa URL en vez de al huésped. Por defecto, Hostaway |
 
 Las dos claves se generan igual, y **no son intercambiables**:
 
