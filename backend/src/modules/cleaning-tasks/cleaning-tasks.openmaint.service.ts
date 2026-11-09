@@ -672,14 +672,12 @@ export class CleaningTasksOpenmaintService {
   }
 
   /**
-   * Empleados internos: los únicos que pueden ser `Employee` de una limpieza
-   * (la referencia apunta a `InternalEmployee`). Los proveedores quedan fuera
-   * por construcción. Con `teamId`, solo los de ese equipo. Sesión interna: es
-   * dato de referencia.
+   * Empleados que pueden ser `Employee` de una limpieza: la clase `Employee`
+   * completa (internos y externos), porque la referencia en openMAINT la
+   * admite. Con `teamId`, solo los de ese equipo. Sesión interna: es dato de
+   * referencia.
    */
-  async listInternalEmployees(
-    teamId?: number,
-  ): Promise<{ data: EmployeeCard[] }> {
+  async listEmployees(teamId?: number): Promise<{ data: EmployeeCard[] }> {
     return this.executeWithRetry(async (sessionId) => {
       const filter = teamId
         ? `&filter=${encodeURIComponent(
@@ -695,10 +693,10 @@ export class CleaningTasksOpenmaintService {
           )}`
         : '';
       return (await this.client.get(
-        `/classes/InternalEmployee/cards?limit=500${filter}`,
+        `/classes/Employee/cards?limit=500${filter}`,
         sessionId,
       )) as { data: EmployeeCard[] };
-    }, 'listInternalEmployees').catch((error) => {
+    }, 'listEmployees').catch((error) => {
       this.logger.error(`Error al listar empleados — ${describeError(error)}`);
       throw new InternalServerErrorException(
         'Error al consultar los empleados en OpenMAINT',
