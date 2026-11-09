@@ -195,7 +195,7 @@ nada.
 | Cuándo | Qué hace |
 |---|---|
 | `*/10 * * * *` | Reintenta lo no sincronizado. Agotado `ACCESS_SYNC_MAX_ATTEMPTS`, marca `failed` |
-| `*/10 * * * *` | Avisa del PIN a las estancias con credencial `synced` sin aviso para su PIN vigente. Además exige `GUEST_PIN_NOTICE_ENABLED` |
+| `*/10 * * * *` | Escribe el PIN en el `doorCode` de la reserva (credencial `synced` sin escritura para su PIN vigente), envía el mensaje de renovación pendiente y borra el `doorCode` de estancias sin credencial viva. Además exige `GUEST_PIN_NOTICE_ENABLED` |
 | `10 * * * *` | Marca `expired` lo vencido. Contabilidad: el terminal ya lo ignora solo |
 | `0 3 * * *` | Purga: `DELETE` de lo `expired`/`revoked` aún escrito. Sin esto el terminal se llena y **rechaza altas** |
 | `30 3 * * *` | Concilia contra el inventario real de cada dispositivo |
@@ -234,9 +234,9 @@ Definidas en [.env.example](../../.env.example).
 | `ACCESS_SCHEDULER_ENABLED` | `false`. Solo `true` activa los barridos |
 | `ACCESS_CHECKIN_HOUR` / `ACCESS_CHECKOUT_HOUR` | `15` / `11`. **Solo respaldo**: manda el `checkInTime` de la reserva |
 | `ACCESS_GUEST_LEAD_HOURS` / `ACCESS_GUEST_GRACE_HOURS` | Margen antes de llegada y después de salida |
-| `GUEST_PIN_NOTICE_ENABLED` | `false`. `true` envía el PIN por mensaje de Hostaway |
-| `GUEST_PIN_NOTICE_RETRY_COOLDOWN_MINUTES` | `30`. Espera tras un envío fallido antes de reintentar |
-| `GUEST_PIN_NOTICE_CHANNEL` / `GUEST_PIN_NOTICE_WEBHOOK_URL` | **Solo pruebas.** `webhook` manda el mensaje con el PIN a esa URL en vez de al huésped. Por defecto, Hostaway |
+| `GUEST_PIN_NOTICE_ENABLED` | `false`. `true` escribe el PIN en el `doorCode` de la reserva; al renovarlo el CAV, también avisa por el chat |
+| `GUEST_PIN_NOTICE_RETRY_COOLDOWN_MINUTES` | `30`. Espera tras un intento fallido antes de reintentar |
+| `GUEST_PIN_NOTICE_CHANNEL` / `GUEST_PIN_NOTICE_WEBHOOK_URL` | **Solo pruebas.** `webhook` manda el PIN y el mensaje de renovación a esa URL en vez de a Hostaway. Por defecto, Hostaway |
 
 Las dos claves se generan igual, y **no son intercambiables**:
 

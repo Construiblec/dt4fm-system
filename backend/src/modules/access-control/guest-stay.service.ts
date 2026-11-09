@@ -44,7 +44,7 @@ export interface ReservationInput {
   guestName: string;
   guestEmail?: string | null;
   guestPhone?: string | null;
-  /** `channelName` de Hostaway. Decide si se avisa del PIN y por dónde. */
+  /** `channelName` de Hostaway. Decide si el PIN se publica en Hostaway (las directas, no). */
   channelName?: string | null;
   arrivalDate: string;
   departureDate: string;
@@ -108,7 +108,7 @@ export class GuestStayService {
 
     await this.syncCredential(stay, input.issuedBy, input.deferSync);
 
-    // El aviso del PIN lo manda `GuestPinNoticeService` cuando la credencial llega a la puerta.
+    // El PIN lo escribe en la reserva `GuestPinNoticeService` cuando la credencial llega a la puerta.
     return stay;
   }
 

@@ -285,7 +285,7 @@ export class CredentialService {
 
   /**
    * Devuelve a la puerta una credencial revocada **con el mismo PIN**. Si la VPS
-   * responde `pin_conflict`, `write()` lo rota y el aviso del PIN sale solo.
+   * responde `pin_conflict`, `write()` lo rota y el PIN nuevo se reescribe solo en la reserva.
    */
   async reactivate(
     id: string,
@@ -351,7 +351,7 @@ export class CredentialService {
    * **nunca** tocan el PIN: aquí cambiarlo es justamente el propósito. El caso
    * real es el huésped que dice que alguien vio su código.
    *
-   * El aviso del PIN nuevo lo manda `GuestPinNoticeService`: la huella cambia.
+   * `GuestPinNoticeService` reescribe el PIN en la reserva: la huella cambia.
    */
   async regeneratePin(id: string): Promise<AccessCredential> {
     const credential = await this.findById(id);

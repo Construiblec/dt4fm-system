@@ -64,8 +64,8 @@ function guestLinkChannelFactory(
  * Emisión y entrega del enlace del portal del huésped.
  *
  * No depende de `access-control` ni de `guest-portal`: es lo que permite que
- * ambos lo importen. `access-control` lo usa para entregar cuando nace una
- * estancia; `guest-portal`, para verificar el enlace cuando se abre.
+ * ambos lo importen. Solo `guest-portal` lo usa: emitir, enviar a mano y
+ * verificar el enlace. Una reserva nueva no lo envía.
  */
 @Module({
   imports: [

@@ -1,7 +1,7 @@
 import { BottomSheet } from "@/shared/components/BottomSheet";
 
 type Props = {
-  /** Reserva directa: no hay conversación de Hostaway por la que avisar. */
+  /** `false` en reservas directas: el PIN no se publica en Hostaway. */
   noticeByHostaway: boolean;
   onConfirm: () => void;
   onClose: () => void;
@@ -20,8 +20,8 @@ export const RenewPinSheet = ({
 
       <p className="rounded-xl bg-slate-100 p-3 text-xs text-slate-600">
         {noticeByHostaway
-          ? "Al huésped le llegará el PIN nuevo por mensaje de Hostaway."
-          : "Es una reserva directa: al huésped no le llegará ningún mensaje con el PIN nuevo."}
+          ? "El PIN nuevo se guardará en la reserva de Hostaway y al huésped le llegará un mensaje con el nuevo código."
+          : "Es una reserva directa: el PIN nuevo no se guarda en Hostaway ni se le envía al huésped."}
       </p>
 
       <div className="grid grid-cols-2 gap-2 pt-2">

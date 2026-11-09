@@ -1247,7 +1247,7 @@ describe('AccessControlController (e2e)', () => {
         expect(JSON.stringify(res.body)).not.toMatch(/"pin"\s*:/);
       });
 
-      it('avisa al huésped del PIN nuevo por Hostaway', async () => {
+      it('escribe el PIN nuevo en la reserva y lo avisa por el chat', async () => {
         const estancia = await crearEstancia({ channelName: 'airbnbOfficial' });
 
         const res = await request(app.getHttpServer())
@@ -1260,9 +1260,16 @@ describe('AccessControlController (e2e)', () => {
           '44712233',
           'pedestrian',
         );
+        const pin = credentialService.revealPin(credencial!);
+        expect(mocks.hostaway.setReservationDoorCode).toHaveBeenCalledWith(
+          '44712233',
+          pin,
+          expect.any(String),
+        );
         const [, texto] = mocks.hostaway.sendConversationMessage.mock
           .calls[0] as [number, string];
-        expect(texto).toContain(credentialService.revealPin(credencial!));
+        expect(texto).toContain(pin);
+        expect(mocks.hostaway.sendConversationMessage).toHaveBeenCalledTimes(1);
         expect(res.body.data.pinNotice.status).toBe('sent');
       });
 
@@ -1282,7 +1289,7 @@ describe('AccessControlController (e2e)', () => {
     });
 
     describe('POST /access-authorizations/:stayId/pin-notice', () => {
-      it('reenvía el PIN aunque ya se hubiera enviado, sin devolverlo', async () => {
+      it('reescribe el PIN en la reserva aunque ya estuviera, sin devolverlo ni mandar mensaje', async () => {
         const estancia = await crearEstancia({ channelName: 'bookingcom' });
         await app.get(GuestPinNoticeService).notify(estancia!.id);
 
@@ -1293,10 +1300,11 @@ describe('AccessControlController (e2e)', () => {
 
         expect(res.body.data).toMatchObject({
           outcome: 'sent',
-          channel: 'hostaway-message',
+          channel: 'hostaway-door-code',
         });
         expect(JSON.stringify(res.body)).not.toMatch(/"pin"\s*:/);
-        expect(mocks.hostaway.sendConversationMessage).toHaveBeenCalledTimes(2);
+        expect(mocks.hostaway.setReservationDoorCode).toHaveBeenCalledTimes(2);
+        expect(mocks.hostaway.sendConversationMessage).not.toHaveBeenCalled();
       });
 
       it('404 si la estancia no tiene credencial viva', async () => {
@@ -1385,7 +1393,7 @@ describe('AccessControlController (e2e)', () => {
           ).toBeNull();
         });
 
-        it('restaura con el mismo PIN, el nivel elegido y sin avisar otra vez', async () => {
+        it('restaura con el mismo PIN, el nivel elegido y sin escribirlo otra vez', async () => {
           const estancia = await crearEstancia({
             channelName: 'airbnbOfficial',
           });
@@ -1414,9 +1422,10 @@ describe('AccessControlController (e2e)', () => {
           expect((await pinNotice.notify(estancia!.id)).reason).toBe(
             'already_sent',
           );
-          expect(mocks.hostaway.sendConversationMessage).toHaveBeenCalledTimes(
+          expect(mocks.hostaway.setReservationDoorCode).toHaveBeenCalledTimes(
             1,
           );
+          expect(mocks.hostaway.sendConversationMessage).not.toHaveBeenCalled();
         });
 
         it('no renueva el PIN de un acceso revocado', async () => {
@@ -2108,10 +2117,10 @@ describe('AccessControlController (e2e)', () => {
   });
 
   /**
-   * Aviso del PIN por Hostaway al proyectarse la reserva. Ya no se envía el
-   * enlace del portal: solo un mensaje con el PIN, y solo a reservas de canal.
+   * PIN en la reserva de Hostaway (`doorCode`) al proyectarse la reserva. Ya no
+   * se envía el enlace del portal ni un mensaje; solo reservas de canal.
    */
-  describe('aviso del PIN por Hostaway', () => {
+  describe('PIN en la reserva de Hostaway', () => {
     conRelojCongelado();
 
     let pinNotice: GuestPinNoticeService;
@@ -2159,33 +2168,36 @@ describe('AccessControlController (e2e)', () => {
       expect(await pinNotice['pendingStayIds']()).toEqual([estancia!.id]);
     });
 
-    it('envía solo el PIN, una vez, y no lo repite en una modificación', async () => {
+    it('escribe el PIN en la reserva una vez, sin mensaje, y no lo repite en una modificación', async () => {
       const estancia = await guestStayService.upsertFromReservation(reserva());
 
       expect((await pinNotice.notify(estancia!.id)).outcome).toBe('sent');
 
-      const [conversationId, texto] = mocks.hostaway.sendConversationMessage
-        .mock.calls[0] as [number, string];
-      expect(conversationId).toBe(900000);
-      expect(texto).toContain(await pinDe());
-      expect(texto).not.toMatch(/https?:\/\//);
+      expect(mocks.hostaway.setReservationDoorCode).toHaveBeenCalledWith(
+        '44712233',
+        await pinDe(),
+        expect.any(String),
+      );
+      expect(mocks.hostaway.sendConversationMessage).not.toHaveBeenCalled();
 
+      // Nuestro PUT vuelve como `reservation updated` / `modified`: no cambia el PIN.
       await guestStayService.upsertFromReservation(
         reserva({ departureDate: fechaLocal(5), status: 'modified' }),
       );
       expect((await pinNotice.notify(estancia!.id)).outcome).toBe('skipped');
       expect(await pinNotice['pendingStayIds']()).toEqual([]);
-      expect(mocks.hostaway.sendConversationMessage).toHaveBeenCalledTimes(1);
+      expect(mocks.hostaway.setReservationDoorCode).toHaveBeenCalledTimes(1);
 
       const avisos = await avisosDe(estancia!.id);
       expect(avisos).toHaveLength(1);
       expect(avisos[0]).toMatchObject({
+        channel: 'hostaway-door-code',
         status: 'sent',
-        target: 'conversation:900000',
+        target: 'reservation:44712233',
       });
     });
 
-    it('no envía mientras la credencial no está en la puerta', async () => {
+    it('no escribe mientras la credencial no está en la puerta', async () => {
       mocks.accessIot.putCredential.mockRejectedValueOnce(
         new Error('VPS caída'),
       );
@@ -2198,8 +2210,10 @@ describe('AccessControlController (e2e)', () => {
       expect(await pinNotice['pendingStayIds']()).toEqual([]);
     });
 
-    it('una conversación que aún no existe se reintenta', async () => {
-      mocks.hostaway.findConversationByReservation.mockResolvedValueOnce(null);
+    it('un fallo de Hostaway se reintenta', async () => {
+      mocks.hostaway.setReservationDoorCode.mockRejectedValueOnce(
+        new Error('Hostaway caído'),
+      );
       const estancia = await guestStayService.upsertFromReservation(reserva());
 
       expect((await pinNotice.notify(estancia!.id)).outcome).toBe('failed');
@@ -2221,10 +2235,10 @@ describe('AccessControlController (e2e)', () => {
         outcome: 'skipped',
         reason: 'direct_reservation',
       });
-      expect(mocks.hostaway.sendConversationMessage).not.toHaveBeenCalled();
+      expect(mocks.hostaway.setReservationDoorCode).not.toHaveBeenCalled();
     });
 
-    it('un PIN renovado vuelve a avisarse', async () => {
+    it('un PIN rotado sin el CAV se reescribe, pero sin mensaje', async () => {
       const estancia = await guestStayService.upsertFromReservation(reserva());
       await pinNotice.notify(estancia!.id);
 
@@ -2237,10 +2251,76 @@ describe('AccessControlController (e2e)', () => {
 
       expect(await pinNotice['pendingStayIds']()).toEqual([estancia!.id]);
       expect((await pinNotice.notify(estancia!.id)).outcome).toBe('sent');
+      expect(mocks.hostaway.setReservationDoorCode).toHaveBeenLastCalledWith(
+        '44712233',
+        await pinDe(),
+        expect.any(String),
+      );
+      expect(mocks.hostaway.sendConversationMessage).not.toHaveBeenCalled();
+    });
 
-      const [, texto] = mocks.hostaway.sendConversationMessage.mock
-        .calls[1] as [number, string];
+    it('la renovación del CAV que no llega a la puerta deja el mensaje para el barrido', async () => {
+      const estancia = await guestStayService.upsertFromReservation(reserva());
+      await pinNotice.notify(estancia!.id);
+      const credencial = await credentialService.findLive(
+        'guest',
+        '44712233',
+        'pedestrian',
+      );
+
+      mocks.accessIot.putCredential.mockRejectedValueOnce(
+        new Error('VPS caída'),
+      );
+      await credentialService.regeneratePin(credencial!.id);
+      await pinNotice.requestRenewalMessage(estancia!, credencial!);
+
+      expect((await pinNotice.notify(estancia!.id)).reason).toBe('not_synced');
+      expect(mocks.hostaway.sendConversationMessage).not.toHaveBeenCalled();
+
+      await credentialService.sync(
+        (await credentialService.findLive('guest', '44712233', 'pedestrian'))!,
+      );
+      await pinNotice.notify(estancia!.id);
+
+      const [conversationId, texto] = mocks.hostaway.sendConversationMessage
+        .mock.calls[0] as [number, string];
+      expect(conversationId).toBe(900000);
       expect(texto).toContain(await pinDe());
+      await pinNotice.notify(estancia!.id);
+      expect(mocks.hostaway.sendConversationMessage).toHaveBeenCalledTimes(1);
+    });
+
+    it('borra el doorCode al cancelarse la reserva, una sola vez', async () => {
+      const estancia = await guestStayService.upsertFromReservation(reserva());
+      await pinNotice.notify(estancia!.id);
+
+      await guestStayService.upsertFromReservation(
+        reserva({ status: 'cancelled' }),
+      );
+      // El barrido está apagado en e2e: se llama al paso de borrado directamente.
+      await pinNotice['clearStale']();
+      await pinNotice['clearStale']();
+
+      expect(mocks.hostaway.setReservationDoorCode).toHaveBeenCalledTimes(2);
+      expect(mocks.hostaway.setReservationDoorCode).toHaveBeenLastCalledWith(
+        '44712233',
+        null,
+      );
+      expect((await avisosDe(estancia!.id)).map((a) => a.status)).toEqual([
+        'sent',
+        'cleared',
+      ]);
+    });
+
+    it('no borra nada en una reserva donde nunca escribimos', async () => {
+      await guestStayService.upsertFromReservation(reserva());
+      await guestStayService.upsertFromReservation(
+        reserva({ status: 'cancelled' }),
+      );
+
+      await pinNotice['clearStale']();
+
+      expect(mocks.hostaway.setReservationDoorCode).not.toHaveBeenCalled();
     });
 
     it('POST /guest/magic-link/deliver sigue enviando el enlace a mano', async () => {

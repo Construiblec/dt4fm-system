@@ -2,15 +2,18 @@ import { HttpService } from '@nestjs/axios';
 import { Logger, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { of, throwError } from 'rxjs';
-import { Repository } from 'typeorm';
+import { FindOperator, Repository } from 'typeorm';
 import { HostawayService } from '../../integrations/hostaway/hostaway.service';
 import { CredentialService } from './credential.service';
 import { AccessCredential } from './entities/access-credential.entity';
 import { GuestPinNotice } from './entities/guest-pin-notice.entity';
 import { GuestStay } from './entities/guest-stay.entity';
 import {
-  buildGuestPinMessage,
+  buildPinRenewedMessage,
+  DOOR_CODE_CHANNEL,
+  DOOR_CODE_INSTRUCTION,
   GuestPinNoticeService,
+  RENEWAL_MESSAGE_CHANNEL,
 } from './guest-pin-notice.service';
 
 const PIN = '4821';
@@ -40,26 +43,64 @@ const credentialWith = (
     ...overrides,
   }) as AccessCredential;
 
+let seq = 0;
 const noticeWith = (overrides: Partial<GuestPinNotice> = {}): GuestPinNotice =>
   ({
-    id: 'n-1',
+    id: `n-${++seq}`,
     credentialId: 'cred-1',
     pinFingerprint: 'huella-1',
+    channel: DOOR_CODE_CHANNEL,
+    target: 'reservation:90000002',
     status: 'failed',
-    error: 'conversation_not_found',
-    createdAt: new Date(),
+    error: 'Hostaway caído',
+    createdAt: new Date(Date.now() - 60_000),
     ...overrides,
   }) as GuestPinNotice;
+
+/** Repositorio en memoria: basta para `findOne`/`find` con igualdad e `In`. */
+const memoryNotices = (initial: GuestPinNotice[]) => {
+  const rows = [...initial];
+  const matches = (row: GuestPinNotice, where: Record<string, unknown>) =>
+    Object.entries(where).every(([key, expected]) => {
+      const actual = (row as unknown as Record<string, unknown>)[key];
+      return expected instanceof FindOperator
+        ? (expected.value as unknown[]).includes(actual)
+        : actual === expected;
+    });
+  const query = (where: Record<string, unknown>) =>
+    rows
+      .filter((row) => matches(row, where))
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+
+  return {
+    rows,
+    findOne: jest.fn(({ where }: { where: Record<string, unknown> }) =>
+      Promise.resolve(query(where)[0] ?? null),
+    ),
+    find: jest.fn(({ where }: { where: Record<string, unknown> }) =>
+      Promise.resolve(query(where)),
+    ),
+    create: jest.fn((row: Partial<GuestPinNotice>) => row),
+    save: jest.fn((row: GuestPinNotice) => {
+      rows.push({ ...row, id: `n-${++seq}`, createdAt: new Date() });
+      return Promise.resolve(row);
+    }),
+  };
+};
 
 const harness = (
   options: {
     stay?: GuestStay | null;
     credentials?: AccessCredential[];
     env?: Record<string, string>;
-    handled?: boolean;
-    lastNotice?: GuestPinNotice | null;
     notices?: GuestPinNotice[];
     pendingStayIds?: string[];
+    staleRows?: {
+      credentialId: string;
+      pinFingerprint: string;
+      stayId: string;
+      reservationId: string;
+    }[];
   } = {},
 ) => {
   const env: Record<string, string> = {
@@ -68,13 +109,7 @@ const harness = (
     ...options.env,
   };
 
-  const notices = {
-    exists: jest.fn().mockResolvedValue(options.handled ?? false),
-    findOne: jest.fn().mockResolvedValue(options.lastNotice ?? null),
-    find: jest.fn().mockResolvedValue(options.notices ?? []),
-    create: jest.fn((row: Partial<GuestPinNotice>) => row),
-    save: jest.fn((row: Partial<GuestPinNotice>) => Promise.resolve(row)),
-  };
+  const notices = memoryNotices(options.notices ?? []);
   const stays = {
     findOne: jest
       .fn()
@@ -82,18 +117,26 @@ const harness = (
         options.stay === undefined ? stayWith() : options.stay,
       ),
   };
+  // Las dos consultas se distinguen por la primera columna que seleccionan.
+  let firstAlias = '';
   const queryBuilder = {
     innerJoin: jest.fn().mockReturnThis(),
-    select: jest.fn().mockReturnThis(),
+    select: jest.fn(function (this: unknown, _: string, alias: string) {
+      firstAlias = alias;
+      return this;
+    }),
+    addSelect: jest.fn().mockReturnThis(),
     where: jest.fn().mockReturnThis(),
     andWhere: jest.fn().mockReturnThis(),
     orderBy: jest.fn().mockReturnThis(),
     limit: jest.fn().mockReturnThis(),
-    getRawMany: jest
-      .fn()
-      .mockResolvedValue(
-        (options.pendingStayIds ?? []).map((stayId) => ({ stayId })),
+    getRawMany: jest.fn(() =>
+      Promise.resolve(
+        firstAlias === 'credentialId'
+          ? (options.staleRows ?? [])
+          : (options.pendingStayIds ?? []).map((stayId) => ({ stayId })),
       ),
+    ),
   };
   const credentials = {
     createQueryBuilder: jest.fn().mockReturnValue(queryBuilder),
@@ -105,6 +148,7 @@ const harness = (
     revealPin: jest.fn().mockReturnValue(PIN),
   };
   const hostaway = {
+    setReservationDoorCode: jest.fn().mockResolvedValue(undefined),
     findConversationByReservation: jest
       .fn()
       .mockResolvedValue({ id: 777, reservationId: 90000002, channelId: 1 }),
@@ -126,68 +170,72 @@ const harness = (
   return { service, notices, stays, credentialService, hostaway, http };
 };
 
-describe('GuestPinNoticeService', () => {
-  describe('texto', () => {
-    it('lleva el PIN, en español e inglés, y ninguna URL', () => {
-      const texto = buildGuestPinMessage('Bruno Salas', PIN);
+const requested = (overrides: Partial<GuestPinNotice> = {}) =>
+  noticeWith({
+    channel: RENEWAL_MESSAGE_CHANNEL,
+    status: 'requested',
+    target: '',
+    error: null,
+    ...overrides,
+  });
 
-      expect(texto).toContain(`tu código de acceso al edificio es ${PIN}`);
-      expect(texto).toContain(`your building access code is ${PIN}`);
+describe('GuestPinNoticeService', () => {
+  describe('texto de renovación', () => {
+    it('lleva el PIN nuevo, en español e inglés, y ninguna URL', () => {
+      const texto = buildPinRenewedMessage('Bruno Salas', PIN);
+
+      expect(texto).toContain(`El nuevo código es ${PIN}`);
+      expect(texto).toContain(`Your new code is ${PIN}`);
       expect(texto).not.toMatch(/https?:\/\//);
     });
 
     it('usa «Huésped» si la reserva no trae nombre', () => {
-      expect(buildGuestPinMessage('  ', PIN)).toMatch(/^Hola Huésped:/);
+      expect(buildPinRenewedMessage('  ', PIN)).toMatch(/^Hola Huésped:/);
     });
   });
 
-  describe('notify', () => {
-    it('envía el PIN por la conversación de la reserva y lo registra', async () => {
+  describe('doorCode', () => {
+    it('escribe el PIN en la reserva y lo registra, sin mandar mensaje', async () => {
       const { service, hostaway, notices } = harness();
 
-      const resultado = await service.notify(STAY_ID);
-
-      expect(resultado).toEqual({
+      expect(await service.notify(STAY_ID)).toEqual({
         outcome: 'sent',
-        channel: 'hostaway-message',
-        target: 'conversation:777',
+        channel: DOOR_CODE_CHANNEL,
+        target: 'reservation:90000002',
       });
-      expect(hostaway.findConversationByReservation).toHaveBeenCalledWith(
+      expect(hostaway.setReservationDoorCode).toHaveBeenCalledWith(
         '90000002',
+        PIN,
+        DOOR_CODE_INSTRUCTION,
       );
-      const [conversationId, texto, tipo] = hostaway.sendConversationMessage
-        .mock.calls[0] as [number, string, string];
-      expect(conversationId).toBe(777);
-      expect(texto).toContain(PIN);
-      expect(tipo).toBe('channel');
-      expect(notices.save).toHaveBeenCalledWith(
+      expect(hostaway.sendConversationMessage).not.toHaveBeenCalled();
+      expect(notices.rows).toEqual([
         expect.objectContaining({
           credentialId: 'cred-1',
           guestStayId: STAY_ID,
           pinFingerprint: 'huella-1',
+          channel: DOOR_CODE_CHANNEL,
           status: 'sent',
-          target: 'conversation:777',
         }),
-      );
+      ]);
     });
 
     it('nunca guarda ni registra el PIN', async () => {
       const log = jest.spyOn(Logger.prototype, 'log').mockImplementation();
       const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
-      const { service, notices, hostaway } = harness();
-      hostaway.sendConversationMessage.mockRejectedValueOnce(
-        new ServiceUnavailableException('Hostaway rechazó el mensaje'),
+      const { service, notices, hostaway } = harness({
+        notices: [requested()],
+      });
+      hostaway.setReservationDoorCode.mockRejectedValueOnce(
+        new ServiceUnavailableException('Hostaway rechazó el doorCode'),
       );
 
       await service.notify(STAY_ID);
       await service.notify(STAY_ID);
 
-      const registrado = JSON.stringify([
-        notices.save.mock.calls,
-        log.mock.calls,
-        warn.mock.calls,
-      ]);
-      expect(registrado).not.toContain(PIN);
+      expect(
+        JSON.stringify([notices.rows, log.mock.calls, warn.mock.calls]),
+      ).not.toContain(PIN);
 
       log.mockRestore();
       warn.mockRestore();
@@ -202,10 +250,10 @@ describe('GuestPinNoticeService', () => {
         outcome: 'skipped',
         reason: 'disabled',
       });
-      expect(hostaway.findConversationByReservation).not.toHaveBeenCalled();
+      expect(hostaway.setReservationDoorCode).not.toHaveBeenCalled();
     });
 
-    it('no envía hasta que la credencial está en la puerta', async () => {
+    it('no escribe hasta que la credencial está en la puerta', async () => {
       // Un `pin_conflict` todavía podría cambiar el PIN.
       const { service, hostaway, notices } = harness({
         credentials: [credentialWith({ syncState: 'pending' })],
@@ -215,12 +263,12 @@ describe('GuestPinNoticeService', () => {
         outcome: 'skipped',
         reason: 'not_synced',
       });
-      expect(hostaway.sendConversationMessage).not.toHaveBeenCalled();
-      expect(notices.save).not.toHaveBeenCalled();
+      expect(hostaway.setReservationDoorCode).not.toHaveBeenCalled();
+      expect(notices.rows).toEqual([]);
     });
 
     it.each([['direct'], [null], ['']])(
-      'no envía nada a una reserva directa (%p)',
+      'no publica nada en una reserva directa (%p)',
       async (channelName) => {
         const { service, hostaway } = harness({
           stay: stayWith({ channelName }),
@@ -230,11 +278,11 @@ describe('GuestPinNoticeService', () => {
           outcome: 'skipped',
           reason: 'direct_reservation',
         });
-        expect(hostaway.sendConversationMessage).not.toHaveBeenCalled();
+        expect(hostaway.setReservationDoorCode).not.toHaveBeenCalled();
       },
     );
 
-    it('no envía a una estancia terminada o cancelada', async () => {
+    it('no escribe en una estancia terminada o cancelada', async () => {
       const { service, hostaway } = harness({
         stay: stayWith({ status: 'completed' }),
       });
@@ -243,10 +291,10 @@ describe('GuestPinNoticeService', () => {
         outcome: 'skipped',
         reason: 'stay_not_live',
       });
-      expect(hostaway.sendConversationMessage).not.toHaveBeenCalled();
+      expect(hostaway.setReservationDoorCode).not.toHaveBeenCalled();
     });
 
-    it('no envía si la estancia no tiene credencial viva', async () => {
+    it('no escribe si la estancia no tiene credencial viva', async () => {
       const { service } = harness({ credentials: [] });
 
       expect(await service.notify(STAY_ID)).toMatchObject({
@@ -255,96 +303,101 @@ describe('GuestPinNoticeService', () => {
       });
     });
 
-    it('no repite un aviso ya enviado para el mismo PIN', async () => {
-      const { service, hostaway, notices } = harness({ handled: true });
+    it('no repite la escritura para el mismo PIN', async () => {
+      const { service, hostaway } = harness({
+        notices: [noticeWith({ status: 'sent', error: null })],
+      });
 
       expect(await service.notify(STAY_ID)).toMatchObject({
         outcome: 'skipped',
         reason: 'already_sent',
       });
-      expect(notices.exists).toHaveBeenCalledWith({
-        where: expect.objectContaining({
-          credentialId: 'cred-1',
-          pinFingerprint: 'huella-1',
-        }) as unknown,
-      });
-      expect(hostaway.sendConversationMessage).not.toHaveBeenCalled();
+      expect(hostaway.setReservationDoorCode).not.toHaveBeenCalled();
     });
 
-    it('vuelve a avisar cuando el PIN cambia', async () => {
-      // La consulta es por huella: con un PIN nuevo no hay aviso previo.
-      const { service, hostaway, notices } = harness({
-        credentials: [credentialWith({ pinFingerprint: 'huella-2' })],
+    it('el mensaje del flujo anterior no cuenta: también se escribe el doorCode', async () => {
+      const { service, hostaway } = harness({
+        notices: [
+          noticeWith({ channel: RENEWAL_MESSAGE_CHANNEL, status: 'sent' }),
+          noticeWith({ channel: 'none', status: 'skipped' }),
+        ],
       });
 
       expect((await service.notify(STAY_ID)).outcome).toBe('sent');
-      expect(notices.save).toHaveBeenCalledWith(
-        expect.objectContaining({ pinFingerprint: 'huella-2' }),
-      );
-      expect(hostaway.sendConversationMessage).toHaveBeenCalledTimes(1);
+      expect(hostaway.setReservationDoorCode).toHaveBeenCalledTimes(1);
+    });
+
+    it('vuelve a escribir cuando el PIN cambia', async () => {
+      const { service, notices } = harness({
+        credentials: [credentialWith({ pinFingerprint: 'huella-2' })],
+        notices: [noticeWith({ status: 'sent', error: null })],
+      });
+
+      expect((await service.notify(STAY_ID)).outcome).toBe('sent');
+      expect(notices.rows.at(-1)).toMatchObject({
+        pinFingerprint: 'huella-2',
+        status: 'sent',
+      });
+    });
+
+    it('vuelve a escribir si se borró y el acceso se restauró con el mismo PIN', async () => {
+      const { service, hostaway } = harness({
+        notices: [
+          noticeWith({
+            status: 'sent',
+            createdAt: new Date(Date.now() - 120_000),
+          }),
+          noticeWith({ status: 'cleared' }),
+        ],
+      });
+
+      expect((await service.notify(STAY_ID)).outcome).toBe('sent');
+      expect(hostaway.setReservationDoorCode).toHaveBeenCalledTimes(1);
     });
 
     it('espera el enfriamiento tras un fallo reciente', async () => {
-      const { service, hostaway } = harness({ lastNotice: noticeWith() });
+      const { service, hostaway } = harness({ notices: [noticeWith()] });
 
       expect(await service.notify(STAY_ID)).toMatchObject({
         outcome: 'skipped',
         reason: 'retry_cooldown',
       });
-      expect(hostaway.sendConversationMessage).not.toHaveBeenCalled();
+      expect(hostaway.setReservationDoorCode).not.toHaveBeenCalled();
     });
 
     it('reintenta cuando el fallo ya es antiguo', async () => {
       const { service } = harness({
-        lastNotice: noticeWith({
-          createdAt: new Date(Date.now() - 31 * 60_000),
-        }),
+        notices: [
+          noticeWith({ createdAt: new Date(Date.now() - 31 * 60_000) }),
+        ],
       });
 
       expect((await service.notify(STAY_ID)).outcome).toBe('sent');
     });
 
-    it('`force` ignora el registro y el enfriamiento', async () => {
-      const { service, hostaway, notices } = harness({
-        handled: true,
-        lastNotice: noticeWith(),
+    it('`force` (Reenviar del CAV) reescribe aunque ya estuviera escrito', async () => {
+      const { service, hostaway } = harness({
+        notices: [noticeWith({ status: 'sent' }), noticeWith()],
       });
 
       expect((await service.notify(STAY_ID, { force: true })).outcome).toBe(
         'sent',
       );
-      expect(notices.exists).not.toHaveBeenCalled();
-      expect(hostaway.sendConversationMessage).toHaveBeenCalledTimes(1);
-    });
-
-    it('sin conversación todavía queda como fallo para reintentar', async () => {
-      const { service, hostaway, notices } = harness();
-      hostaway.findConversationByReservation.mockResolvedValueOnce(null);
-
-      expect(await service.notify(STAY_ID)).toMatchObject({
-        outcome: 'failed',
-        reason: 'conversation_not_found',
-      });
-      expect(notices.save).toHaveBeenCalledWith(
-        expect.objectContaining({
-          status: 'failed',
-          error: 'conversation_not_found',
-        }),
-      );
+      expect(hostaway.setReservationDoorCode).toHaveBeenCalledTimes(1);
+      expect(hostaway.sendConversationMessage).not.toHaveBeenCalled();
     });
 
     it('un error de Hostaway no lanza y guarda el código HTTP', async () => {
       const { service, hostaway, notices } = harness();
-      hostaway.sendConversationMessage.mockRejectedValueOnce(
-        new ServiceUnavailableException('Hostaway rechazó el mensaje'),
+      hostaway.setReservationDoorCode.mockRejectedValueOnce(
+        new ServiceUnavailableException('Hostaway rechazó el doorCode'),
       );
 
-      const resultado = await service.notify(STAY_ID);
-
-      expect(resultado.outcome).toBe('failed');
-      expect(notices.save).toHaveBeenCalledWith(
-        expect.objectContaining({ status: 'failed', httpStatus: 503 }),
-      );
+      expect((await service.notify(STAY_ID)).outcome).toBe('failed');
+      expect(notices.rows.at(-1)).toMatchObject({
+        status: 'failed',
+        httpStatus: 503,
+      });
     });
 
     it('elige la credencial de mayor alcance si hay varias', async () => {
@@ -363,6 +416,122 @@ describe('GuestPinNoticeService', () => {
     });
   });
 
+  describe('mensaje de renovación', () => {
+    it('requestRenewalMessage deja la petición registrada', async () => {
+      const { service, notices } = harness();
+
+      await service.requestRenewalMessage(stayWith(), credentialWith());
+
+      expect(notices.rows).toEqual([
+        expect.objectContaining({
+          channel: RENEWAL_MESSAGE_CHANNEL,
+          status: 'requested',
+        }),
+      ]);
+    });
+
+    it('no pide mensaje para reservas directas', async () => {
+      const { service, notices } = harness();
+
+      await service.requestRenewalMessage(
+        stayWith({ channelName: 'direct' }),
+        credentialWith(),
+      );
+
+      expect(notices.rows).toEqual([]);
+    });
+
+    it('con renovación pendiente escribe el doorCode y manda el PIN nuevo por el chat', async () => {
+      const { service, hostaway, notices } = harness({
+        notices: [requested()],
+      });
+
+      const resultado = await service.notify(STAY_ID);
+
+      expect(resultado).toMatchObject({
+        outcome: 'sent',
+        channel: DOOR_CODE_CHANNEL,
+        renewal: {
+          outcome: 'sent',
+          channel: RENEWAL_MESSAGE_CHANNEL,
+          target: 'conversation:777',
+        },
+      });
+      const [conversationId, texto, tipo] = hostaway.sendConversationMessage
+        .mock.calls[0] as [number, string, string];
+      expect(conversationId).toBe(777);
+      expect(texto).toBe(buildPinRenewedMessage('Bruno Salas', PIN));
+      expect(tipo).toBe('channel');
+      expect(notices.rows.at(-1)).toMatchObject({
+        channel: RENEWAL_MESSAGE_CHANNEL,
+        status: 'sent',
+      });
+    });
+
+    it('lo manda una sola vez', async () => {
+      const { service, hostaway } = harness({ notices: [requested()] });
+
+      await service.notify(STAY_ID);
+      const segundo = await service.notify(STAY_ID);
+
+      expect(segundo.renewal).toBeUndefined();
+      expect(hostaway.sendConversationMessage).toHaveBeenCalledTimes(1);
+    });
+
+    it('sobrevive a una rotación antes de llegar a la puerta: va por credencial', async () => {
+      const { service, hostaway } = harness({
+        credentials: [credentialWith({ pinFingerprint: 'huella-rotada' })],
+        notices: [requested({ pinFingerprint: 'huella-1' })],
+      });
+
+      await service.notify(STAY_ID);
+
+      expect(hostaway.sendConversationMessage).toHaveBeenCalledTimes(1);
+    });
+
+    it('espera a que el PIN nuevo esté en la puerta', async () => {
+      const { service, hostaway } = harness({
+        credentials: [credentialWith({ syncState: 'pending' })],
+        notices: [requested()],
+      });
+
+      await service.notify(STAY_ID);
+
+      expect(hostaway.sendConversationMessage).not.toHaveBeenCalled();
+    });
+
+    it('sin conversación queda como fallo y se reintenta después', async () => {
+      const { service, hostaway, notices } = harness({
+        notices: [requested()],
+        env: { GUEST_PIN_NOTICE_RETRY_COOLDOWN_MINUTES: '0' },
+      });
+      hostaway.findConversationByReservation.mockResolvedValueOnce(null);
+
+      expect((await service.notify(STAY_ID)).renewal).toMatchObject({
+        outcome: 'failed',
+        reason: 'conversation_not_found',
+      });
+      expect(notices.rows.at(-1)).toMatchObject({
+        channel: RENEWAL_MESSAGE_CHANNEL,
+        status: 'failed',
+      });
+
+      expect((await service.notify(STAY_ID)).renewal?.outcome).toBe('sent');
+    });
+
+    it('un fallo del doorCode no impide el mensaje', async () => {
+      const { service, hostaway } = harness({ notices: [requested()] });
+      hostaway.setReservationDoorCode.mockRejectedValueOnce(
+        new ServiceUnavailableException('caído'),
+      );
+
+      const resultado = await service.notify(STAY_ID);
+
+      expect(resultado.outcome).toBe('failed');
+      expect(resultado.renewal?.outcome).toBe('sent');
+    });
+  });
+
   describe('canal webhook de pruebas', () => {
     const URL = 'https://webhook.site/prueba';
     const webhookEnv = {
@@ -370,29 +539,34 @@ describe('GuestPinNoticeService', () => {
       GUEST_PIN_NOTICE_WEBHOOK_URL: URL,
     };
 
-    it('manda el mensaje al webhook y no toca Hostaway', async () => {
-      const { service, http, hostaway, notices } = harness({ env: webhookEnv });
-
-      expect(await service.notify(STAY_ID)).toEqual({
-        outcome: 'sent',
-        channel: 'webhook',
-        target: URL,
+    it('manda el doorCode y el mensaje al webhook sin tocar Hostaway', async () => {
+      const { service, http, hostaway, notices } = harness({
+        env: webhookEnv,
+        notices: [requested()],
       });
-      const [url, body] = http.post.mock.calls[0] as [
-        string,
-        { event: string; reservationId: string; message: string },
-      ];
-      expect(url).toBe(URL);
-      expect(body.event).toBe('guest-pin.notice');
-      expect(body.reservationId).toBe('90000002');
-      expect(body.message).toContain(PIN);
-      expect(hostaway.findConversationByReservation).not.toHaveBeenCalled();
-      expect(notices.save).toHaveBeenCalledWith(
-        expect.objectContaining({ channel: 'webhook', status: 'sent' }),
+
+      expect(await service.notify(STAY_ID)).toMatchObject({
+        outcome: 'sent',
+        channel: DOOR_CODE_CHANNEL,
+        target: URL,
+        renewal: { outcome: 'sent', target: URL },
+      });
+      const cuerpos = http.post.mock.calls.map(
+        ([, body]) => body as Record<string, unknown>,
       );
+      expect(cuerpos[0]).toMatchObject({
+        event: 'guest-pin.door-code',
+        reservationId: '90000002',
+        doorCode: PIN,
+      });
+      expect(cuerpos[1]).toMatchObject({ event: 'guest-pin.renewal-message' });
+      expect(String(cuerpos[1].message)).toContain(PIN);
+      expect(hostaway.setReservationDoorCode).not.toHaveBeenCalled();
+      expect(hostaway.findConversationByReservation).not.toHaveBeenCalled();
+      expect(notices.rows.at(-1)).toMatchObject({ target: URL });
     });
 
-    it('sigue sin enviar a reservas directas', async () => {
+    it('sigue sin publicar en reservas directas', async () => {
       const { service, http } = harness({
         env: webhookEnv,
         stay: stayWith({ channelName: 'direct' }),
@@ -425,9 +599,10 @@ describe('GuestPinNoticeService', () => {
       );
 
       expect((await service.notify(STAY_ID)).outcome).toBe('failed');
-      expect(notices.save).toHaveBeenCalledWith(
-        expect.objectContaining({ status: 'failed', httpStatus: 502 }),
-      );
+      expect(notices.rows.at(-1)).toMatchObject({
+        status: 'failed',
+        httpStatus: 502,
+      });
     });
 
     it('cualquier otro valor usa Hostaway', async () => {
@@ -438,12 +613,19 @@ describe('GuestPinNoticeService', () => {
       await service.notify(STAY_ID);
 
       expect(http.post).not.toHaveBeenCalled();
-      expect(hostaway.sendConversationMessage).toHaveBeenCalledTimes(1);
+      expect(hostaway.setReservationDoorCode).toHaveBeenCalledTimes(1);
     });
   });
 
   describe('barrido', () => {
-    it('avisa a cada estancia pendiente', async () => {
+    const stale = {
+      credentialId: 'cred-1',
+      pinFingerprint: 'huella-1',
+      stayId: STAY_ID,
+      reservationId: '90000002',
+    };
+
+    it('procesa cada estancia pendiente', async () => {
       const { service, stays } = harness({
         pendingStayIds: [STAY_ID, 'otra-estancia'],
       });
@@ -453,18 +635,74 @@ describe('GuestPinNoticeService', () => {
       expect(stays.findOne).toHaveBeenCalledTimes(2);
     });
 
+    it('borra el doorCode de las estancias que ya no tienen acceso, una vez por reserva', async () => {
+      const { service, hostaway, notices } = harness({
+        staleRows: [stale, { ...stale, credentialId: 'cred-vieja' }],
+      });
+
+      await service.sweep();
+
+      expect(hostaway.setReservationDoorCode).toHaveBeenCalledTimes(1);
+      expect(hostaway.setReservationDoorCode).toHaveBeenCalledWith(
+        '90000002',
+        null,
+      );
+      expect(notices.rows).toEqual([
+        expect.objectContaining({
+          credentialId: 'cred-1',
+          pinFingerprint: 'huella-1',
+          status: 'cleared',
+        }),
+        expect.objectContaining({
+          credentialId: 'cred-vieja',
+          status: 'cleared',
+        }),
+      ]);
+    });
+
+    it('si el borrado falla no lo marca, para reintentarlo', async () => {
+      const { service, hostaway, notices } = harness({ staleRows: [stale] });
+      hostaway.setReservationDoorCode.mockRejectedValueOnce(new Error('caído'));
+      const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+
+      await service.sweep();
+
+      expect(notices.rows).toEqual([]);
+      warn.mockRestore();
+    });
+
+    it('en modo webhook avisa el borrado al webhook', async () => {
+      const { service, http, hostaway } = harness({
+        staleRows: [stale],
+        env: {
+          GUEST_PIN_NOTICE_CHANNEL: 'webhook',
+          GUEST_PIN_NOTICE_WEBHOOK_URL: 'https://webhook.site/prueba',
+        },
+      });
+
+      await service.sweep();
+
+      expect((http.post.mock.calls[0] as [string, object])[1]).toMatchObject({
+        event: 'guest-pin.door-code-cleared',
+        reservationId: '90000002',
+      });
+      expect(hostaway.setReservationDoorCode).not.toHaveBeenCalled();
+    });
+
     it('no corre con el scheduler apagado', async () => {
-      const { service, stays } = harness({
+      const { service, stays, hostaway } = harness({
         env: { ACCESS_SCHEDULER_ENABLED: 'false' },
         pendingStayIds: [STAY_ID],
+        staleRows: [stale],
       });
 
       await service.sweep();
 
       expect(stays.findOne).not.toHaveBeenCalled();
+      expect(hostaway.setReservationDoorCode).not.toHaveBeenCalled();
     });
 
-    it('no corre con el aviso apagado', async () => {
+    it('no corre con la publicación apagada', async () => {
       const { service, stays } = harness({
         env: { GUEST_PIN_NOTICE_ENABLED: 'false' },
         pendingStayIds: [STAY_ID],
@@ -482,16 +720,14 @@ describe('GuestPinNoticeService', () => {
     it('sin intentos está pendiente', async () => {
       const { service } = harness();
 
-      const estado = await service.statusFor([par]);
-
-      expect(estado.get(STAY_ID)).toEqual({
+      expect((await service.statusFor([par])).get(STAY_ID)).toEqual({
         status: 'pending',
         at: null,
         error: null,
       });
     });
 
-    it('un envío correcto con el PIN vigente cuenta como enviado', async () => {
+    it('una escritura correcta con el PIN vigente cuenta como hecha', async () => {
       const at = new Date('2026-09-12T10:00:00Z');
       const { service } = harness({
         notices: [noticeWith({ status: 'sent', error: null, createdAt: at })],
@@ -504,10 +740,22 @@ describe('GuestPinNoticeService', () => {
       });
     });
 
-    it('un envío con un PIN anterior no cuenta', async () => {
+    it('una escritura con un PIN anterior no cuenta', async () => {
       const { service } = harness({
         notices: [
           noticeWith({ status: 'sent', pinFingerprint: 'huella-vieja' }),
+        ],
+      });
+
+      expect((await service.statusFor([par])).get(STAY_ID)?.status).toBe(
+        'pending',
+      );
+    });
+
+    it('el mensaje del flujo anterior no cuenta como escrito', async () => {
+      const { service } = harness({
+        notices: [
+          noticeWith({ channel: RENEWAL_MESSAGE_CHANNEL, status: 'sent' }),
         ],
       });
 
@@ -521,19 +769,7 @@ describe('GuestPinNoticeService', () => {
 
       expect((await service.statusFor([par])).get(STAY_ID)).toMatchObject({
         status: 'failed',
-        error: 'conversation_not_found',
-      });
-    });
-
-    it('las credenciales anteriores al despliegue no aplican', async () => {
-      const { service } = harness({
-        notices: [noticeWith({ status: 'skipped', error: 'pre_existing' })],
-      });
-
-      expect((await service.statusFor([par])).get(STAY_ID)).toEqual({
-        status: 'not_applicable',
-        at: null,
-        error: 'pre_existing',
+        error: 'Hostaway caído',
       });
     });
 
