@@ -25,7 +25,7 @@ import type {
  *   POST /access-authorizations/:stayId/regenerate  renueva el PIN
  *   POST /access-authorizations/:stayId/access-level { accessLevel }  (`none` revoca)
  *
- * El PIN le llega al huésped por mensaje de Hostaway; lo manda el backend.
+ * El backend guarda el PIN en la reserva de Hostaway; al renovarlo, además avisa por el chat.
  *
  * Con `VITE_CAV_MOCK=true` ninguno llega a tocar la red: se resuelven con los
  * datos quemados de `authorizationsService.mock.ts`.

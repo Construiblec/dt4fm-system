@@ -32,6 +32,9 @@ const MAX_CHECKOUT_PAGES = 25;
 /** Id de conversación que devuelve el modo mock; no existe en Hostaway. */
 const MOCK_CONVERSATION_ID = 900000;
 
+/** Marca nuestros códigos en la reserva, para distinguirlos de uno puesto a mano. */
+export const DOOR_CODE_VENDOR = 'DT4F';
+
 /** Por dónde sale un mensaje de una conversación de Hostaway. */
 export type HostawayCommunicationType =
   | 'channel'
@@ -713,5 +716,56 @@ export class HostawayService {
     }
 
     return { messageId: response.data?.result?.id ?? null };
+  }
+
+  /**
+   * Escribe (o borra con `null`) el código de acceso de la reserva: lo que usa
+   * `{{door_code}}` en las automatizaciones. Hostaway ignora `null`, así que se borra con `''`.
+   */
+  async setReservationDoorCode(
+    reservationId: string,
+    doorCode: string | null,
+    instruction: string | null = null,
+  ): Promise<void> {
+    if (this.useMock()) {
+      this.logger.warn(
+        `[MOCK] doorCode simulado en la reserva ${reservationId} (${doorCode ? 'escrito' : 'borrado'})`,
+      );
+      return;
+    }
+
+    const token = await this.getAccessToken();
+
+    const response = await this.performRequest<{
+      status?: string;
+      message?: string;
+    }>(
+      `Escritura del doorCode en Hostaway (reserva ${reservationId})`,
+      () =>
+        firstValueFrom(
+          this.httpService.put(
+            `https://api.hostaway.com/v1/reservations/${reservationId}`,
+            {
+              doorCode: doorCode ?? '',
+              doorCodeVendor: doorCode ? DOOR_CODE_VENDOR : '',
+              doorCodeInstruction: doorCode ? (instruction ?? '') : '',
+            },
+            {
+              timeout: this.requestTimeoutMs,
+              headers: {
+                Authorization: `Bearer ${token}`,
+                'Content-Type': 'application/json',
+              },
+            },
+          ),
+        ),
+      { maxRetries: 0 },
+    );
+
+    if (response.data?.status && response.data.status !== 'success') {
+      throw new ServiceUnavailableException(
+        `Hostaway rechazó el doorCode: ${response.data.message ?? 'sin detalle'}`,
+      );
+    }
   }
 }

@@ -15,56 +15,66 @@ import { BUSINESS_TIMEZONE } from '../push-notifications/scheduler/scheduler.con
 import { pickGuestCredential } from './credential-priority';
 import { CredentialService, LIVE_STATUSES } from './credential.service';
 import { AccessCredential } from './entities/access-credential.entity';
-import { GuestPinNotice } from './entities/guest-pin-notice.entity';
+import {
+  GuestPinNotice,
+  GuestPinNoticeStatus,
+} from './entities/guest-pin-notice.entity';
 import { GuestStay } from './entities/guest-stay.entity';
 
-export const HOSTAWAY_MESSAGE_CHANNEL = 'hostaway-message';
-/** Solo pruebas: manda el mensaje a `GUEST_PIN_NOTICE_WEBHOOK_URL` en vez de al huésped. */
-export const WEBHOOK_CHANNEL = 'webhook';
+/** El PIN escrito en el `doorCode` de la reserva. */
+export const DOOR_CODE_CHANNEL = 'hostaway-door-code';
+/** Mensaje al chat de Hostaway; solo cuando el CAV renueva el PIN. */
+export const RENEWAL_MESSAGE_CHANNEL = 'hostaway-message';
+/** Solo pruebas: `GUEST_PIN_NOTICE_CHANNEL=webhook` manda todo a `GUEST_PIN_NOTICE_WEBHOOK_URL`. */
+export const WEBHOOK_TRANSPORT = 'webhook';
+
+export const DOOR_CODE_INSTRUCTION =
+  'Digítalo en el teclado de la entrada del edificio. / Enter it on the keypad at the building entrance.';
 
 const WEBHOOK_TIMEOUT_MS = 10_000;
 
 const BATCH_SIZE = 50;
 const DEFAULT_RETRY_COOLDOWN_MINUTES = 30;
+const LIVE_STAY_STATUSES = ['pending', 'active'];
 
 export interface PinNoticeResult {
   outcome: 'sent' | 'failed' | 'skipped';
-  /** Por qué no se envió, cuando `outcome` es `skipped` o `failed`. */
+  /** Por qué no se escribió, cuando `outcome` es `skipped` o `failed`. */
   reason?: string;
   channel?: string;
   target?: string;
+  /** Resultado del mensaje de renovación, si había uno pendiente. */
+  renewal?: PinNoticeResult;
 }
 
-/** Lo que ve el CAV del aviso. Nunca lleva el PIN. */
+/** Lo que ve el CAV del `doorCode`. Nunca lleva el PIN. */
 export interface PinNoticeView {
   status: 'sent' | 'failed' | 'pending' | 'not_applicable';
   at: string | null;
   error: string | null;
 }
 
-/** Texto del aviso, bilingüe. Sin fechas, para que un cambio de fechas no obligue a reenviarlo. */
-export function buildGuestPinMessage(guestName: string, pin: string): string {
+/** Texto del mensaje de renovación, bilingüe y sin fechas. */
+export function buildPinRenewedMessage(guestName: string, pin: string): string {
   const nombre = guestName.trim() || 'Huésped';
 
   return [
-    `Hola ${nombre}: tu código de acceso al edificio es ${pin}. Funciona desde tu check-in hasta tu salida; digítalo en el teclado de la entrada.`,
+    `Hola ${nombre}: tu código de acceso al edificio ha cambiado. El nuevo código es ${pin}; el anterior ya no funciona. Digítalo en el teclado de la entrada.`,
     '',
-    `Hi ${nombre}: your building access code is ${pin}. It works from check-in until check-out; enter it on the keypad at the entrance.`,
+    `Hi ${nombre}: your building access code has changed. Your new code is ${pin}; the previous one no longer works. Enter it on the keypad at the entrance.`,
   ].join('\n');
 }
 
-/** Canal por el que se avisa a esta estancia, o `null` si a la reserva no se le envía nada. */
-export function pinNoticeChannelFor(
-  stay: Pick<GuestStay, 'channelName'>,
-  configured: string = HOSTAWAY_MESSAGE_CHANNEL,
-): string | null {
-  // Reservas directas: sin envío por ahora; si se habilitan, aquí va la rama del correo.
-  return isDirectReservation(stay.channelName) ? null : configured;
+/** Si a la reserva se le publica el PIN en Hostaway: las directas, no. */
+export function publishesPinFor(stay: Pick<GuestStay, 'channelName'>): boolean {
+  return !isDirectReservation(stay.channelName);
 }
 
 /**
- * Avisa al huésped de su PIN por la conversación de Hostaway (o, en pruebas, a un
- * webhook), solo cuando la credencial ya está en la puerta: un `pin_conflict` puede cambiar el PIN antes.
+ * Publica el PIN del huésped en Hostaway: lo escribe en el `doorCode` de la
+ * reserva cuando la credencial ya está en la puerta (un `pin_conflict` puede
+ * cambiarlo antes), lo borra cuando deja de valer y, si el CAV lo renovó, avisa
+ * del nuevo por el chat.
  */
 @Injectable()
 export class GuestPinNoticeService {
@@ -83,13 +93,12 @@ export class GuestPinNoticeService {
     private readonly configService: ConfigService,
   ) {}
 
-  /** `GUEST_PIN_NOTICE_CHANNEL=webhook` solo para pruebas; cualquier otro valor es Hostaway. */
-  private configuredChannel(): string {
+  private usesWebhook(): boolean {
     return (
-      this.configService.get<string>('GUEST_PIN_NOTICE_CHANNEL') ?? ''
-    ).toLowerCase() === WEBHOOK_CHANNEL
-      ? WEBHOOK_CHANNEL
-      : HOSTAWAY_MESSAGE_CHANNEL;
+      (
+        this.configService.get<string>('GUEST_PIN_NOTICE_CHANNEL') ?? ''
+      ).toLowerCase() === WEBHOOK_TRANSPORT
+    );
   }
 
   isEnabled(): boolean {
@@ -107,13 +116,34 @@ export class GuestPinNoticeService {
       return await this.tryNotify(stayId, options.force ?? false);
     } catch (error) {
       this.logger.error(
-        `Aviso de PIN de la estancia ${stayId} fallido: ${this.describe(error)}`,
+        `PIN de la estancia ${stayId} no publicado: ${this.describe(error)}`,
       );
       return { outcome: 'failed', reason: this.describe(error) };
     }
   }
 
-  /** Recoge el empuje diferido del webhook, las rotaciones por `pin_conflict` y los reintentos. */
+  /** El CAV renovó el PIN: deja pendiente el mensaje, que sale cuando el PIN nuevo esté en la puerta. */
+  async requestRenewalMessage(
+    stay: GuestStay,
+    credential: AccessCredential,
+  ): Promise<void> {
+    if (!this.isEnabled() || !publishesPinFor(stay)) return;
+
+    await this.notices.save(
+      this.notices.create({
+        credentialId: credential.id,
+        guestStayId: stay.id,
+        pinFingerprint: credential.pinFingerprint,
+        channel: RENEWAL_MESSAGE_CHANNEL,
+        target: '',
+        status: 'requested',
+        httpStatus: null,
+        error: null,
+      }),
+    );
+  }
+
+  /** Recoge el empuje diferido, las rotaciones por `pin_conflict`, los reintentos y los borrados. */
   @Cron('*/10 * * * *', { timeZone: BUSINESS_TIMEZONE })
   async sweep(): Promise<void> {
     if (
@@ -123,19 +153,23 @@ export class GuestPinNoticeService {
       return;
     }
 
-    const stayIds = await this.pendingStayIds();
+    // Primero los borrados: si una credencial sustituye a otra, se escribe la nueva después.
+    const cleared = await this.clearStale();
+
     let sent = 0;
 
-    for (const stayId of stayIds) {
+    for (const stayId of await this.pendingStayIds()) {
       if ((await this.notify(stayId)).outcome === 'sent') sent += 1;
     }
 
-    if (sent > 0) {
-      this.logger.log(`Avisos de PIN enviados: ${sent}`);
+    if (sent > 0 || cleared > 0) {
+      this.logger.log(
+        `PIN en reservas de Hostaway: ${sent} escrito(s), ${cleared} borrado(s)`,
+      );
     }
   }
 
-  /** Estado del aviso por estancia, con una sola consulta. */
+  /** Estado del `doorCode` por estancia, con una sola consulta. */
   async statusFor(
     items: { stay: GuestStay; credential: AccessCredential }[],
   ): Promise<Map<string, PinNoticeView>> {
@@ -143,16 +177,16 @@ export class GuestPinNoticeService {
     const credentialIds = items.map(({ credential }) => credential.id);
     const rows = credentialIds.length
       ? await this.notices.find({
-          where: { credentialId: In(credentialIds) },
+          where: {
+            credentialId: In(credentialIds),
+            channel: DOOR_CODE_CHANNEL,
+          },
           order: { createdAt: 'DESC' },
         })
       : [];
 
     for (const { stay, credential } of items) {
-      if (
-        !this.isEnabled() ||
-        !pinNoticeChannelFor(stay, this.configuredChannel())
-      ) {
+      if (!this.isEnabled() || !publishesPinFor(stay)) {
         views.set(stay.id, { status: 'not_applicable', at: null, error: null });
         continue;
       }
@@ -172,13 +206,7 @@ export class GuestPinNoticeService {
           at: decisive.createdAt.toISOString(),
           error: null,
         });
-      } else if (decisive?.status === 'skipped') {
-        views.set(stay.id, {
-          status: 'not_applicable',
-          at: null,
-          error: decisive.error,
-        });
-      } else if (last) {
+      } else if (last?.status === 'failed') {
         views.set(stay.id, {
           status: 'failed',
           at: last.createdAt.toISOString(),
@@ -202,7 +230,7 @@ export class GuestPinNoticeService {
 
     const stay = await this.stays.findOne({ where: { id: stayId } });
 
-    if (!stay || !['pending', 'active'].includes(stay.status)) {
+    if (!stay || !LIVE_STAY_STATUSES.includes(stay.status)) {
       return { outcome: 'skipped', reason: 'stay_not_live' };
     }
 
@@ -218,58 +246,103 @@ export class GuestPinNoticeService {
       return { outcome: 'skipped', reason: 'not_synced' };
     }
 
-    const channel = pinNoticeChannelFor(stay, this.configuredChannel());
-
-    if (!channel) {
+    if (!publishesPinFor(stay)) {
       return { outcome: 'skipped', reason: 'direct_reservation' };
     }
 
+    const doorCode = await this.writeDoorCode(stay, credential, force);
+    const renewal = await this.sendRenewalIfRequested(stay, credential);
+
+    return renewal ? { ...doorCode, renewal } : doorCode;
+  }
+
+  private async writeDoorCode(
+    stay: GuestStay,
+    credential: AccessCredential,
+    force: boolean,
+  ): Promise<PinNoticeResult> {
     if (!force) {
-      if (await this.alreadyHandled(credential)) {
+      if (await this.doorCodeWritten(credential)) {
         return { outcome: 'skipped', reason: 'already_sent' };
       }
 
-      if (await this.recentlyFailed(credential)) {
+      if (await this.recentlyFailed(credential, DOOR_CODE_CHANNEL)) {
         return { outcome: 'skipped', reason: 'retry_cooldown' };
       }
     }
 
-    return this.send(stay, credential, channel);
+    return this.attempt(stay, credential, DOOR_CODE_CHANNEL, async () => {
+      const pin = this.credentialService.revealPin(credential);
+
+      if (this.usesWebhook()) {
+        return this.postToWebhook('guest-pin.door-code', stay, {
+          doorCode: pin,
+        });
+      }
+
+      await this.hostaway.setReservationDoorCode(
+        stay.hostawayReservationId,
+        pin,
+        DOOR_CODE_INSTRUCTION,
+      );
+
+      return `reservation:${stay.hostawayReservationId}`;
+    });
   }
 
-  private async send(
+  private async sendRenewalIfRequested(
+    stay: GuestStay,
+    credential: AccessCredential,
+  ): Promise<PinNoticeResult | null> {
+    if (!(await this.renewalPending(credential))) return null;
+
+    if (await this.recentlyFailed(credential, RENEWAL_MESSAGE_CHANNEL)) {
+      return { outcome: 'skipped', reason: 'retry_cooldown' };
+    }
+
+    return this.attempt(stay, credential, RENEWAL_MESSAGE_CHANNEL, async () => {
+      const message = buildPinRenewedMessage(
+        stay.guestName,
+        this.credentialService.revealPin(credential),
+      );
+
+      if (this.usesWebhook()) {
+        return this.postToWebhook('guest-pin.renewal-message', stay, {
+          message,
+        });
+      }
+
+      const conversation = await this.hostaway.findConversationByReservation(
+        stay.hostawayReservationId,
+      );
+
+      if (!conversation) {
+        throw new Error('conversation_not_found');
+      }
+
+      await this.hostaway.sendConversationMessage(
+        conversation.id,
+        message,
+        'channel',
+      );
+
+      return `conversation:${conversation.id}`;
+    });
+  }
+
+  /** Ejecuta la acción y deja constancia del intento. Devuelve el desenlace sin lanzar. */
+  private async attempt(
     stay: GuestStay,
     credential: AccessCredential,
     channel: string,
+    action: () => Promise<string>,
   ): Promise<PinNoticeResult> {
-    const reservationId = stay.hostawayReservationId;
     let target = '';
     let httpStatus: number | null = null;
     let error: string | null = null;
 
     try {
-      const message = buildGuestPinMessage(
-        stay.guestName,
-        this.credentialService.revealPin(credential),
-      );
-
-      if (channel === WEBHOOK_CHANNEL) {
-        target = await this.postToWebhook(stay, message);
-      } else {
-        const conversation =
-          await this.hostaway.findConversationByReservation(reservationId);
-
-        if (!conversation) {
-          error = 'conversation_not_found';
-        } else {
-          target = `conversation:${conversation.id}`;
-          await this.hostaway.sendConversationMessage(
-            conversation.id,
-            message,
-            'channel',
-          );
-        }
-      }
+      target = await action();
     } catch (err) {
       httpStatus =
         err instanceof HttpException
@@ -278,35 +351,121 @@ export class GuestPinNoticeService {
       error = this.describe(err);
     }
 
-    await this.notices.save(
-      this.notices.create({
-        credentialId: credential.id,
-        guestStayId: stay.id,
-        pinFingerprint: credential.pinFingerprint,
-        channel,
-        target,
-        status: error ? 'failed' : 'sent',
-        httpStatus,
-        error,
-      }),
+    await this.record(
+      credential,
+      stay.id,
+      channel,
+      target,
+      error ? 'failed' : 'sent',
+      httpStatus,
+      error,
     );
 
     if (error) {
       this.logger.warn(
-        `PIN de la estancia ${stay.id} NO avisado (reserva ${reservationId}): ${error}`,
+        `${channel} de la estancia ${stay.id} fallido (reserva ${stay.hostawayReservationId}): ${error}`,
       );
       return { outcome: 'failed', reason: error, channel, target };
     }
 
-    this.logger.log(`PIN de la estancia ${stay.id} avisado por ${target}`);
+    this.logger.log(`${channel} de la estancia ${stay.id} hecho en ${target}`);
 
     return { outcome: 'sent', channel, target };
   }
 
+  /**
+   * Borra el `doorCode` que escribimos cuando la estancia ya no tiene ninguna
+   * credencial viva o terminó. Un código puesto a mano nunca se toca.
+   */
+  private async clearStale(): Promise<number> {
+    const rows = await this.credentials
+      .createQueryBuilder('c')
+      .innerJoin(GuestStay, 's', 's.id = c.guest_stay_id')
+      .select('c.id', 'credentialId')
+      .addSelect('c.pin_fingerprint', 'pinFingerprint')
+      .addSelect('s.id', 'stayId')
+      .addSelect('s.hostaway_reservation_id', 'reservationId')
+      .where('c.subject_type = :guest', { guest: 'guest' })
+      .andWhere(
+        `(s.status NOT IN (:...stayLive) OR NOT EXISTS (
+          SELECT 1 FROM access_credential v
+          WHERE v.subject_type = 'guest'
+            AND v.subject_ref = c.subject_ref
+            AND v.status IN (:...live)))`,
+        { stayLive: LIVE_STAY_STATUSES, live: LIVE_STATUSES },
+      )
+      .andWhere(
+        `(SELECT n.status FROM guest_pin_notice n
+          WHERE n.credential_id = c.id
+            AND n.channel = :doorCode
+            AND n.status IN ('sent', 'cleared')
+          ORDER BY n.created_at DESC LIMIT 1) = 'sent'`,
+        { doorCode: DOOR_CODE_CHANNEL },
+      )
+      .limit(BATCH_SIZE)
+      .getRawMany<{
+        credentialId: string;
+        pinFingerprint: string;
+        stayId: string;
+        reservationId: string;
+      }>();
+
+    const byStay = new Map<string, typeof rows>();
+
+    for (const row of rows) {
+      byStay.set(row.stayId, [...(byStay.get(row.stayId) ?? []), row]);
+    }
+
+    let cleared = 0;
+
+    for (const [stayId, group] of byStay) {
+      const reservationId = group[0].reservationId;
+
+      try {
+        if (this.usesWebhook()) {
+          await this.postToWebhook(
+            'guest-pin.door-code-cleared',
+            { id: stayId, hostawayReservationId: reservationId },
+            {},
+          );
+        } else {
+          await this.hostaway.setReservationDoorCode(reservationId, null);
+        }
+      } catch (error) {
+        // Sin fila `cleared`, el siguiente barrido lo reintenta.
+        this.logger.warn(
+          `doorCode de la reserva ${reservationId} no borrado: ${this.describe(error)}`,
+        );
+        continue;
+      }
+
+      for (const row of group) {
+        await this.notices.save(
+          this.notices.create({
+            credentialId: row.credentialId,
+            guestStayId: stayId,
+            pinFingerprint: row.pinFingerprint,
+            channel: DOOR_CODE_CHANNEL,
+            target: `reservation:${reservationId}`,
+            status: 'cleared',
+            httpStatus: null,
+            error: null,
+          }),
+        );
+      }
+
+      cleared += 1;
+    }
+
+    return cleared;
+  }
+
   /** Devuelve el destino; lanza si la URL falta o el receptor falla. */
   private async postToWebhook(
-    stay: GuestStay,
-    message: string,
+    event: string,
+    stay: Pick<GuestStay, 'id' | 'hostawayReservationId'> &
+      Partial<Pick<GuestStay, 'guestName' | 'channelName'>>,
+    payload: Record<string, unknown>,
   ): Promise<string> {
     const url = this.configService
       .get<string>('GUEST_PIN_NOTICE_WEBHOOK_URL')
@@ -320,13 +479,13 @@ export class GuestPinNoticeService {
       this.http.post(
         url,
         {
-          event: 'guest-pin.notice',
+          event,
           sentAt: new Date().toISOString(),
           stayId: stay.id,
           reservationId: stay.hostawayReservationId,
-          guestName: stay.guestName,
-          channelName: stay.channelName,
-          message,
+          guestName: stay.guestName ?? null,
+          channelName: stay.channelName ?? null,
+          ...payload,
         },
         { timeout: WEBHOOK_TIMEOUT_MS },
       ),
@@ -335,18 +494,64 @@ export class GuestPinNoticeService {
     return url;
   }
 
-  /** `skipped` cuenta como atendido: son las credenciales anteriores al despliegue. */
-  private alreadyHandled(credential: AccessCredential): Promise<boolean> {
-    return this.notices.exists({
+  private async record(
+    credential: AccessCredential,
+    stayId: string,
+    channel: string,
+    target: string,
+    status: GuestPinNoticeStatus,
+    httpStatus: number | null,
+    error: string | null,
+  ): Promise<void> {
+    await this.notices.save(
+      this.notices.create({
+        credentialId: credential.id,
+        guestStayId: stayId,
+        pinFingerprint: credential.pinFingerprint,
+        channel,
+        target,
+        status,
+        httpStatus,
+        error,
+      }),
+    );
+  }
+
+  /** El último desenlace del `doorCode` para el PIN vigente es una escritura (no un borrado). */
+  private async doorCodeWritten(
+    credential: AccessCredential,
+  ): Promise<boolean> {
+    const last = await this.notices.findOne({
       where: {
         credentialId: credential.id,
         pinFingerprint: credential.pinFingerprint,
-        status: In(['sent', 'skipped']),
+        channel: DOOR_CODE_CHANNEL,
+        status: In(['sent', 'cleared']),
       },
+      order: { createdAt: 'DESC' },
     });
+
+    return last?.status === 'sent';
   }
 
-  private async recentlyFailed(credential: AccessCredential): Promise<boolean> {
+  /** Va por credencial y no por huella: sobrevive a una rotación antes de llegar a la puerta. */
+  private async renewalPending(credential: AccessCredential): Promise<boolean> {
+    const last = await this.notices.findOne({
+      where: {
+        credentialId: credential.id,
+        channel: RENEWAL_MESSAGE_CHANNEL,
+        status: In(['requested', 'sent']),
+      },
+      order: { createdAt: 'DESC' },
+    });
+
+    return last?.status === 'requested';
+  }
+
+  private async recentlyFailed(
+    credential: AccessCredential,
+    channel: string,
+  ): Promise<boolean> {
     const cooldownMs = this.retryCooldownMinutes() * 60_000;
 
     if (cooldownMs <= 0) return false;
@@ -354,7 +559,10 @@ export class GuestPinNoticeService {
     const last = await this.notices.findOne({
       where: {
         credentialId: credential.id,
-        pinFingerprint: credential.pinFingerprint,
+        channel,
+        ...(channel === DOOR_CODE_CHANNEL
+          ? { pinFingerprint: credential.pinFingerprint }
+          : {}),
       },
       order: { createdAt: 'DESC' },
     });
@@ -366,7 +574,7 @@ export class GuestPinNoticeService {
     );
   }
 
-  /** Estancias de canal con credencial en la puerta y sin aviso para su PIN vigente. */
+  /** Estancias de canal con credencial en la puerta y sin `doorCode` para su PIN vigente, o con renovación por avisar. */
   private async pendingStayIds(): Promise<string[]> {
     const rows = await this.credentials
       .createQueryBuilder('c')
@@ -376,17 +584,25 @@ export class GuestPinNoticeService {
       .andWhere('c.status IN (:...live)', { live: LIVE_STATUSES })
       .andWhere('c.sync_state = :synced', { synced: 'synced' })
       .andWhere('s.status IN (:...stayLive)', {
-        stayLive: ['pending', 'active'],
+        stayLive: LIVE_STAY_STATUSES,
       })
       .andWhere(
         `LOWER(TRIM(COALESCE(s.channel_name, ''))) NOT IN (:...direct)`,
         { direct: ['', ...DIRECT_CHANNEL_NAMES] },
       )
       .andWhere(
-        `NOT EXISTS (SELECT 1 FROM guest_pin_notice n
-          WHERE n.credential_id = c.id
-            AND n.pin_fingerprint = c.pin_fingerprint
-            AND n.status IN ('sent', 'skipped'))`,
+        `(COALESCE((SELECT n.status FROM guest_pin_notice n
+            WHERE n.credential_id = c.id
+              AND n.pin_fingerprint = c.pin_fingerprint
+              AND n.channel = :doorCode
+              AND n.status IN ('sent', 'cleared')
+            ORDER BY n.created_at DESC LIMIT 1), '') <> 'sent'
+          OR COALESCE((SELECT n.status FROM guest_pin_notice n
+            WHERE n.credential_id = c.id
+              AND n.channel = :renewal
+              AND n.status IN ('requested', 'sent')
+            ORDER BY n.created_at DESC LIMIT 1), '') = 'requested')`,
+        { doorCode: DOOR_CODE_CHANNEL, renewal: RENEWAL_MESSAGE_CHANNEL },
       )
       .orderBy('c.updatedAt', 'ASC')
       .limit(BATCH_SIZE)

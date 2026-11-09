@@ -44,6 +44,7 @@ export const createHostawayServiceMock = () => ({
     .fn()
     .mockResolvedValue({ id: 900000, reservationId: null, channelId: null }),
   sendConversationMessage: jest.fn().mockResolvedValue({ messageId: 1 }),
+  setReservationDoorCode: jest.fn().mockResolvedValue(undefined),
 });
 
 export type HostawayServiceMock = ReturnType<typeof createHostawayServiceMock>;

@@ -61,7 +61,7 @@ export interface AuthorizationView {
   /** `null` si el CAV revocó el acceso. */
   accessLevel: CredentialScope | null;
   accessRevoked: { at: string; by: string | null } | null;
-  /** Si el mensaje de Hostaway con el PIN llegó. */
+  /** Si el PIN quedó escrito en la reserva de Hostaway (`doorCode`). */
   pinNotice: PinNoticeView;
 }
 
@@ -187,7 +187,7 @@ export class AuthorizationsService {
 
   // ── Acciones ──────────────────────────────────────────────────────────────
 
-  /** Renueva el PIN y avisa al huésped del nuevo. Nunca devuelve el código. */
+  /** Renueva el PIN, lo escribe en la reserva y avisa del nuevo por el chat. Nunca devuelve el código. */
   async regenerate(
     stayId: string,
     sessionId: string,
@@ -200,12 +200,13 @@ export class AuthorizationsService {
       `PIN renovado desde Autorizaciones para la estancia ${stay.id}`,
     );
 
+    await this.pinNotice.requestRenewalMessage(stay, credential);
     await this.pinNotice.notify(stay.id);
 
     return this.detail(stayId, sessionId);
   }
 
-  /** Reenvía el mensaje con el PIN aunque ya se hubiera enviado. */
+  /** Vuelve a escribir el PIN en la reserva de Hostaway aunque ya estuviera escrito. */
   async resendPinNotice(stayId: string): Promise<PinNoticeResult> {
     const { stay } = this.requireLive(await this.resolve(stayId));
 

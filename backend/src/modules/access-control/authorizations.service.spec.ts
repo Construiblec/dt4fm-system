@@ -63,6 +63,7 @@ type Harness = {
   getUnitsByBuilding: jest.Mock;
   notify: jest.Mock;
   statusFor: jest.Mock;
+  requestRenewalMessage: jest.Mock;
 };
 
 const harness = (options: {
@@ -96,6 +97,7 @@ const harness = (options: {
   );
 
   const notify = jest.fn().mockResolvedValue({ outcome: 'sent' });
+  const requestRenewalMessage = jest.fn().mockResolvedValue(undefined);
   const statusFor = jest.fn(
     (items: { stay: GuestStay }[]) =>
       new Map(
@@ -132,7 +134,11 @@ const harness = (options: {
         ),
     } as unknown as BuildingCatalogService,
     { getUnitsByBuilding } as unknown as OpenmaintService,
-    { notify, statusFor } as unknown as GuestPinNoticeService,
+    {
+      notify,
+      statusFor,
+      requestRenewalMessage,
+    } as unknown as GuestPinNoticeService,
     { get: () => undefined } as unknown as ConfigService,
   );
 
@@ -152,6 +158,7 @@ const harness = (options: {
     getUnitsByBuilding,
     notify,
     statusFor,
+    requestRenewalMessage,
   };
 };
 
@@ -389,11 +396,13 @@ describe('AuthorizationsService', () => {
       expect(regeneratePin).toHaveBeenCalledWith('cred-1');
     });
 
-    it('avisa al huésped del PIN nuevo después de renovarlo', async () => {
-      const { service, regeneratePin, notify } = harness({
-        stays: [stayWith()],
-        credentials: [credentialWith()],
-      });
+    it('pide el mensaje de renovación y publica el PIN nuevo después de renovarlo', async () => {
+      const { service, regeneratePin, notify, requestRenewalMessage } = harness(
+        {
+          stays: [stayWith()],
+          credentials: [credentialWith()],
+        },
+      );
 
       await service.regenerate(
         'c47ca6f1-f675-4653-a3a6-31487feb054b',
@@ -403,12 +412,19 @@ describe('AuthorizationsService', () => {
       expect(notify).toHaveBeenCalledWith(
         'c47ca6f1-f675-4653-a3a6-31487feb054b',
       );
+      expect(requestRenewalMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'c47ca6f1-f675-4653-a3a6-31487feb054b' }),
+        expect.objectContaining({ id: 'cred-1' }),
+      );
       expect(regeneratePin.mock.invocationCallOrder[0]).toBeLessThan(
+        requestRenewalMessage.mock.invocationCallOrder[0],
+      );
+      expect(requestRenewalMessage.mock.invocationCallOrder[0]).toBeLessThan(
         notify.mock.invocationCallOrder[0],
       );
     });
 
-    it('el reenvío fuerza el aviso aunque ya se hubiera enviado', async () => {
+    it('el reenvío fuerza la reescritura del PIN en la reserva', async () => {
       const { service, notify } = harness({
         stays: [stayWith()],
         credentials: [credentialWith()],

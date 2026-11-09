@@ -183,8 +183,8 @@ export const AuthorizationDetailPage = () => {
                 <Info className="h-4 w-4 shrink-0" />
                 <span>
                   {revoked
-                    ? "El huésped no puede abrir ninguna puerta. Al restaurar el acceso vuelve con el mismo PIN y no se le envía otro mensaje."
-                    : "El PIN se genera al confirmarse la reserva y le llega al huésped por mensaje de Hostaway."}
+                    ? "El huésped no puede abrir ninguna puerta. Al restaurar el acceso vuelve con el mismo PIN."
+                    : "El PIN se genera al confirmarse la reserva y se guarda en la reserva de Hostaway."}
                 </span>
               </div>
 

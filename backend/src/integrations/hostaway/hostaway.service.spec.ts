@@ -57,13 +57,11 @@ describe('HostawayService', () => {
 
   describe('getReservationCheckout', () => {
     it('devuelve la fecha de salida actual de la reserva', async () => {
-      const get = jest
-        .fn()
-        .mockReturnValue(
-          of({
-            data: { result: reservation({ departureDate: '2026-10-30' }) },
-          }),
-        );
+      const get = jest.fn().mockReturnValue(
+        of({
+          data: { result: reservation({ departureDate: '2026-10-30' }) },
+        }),
+      );
       const service = buildService(get);
 
       await expect(service.getReservationCheckout('67469867')).resolves.toEqual(
@@ -92,19 +90,114 @@ describe('HostawayService', () => {
     });
 
     it('si Hostaway falla devuelve null en vez de tumbar la vista previa', async () => {
-      const get = jest
-        .fn()
-        .mockReturnValue(
-          throwError(() =>
-            Object.assign(new Error('Not Found'), {
-              response: { status: 404 },
-            }),
-          ),
-        );
+      const get = jest.fn().mockReturnValue(
+        throwError(() =>
+          Object.assign(new Error('Not Found'), {
+            response: { status: 404 },
+          }),
+        ),
+      );
 
       await expect(
         buildService(get).getReservationCheckout('1'),
       ).resolves.toBeNull();
+    });
+  });
+  describe('setReservationDoorCode', () => {
+    const buildWithPut = (
+      put: jest.Mock,
+      values: Record<string, string> = REAL,
+    ) =>
+      new HostawayService(
+        {
+          post: jest
+            .fn()
+            .mockReturnValue(
+              of({ data: { access_token: 'token', expires_in: 3600 } }),
+            ),
+          put,
+        } as never,
+        config(values),
+      );
+
+    it('escribe solo los tres campos del código en la reserva', async () => {
+      const put = jest
+        .fn()
+        .mockReturnValue(of({ data: { status: 'success' } }));
+
+      await buildWithPut(put).setReservationDoorCode(
+        '70902133',
+        '0000',
+        'Teclado',
+      );
+
+      const [url, body, options] = put.mock.calls[0] as [
+        string,
+        object,
+        { headers: Record<string, string> },
+      ];
+      expect(url).toBe('https://api.hostaway.com/v1/reservations/70902133');
+      expect(body).toEqual({
+        doorCode: '0000',
+        doorCodeVendor: 'DT4F',
+        doorCodeInstruction: 'Teclado',
+      });
+      expect(options.headers.Authorization).toBe('Bearer token');
+    });
+
+    it('con null borra los tres campos con cadena vacía (Hostaway ignora null)', async () => {
+      const put = jest
+        .fn()
+        .mockReturnValue(of({ data: { status: 'success' } }));
+
+      await buildWithPut(put).setReservationDoorCode(
+        '70902133',
+        null,
+        'Teclado',
+      );
+
+      expect(put.mock.calls[0][1]).toEqual({
+        doorCode: '',
+        doorCodeVendor: '',
+        doorCodeInstruction: '',
+      });
+    });
+
+    it('un 200 con status fail es un error', async () => {
+      const put = jest
+        .fn()
+        .mockReturnValue(
+          of({ data: { status: 'fail', message: 'Not allowed' } }),
+        );
+
+      await expect(
+        buildWithPut(put).setReservationDoorCode('1', '0000'),
+      ).rejects.toThrow('Hostaway rechazó el doorCode: Not allowed');
+    });
+
+    it('no reintenta: el barrido se encarga', async () => {
+      const put = jest
+        .fn()
+        .mockReturnValue(
+          throwError(() =>
+            Object.assign(new Error('boom'), { response: { status: 503 } }),
+          ),
+        );
+
+      await expect(
+        buildWithPut(put).setReservationDoorCode('1', '0000'),
+      ).rejects.toThrow();
+      expect(put).toHaveBeenCalledTimes(1);
+    });
+
+    it('en modo mock no sale a la red', async () => {
+      const put = jest.fn();
+
+      await buildWithPut(put, {
+        HOSTAWAY_USE_MOCK: 'true',
+      }).setReservationDoorCode('1', '0000');
+
+      expect(put).not.toHaveBeenCalled();
     });
   });
 });
