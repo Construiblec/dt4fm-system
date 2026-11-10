@@ -215,7 +215,7 @@ export const AuthorizationDetailPage = () => {
               {showRenewSheet ? (
                 <RenewPinSheet
                   noticeByHostaway={
-                    authorization.pinNotice?.status !== "not_applicable"
+                    authorization.pinNotice?.renewalMessage ?? false
                   }
                   onConfirm={() => void handleRegenerate()}
                   onClose={() => setShowRenewSheet(false)}

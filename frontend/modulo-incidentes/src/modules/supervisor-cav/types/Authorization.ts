@@ -34,11 +34,13 @@ export type Authorization = {
   accessLevel: AccessLevel | null;
   /** Quién y cuándo lo revocó; `null` si el acceso está vigente. */
   accessRevoked: { at: string; by: string | null } | null;
-  /** Si el PIN quedó guardado en la reserva de Hostaway; `not_applicable` en reservas directas o revocadas. */
+  /** Si el PIN quedó guardado en la reserva de Hostaway; `not_applicable` si está apagado o revocado. */
   pinNotice?: {
     status: "sent" | "failed" | "pending" | "not_applicable";
     at: string | null;
     error: string | null;
+    /** Si al renovar se avisa por el chat de Hostaway (las directas, no). */
+    renewalMessage?: boolean;
   };
 };
 
