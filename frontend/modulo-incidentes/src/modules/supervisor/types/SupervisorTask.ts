@@ -64,7 +64,6 @@ export type ChecklistDetail = {
   id: number;
   code: string;
   description: string;
-  templateName: string;
   activities: string[];
 };
 

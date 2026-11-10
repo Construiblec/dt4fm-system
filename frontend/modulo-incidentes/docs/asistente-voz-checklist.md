@@ -273,6 +273,8 @@ const voice = useVoiceChecklist({
 
 Las dos funciones de callback llaman a acciones del store **que ya existían** para el tap. No hay un camino de datos paralelo para la voz: confirmar hablando y confirmar tocando terminan escribiendo exactamente lo mismo, así que la barra de progreso, el contador de bloques completados y la habilitación del botón "Finalizar tarea" se actualizan solos, sin ningún código adicional que los sincronice.
 
+El checklist es opcional: una tarea asignada sin checklist (o sin secciones que marcar) no muestra la tarjeta ni arranca el asistente, y el botón "Finalizar tarea" queda habilitado desde el inicio (`hasChecklist` en `useCleaningTaskExecution`).
+
 ---
 
 ## 8. Testing
