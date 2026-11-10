@@ -268,17 +268,21 @@ describe('GuestPinNoticeService', () => {
     });
 
     it.each([['direct'], [null], ['']])(
-      'no publica nada en una reserva directa (%p)',
+      'también escribe el doorCode en una reserva directa (%p)',
       async (channelName) => {
         const { service, hostaway } = harness({
           stay: stayWith({ channelName }),
         });
 
         expect(await service.notify(STAY_ID)).toMatchObject({
-          outcome: 'skipped',
-          reason: 'direct_reservation',
+          outcome: 'sent',
         });
-        expect(hostaway.setReservationDoorCode).not.toHaveBeenCalled();
+        expect(hostaway.setReservationDoorCode).toHaveBeenCalledWith(
+          '90000002',
+          PIN,
+          expect.any(String),
+        );
+        expect(hostaway.sendConversationMessage).not.toHaveBeenCalled();
       },
     );
 
@@ -566,14 +570,14 @@ describe('GuestPinNoticeService', () => {
       expect(notices.rows.at(-1)).toMatchObject({ target: URL });
     });
 
-    it('sigue sin publicar en reservas directas', async () => {
+    it('en reservas directas también manda el doorCode', async () => {
       const { service, http } = harness({
         env: webhookEnv,
         stay: stayWith({ channelName: 'direct' }),
       });
 
-      expect((await service.notify(STAY_ID)).reason).toBe('direct_reservation');
-      expect(http.post).not.toHaveBeenCalled();
+      expect((await service.notify(STAY_ID)).outcome).toBe('sent');
+      expect(http.post).toHaveBeenCalledTimes(1);
     });
 
     it('sin URL queda como fallo', async () => {
@@ -724,6 +728,7 @@ describe('GuestPinNoticeService', () => {
         status: 'pending',
         at: null,
         error: null,
+        renewalMessage: true,
       });
     });
 
@@ -737,6 +742,7 @@ describe('GuestPinNoticeService', () => {
         status: 'sent',
         at: at.toISOString(),
         error: null,
+        renewalMessage: true,
       });
     });
 
@@ -773,7 +779,7 @@ describe('GuestPinNoticeService', () => {
       });
     });
 
-    it('una reserva directa no aplica', async () => {
+    it('una reserva directa tiene doorCode pero no mensaje de renovación', async () => {
       const { service } = harness();
 
       const estado = await service.statusFor([
@@ -783,7 +789,10 @@ describe('GuestPinNoticeService', () => {
         },
       ]);
 
-      expect(estado.get(STAY_ID)?.status).toBe('not_applicable');
+      expect(estado.get(STAY_ID)).toMatchObject({
+        status: 'pending',
+        renewalMessage: false,
+      });
     });
   });
 });
