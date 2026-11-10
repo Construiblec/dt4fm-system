@@ -1159,10 +1159,12 @@ describe('AccessControlController (e2e)', () => {
           accessLevel: 'pedestrian',
         });
         expect(JSON.stringify(res.body)).not.toMatch(/"pin"\s*:/);
+        // Sin canal cuenta como directa: doorCode sí, mensaje al renovar no.
         expect(res.body.data[0].pinNotice).toEqual({
-          status: 'not_applicable',
+          status: 'pending',
           at: null,
           error: null,
+          renewalMessage: false,
         });
       });
 
@@ -2225,17 +2227,18 @@ describe('AccessControlController (e2e)', () => {
       expect(avisos.map((a) => a.status)).toEqual(['failed', 'sent']);
     });
 
-    it('una reserva directa no recibe nada', async () => {
+    it('una reserva directa también recibe el doorCode, pero no mensajes', async () => {
       const estancia = await guestStayService.upsertFromReservation(
         reserva({ channelName: 'direct' }),
       );
 
-      expect(await pinNotice['pendingStayIds']()).toEqual([]);
+      expect(await pinNotice['pendingStayIds']()).toEqual([estancia!.id]);
       expect(await pinNotice.notify(estancia!.id)).toMatchObject({
-        outcome: 'skipped',
-        reason: 'direct_reservation',
+        outcome: 'sent',
+        target: 'reservation:44712233',
       });
-      expect(mocks.hostaway.setReservationDoorCode).not.toHaveBeenCalled();
+      expect(mocks.hostaway.setReservationDoorCode).toHaveBeenCalledTimes(1);
+      expect(mocks.hostaway.sendConversationMessage).not.toHaveBeenCalled();
     });
 
     it('un PIN rotado sin el CAV se reescribe, pero sin mensaje', async () => {
