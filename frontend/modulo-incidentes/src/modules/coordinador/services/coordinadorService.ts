@@ -179,12 +179,7 @@ export const saveChecklist = (
   payload: SaveChecklistPayload,
 ) => {
   const form = new FormData();
-  form.append("templateName", payload.templateName.trim());
-  // openMAINT exige la descripción: vacía, se usa el nombre.
-  form.append(
-    "description",
-    payload.description.trim() || payload.templateName.trim(),
-  );
+  form.append("description", payload.description.trim());
   form.append("detalle", payload.detalle);
   if (payload.removeTemplate) form.append("removeTemplate", "true");
   if (payload.file) form.append("plantilla", payload.file);

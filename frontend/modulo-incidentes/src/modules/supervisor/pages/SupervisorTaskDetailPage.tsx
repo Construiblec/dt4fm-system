@@ -79,7 +79,7 @@ export const SupervisorTaskDetailPage = () => {
               {detail.checklistDetail && (
                 <TaskDetailChecklist
                   activities={detail.checklistDetail.activities}
-                  templateName={detail.checklistDetail.templateName}
+                  templateName={detail.checklistDetail.description}
                 />
               )}
 

@@ -809,7 +809,6 @@ export class CleaningTasksService {
         id: act._id,
         code: act.Code ?? null,
         description: act.Description ?? null,
-        templateName: act.NombrePlantilla ?? null,
         activities: await this.resolveChecklistRows(activityId, act),
       };
     } catch {
@@ -2180,7 +2179,6 @@ export class CleaningTasksService {
       id: act._id,
       code: act.Code ?? null,
       description: act.Description ?? null,
-      templateName: act.NombrePlantilla ?? null,
       detalle: act.Detalle ?? '',
       plantilla: act._plantillaRota
         ? {
@@ -2261,7 +2259,6 @@ export class CleaningTasksService {
     }
 
     const body: Record<string, unknown> = {
-      NombrePlantilla: dto.templateName.trim(),
       Description: dto.description.trim(),
       Detalle: dto.detalle ?? '',
     };

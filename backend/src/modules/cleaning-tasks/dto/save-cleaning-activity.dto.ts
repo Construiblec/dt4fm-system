@@ -19,17 +19,9 @@ import {
  */
 export class SaveCleaningActivityDto {
   @ApiProperty({
-    description: 'Nombre del checklist',
+    description:
+      'Nombre del checklist: el atributo `Description` de openMAINT (etiqueta «Nombre»)',
     example: 'Limpieza profunda',
-  })
-  @IsString()
-  @IsNotEmpty()
-  @MaxLength(120)
-  templateName: string;
-
-  @ApiProperty({
-    description: 'Descripción del checklist (obligatoria en openMAINT)',
-    example: 'Limpieza a fondo: cortinas, colchón, horno y refrigerador.',
   })
   @IsString()
   @IsNotEmpty()
