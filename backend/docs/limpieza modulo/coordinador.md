@@ -48,7 +48,7 @@ Todos exigen `x-session-token`. Las rutas estáticas van antes de `:taskId`.
 | `POST /cleaning-tasks/manual` | coordinación | Limpieza manual: obligatorios `description`, `plannedStartTime`, `plannedEndTime` |
 | `PUT /cleaning-tasks/:id` | supervisión o coordinación | Edita descripción, fecha de checkout, unidad, horario, empleado, checklist y observaciones |
 | `PATCH /cleaning-tasks/:taskId/cancel` | supervisión o coordinación | Cancela con motivo (se guarda en `Notes`) |
-| `GET /cleaning-tasks/employees` | coordinación | Empleados internos (los proveedores no aparecen) |
+| `GET /cleaning-tasks/employees` | coordinación | Empleados internos y externos del equipo `OPENMAINT_CLEANING_TEAM_ID` |
 | `GET/POST/PUT /cleaning-tasks/checklists`, `GET checklists/:id`, `GET checklists/:id/template` | coordinación | Checklists y descarga de su plantilla |
 | `POST /cleaning-tasks/sync`, `/sync/today`, `POST /cleaning-tasks` | **sin guard** (ver §7) | Sincronización; devuelve `errors[{reservationId,listingName,message}]` |
 

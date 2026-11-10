@@ -1060,21 +1060,19 @@ describe('CleaningTasksController (e2e)', () => {
     });
 
     describe('GET /cleaning-tasks/employees', () => {
-      it('lista solo empleados internos con su equipo', async () => {
+      it('lista los empleados con su equipo', async () => {
         asCoordinator();
-        mocks.cleaningTasksOpenmaint.listInternalEmployees.mockResolvedValueOnce(
-          {
-            data: [
-              {
-                _id: 7001,
-                Description: 'maria.lopez',
-                Team: 801,
-                _Team_description: 'Limpieza Torres A-B',
-              },
-              { _id: 7007, Description: 'diego.mora', Team: null },
-            ],
-          },
-        );
+        mocks.cleaningTasksOpenmaint.listEmployees.mockResolvedValueOnce({
+          data: [
+            {
+              _id: 7001,
+              Description: 'maria.lopez',
+              Team: 801,
+              _Team_description: 'Limpieza Torres A-B',
+            },
+            { _id: 7007, Description: 'diego.mora', Team: null },
+          ],
+        });
 
         const res = await request(app.getHttpServer())
           .get('/cleaning-tasks/employees')
@@ -1113,7 +1111,7 @@ describe('CleaningTasksController (e2e)', () => {
             .expect(200);
 
           expect(
-            mocks.cleaningTasksOpenmaint.listInternalEmployees,
+            mocks.cleaningTasksOpenmaint.listEmployees,
           ).toHaveBeenCalledWith(2397132);
         });
 
@@ -1126,7 +1124,7 @@ describe('CleaningTasksController (e2e)', () => {
             .expect(200);
 
           expect(
-            mocks.cleaningTasksOpenmaint.listInternalEmployees,
+            mocks.cleaningTasksOpenmaint.listEmployees,
           ).toHaveBeenCalledWith(undefined);
         });
       });
