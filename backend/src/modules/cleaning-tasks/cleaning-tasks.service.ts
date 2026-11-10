@@ -809,7 +809,6 @@ export class CleaningTasksService {
         id: act._id,
         code: act.Code ?? null,
         description: act.Description ?? null,
-        templateName: act.NombrePlantilla ?? null,
         activities: await this.resolveChecklistRows(activityId, act),
       };
     } catch {
@@ -1942,12 +1941,12 @@ export class CleaningTasksService {
   }
 
   /**
-   * Empleados de limpieza que se pueden asignar: internos, sin proveedores, y
-   * solo los del equipo de `OPENMAINT_CLEANING_TEAM_ID` (Auxiliar operativo).
+   * Empleados de limpieza que se pueden asignar (internos y externos), solo
+   * los del equipo de `OPENMAINT_CLEANING_TEAM_ID` (Auxiliar operativo).
    * Sin la variable se listan todos, como antes, y queda un aviso en el log.
    */
   async listCleaningEmployees() {
-    const response = await this.openmaintService.listInternalEmployees(
+    const response = await this.openmaintService.listEmployees(
       this.cleaningTeamId(),
     );
     const data = (response.data ?? []).map((e) => ({
@@ -1969,7 +1968,7 @@ export class CleaningTasksService {
 
     if (!Number.isInteger(value) || value <= 0) {
       this.logger.warn(
-        'Falta OPENMAINT_CLEANING_TEAM_ID: se listan todos los empleados internos, no solo Auxiliar operativo',
+        'Falta OPENMAINT_CLEANING_TEAM_ID: se listan todos los empleados, no solo Auxiliar operativo',
       );
       return undefined;
     }
@@ -2180,7 +2179,6 @@ export class CleaningTasksService {
       id: act._id,
       code: act.Code ?? null,
       description: act.Description ?? null,
-      templateName: act.NombrePlantilla ?? null,
       detalle: act.Detalle ?? '',
       plantilla: act._plantillaRota
         ? {
@@ -2261,7 +2259,6 @@ export class CleaningTasksService {
     }
 
     const body: Record<string, unknown> = {
-      NombrePlantilla: dto.templateName.trim(),
       Description: dto.description.trim(),
       Detalle: dto.detalle ?? '',
     };

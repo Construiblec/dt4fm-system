@@ -51,7 +51,6 @@ export type ChecklistDetail = {
   id: number;
   code: string | null;
   description: string | null;
-  templateName: string | null;
   /** Una fila de CSV por elemento (`Titulo,Actividad,Minutos`). */
   activities: string[];
 };
@@ -83,7 +82,6 @@ export type Checklist = {
   id: number;
   code: string | null;
   description: string | null;
-  templateName: string | null;
   detalle: string;
   plantilla: ChecklistTemplateFile | null;
   activities: string[];
@@ -154,7 +152,7 @@ export type CreateManualTaskPayload = {
 
 /** Sin `code`: el formulario ya no lo pide y el backend no toca el `Code` que no llega. */
 export type SaveChecklistPayload = {
-  templateName: string;
+  /** El «Nombre» del checklist: el atributo `Description` de openMAINT. */
   description: string;
   detalle: string;
   /** Archivo nuevo; si falta, se conserva el que hubiera. */

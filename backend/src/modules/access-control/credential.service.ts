@@ -284,15 +284,74 @@ export class CredentialService {
   }
 
   /**
+   * Devuelve a la puerta una credencial revocada **con el mismo PIN**. Si la VPS
+   * responde `pin_conflict`, `write()` lo rota y el PIN nuevo se reescribe solo en la reserva.
+   */
+  async reactivate(
+    id: string,
+    scope: CredentialScope,
+    validFrom: Date,
+    validTo: Date,
+  ): Promise<AccessCredential> {
+    const credential = await this.findById(id);
+
+    if (credential.status !== 'revoked') {
+      throw new BadRequestException(
+        'Solo se puede reactivar una credencial revocada',
+      );
+    }
+
+    if (validTo <= new Date()) {
+      throw new BadRequestException('La estancia ya terminó');
+    }
+
+    await this.assertScopeAvailable(credential.buildingId, scope);
+
+    if (
+      await this.findLiveBySubject(
+        credential.subjectType,
+        credential.subjectRef,
+      )
+    ) {
+      throw new BadRequestException(
+        'El sujeto ya tiene una credencial vigente',
+      );
+    }
+
+    const pinTomado = await this.credentials.count({
+      where: {
+        buildingId: credential.buildingId,
+        pinFingerprint: credential.pinFingerprint,
+        status: In(LIVE_STATUSES),
+      },
+    });
+
+    if (pinTomado > 0) {
+      throw new BadRequestException(
+        'El PIN ya está asignado a otra credencial del edificio',
+      );
+    }
+
+    credential.scope = scope;
+    credential.validFrom = validFrom;
+    credential.validTo = validTo;
+    credential.status = 'pending';
+    credential.revokedReason = null;
+    credential.syncState = 'pending';
+    credential.syncAttempts = 0;
+    await this.credentials.save(credential);
+
+    return this.sync(credential);
+  }
+
+  /**
    * Renueva el PIN de una credencial viva a petición de un supervisor.
    *
    * Es la contraparte deliberada de `reschedule()` y `changeScope()`, que
    * **nunca** tocan el PIN: aquí cambiarlo es justamente el propósito. El caso
    * real es el huésped que dice que alguien vio su código.
    *
-   * No hay que avisarle del código nuevo por ningún canal aparte: el portal lee
-   * el PIN vigente en cada visita, así que el enlace que ya tiene muestra el
-   * nuevo sin reemitir nada.
+   * `GuestPinNoticeService` reescribe el PIN en la reserva: la huella cambia.
    */
   async regeneratePin(id: string): Promise<AccessCredential> {
     const credential = await this.findById(id);

@@ -168,18 +168,8 @@ export const ChecklistsPage = () => {
                     >
                       <td className={TD}>
                         <p className="font-semibold text-slate-900">
-                          {c.templateName ??
-                            c.description ??
-                            `Checklist ${c.id}`}
+                          {c.description ?? `Checklist ${c.id}`}
                         </p>
-                        {c.description && c.description !== c.templateName ? (
-                          <p
-                            className="max-w-xs truncate text-xs text-slate-500"
-                            title={c.description}
-                          >
-                            {c.description}
-                          </p>
-                        ) : null}
                       </td>
                       <td className={cx(TD, "text-right tabular-nums")}>
                         {summary.sectionCount}
@@ -229,7 +219,6 @@ const ChecklistForm = ({ initial }: { initial: Checklist | null }) => {
   const flash = useCoordFlash((s) => s.show);
   const existing = initial?.plantilla ?? null;
 
-  const [templateName, setTemplateName] = useState(initial?.templateName ?? "");
   const [description, setDescription] = useState(initial?.description ?? "");
   const [detalle, setDetalle] = useState(initial?.detalle ?? "");
   const [upload, setUpload] = useState<Upload | null>(null);
@@ -237,7 +226,7 @@ const ChecklistForm = ({ initial }: { initial: Checklist | null }) => {
   const [fileError, setFileError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
   const [errors, setErrors] = useState<{
-    templateName?: string;
+    description?: string;
     content?: string;
   }>({});
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -291,7 +280,6 @@ const ChecklistForm = ({ initial }: { initial: Checklist | null }) => {
   const mutation = useMutation({
     mutationFn: () =>
       saveChecklist(initial?.id ?? null, {
-        templateName,
         description,
         detalle,
         file: upload?.file ?? null,
@@ -301,7 +289,7 @@ const ChecklistForm = ({ initial }: { initial: Checklist | null }) => {
       await invalidate();
       flash(
         "success",
-        `${result.created ? "Checklist creado" : "Checklist guardado"}: ${templateName.trim()}.`,
+        `${result.created ? "Checklist creado" : "Checklist guardado"}: ${description.trim()}.`,
       );
       navigate("/coordinador/checklists");
     },
@@ -311,8 +299,8 @@ const ChecklistForm = ({ initial }: { initial: Checklist | null }) => {
   const save = () => {
     setSubmitError(null);
     const next: typeof errors = {};
-    if (!templateName.trim())
-      next.templateName = "Escribe el nombre del checklist.";
+    if (!description.trim())
+      next.description = "Escribe el nombre del checklist.";
     if (summary.activityCount === 0) {
       next.content =
         "Agrega actividades en el Detalle o sube el archivo de la plantilla.";
@@ -349,27 +337,14 @@ const ChecklistForm = ({ initial }: { initial: Checklist | null }) => {
           >
             <div className="space-y-4">
               <Field
-                label="Nombre de checklist"
+                label="Nombre"
                 htmlFor="chk-nombre"
                 required
-                error={errors.templateName}
+                error={errors.description}
               >
                 <input
                   id="chk-nombre"
-                  className={inputClass(errors.templateName)}
-                  value={templateName}
-                  maxLength={120}
-                  onChange={(e) => setTemplateName(e.target.value)}
-                />
-              </Field>
-              <Field
-                label="Descripción"
-                htmlFor="chk-descripcion"
-                hint="Opcional. Si la dejas vacía, se usa el nombre."
-              >
-                <input
-                  id="chk-descripcion"
-                  className={inputClass(false)}
+                  className={inputClass(errors.description)}
                   value={description}
                   maxLength={200}
                   onChange={(e) => setDescription(e.target.value)}
@@ -601,7 +576,7 @@ export const ChecklistEditorPage = () => {
           title={
             isNew
               ? "Nuevo checklist"
-              : (detailQ.data?.templateName ?? "Checklist")
+              : (detailQ.data?.description ?? "Checklist")
           }
           subtitle={
             isNew

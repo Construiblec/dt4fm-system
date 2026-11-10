@@ -18,8 +18,10 @@ import { AuthorizationsService } from '../src/modules/access-control/authorizati
 import { BuildingCatalogService } from '../src/modules/access-control/building-catalog.service';
 import { CredentialService } from '../src/modules/access-control/credential.service';
 import { AccessCredential } from '../src/modules/access-control/entities/access-credential.entity';
+import { GuestPinNoticeService } from '../src/modules/access-control/guest-pin-notice.service';
 import { GuestStayService } from '../src/modules/access-control/guest-stay.service';
 import { ReservationSweepService } from '../src/modules/access-control/reservation-sweep.service';
+import { GuestPinNotice } from '../src/modules/access-control/entities/guest-pin-notice.entity';
 import { GuestStay } from '../src/modules/access-control/entities/guest-stay.entity';
 import { RemoteOpenRequest } from '../src/modules/access-control/entities/remote-open-request.entity';
 import { GuestLinkDelivery } from '../src/modules/guest-link/entities/guest-link-delivery.entity';
@@ -1156,7 +1158,12 @@ describe('AccessControlController (e2e)', () => {
           unitLabel: 'Inglaterra · UI R302',
           accessLevel: 'pedestrian',
         });
-        expect(JSON.stringify(res.body)).not.toContain('pin');
+        expect(JSON.stringify(res.body)).not.toMatch(/"pin"\s*:/);
+        expect(res.body.data[0].pinNotice).toEqual({
+          status: 'not_applicable',
+          at: null,
+          error: null,
+        });
       });
 
       it('deja fuera las estancias de edificios sin control de accesos', async () => {
@@ -1237,7 +1244,33 @@ describe('AccessControlController (e2e)', () => {
           .expect(200);
 
         expect(await huellaDe('44712233')).not.toBe(antes);
-        expect(JSON.stringify(res.body)).not.toContain('pin');
+        expect(JSON.stringify(res.body)).not.toMatch(/"pin"\s*:/);
+      });
+
+      it('escribe el PIN nuevo en la reserva y lo avisa por el chat', async () => {
+        const estancia = await crearEstancia({ channelName: 'airbnbOfficial' });
+
+        const res = await request(app.getHttpServer())
+          .post(`/access-authorizations/${estancia!.id}/regenerate`)
+          .set(CAV_SESSION)
+          .expect(200);
+
+        const credencial = await credentialService.findLive(
+          'guest',
+          '44712233',
+          'pedestrian',
+        );
+        const pin = credentialService.revealPin(credencial!);
+        expect(mocks.hostaway.setReservationDoorCode).toHaveBeenCalledWith(
+          '44712233',
+          pin,
+          expect.any(String),
+        );
+        const [, texto] = mocks.hostaway.sendConversationMessage.mock
+          .calls[0] as [number, string];
+        expect(texto).toContain(pin);
+        expect(mocks.hostaway.sendConversationMessage).toHaveBeenCalledTimes(1);
+        expect(res.body.data.pinNotice.status).toBe('sent');
       });
 
       it('404 si la estancia no tiene credencial viva', async () => {
@@ -1250,6 +1283,40 @@ describe('AccessControlController (e2e)', () => {
 
         await request(app.getHttpServer())
           .post(`/access-authorizations/${estancia!.id}/regenerate`)
+          .set(CAV_SESSION)
+          .expect(404);
+      });
+    });
+
+    describe('POST /access-authorizations/:stayId/pin-notice', () => {
+      it('reescribe el PIN en la reserva aunque ya estuviera, sin devolverlo ni mandar mensaje', async () => {
+        const estancia = await crearEstancia({ channelName: 'bookingcom' });
+        await app.get(GuestPinNoticeService).notify(estancia!.id);
+
+        const res = await request(app.getHttpServer())
+          .post(`/access-authorizations/${estancia!.id}/pin-notice`)
+          .set(CAV_SESSION)
+          .expect(200);
+
+        expect(res.body.data).toMatchObject({
+          outcome: 'sent',
+          channel: 'hostaway-door-code',
+        });
+        expect(JSON.stringify(res.body)).not.toMatch(/"pin"\s*:/);
+        expect(mocks.hostaway.setReservationDoorCode).toHaveBeenCalledTimes(2);
+        expect(mocks.hostaway.sendConversationMessage).not.toHaveBeenCalled();
+      });
+
+      it('404 si la estancia no tiene credencial viva', async () => {
+        mocks.unitResolver.byListingId.mockResolvedValue({
+          unitId: 99,
+          buildingId: BAT_BUILDING_ID,
+        });
+
+        const estancia = await crearEstancia({ channelName: 'bookingcom' });
+
+        await request(app.getHttpServer())
+          .post(`/access-authorizations/${estancia!.id}/pin-notice`)
           .set(CAV_SESSION)
           .expect(404);
       });
@@ -1279,6 +1346,97 @@ describe('AccessControlController (e2e)', () => {
           .set(CAV_SESSION)
           .send({ accessLevel: 'helicoptero' })
           .expect(400);
+      });
+
+      describe('revocar y restaurar', () => {
+        const nivel = (stayId: string, accessLevel: string) =>
+          request(app.getHttpServer())
+            .post(`/access-authorizations/${stayId}/access-level`)
+            .set(CAV_SESSION)
+            .send({ accessLevel });
+
+        it('`none` retira el PIN de todas las puertas y la estancia sigue en la lista', async () => {
+          const estancia = await crearEstancia();
+          const credencial = await credentialService.findLiveBySubject(
+            'guest',
+            '44712233',
+          );
+
+          const res = await nivel(estancia!.id, 'none').expect(200);
+
+          expect(res.body.data.accessLevel).toBeNull();
+          expect(res.body.data.accessRevoked.at).toEqual(expect.any(String));
+          expect(mocks.accessIot.deleteCredential).toHaveBeenCalledWith(
+            credencial!.id,
+          );
+          expect(
+            await credentialService.findLiveBySubject('guest', '44712233'),
+          ).toBeNull();
+
+          const lista = await request(app.getHttpServer())
+            .get('/access-authorizations')
+            .set(CAV_SESSION)
+            .expect(200);
+          expect(lista.body.data).toEqual([
+            expect.objectContaining({ id: estancia!.id, accessLevel: null }),
+          ]);
+        });
+
+        it('una actualización de Hostaway no reemite el acceso revocado', async () => {
+          const estancia = await crearEstancia();
+          await nivel(estancia!.id, 'none').expect(200);
+
+          await crearEstancia({ departureDate: fechaLocal(4) });
+
+          expect(
+            await credentialService.findLiveBySubject('guest', '44712233'),
+          ).toBeNull();
+        });
+
+        it('restaura con el mismo PIN, el nivel elegido y sin escribirlo otra vez', async () => {
+          const estancia = await crearEstancia({
+            channelName: 'airbnbOfficial',
+          });
+          const pinNotice = app.get(GuestPinNoticeService);
+          await pinNotice.notify(estancia!.id);
+          const antes = await credentialService.findLiveBySubject(
+            'guest',
+            '44712233',
+          );
+
+          await nivel(estancia!.id, 'none').expect(200);
+          const res = await nivel(estancia!.id, 'both').expect(200);
+
+          expect(res.body.data).toMatchObject({
+            accessLevel: 'both',
+            accessRevoked: null,
+          });
+          const despues = await credentialService.findLiveBySubject(
+            'guest',
+            '44712233',
+          );
+          expect(despues!.id).toBe(antes!.id);
+          expect(despues!.pinFingerprint).toBe(antes!.pinFingerprint);
+          expect(despues!.syncState).toBe('synced');
+
+          expect((await pinNotice.notify(estancia!.id)).reason).toBe(
+            'already_sent',
+          );
+          expect(mocks.hostaway.setReservationDoorCode).toHaveBeenCalledTimes(
+            1,
+          );
+          expect(mocks.hostaway.sendConversationMessage).not.toHaveBeenCalled();
+        });
+
+        it('no renueva el PIN de un acceso revocado', async () => {
+          const estancia = await crearEstancia();
+          await nivel(estancia!.id, 'none').expect(200);
+
+          await request(app.getHttpServer())
+            .post(`/access-authorizations/${estancia!.id}/regenerate`)
+            .set(CAV_SESSION)
+            .expect(400);
+        });
       });
     });
   });
@@ -1959,23 +2117,20 @@ describe('AccessControlController (e2e)', () => {
   });
 
   /**
-   * Entrega del enlace del portal al proyectarse la reserva.
-   *
-   * Se llama a `upsertFromReservation` directo, como hace «proyección de la
-   * reserva» más arriba: el webhook HTTP procesa en segundo plano y no hay
-   * nada que esperar de forma determinista.
+   * PIN en la reserva de Hostaway (`doorCode`) al proyectarse la reserva. Ya no
+   * se envía el enlace del portal ni un mensaje; solo reservas de canal.
    */
-  describe('entrega del enlace del portal', () => {
-    // La entrega exige que la estancia no esté `completed`; con el reloj real,
-    // las fechas del fixture ya pasaron y no se entrega nada.
+  describe('PIN en la reserva de Hostaway', () => {
     conRelojCongelado();
+
+    let pinNotice: GuestPinNoticeService;
 
     const reserva = (overrides: Record<string, unknown> = {}) => ({
       hostawayReservationId: '44712233',
       listingId: '288172',
       guestName: 'Pamela Pérez',
       guestEmail: 'ana@example.com',
-      // Relativas a hoy: una estancia terminada no recibe ni canjea enlaces.
+      channelName: 'airbnbOfficial',
       arrivalDate: fechaLocal(-1),
       departureDate: fechaLocal(3),
       status: 'confirmed',
@@ -1983,133 +2138,192 @@ describe('AccessControlController (e2e)', () => {
       ...overrides,
     });
 
-    const enviosDe = (stayId: string) =>
+    const avisosDe = (stayId: string) =>
       dataSource
-        .getRepository(GuestLinkDelivery)
+        .getRepository(GuestPinNotice)
         .find({ where: { guestStayId: stayId }, order: { createdAt: 'ASC' } });
 
+    const pinDe = async () =>
+      credentialService.revealPin(
+        (await credentialService.findLive('guest', '44712233', 'pedestrian'))!,
+      );
+
     beforeEach(() => {
+      pinNotice = app.get(GuestPinNoticeService);
       mocks.openmaint.getSession.mockResolvedValue(
         mockSession({ role: 'SuperUser', username: 'admin.mock' }),
       );
     });
 
-    it('una estancia nueva entrega el enlace una vez, con la URL del portal', async () => {
+    it('proyectar la reserva ya no entrega el enlace del portal', async () => {
+      await guestStayService.upsertFromReservation(reserva());
+
+      expect(mocks.guestLinkChannel.send).not.toHaveBeenCalled();
+      expect(await dataSource.getRepository(GuestLinkDelivery).count()).toBe(0);
+    });
+
+    it('el barrido encuentra la estancia con la credencial en la puerta', async () => {
       const estancia = await guestStayService.upsertFromReservation(reserva());
 
-      expect(mocks.guestLinkChannel.send).toHaveBeenCalledTimes(1);
-
-      const [payload] = mocks.guestLinkChannel.send.mock.calls[0] as [
-        { event: string; stay: { id: string }; link: { url: string } },
-      ];
-      expect(payload.event).toBe('guest-link.issued');
-      expect(payload.stay.id).toBe(estancia!.id);
-      expect(payload.link.url).toMatch(/\/g\/[0-9A-Za-z]{10}$/);
-      // Ni el PIN ni el token suelto viajan al canal.
-      expect(JSON.stringify(payload)).not.toContain('"pin"');
-
-      const envios = await enviosDe(estancia!.id);
-      expect(envios).toHaveLength(1);
-      expect(envios[0]).toMatchObject({ status: 'sent', channel: 'webhook' });
+      expect(await pinNotice['pendingStayIds']()).toEqual([estancia!.id]);
     });
 
-    it('la URL entregada abre el portal', async () => {
-      await guestStayService.upsertFromReservation(reserva());
+    it('escribe el PIN en la reserva una vez, sin mensaje, y no lo repite en una modificación', async () => {
+      const estancia = await guestStayService.upsertFromReservation(reserva());
 
-      const [payload] = mocks.guestLinkChannel.send.mock.calls[0] as [
-        { link: { url: string } },
-      ];
-      const code = payload.link.url.split('/').pop();
+      expect((await pinNotice.notify(estancia!.id)).outcome).toBe('sent');
 
-      const canje = await request(app.getHttpServer())
-        .post('/guest/short-link/redeem')
-        .send({ code })
-        .expect(200);
-      const token = (canje.body as { token: string }).token;
+      expect(mocks.hostaway.setReservationDoorCode).toHaveBeenCalledWith(
+        '44712233',
+        await pinDe(),
+        expect.any(String),
+      );
+      expect(mocks.hostaway.sendConversationMessage).not.toHaveBeenCalled();
 
-      await request(app.getHttpServer())
-        .get('/guest/me')
-        .set('Authorization', `Bearer ${token}`)
-        .expect(200);
-    });
-
-    it('una modificación de la reserva NO reenvía el enlace', async () => {
-      await guestStayService.upsertFromReservation(reserva());
-      const estancia = await guestStayService.upsertFromReservation(
+      // Nuestro PUT vuelve como `reservation updated` / `modified`: no cambia el PIN.
+      await guestStayService.upsertFromReservation(
         reserva({ departureDate: fechaLocal(5), status: 'modified' }),
       );
+      expect((await pinNotice.notify(estancia!.id)).outcome).toBe('skipped');
+      expect(await pinNotice['pendingStayIds']()).toEqual([]);
+      expect(mocks.hostaway.setReservationDoorCode).toHaveBeenCalledTimes(1);
 
-      // El enlace ya entregado no lleva fechas: sigue valiendo con la nueva.
-      expect(mocks.guestLinkChannel.send).toHaveBeenCalledTimes(1);
-      expect(await enviosDe(estancia!.id)).toHaveLength(1);
-    });
-
-    it('un envío fallido se reintenta en la siguiente actualización', async () => {
-      mocks.guestLinkChannel.send.mockResolvedValueOnce({
-        success: false,
-        target: '',
-        error: 'conversation_not_found',
+      const avisos = await avisosDe(estancia!.id);
+      expect(avisos).toHaveLength(1);
+      expect(avisos[0]).toMatchObject({
+        channel: 'hostaway-door-code',
+        status: 'sent',
+        target: 'reservation:44712233',
       });
-
-      await guestStayService.upsertFromReservation(reserva());
-      const estancia = await guestStayService.upsertFromReservation(
-        reserva({ status: 'modified' }),
-      );
-
-      // Es la red de seguridad para la conversación de Airbnb que aún no
-      // existía cuando llegó reservation.created. La espera entre reintentos
-      // está en 0 en setup-env.ts.
-      expect(mocks.guestLinkChannel.send).toHaveBeenCalledTimes(2);
-
-      const envios = await enviosDe(estancia!.id);
-      expect(envios.map((e) => e.status)).toEqual(['failed', 'sent']);
     });
 
-    it('el canal de la reserva viaja en el payload para poder enrutar', async () => {
-      await guestStayService.upsertFromReservation(
+    it('no escribe mientras la credencial no está en la puerta', async () => {
+      mocks.accessIot.putCredential.mockRejectedValueOnce(
+        new Error('VPS caída'),
+      );
+      const estancia = await guestStayService.upsertFromReservation(reserva());
+
+      expect(await pinNotice.notify(estancia!.id)).toMatchObject({
+        outcome: 'skipped',
+        reason: 'not_synced',
+      });
+      expect(await pinNotice['pendingStayIds']()).toEqual([]);
+    });
+
+    it('un fallo de Hostaway se reintenta', async () => {
+      mocks.hostaway.setReservationDoorCode.mockRejectedValueOnce(
+        new Error('Hostaway caído'),
+      );
+      const estancia = await guestStayService.upsertFromReservation(reserva());
+
+      expect((await pinNotice.notify(estancia!.id)).outcome).toBe('failed');
+      // El enfriamiento está en 0 en setup-env.ts.
+      expect(await pinNotice['pendingStayIds']()).toEqual([estancia!.id]);
+      expect((await pinNotice.notify(estancia!.id)).outcome).toBe('sent');
+
+      const avisos = await avisosDe(estancia!.id);
+      expect(avisos.map((a) => a.status)).toEqual(['failed', 'sent']);
+    });
+
+    it('una reserva directa no recibe nada', async () => {
+      const estancia = await guestStayService.upsertFromReservation(
         reserva({ channelName: 'direct' }),
       );
 
-      const [payload] = mocks.guestLinkChannel.send.mock.calls[0] as [
-        { stay: { channelName: string | null } },
-      ];
-      expect(payload.stay.channelName).toBe('direct');
-    });
-
-    it('también se entrega en edificios sin control de accesos', async () => {
-      mocks.unitResolver.byListingId.mockResolvedValue({
-        unitId: 99,
-        buildingId: BAT_BUILDING_ID,
+      expect(await pinNotice['pendingStayIds']()).toEqual([]);
+      expect(await pinNotice.notify(estancia!.id)).toMatchObject({
+        outcome: 'skipped',
+        reason: 'direct_reservation',
       });
-
-      const estancia = await guestStayService.upsertFromReservation(reserva());
-
-      // Sin credencial, pero con enlace: el portal es más que el PIN.
-      expect(
-        await credentialService.findLiveBySubject('guest', '44712233'),
-      ).toBeNull();
-      expect(await enviosDe(estancia!.id)).toHaveLength(1);
+      expect(mocks.hostaway.setReservationDoorCode).not.toHaveBeenCalled();
     });
 
-    it('un canal caído deja constancia y no impide emitir el PIN', async () => {
-      mocks.guestLinkChannel.send.mockResolvedValueOnce({
-        success: false,
-        target: 'https://webhook.invalid/pruebas',
-        httpStatus: 503,
-        error: 'status=503',
-      });
-
+    it('un PIN rotado sin el CAV se reescribe, pero sin mensaje', async () => {
       const estancia = await guestStayService.upsertFromReservation(reserva());
+      await pinNotice.notify(estancia!.id);
 
-      const [envio] = await enviosDe(estancia!.id);
-      expect(envio).toMatchObject({ status: 'failed', httpStatus: 503 });
-      // La proyección y el PIN son independientes del canal.
-      expect(
-        await credentialService.findLiveBySubject('guest', '44712233'),
-      ).not.toBeNull();
+      const credencial = await credentialService.findLive(
+        'guest',
+        '44712233',
+        'pedestrian',
+      );
+      await credentialService.regeneratePin(credencial!.id);
+
+      expect(await pinNotice['pendingStayIds']()).toEqual([estancia!.id]);
+      expect((await pinNotice.notify(estancia!.id)).outcome).toBe('sent');
+      expect(mocks.hostaway.setReservationDoorCode).toHaveBeenLastCalledWith(
+        '44712233',
+        await pinDe(),
+        expect.any(String),
+      );
+      expect(mocks.hostaway.sendConversationMessage).not.toHaveBeenCalled();
     });
 
-    it('POST /guest/magic-link/deliver reenvía aunque ya se hubiera enviado', async () => {
+    it('la renovación del CAV que no llega a la puerta deja el mensaje para el barrido', async () => {
+      const estancia = await guestStayService.upsertFromReservation(reserva());
+      await pinNotice.notify(estancia!.id);
+      const credencial = await credentialService.findLive(
+        'guest',
+        '44712233',
+        'pedestrian',
+      );
+
+      mocks.accessIot.putCredential.mockRejectedValueOnce(
+        new Error('VPS caída'),
+      );
+      await credentialService.regeneratePin(credencial!.id);
+      await pinNotice.requestRenewalMessage(estancia!, credencial!);
+
+      expect((await pinNotice.notify(estancia!.id)).reason).toBe('not_synced');
+      expect(mocks.hostaway.sendConversationMessage).not.toHaveBeenCalled();
+
+      await credentialService.sync(
+        (await credentialService.findLive('guest', '44712233', 'pedestrian'))!,
+      );
+      await pinNotice.notify(estancia!.id);
+
+      const [conversationId, texto] = mocks.hostaway.sendConversationMessage
+        .mock.calls[0] as [number, string];
+      expect(conversationId).toBe(900000);
+      expect(texto).toContain(await pinDe());
+      await pinNotice.notify(estancia!.id);
+      expect(mocks.hostaway.sendConversationMessage).toHaveBeenCalledTimes(1);
+    });
+
+    it('borra el doorCode al cancelarse la reserva, una sola vez', async () => {
+      const estancia = await guestStayService.upsertFromReservation(reserva());
+      await pinNotice.notify(estancia!.id);
+
+      await guestStayService.upsertFromReservation(
+        reserva({ status: 'cancelled' }),
+      );
+      // El barrido está apagado en e2e: se llama al paso de borrado directamente.
+      await pinNotice['clearStale']();
+      await pinNotice['clearStale']();
+
+      expect(mocks.hostaway.setReservationDoorCode).toHaveBeenCalledTimes(2);
+      expect(mocks.hostaway.setReservationDoorCode).toHaveBeenLastCalledWith(
+        '44712233',
+        null,
+      );
+      expect((await avisosDe(estancia!.id)).map((a) => a.status)).toEqual([
+        'sent',
+        'cleared',
+      ]);
+    });
+
+    it('no borra nada en una reserva donde nunca escribimos', async () => {
+      await guestStayService.upsertFromReservation(reserva());
+      await guestStayService.upsertFromReservation(
+        reserva({ status: 'cancelled' }),
+      );
+
+      await pinNotice['clearStale']();
+
+      expect(mocks.hostaway.setReservationDoorCode).not.toHaveBeenCalled();
+    });
+
+    it('POST /guest/magic-link/deliver sigue enviando el enlace a mano', async () => {
       const estancia = await guestStayService.upsertFromReservation(reserva());
 
       const res = await request(app.getHttpServer())
@@ -2120,8 +2334,7 @@ describe('AccessControlController (e2e)', () => {
 
       expect(res.body).toMatchObject({ outcome: 'sent', channel: 'webhook' });
       expect(res.body).not.toHaveProperty('token');
-      expect(mocks.guestLinkChannel.send).toHaveBeenCalledTimes(2);
-      expect(await enviosDe(estancia!.id)).toHaveLength(2);
+      expect(mocks.guestLinkChannel.send).toHaveBeenCalledTimes(1);
     });
   });
 });

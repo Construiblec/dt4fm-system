@@ -77,7 +77,7 @@ export class GuestPortalController {
   @ApiOperation({
     summary: 'Emitir el enlace de acceso de una estancia',
     description:
-      'Endpoint interno de apoyo mientras el envío automático no existe. El ' +
+      'Endpoint interno: el enlace no se envía automáticamente. El ' +
       'enlace vale desde este momento hasta el fin del acceso de la estancia; ' +
       'el PIN solo se muestra dentro de la ventana de check-in a check-out.',
   })
@@ -117,8 +117,8 @@ export class GuestPortalController {
     summary: 'Enviar el enlace de acceso por el canal configurado',
     description:
       'Fuerza el envío aunque ya se haya hecho antes: es el camino para "el ' +
-      'huésped dice que no le llegó". El envío normal es automático al ' +
-      'proyectarse la reserva. La respuesta dice si salió y por dónde; nunca ' +
+      'huésped dice que no le llegó". Una reserva nueva no lo envía sola. ' +
+      'La respuesta dice si salió y por dónde; nunca ' +
       'incluye el token.',
   })
   @ApiResponse({ status: 200, description: 'Resultado del envío.' })

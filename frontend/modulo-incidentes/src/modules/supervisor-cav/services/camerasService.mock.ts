@@ -49,10 +49,16 @@ export const mockCreateLiveSession = async (
       code: "live_capacity_reached",
       message: "Hay demasiadas cámaras abiertas",
     };
-    throw new AxiosError(data.message, "ERR_BAD_RESPONSE", undefined, undefined, {
-      status: 503,
-      data,
-    } as AxiosResponse);
+    throw new AxiosError(
+      data.message,
+      "ERR_BAD_RESPONSE",
+      undefined,
+      undefined,
+      {
+        status: 503,
+        data,
+      } as AxiosResponse,
+    );
   }
 
   return {

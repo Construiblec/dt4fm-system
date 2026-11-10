@@ -76,6 +76,12 @@ process.env.GUEST_LINK_WEBHOOK_SECRET = '';
 // actualización en el mismo segundo.
 process.env.GUEST_LINK_RETRY_COOLDOWN_MINUTES = '0';
 
+// Aviso del PIN por Hostaway: encendido, con HostawayService doblado en test-app.ts.
+process.env.GUEST_PIN_NOTICE_ENABLED = 'true';
+process.env.GUEST_PIN_NOTICE_RETRY_COOLDOWN_MINUTES = '0';
+// El .env local puede apuntar al webhook de pruebas: el e2e siempre prueba Hostaway.
+process.env.GUEST_PIN_NOTICE_CHANNEL = 'hostaway';
+
 // Solicitante de las incidencias del portal; ningún test depende del valor.
 process.env.OPENMAINT_GUEST_REQUESTER_ID ??= '8191306';
 

@@ -241,7 +241,7 @@ export const ChecklistSelect = ({
         summary.minutes !== null ? ` · ${describeChecklistMinutes(summary)}` : "";
       return (
         <option key={c.id} value={c.id}>
-          {`${c.templateName ?? c.description ?? c.id} · ${summary.activityCount} actividades${minutes}`}
+          {`${c.description ?? c.id} ·${summary.activityCount} actividades${minutes}`}
         </option>
       );
     })}

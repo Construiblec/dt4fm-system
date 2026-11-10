@@ -4,7 +4,6 @@ export type CleaningChecklistDetail = {
   id: number;
   code: string;
   description: string;
-  templateName: string;
   activities: string[];
 };
 

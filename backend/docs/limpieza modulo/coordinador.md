@@ -48,7 +48,7 @@ Todos exigen `x-session-token`. Las rutas estáticas van antes de `:taskId`.
 | `POST /cleaning-tasks/manual` | coordinación | Limpieza manual: obligatorios `description`, `plannedStartTime`, `plannedEndTime` |
 | `PUT /cleaning-tasks/:id` | supervisión o coordinación | Edita descripción, fecha de checkout, unidad, horario, empleado, checklist y observaciones |
 | `PATCH /cleaning-tasks/:taskId/cancel` | supervisión o coordinación | Cancela con motivo (se guarda en `Notes`) |
-| `GET /cleaning-tasks/employees` | coordinación | Empleados internos (los proveedores no aparecen) |
+| `GET /cleaning-tasks/employees` | coordinación | Empleados internos y externos del equipo `OPENMAINT_CLEANING_TEAM_ID` |
 | `GET/POST/PUT /cleaning-tasks/checklists`, `GET checklists/:id`, `GET checklists/:id/template` | coordinación | Checklists y descarga de su plantilla |
 | `POST /cleaning-tasks/sync`, `/sync/today`, `POST /cleaning-tasks` | **sin guard** (ver §7) | Sincronización; devuelve `errors[{reservationId,listingName,message}]` |
 
@@ -89,9 +89,9 @@ y `unitMatch`: `ok`, `none` (el listing no tiene unidad) o `ambiguous` (dos unid
 
 ## 5. Checklists (`CleaningActivity`)
 
-Campos: `NombrePlantilla`, `Code`, `Description`, `Detalle` (texto) y `Plantilla` (archivo CSV).
+Campos: `Code`, `Description`, `Detalle` (texto) y `Plantilla` (archivo CSV). En openMAINT ya no existe `NombrePlantilla`: `Description` es el único nombre y su etiqueta es «Nombre».
 
-- El formulario del coordinador ya no pide el `Code`: no lo envía, y el backend no toca el `Code` que no llega. La `Description` es obligatoria en openMAINT; si queda vacía, el frontend manda el nombre.
+- El formulario del coordinador ya no pide el `Code`: no lo envía, y el backend no toca el `Code` que no llega. La `Description` («Nombre») es obligatoria, en openMAINT y en el formulario.
 - Si el archivo se puede leer, el equipo ve el archivo; si no, el `Detalle`.
 - CSV con columnas `Titulo,Actividad` y, opcional, `Minutos`; separador coma o punto y coma; máximo 1 MB. Sin minutos no hay avisos: la revisión solo señala problemas de estructura (encabezado, tabulaciones, sección repetida, título sin actividad).
 - El backend valida con `readCsvTemplate` antes de subir: vacío, más de 1 MB, Excel o PDF y sin filas se rechazan con 400.

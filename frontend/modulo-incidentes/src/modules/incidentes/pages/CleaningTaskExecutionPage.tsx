@@ -30,6 +30,7 @@ export const CleaningTaskExecutionPage = () => {
     isLoading,
     loadError,
     totalSections,
+    hasChecklist,
     completedSections,
     canComplete,
     validationMessage,
@@ -80,6 +81,16 @@ export const CleaningTaskExecutionPage = () => {
               rechazaría la transición. */}
           {taskDetail && !hasStarted && taskDetail.phase === "Assigned" ? (
             <>
+              {/* Lo que dejó escrito quien creó la tarea: se lee antes de empezar. */}
+              {taskDetail.taskObservations && (
+                <section className="rounded-3xl bg-white p-5 shadow-sm">
+                  <div className="rounded-xl border border-blue-100 bg-blue-50 p-3">
+                    <p className="mb-1 text-xs font-semibold text-blue-700">Observaciones de la tarea</p>
+                    <p className="whitespace-pre-line text-sm text-blue-900 italic">"{cleanObservationText(taskDetail.taskObservations)}"</p>
+                  </div>
+                </section>
+              )}
+
               {/* Tarea reabierta con evidencia: el operario ve qué corregir antes
                   de iniciar. Aquí no hay otro sitio que muestre las
                   observaciones de supervisión, así que van con las fotos. */}
@@ -135,10 +146,12 @@ export const CleaningTaskExecutionPage = () => {
               <SupervisionEvidenceGallery attachments={attachments} />
 
               <CleaningTaskTimer />
-              <CleaningTaskChecklist
-                activities={taskDetail.checklistDetail?.activities ?? []}
-              />
-
+              {/* Sin actividades (tarea sin checklist) no hay tarjeta que mostrar. */}
+              {(taskDetail.checklistDetail?.activities.length ?? 0) > 0 && (
+                <CleaningTaskChecklist
+                  activities={taskDetail.checklistDetail?.activities ?? []}
+                />
+              )}
 
               <CleaningTaskObservations />
               <CleaningTaskPhotoUpload
@@ -149,12 +162,16 @@ export const CleaningTaskExecutionPage = () => {
 
               <section className="rounded-3xl bg-white p-5 shadow-sm">
                 <div className="rounded-2xl bg-slate-50 p-4">
-                  <p className="text-sm font-semibold text-slate-900">
-                    {completedSections}/{totalSections} secciones completadas
-                  </p>
-                  <p className="mt-2 text-sm text-slate-500">
+                  {hasChecklist && (
+                    <p className="text-sm font-semibold text-slate-900">
+                      {completedSections}/{totalSections} secciones completadas
+                    </p>
+                  )}
+                  <p className={`${hasChecklist ? "mt-2 " : ""}text-sm text-slate-500`}>
                     {validationMessage ??
-                      "Checklist completo y evidencia registrada. Ya puedes finalizar la tarea."}
+                      (hasChecklist
+                        ? "Checklist completo y evidencia registrada. Ya puedes finalizar la tarea."
+                        : "Esta tarea no tiene checklist. Ya puedes finalizarla.")}
                   </p>
                 </div>
 

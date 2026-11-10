@@ -1,11 +1,16 @@
-import { NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Repository } from 'typeorm';
 import { OpenmaintService } from '../../integrations/openmaint/openmaint.service';
-import { AuthorizationsService } from './authorizations.service';
+import {
+  AuthorizationsService,
+  CAV_SUSPENDED_REASON,
+} from './authorizations.service';
 import { BuildingCatalogService } from './building-catalog.service';
 import { CredentialService } from './credential.service';
 import { AccessCredential } from './entities/access-credential.entity';
 import { GuestStay } from './entities/guest-stay.entity';
+import { GuestPinNoticeService } from './guest-pin-notice.service';
 
 const HOUR = 60 * 60 * 1000;
 const PRADERA = 3019998;
@@ -50,7 +55,15 @@ type Harness = {
   findLiveBySubject: jest.Mock;
   regeneratePin: jest.Mock;
   changeScope: jest.Mock;
+  revoke: jest.Mock;
+  reactivate: jest.Mock;
+  findLiveForGuest: jest.Mock;
+  staySave: jest.Mock;
+  credentialFindOne: jest.Mock;
   getUnitsByBuilding: jest.Mock;
+  notify: jest.Mock;
+  statusFor: jest.Mock;
+  requestRenewalMessage: jest.Mock;
 };
 
 const harness = (options: {
@@ -58,6 +71,7 @@ const harness = (options: {
   credentials?: AccessCredential[];
   units?: unknown;
   buildings?: unknown[];
+  revoked?: AccessCredential;
 }): Harness => {
   const stayFind = jest.fn().mockResolvedValue(options.stays ?? []);
   const stayFindOne = jest.fn().mockResolvedValue(options.stays?.[0] ?? null);
@@ -67,22 +81,50 @@ const harness = (options: {
     .mockResolvedValue(options.credentials?.[0] ?? null);
   const regeneratePin = jest.fn().mockResolvedValue(undefined);
   const changeScope = jest.fn().mockResolvedValue(undefined);
+  const revoke = jest.fn().mockResolvedValue(undefined);
+  const reactivate = jest.fn().mockResolvedValue(undefined);
+  const findLiveForGuest = jest
+    .fn()
+    .mockResolvedValue(options.credentials ?? []);
+  const staySave = jest.fn((stay: GuestStay) => Promise.resolve(stay));
+  const credentialFindOne = jest
+    .fn()
+    .mockResolvedValue(options.revoked ?? null);
   const getUnitsByBuilding = jest.fn().mockResolvedValue(
     options.units ?? {
       data: [{ _id: 4242, Description: 'UI R302', Code: 'R302' }],
     },
   );
 
+  const notify = jest.fn().mockResolvedValue({ outcome: 'sent' });
+  const requestRenewalMessage = jest.fn().mockResolvedValue(undefined);
+  const statusFor = jest.fn(
+    (items: { stay: GuestStay }[]) =>
+      new Map(
+        items.map(({ stay }) => [
+          stay.id,
+          { status: 'sent', at: '2026-09-12T10:00:00.000Z', error: null },
+        ]),
+      ),
+  );
+
   const service = new AuthorizationsService(
     {
       find: stayFind,
       findOne: stayFindOne,
+      save: staySave,
     } as unknown as Repository<GuestStay>,
-    { find: credentialFind } as unknown as Repository<AccessCredential>,
+    {
+      find: credentialFind,
+      findOne: credentialFindOne,
+    } as unknown as Repository<AccessCredential>,
     {
       findLiveBySubject,
+      findLiveForGuest,
       regeneratePin,
       changeScope,
+      revoke,
+      reactivate,
     } as unknown as CredentialService,
     {
       list: jest
@@ -92,6 +134,12 @@ const harness = (options: {
         ),
     } as unknown as BuildingCatalogService,
     { getUnitsByBuilding } as unknown as OpenmaintService,
+    {
+      notify,
+      statusFor,
+      requestRenewalMessage,
+    } as unknown as GuestPinNoticeService,
+    { get: () => undefined } as unknown as ConfigService,
   );
 
   return {
@@ -102,7 +150,15 @@ const harness = (options: {
     findLiveBySubject,
     regeneratePin,
     changeScope,
+    revoke,
+    reactivate,
+    findLiveForGuest,
+    staySave,
+    credentialFindOne,
     getUnitsByBuilding,
+    notify,
+    statusFor,
+    requestRenewalMessage,
   };
 };
 
@@ -124,6 +180,49 @@ describe('AuthorizationsService', () => {
       expect(autorizacion.accessLevel).toBe('pedestrian');
     });
 
+    it('separa las horas de la reserva de la vigencia del PIN', async () => {
+      const desde = new Date('2026-10-25T13:00:00-05:00');
+      const hasta = new Date('2026-10-28T16:00:00-05:00');
+      const { service } = harness({
+        stays: [
+          stayWith({
+            accessValidFrom: desde,
+            accessValidTo: hasta,
+            checkInAt: new Date('2026-10-25T15:00:00-05:00'),
+            checkOutAt: new Date('2026-10-28T11:00:00-05:00'),
+          }),
+        ],
+        credentials: [credentialWith()],
+      });
+
+      const [autorizacion] = await service.list(undefined, undefined, 'sesion');
+
+      expect(autorizacion).toMatchObject({
+        checkIn: '2026-10-25T20:00:00.000Z',
+        checkOut: '2026-10-28T16:00:00.000Z',
+        pinValidFrom: desde.toISOString(),
+        pinValidTo: hasta.toISOString(),
+      });
+    });
+
+    it('sin horas guardadas las deduce quitando los márgenes', async () => {
+      const { service } = harness({
+        stays: [
+          stayWith({
+            accessValidFrom: new Date('2026-10-25T12:00:00-05:00'),
+            accessValidTo: new Date('2026-10-28T14:00:00-05:00'),
+          }),
+        ],
+        credentials: [credentialWith()],
+      });
+
+      const [autorizacion] = await service.list(undefined, undefined, 'sesion');
+
+      // Márgenes por defecto: 3 h antes y 3 h después.
+      expect(autorizacion.checkIn).toBe('2026-10-25T20:00:00.000Z');
+      expect(autorizacion.checkOut).toBe('2026-10-28T16:00:00.000Z');
+    });
+
     it('nunca devuelve el PIN', async () => {
       const { service } = harness({
         stays: [stayWith()],
@@ -137,12 +236,32 @@ describe('AuthorizationsService', () => {
       expect(autorizacion).not.toHaveProperty('pin');
       expect(Object.keys(autorizacion).sort()).toEqual([
         'accessLevel',
+        'accessRevoked',
         'checkIn',
         'checkOut',
         'guestName',
         'id',
+        'pinNotice',
+        'pinValidFrom',
+        'pinValidTo',
         'unitLabel',
       ]);
+    });
+
+    it('incluye el estado del aviso del PIN, sin el PIN', async () => {
+      const { service, statusFor } = harness({
+        stays: [stayWith()],
+        credentials: [credentialWith()],
+      });
+
+      const [autorizacion] = await service.list(undefined, undefined, 'sesion');
+
+      expect(statusFor).toHaveBeenCalledTimes(1);
+      expect(autorizacion.pinNotice).toEqual({
+        status: 'sent',
+        at: '2026-09-12T10:00:00.000Z',
+        error: null,
+      });
     });
 
     it('deja fuera las estancias sin credencial viva', async () => {
@@ -160,6 +279,39 @@ describe('AuthorizationsService', () => {
 
       expect(autorizaciones).toHaveLength(1);
       expect(autorizaciones[0].id).toBe('c47ca6f1-f675-4653-a3a6-31487feb054b');
+    });
+
+    it('mantiene las revocadas por el CAV, sin nivel ni aviso', async () => {
+      const revocadaEl = new Date('2026-09-12T15:00:00.000Z');
+      const { service, statusFor } = harness({
+        stays: [
+          stayWith(),
+          stayWith({
+            id: 'revocada',
+            hostawayReservationId: '90000003',
+            accessSuspendedAt: revocadaEl,
+            accessSuspendedBy: 'cav.ana',
+          }),
+        ],
+        credentials: [credentialWith()],
+      });
+
+      const [viva, revocada] = await service.list(
+        undefined,
+        undefined,
+        'sesion',
+      );
+
+      expect(viva.accessRevoked).toBeNull();
+      expect(revocada).toMatchObject({
+        id: 'revocada',
+        accessLevel: null,
+        accessRevoked: { at: revocadaEl.toISOString(), by: 'cav.ana' },
+        pinNotice: { status: 'not_applicable' },
+      });
+      // El aviso solo se calcula para las que tienen credencial viva.
+      const [pares] = statusFor.mock.calls[0] as [{ stay: GuestStay }[]];
+      expect(pares.map(({ stay }) => stay.id)).toEqual([viva.id]);
     });
 
     it('solo pide estancias pendientes o activas', async () => {
@@ -244,6 +396,63 @@ describe('AuthorizationsService', () => {
       expect(regeneratePin).toHaveBeenCalledWith('cred-1');
     });
 
+    it('pide el mensaje de renovación y publica el PIN nuevo después de renovarlo', async () => {
+      const { service, regeneratePin, notify, requestRenewalMessage } = harness(
+        {
+          stays: [stayWith()],
+          credentials: [credentialWith()],
+        },
+      );
+
+      await service.regenerate(
+        'c47ca6f1-f675-4653-a3a6-31487feb054b',
+        'sesion',
+      );
+
+      expect(notify).toHaveBeenCalledWith(
+        'c47ca6f1-f675-4653-a3a6-31487feb054b',
+      );
+      expect(requestRenewalMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'c47ca6f1-f675-4653-a3a6-31487feb054b' }),
+        expect.objectContaining({ id: 'cred-1' }),
+      );
+      expect(regeneratePin.mock.invocationCallOrder[0]).toBeLessThan(
+        requestRenewalMessage.mock.invocationCallOrder[0],
+      );
+      expect(requestRenewalMessage.mock.invocationCallOrder[0]).toBeLessThan(
+        notify.mock.invocationCallOrder[0],
+      );
+    });
+
+    it('el reenvío fuerza la reescritura del PIN en la reserva', async () => {
+      const { service, notify } = harness({
+        stays: [stayWith()],
+        credentials: [credentialWith()],
+      });
+
+      const resultado = await service.resendPinNotice(
+        'c47ca6f1-f675-4653-a3a6-31487feb054b',
+      );
+
+      expect(notify).toHaveBeenCalledWith(
+        'c47ca6f1-f675-4653-a3a6-31487feb054b',
+        { force: true },
+      );
+      expect(resultado).toEqual({ outcome: 'sent' });
+    });
+
+    it('no reenvía el PIN de una estancia sin credencial', async () => {
+      const { service, findLiveBySubject, notify } = harness({
+        stays: [stayWith()],
+      });
+      findLiveBySubject.mockResolvedValue(null);
+
+      await expect(service.resendPinNotice('c47ca6f1')).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(notify).not.toHaveBeenCalled();
+    });
+
     it('cambia el nivel de acceso sobre la credencial', async () => {
       const { service, changeScope } = harness({
         stays: [stayWith()],
@@ -257,6 +466,123 @@ describe('AuthorizationsService', () => {
       );
 
       expect(changeScope).toHaveBeenCalledWith('cred-1', 'both');
+    });
+
+    describe('revocar y restaurar', () => {
+      const STAY = 'c47ca6f1-f675-4653-a3a6-31487feb054b';
+
+      it('`none` marca la estancia y revoca todas sus credenciales', async () => {
+        const { service, revoke, staySave } = harness({
+          stays: [stayWith()],
+          credentials: [
+            credentialWith(),
+            credentialWith({ id: 'cred-2', scope: 'vehicular' }),
+          ],
+        });
+
+        const vista = await service.changeAccessLevel(
+          STAY,
+          'none',
+          'sesion',
+          'cav.ana',
+        );
+
+        expect(staySave).toHaveBeenCalledWith(
+          expect.objectContaining({ accessSuspendedBy: 'cav.ana' }),
+        );
+        // La marca va antes del DELETE para que un webhook no reemita.
+        expect(staySave.mock.invocationCallOrder[0]).toBeLessThan(
+          revoke.mock.invocationCallOrder[0],
+        );
+        expect(revoke).toHaveBeenCalledWith('cred-1', CAV_SUSPENDED_REASON);
+        expect(revoke).toHaveBeenCalledWith('cred-2', CAV_SUSPENDED_REASON);
+        expect(vista.accessLevel).toBeNull();
+        expect(vista.accessRevoked?.by).toBe('cav.ana');
+      });
+
+      it('un nivel sobre una estancia revocada reactiva la misma credencial', async () => {
+        const stay = stayWith({
+          accessSuspendedAt: new Date(),
+          accessSuspendedBy: 'cav.ana',
+        });
+        const {
+          service,
+          reactivate,
+          staySave,
+          changeScope,
+          findLiveBySubject,
+        } = harness({
+          stays: [stay],
+          revoked: credentialWith({ id: 'cred-1', status: 'revoked' }),
+        });
+        findLiveBySubject.mockResolvedValue(credentialWith({ scope: 'both' }));
+
+        await service.changeAccessLevel(STAY, 'both', 'sesion', 'cav.ana');
+
+        expect(reactivate).toHaveBeenCalledWith(
+          'cred-1',
+          'both',
+          stay.accessValidFrom,
+          stay.accessValidTo,
+        );
+        expect(changeScope).not.toHaveBeenCalled();
+        expect(staySave).toHaveBeenCalledWith(
+          expect.objectContaining({
+            accessSuspendedAt: null,
+            accessSuspendedBy: null,
+          }),
+        );
+      });
+
+      it('si la reactivación falla, la estancia sigue revocada', async () => {
+        const { service, reactivate, staySave } = harness({
+          stays: [stayWith({ accessSuspendedAt: new Date() })],
+          revoked: credentialWith({ status: 'revoked' }),
+        });
+        reactivate.mockRejectedValue(new BadRequestException('PIN tomado'));
+
+        await expect(
+          service.changeAccessLevel(STAY, 'pedestrian', 'sesion'),
+        ).rejects.toThrow(BadRequestException);
+        expect(staySave).not.toHaveBeenCalled();
+      });
+
+      it('sin credencial revocada no hay nada que restaurar', async () => {
+        const { service } = harness({
+          stays: [stayWith({ accessSuspendedAt: new Date() })],
+        });
+
+        await expect(
+          service.changeAccessLevel(STAY, 'pedestrian', 'sesion'),
+        ).rejects.toThrow(NotFoundException);
+      });
+
+      it('no renueva ni reenvía el PIN de un acceso revocado', async () => {
+        const { service, regeneratePin, notify } = harness({
+          stays: [stayWith({ accessSuspendedAt: new Date() })],
+        });
+
+        await expect(service.regenerate(STAY, 'sesion')).rejects.toThrow(
+          BadRequestException,
+        );
+        await expect(service.resendPinNotice(STAY)).rejects.toThrow(
+          BadRequestException,
+        );
+        expect(regeneratePin).not.toHaveBeenCalled();
+        expect(notify).not.toHaveBeenCalled();
+      });
+
+      it('el detalle de un acceso revocado no pide el aviso del PIN', async () => {
+        const { service, statusFor } = harness({
+          stays: [stayWith({ accessSuspendedAt: new Date() })],
+        });
+
+        const vista = await service.detail(STAY, 'sesion');
+
+        expect(vista.accessLevel).toBeNull();
+        expect(vista.pinNotice.status).toBe('not_applicable');
+        expect(statusFor).not.toHaveBeenCalled();
+      });
     });
 
     it('no deja renovar el PIN de una estancia sin credencial', async () => {

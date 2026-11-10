@@ -140,9 +140,8 @@ export class GuestLinkService {
   /**
    * Entrega el enlace por el canal configurado y deja constancia.
    *
-   * **Nunca lanza.** Quien llama suele ser la proyección de una reserva, y un
-   * canal caído no puede impedir que la estancia y su PIN existan. El fallo
-   * queda en `guest_link_delivery` para reintentarlo o reenviarlo a mano.
+   * **Nunca lanza.** El fallo queda en `guest_link_delivery` para reenviarlo a
+   * mano. Hoy solo lo llama el reenvío manual (`force`): una reserva nueva no envía.
    *
    * Sin `force`, se salta en dos casos: si ya hubo un envío correcto para esta
    * estancia con el `token_version` vigente —lo que evita reenviar en cada

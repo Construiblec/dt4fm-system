@@ -13,7 +13,7 @@ const cmisError = () =>
 
 const fullCard = (id: number, name: string) => ({
   _id: id,
-  NombrePlantilla: name,
+  Description: name,
   Detalle: 'Baño,Limpiar,5',
   Plantilla: null,
 });
@@ -32,12 +32,12 @@ const fakeOpenmaint = () =>
   jest.fn(async (path: string) => {
     if (path.includes('attrs=')) {
       if (path.includes('filter=')) {
-        return { data: [{ NombrePlantilla: 'plantilla 2', Detalle: 'a,b,1' }] };
+        return { data: [{ Description: 'plantilla 2', Detalle: 'a,b,1' }] };
       }
       return {
         data: [
-          { Id: 2256763, NombrePlantilla: 'Plantilla aseo' },
-          { Id: BROKEN_ID, NombrePlantilla: 'plantilla 2', Detalle: 'a,b,1' },
+          { Id: 2256763, Description: 'Plantilla aseo' },
+          { Id: BROKEN_ID, Description: 'plantilla 2', Detalle: 'a,b,1' },
         ],
       };
     }
@@ -56,11 +56,11 @@ describe('CleaningTasksOpenmaintService — checklist con el archivo perdido', (
     const { data } = await service.listCleaningActivities();
 
     expect(data.map((c) => c._id)).toEqual([2256763, BROKEN_ID]);
-    expect(data[0]).toMatchObject({ NombrePlantilla: 'Plantilla aseo' });
+    expect(data[0]).toMatchObject({ Description: 'Plantilla aseo' });
     expect(data[0]._plantillaRota).toBeUndefined();
     expect(data[1]).toMatchObject({
       _id: BROKEN_ID,
-      NombrePlantilla: 'plantilla 2',
+      Description: 'plantilla 2',
       Detalle: 'a,b,1',
       Plantilla: null,
       _plantillaRota: true,
@@ -75,14 +75,12 @@ describe('CleaningTasksOpenmaintService — checklist con el archivo perdido', (
 
     expect(data).toMatchObject({
       _id: BROKEN_ID,
-      NombrePlantilla: 'plantilla 2',
+      Description: 'plantilla 2',
       Plantilla: null,
       _plantillaRota: true,
     });
     expect(get).toHaveBeenCalledWith(
-      expect.stringContaining(
-        'attrs=Id,Code,Description,NombrePlantilla,Detalle',
-      ),
+      expect.stringContaining('attrs=Id,Code,Description,Detalle'),
       'session',
     );
   });
@@ -100,14 +98,14 @@ describe('CleaningTasksOpenmaintService — checklist con el archivo perdido', (
 });
 
 describe('CleaningTasksOpenmaintService — empleados asignables', () => {
-  it('con equipo, filtra InternalEmployee por Team', async () => {
+  it('con equipo, filtra Employee por Team', async () => {
     const get = jest.fn().mockResolvedValue({ data: [] });
     const service = buildService(get);
 
-    await service.listInternalEmployees(2397132);
+    await service.listEmployees(2397132);
 
     const [[path]] = get.mock.calls as [[string, string]];
-    expect(path).toContain('/classes/InternalEmployee/cards?limit=500&filter=');
+    expect(path).toContain('/classes/Employee/cards?limit=500&filter=');
     expect(JSON.parse(decodeURIComponent(path.split('filter=')[1]))).toEqual({
       attribute: {
         simple: { attribute: 'Team', operator: 'equal', value: ['2397132'] },
@@ -119,10 +117,10 @@ describe('CleaningTasksOpenmaintService — empleados asignables', () => {
     const get = jest.fn().mockResolvedValue({ data: [] });
     const service = buildService(get);
 
-    await service.listInternalEmployees();
+    await service.listEmployees();
 
     expect(get).toHaveBeenCalledWith(
-      '/classes/InternalEmployee/cards?limit=500',
+      '/classes/Employee/cards?limit=500',
       'session',
     );
   });

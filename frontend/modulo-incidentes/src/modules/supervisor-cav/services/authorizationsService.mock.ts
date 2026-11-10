@@ -1,5 +1,5 @@
 import type {
-  AccessLevel,
+  AccessLevelChoice,
   Authorization,
   AuthorizationResponse,
   ListAuthorizationsResponse,
@@ -28,7 +28,10 @@ let authorizations: Authorization[] = [
     unitLabel: "Inglaterra · UI R302",
     checkIn: daysFromNow(1),
     checkOut: daysFromNow(4, "11:00:00"),
+    pinValidFrom: daysFromNow(1, "13:00:00"),
+    pinValidTo: daysFromNow(4, "16:00:00"),
     accessLevel: "both",
+    accessRevoked: null,
   },
   {
     id: "6b1f2c80-0d2a-4f1e-9a33-1c7e5b204a02",
@@ -36,7 +39,10 @@ let authorizations: Authorization[] = [
     unitLabel: "Pradera · UI I41",
     checkIn: daysFromNow(2),
     checkOut: daysFromNow(5, "11:00:00"),
+    pinValidFrom: daysFromNow(2, "13:00:00"),
+    pinValidTo: daysFromNow(5, "16:00:00"),
     accessLevel: "pedestrian",
+    accessRevoked: null,
   },
   {
     id: "6b1f2c80-0d2a-4f1e-9a33-1c7e5b204a03",
@@ -44,7 +50,10 @@ let authorizations: Authorization[] = [
     unitLabel: "Inglaterra · UI P02",
     checkIn: daysFromNow(3),
     checkOut: daysFromNow(6, "11:00:00"),
-    accessLevel: "vehicular",
+    pinValidFrom: daysFromNow(3, "13:00:00"),
+    pinValidTo: daysFromNow(6, "16:00:00"),
+    accessLevel: null,
+    accessRevoked: { at: daysFromNow(-1, "15:40:00"), by: "jperez" },
   },
 ];
 
@@ -70,10 +79,7 @@ export const mockGetAuthorization = async (
   return { data: findOrThrow(id) };
 };
 
-/**
- * El PIN no viaja al frontend ni siquiera aquí, así que renovar no cambia nada
- * visible: el efecto real ocurre en la base y lo ve el huésped en su portal.
- */
+/** El PIN no viaja al frontend ni siquiera aquí: renovar no cambia nada visible. */
 export const mockRegeneratePin = async (
   id: string,
 ): Promise<AuthorizationResponse> => {
@@ -83,11 +89,22 @@ export const mockRegeneratePin = async (
 
 export const mockUpdateAccessLevel = async (
   id: string,
-  accessLevel: AccessLevel,
+  accessLevel: AccessLevelChoice,
 ): Promise<AuthorizationResponse> => {
   await delay();
-  authorizations = authorizations.map((item) =>
-    item.id === id ? { ...item, accessLevel } : item,
-  );
+  authorizations = authorizations.map((item) => {
+    if (item.id !== id) return item;
+    if (accessLevel !== "none") {
+      return { ...item, accessLevel, accessRevoked: null };
+    }
+    return {
+      ...item,
+      accessLevel: null,
+      accessRevoked: item.accessRevoked ?? {
+        at: new Date().toISOString(),
+        by: "mock",
+      },
+    };
+  });
   return { data: findOrThrow(id) };
 };

@@ -90,10 +90,13 @@ export const useRemoteDoors = () => {
           delete requestIds.current[key];
 
           // Otro pulsó antes: el `429` dice cuánto falta y la lista trae la fase nueva.
-          const retryAfter = (err.response.data as { retryAfterSeconds?: unknown })
-            ?.retryAfterSeconds;
+          const retryAfter = (
+            err.response.data as { retryAfterSeconds?: unknown }
+          )?.retryAfterSeconds;
           if (err.response.status === 429 && typeof retryAfter === "number") {
-            const until = new Date(Date.now() + retryAfter * 1000).toISOString();
+            const until = new Date(
+              Date.now() + retryAfter * 1000,
+            ).toISOString();
             setCooldowns((prev) => ({ ...prev, [deviceId]: until }));
           }
           void load(true);
@@ -124,7 +127,10 @@ export const useRemoteDoors = () => {
 
       try {
         await resolveDoor(deviceId);
-        setResults((prev) => ({ ...prev, [deviceId]: { outcome: "resolved" } }));
+        setResults((prev) => ({
+          ...prev,
+          [deviceId]: { outcome: "resolved" },
+        }));
         void load(true);
       } catch (err) {
         setResults((prev) => ({

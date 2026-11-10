@@ -35,7 +35,8 @@ describe("backendFailure", () => {
 describe("whepFailure", () => {
   it("el 403 es el origen de la página aunque el código diga unauthorized", () => {
     expect(whepFailure(403, "unauthorized")).toEqual({
-      message: "Este sitio no está autorizado para ver video. Avisa a Sistemas.",
+      message:
+        "Este sitio no está autorizado para ver video. Avisa a Sistemas.",
       action: "none",
     });
   });
@@ -45,8 +46,12 @@ describe("whepFailure", () => {
   });
 
   it("distingue cámara sin señal, plazo vencido y red caída", () => {
-    expect(whepFailure(502, "camera_unreachable").message).toBe("Cámara sin señal.");
-    expect(whepFailure(0, "timeout").message).toBe("La cámara no respondió a tiempo.");
+    expect(whepFailure(502, "camera_unreachable").message).toBe(
+      "Cámara sin señal.",
+    );
+    expect(whepFailure(0, "timeout").message).toBe(
+      "La cámara no respondió a tiempo.",
+    );
     expect(whepFailure(0, "network").action).toBe("retry");
   });
 

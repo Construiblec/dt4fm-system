@@ -4,11 +4,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { CredentialService } from './credential.service';
 import { GuestStay } from './entities/guest-stay.entity';
-import {
-  AccessCredential,
-  CredentialScope,
-  SyncState,
-} from './entities/access-credential.entity';
+import { SyncState } from './entities/access-credential.entity';
+import { pickGuestCredential } from './credential-priority';
 import {
   checkInInstant,
   checkOutInstant,
@@ -68,9 +65,6 @@ export interface GuestPortalData {
   canReportIncident: boolean;
 }
 
-/** La credencial que el portal muestra cuando hay varias vivas. */
-const SCOPE_PRIORITY: CredentialScope[] = ['both', 'pedestrian', 'vehicular'];
-
 /**
  * Única superficie por la que el portal del huésped llega a los datos de
  * accesos.
@@ -110,7 +104,7 @@ export class GuestPortalDataService {
     stay: GuestStay,
     now: Date = new Date(),
   ): Promise<GuestPortalData> {
-    const credential = this.pickCredential(
+    const credential = pickGuestCredential(
       await this.credentials.findLiveForGuest(stay.hostawayReservationId),
     );
 
@@ -197,19 +191,6 @@ export class GuestPortalDataService {
       vehicularGateOpenUntil: gate?.openUntil ?? null,
       vehicularGateCooldownUntil: gate?.cooldownUntil ?? null,
     };
-  }
-
-  /** Determinista: con varias vivas, gana la de mayor alcance y luego la más antigua. */
-  private pickCredential(
-    live: AccessCredential[],
-  ): AccessCredential | undefined {
-    for (const scope of SCOPE_PRIORITY) {
-      const match = live.find((credential) => credential.scope === scope);
-
-      if (match) return match;
-    }
-
-    return undefined;
   }
 
   /**

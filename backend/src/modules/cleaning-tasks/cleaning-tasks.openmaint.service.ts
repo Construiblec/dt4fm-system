@@ -60,7 +60,6 @@ type CleaningActivityCard = {
   _id: number;
   Code?: string;
   Description?: string;
-  NombrePlantilla?: string;
   Detalle?: string;
   /**
    * Atributo de tipo `file`. CMDBuild guarda estos atributos como un adjunto
@@ -83,7 +82,7 @@ type CleaningActivityCard = {
  * Campos de una CleaningActivity que se pueden leer aunque el archivo de
  * `Plantilla` esté roto. `attrs` no devuelve `_id`, por eso va `Id`.
  */
-const ACTIVITY_BASIC_ATTRS = 'Id,Code,Description,NombrePlantilla,Detalle';
+const ACTIVITY_BASIC_ATTRS = 'Id,Code,Description,Detalle';
 
 /** Orden «recién creadas primero» (`_id` descendente) para los listados de limpiezas. */
 const NEWEST_FIRST = `&sort=${encodeURIComponent(
@@ -100,7 +99,6 @@ const toBrokenTemplateCard = (row: BasicActivityRow): CleaningActivityCard => ({
   _id: (row._id ?? row.Id) as number,
   Code: row.Code,
   Description: row.Description,
-  NombrePlantilla: row.NombrePlantilla,
   Detalle: row.Detalle,
   Plantilla: null,
   _plantillaRota: true,
@@ -672,14 +670,12 @@ export class CleaningTasksOpenmaintService {
   }
 
   /**
-   * Empleados internos: los únicos que pueden ser `Employee` de una limpieza
-   * (la referencia apunta a `InternalEmployee`). Los proveedores quedan fuera
-   * por construcción. Con `teamId`, solo los de ese equipo. Sesión interna: es
-   * dato de referencia.
+   * Empleados que pueden ser `Employee` de una limpieza: la clase `Employee`
+   * completa (internos y externos), porque la referencia en openMAINT la
+   * admite. Con `teamId`, solo los de ese equipo. Sesión interna: es dato de
+   * referencia.
    */
-  async listInternalEmployees(
-    teamId?: number,
-  ): Promise<{ data: EmployeeCard[] }> {
+  async listEmployees(teamId?: number): Promise<{ data: EmployeeCard[] }> {
     return this.executeWithRetry(async (sessionId) => {
       const filter = teamId
         ? `&filter=${encodeURIComponent(
@@ -695,10 +691,10 @@ export class CleaningTasksOpenmaintService {
           )}`
         : '';
       return (await this.client.get(
-        `/classes/InternalEmployee/cards?limit=500${filter}`,
+        `/classes/Employee/cards?limit=500${filter}`,
         sessionId,
       )) as { data: EmployeeCard[] };
-    }, 'listInternalEmployees').catch((error) => {
+    }, 'listEmployees').catch((error) => {
       this.logger.error(`Error al listar empleados — ${describeError(error)}`);
       throw new InternalServerErrorException(
         'Error al consultar los empleados en OpenMAINT',

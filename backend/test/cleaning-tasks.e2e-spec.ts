@@ -1060,21 +1060,19 @@ describe('CleaningTasksController (e2e)', () => {
     });
 
     describe('GET /cleaning-tasks/employees', () => {
-      it('lista solo empleados internos con su equipo', async () => {
+      it('lista los empleados con su equipo', async () => {
         asCoordinator();
-        mocks.cleaningTasksOpenmaint.listInternalEmployees.mockResolvedValueOnce(
-          {
-            data: [
-              {
-                _id: 7001,
-                Description: 'maria.lopez',
-                Team: 801,
-                _Team_description: 'Limpieza Torres A-B',
-              },
-              { _id: 7007, Description: 'diego.mora', Team: null },
-            ],
-          },
-        );
+        mocks.cleaningTasksOpenmaint.listEmployees.mockResolvedValueOnce({
+          data: [
+            {
+              _id: 7001,
+              Description: 'maria.lopez',
+              Team: 801,
+              _Team_description: 'Limpieza Torres A-B',
+            },
+            { _id: 7007, Description: 'diego.mora', Team: null },
+          ],
+        });
 
         const res = await request(app.getHttpServer())
           .get('/cleaning-tasks/employees')
@@ -1113,7 +1111,7 @@ describe('CleaningTasksController (e2e)', () => {
             .expect(200);
 
           expect(
-            mocks.cleaningTasksOpenmaint.listInternalEmployees,
+            mocks.cleaningTasksOpenmaint.listEmployees,
           ).toHaveBeenCalledWith(2397132);
         });
 
@@ -1126,7 +1124,7 @@ describe('CleaningTasksController (e2e)', () => {
             .expect(200);
 
           expect(
-            mocks.cleaningTasksOpenmaint.listInternalEmployees,
+            mocks.cleaningTasksOpenmaint.listEmployees,
           ).toHaveBeenCalledWith(undefined);
         });
       });
@@ -1136,8 +1134,7 @@ describe('CleaningTasksController (e2e)', () => {
       const card = {
         _id: 9003,
         Code: 'CHK-REP',
-        Description: 'Repaso entre estancias cortas.',
-        NombrePlantilla: 'Repaso rápido',
+        Description: 'Repaso rápido',
         Detalle: 'Dormitorio,Estirar la cama\nBaño,Limpiar inodoro\n',
         Plantilla: null,
       };
@@ -1155,7 +1152,7 @@ describe('CleaningTasksController (e2e)', () => {
 
         expect(res.body.data[0]).toMatchObject({
           id: 9003,
-          templateName: 'Repaso rápido',
+          description: 'Repaso rápido',
           plantilla: null,
           source: 'detalle',
           activities: ['Dormitorio,Estirar la cama', 'Baño,Limpiar inodoro'],
@@ -1209,8 +1206,7 @@ describe('CleaningTasksController (e2e)', () => {
         const res = await request(app.getHttpServer())
           .post('/cleaning-tasks/checklists')
           .set('x-session-token', token)
-          .field('templateName', 'Repaso rápido')
-          .field('description', 'Entre estancias cortas')
+          .field('description', 'Repaso rápido')
           .field('code', 'CHK-REP')
           .field('detalle', 'Baño,Limpiar inodoro,5')
           .expect(201);
@@ -1223,8 +1219,7 @@ describe('CleaningTasksController (e2e)', () => {
         expect(
           mocks.cleaningTasksOpenmaint.createCleaningActivity,
         ).toHaveBeenCalledWith({
-          NombrePlantilla: 'Repaso rápido',
-          Description: 'Entre estancias cortas',
+          Description: 'Repaso rápido',
           Code: 'CHK-REP',
           Detalle: 'Baño,Limpiar inodoro,5',
         });
@@ -1239,8 +1234,7 @@ describe('CleaningTasksController (e2e)', () => {
         await request(app.getHttpServer())
           .post('/cleaning-tasks/checklists')
           .set('x-session-token', token)
-          .field('templateName', 'Profunda')
-          .field('description', 'A fondo')
+          .field('description', 'Profunda')
           .attach(
             'plantilla',
             Buffer.from('Titulo;Actividad;Minutos\nBaño;Lavar;5\n'),
@@ -1265,8 +1259,7 @@ describe('CleaningTasksController (e2e)', () => {
         const res = await request(app.getHttpServer())
           .post('/cleaning-tasks/checklists')
           .set('x-session-token', token)
-          .field('templateName', 'Profunda')
-          .field('description', 'A fondo')
+          .field('description', 'Profunda')
           .attach('plantilla', Buffer.from([0x50, 0x4b, 0x03, 0x04, 0x00]), {
             filename: 'profunda.csv',
             contentType: 'text/csv',
@@ -1279,25 +1272,17 @@ describe('CleaningTasksController (e2e)', () => {
         ).not.toHaveBeenCalled();
       });
 
-      it('POST 400 sin nombre, sin descripción o sin contenido', async () => {
+      it('POST 400 sin nombre o sin contenido', async () => {
         // El cuerpo inválido se rechaza antes de resolver el rol.
         await request(app.getHttpServer())
           .post('/cleaning-tasks/checklists')
           .set('x-session-token', token)
-          .field('description', 'x')
-          .field('detalle', 'a,b')
-          .expect(400);
-        await request(app.getHttpServer())
-          .post('/cleaning-tasks/checklists')
-          .set('x-session-token', token)
-          .field('templateName', 'x')
           .field('detalle', 'a,b')
           .expect(400);
         asCoordinator();
         await request(app.getHttpServer())
           .post('/cleaning-tasks/checklists')
           .set('x-session-token', token)
-          .field('templateName', 'x')
           .field('description', 'x')
           .expect(400);
       });
@@ -1311,8 +1296,7 @@ describe('CleaningTasksController (e2e)', () => {
         await request(app.getHttpServer())
           .put('/cleaning-tasks/checklists/9003')
           .set('x-session-token', token)
-          .field('templateName', 'Repaso rápido')
-          .field('description', 'Entre estancias cortas')
+          .field('description', 'Repaso rápido')
           .attach('plantilla', Buffer.from('Titulo;Actividad\nBaño;Lavar\n'), {
             filename: 'nuevo.csv',
             contentType: 'text/csv',
@@ -1324,7 +1308,7 @@ describe('CleaningTasksController (e2e)', () => {
         ).toHaveBeenCalledWith(
           9003,
           expect.objectContaining({
-            NombrePlantilla: 'Repaso rápido',
+            Description: 'Repaso rápido',
             Plantilla: null,
           }),
         );
@@ -1348,8 +1332,7 @@ describe('CleaningTasksController (e2e)', () => {
         await request(app.getHttpServer())
           .put('/cleaning-tasks/checklists/9003')
           .set('x-session-token', token)
-          .field('templateName', 'Repaso rápido')
-          .field('description', 'Entre estancias cortas')
+          .field('description', 'Repaso rápido')
           .field('detalle', 'Baño,Limpiar')
           .field('removeTemplate', 'true')
           .expect(200);

@@ -230,8 +230,7 @@ export const TaskView = ({
       label: "Checklist",
       value: task.checklistDetail ? (
         <>
-          {task.checklistDetail.templateName ??
-            task.checklistDetail.description}
+          {task.checklistDetail.description}
           <br />
           <span className="text-xs text-slate-500">
             <ChecklistSummaryLine rows={task.checklistDetail.activities} />
@@ -312,10 +311,7 @@ export const TaskView = ({
       {task.checklistDetail ? (
         <Section title="Checklist">
           <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-slate-600">
-            <span>
-              {task.checklistDetail.templateName ??
-                task.checklistDetail.description}
-            </span>
+            <span>{task.checklistDetail.description}</span>
             <Button
               size="sm"
               variant="ghost"

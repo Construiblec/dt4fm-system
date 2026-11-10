@@ -91,6 +91,8 @@ export const useCleaningTaskExecution = (taskId: number) => {
   const totalActivities = countChecklistActivities(checklistSections);
   // Lo que sí ve el operario: bloques.
   const totalSections = checklistSections.length;
+  // Hay tareas asignadas sin checklist: sin nada que marcar, el checklist no bloquea.
+  const hasChecklist = totalSections > 0;
   const completedSections = countCompletedSections(checklistSections, checklistProgress);
 
   useEffect(() => {
@@ -186,8 +188,8 @@ export const useCleaningTaskExecution = (taskId: number) => {
     return accumulated + elapsedMinutes;
   };
 
-  const isChecklistComplete = isChecklistCompleteStore();
-  const canComplete = canCompleteStore();
+  const isChecklistComplete = !hasChecklist || isChecklistCompleteStore();
+  const canComplete = !hasChecklist || canCompleteStore();
 
   /**
    * Se mira PRIMERO el store y después la fase del detalle: al pulsar "Iniciar
@@ -238,7 +240,7 @@ export const useCleaningTaskExecution = (taskId: number) => {
     mutationFn: async () => {
       const parsed = completeTaskSchema.safeParse({
         observations,
-        checklistComplete: isChecklistCompleteStore(),
+        checklistComplete: !hasChecklist || isChecklistCompleteStore(),
       });
 
       if (!parsed.success) {
@@ -329,6 +331,7 @@ export const useCleaningTaskExecution = (taskId: number) => {
     observations,
     attachments: detailQuery.data?.attachments ?? [],
     totalSections,
+    hasChecklist,
     completedSections,
     isChecklistComplete,
     canComplete,

@@ -40,7 +40,7 @@ export class AuthorizationsController {
   @ApiOperation({
     summary: 'Próximos check-ins con credencial vigente',
     description:
-      'Solo aparecen las estancias que tienen credencial viva. Un edificio sin control de accesos nunca llega a tenerla, así que queda fuera por construcción — no por un filtro aparte.',
+      'Aparecen las estancias con credencial viva y las que el CAV revocó (`accessLevel: null`). Un edificio sin control de accesos nunca llega a tener credencial, así que queda fuera.',
   })
   @ApiResponse({ status: 200, description: 'Listado de autorizaciones.' })
   @ApiResponse({ status: 403, description: 'Se requiere rol de CAV.' })
@@ -83,7 +83,7 @@ export class AuthorizationsController {
   @ApiOperation({
     summary: 'Renovar el PIN de una autorización',
     description:
-      'Genera un PIN nuevo y lo empuja a la puerta. **No lo devuelve**: el huésped lo ve en su portal la próxima vez que abra su enlace, que sigue siendo el mismo.',
+      'Genera un PIN nuevo, lo empuja a la puerta y avisa al huésped por Hostaway. **No lo devuelve**.',
   })
   @ApiResponse({ status: 200, description: 'PIN renovado.' })
   @ApiResponse({
@@ -106,19 +106,48 @@ export class AuthorizationsController {
     return { data: await this.authorizations.regenerate(stayId, sessionId) };
   }
 
+  @Post(':stayId/pin-notice')
+  @HttpCode(HttpStatus.OK)
+  @ApiHeader({ name: 'authorization', description: 'Sesión de openMAINT' })
+  @ApiOperation({
+    summary: 'Reenviar al huésped el mensaje con su PIN',
+    description:
+      'Reenvía por la conversación de Hostaway aunque ya se hubiera enviado. La respuesta dice si salió, nunca el PIN.',
+  })
+  @ApiResponse({ status: 200, description: 'Resultado del envío.' })
+  @ApiResponse({
+    status: 404,
+    description: 'No existe, o la estancia no tiene credencial vigente.',
+  })
+  async resendPinNotice(
+    @Param('stayId', ParseUUIDPipe) stayId: string,
+    @Headers('authorization') authorization: string,
+    @Headers('x-session-token') sessionToken: string,
+  ) {
+    const { username } = await requireCavIdentity(
+      this.sessionRoleService,
+      authorization,
+      sessionToken,
+    );
+
+    this.logger.log(`Reenvío de PIN: estancia=${stayId} usuario=${username}`);
+
+    return { data: await this.authorizations.resendPinNotice(stayId) };
+  }
+
   @Post(':stayId/access-level')
   @HttpCode(HttpStatus.OK)
   @ApiHeader({ name: 'authorization', description: 'Sesión de openMAINT' })
   @ApiOperation({
     summary: 'Cambiar a qué habilita el PIN',
     description:
-      'Asignación manual de acceso vehicular. El PIN **no** cambia: el dueño ya lo tiene anotado.',
+      'El PIN **no** cambia. `none` revoca el acceso a todas las puertas; elegir un nivel sobre un acceso revocado lo restaura con el mismo PIN.',
   })
   @ApiResponse({ status: 200, description: 'Nivel actualizado.' })
   @ApiResponse({
     status: 400,
     description:
-      'El edificio no tiene entrada vehicular, o el sujeto ya tiene otra credencial con ese ámbito.',
+      'El edificio no tiene entrada vehicular, el sujeto ya tiene otra credencial con ese ámbito, o la estancia ya terminó.',
   })
   async changeAccessLevel(
     @Param('stayId', ParseUUIDPipe) stayId: string,
@@ -126,13 +155,22 @@ export class AuthorizationsController {
     @Headers('authorization') authorization: string,
     @Headers('x-session-token') sessionToken: string,
   ) {
-    const sessionId = await this.requireCavRole(authorization, sessionToken);
+    const { sessionId, username } = await requireCavIdentity(
+      this.sessionRoleService,
+      authorization,
+      sessionToken,
+    );
+
+    this.logger.log(
+      `Nivel de acceso: estancia=${stayId} nivel=${dto.accessLevel} usuario=${username}`,
+    );
 
     return {
       data: await this.authorizations.changeAccessLevel(
         stayId,
         dto.accessLevel,
         sessionId,
+        username,
       ),
     };
   }
