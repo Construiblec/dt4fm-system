@@ -43,6 +43,7 @@ const NOT_APPLICABLE: PinNoticeView = {
   status: 'not_applicable',
   at: null,
   error: null,
+  renewalMessage: false,
 };
 
 /** Lo que ve el supervisor de CAV. **Nunca incluye el PIN.** */

@@ -44,7 +44,7 @@ export interface ReservationInput {
   guestName: string;
   guestEmail?: string | null;
   guestPhone?: string | null;
-  /** `channelName` de Hostaway. Decide si el PIN se publica en Hostaway (las directas, no). */
+  /** `channelName` de Hostaway. Las directas no reciben mensaje al renovar el PIN. */
   channelName?: string | null;
   arrivalDate: string;
   departureDate: string;

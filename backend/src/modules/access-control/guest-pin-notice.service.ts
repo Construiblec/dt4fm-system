@@ -7,10 +7,7 @@ import { Cron } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { HostawayService } from '../../integrations/hostaway/hostaway.service';
-import {
-  DIRECT_CHANNEL_NAMES,
-  isDirectReservation,
-} from '../guest-link/delivery/routed-link.channel';
+import { isDirectReservation } from '../guest-link/delivery/routed-link.channel';
 import { BUSINESS_TIMEZONE } from '../push-notifications/scheduler/scheduler.constants';
 import { pickGuestCredential } from './credential-priority';
 import { CredentialService, LIVE_STATUSES } from './credential.service';
@@ -52,6 +49,8 @@ export interface PinNoticeView {
   status: 'sent' | 'failed' | 'pending' | 'not_applicable';
   at: string | null;
   error: string | null;
+  /** Si al renovar el PIN se avisa por el chat de Hostaway (las directas, no). */
+  renewalMessage: boolean;
 }
 
 /** Texto del mensaje de renovación, bilingüe y sin fechas. */
@@ -65,8 +64,10 @@ export function buildPinRenewedMessage(guestName: string, pin: string): string {
   ].join('\n');
 }
 
-/** Si a la reserva se le publica el PIN en Hostaway: las directas, no. */
-export function publishesPinFor(stay: Pick<GuestStay, 'channelName'>): boolean {
+/** Si al renovar el PIN se avisa por el chat: las directas no tienen chat de canal. */
+export function messagesRenewalFor(
+  stay: Pick<GuestStay, 'channelName'>,
+): boolean {
   return !isDirectReservation(stay.channelName);
 }
 
@@ -127,7 +128,7 @@ export class GuestPinNoticeService {
     stay: GuestStay,
     credential: AccessCredential,
   ): Promise<void> {
-    if (!this.isEnabled() || !publishesPinFor(stay)) return;
+    if (!this.isEnabled() || !messagesRenewalFor(stay)) return;
 
     await this.notices.save(
       this.notices.create({
@@ -186,8 +187,15 @@ export class GuestPinNoticeService {
       : [];
 
     for (const { stay, credential } of items) {
-      if (!this.isEnabled() || !publishesPinFor(stay)) {
-        views.set(stay.id, { status: 'not_applicable', at: null, error: null });
+      const renewalMessage = this.isEnabled() && messagesRenewalFor(stay);
+
+      if (!this.isEnabled()) {
+        views.set(stay.id, {
+          status: 'not_applicable',
+          at: null,
+          error: null,
+          renewalMessage,
+        });
         continue;
       }
 
@@ -205,15 +213,22 @@ export class GuestPinNoticeService {
           status: 'sent',
           at: decisive.createdAt.toISOString(),
           error: null,
+          renewalMessage,
         });
       } else if (last?.status === 'failed') {
         views.set(stay.id, {
           status: 'failed',
           at: last.createdAt.toISOString(),
           error: last.error,
+          renewalMessage,
         });
       } else {
-        views.set(stay.id, { status: 'pending', at: null, error: null });
+        views.set(stay.id, {
+          status: 'pending',
+          at: null,
+          error: null,
+          renewalMessage,
+        });
       }
     }
 
@@ -244,10 +259,6 @@ export class GuestPinNoticeService {
 
     if (credential.syncState !== 'synced') {
       return { outcome: 'skipped', reason: 'not_synced' };
-    }
-
-    if (!publishesPinFor(stay)) {
-      return { outcome: 'skipped', reason: 'direct_reservation' };
     }
 
     const doorCode = await this.writeDoorCode(stay, credential, force);
@@ -574,7 +585,7 @@ export class GuestPinNoticeService {
     );
   }
 
-  /** Estancias de canal con credencial en la puerta y sin `doorCode` para su PIN vigente, o con renovación por avisar. */
+  /** Estancias con credencial en la puerta y sin `doorCode` para su PIN vigente, o con renovación por avisar. */
   private async pendingStayIds(): Promise<string[]> {
     const rows = await this.credentials
       .createQueryBuilder('c')
@@ -586,10 +597,6 @@ export class GuestPinNoticeService {
       .andWhere('s.status IN (:...stayLive)', {
         stayLive: LIVE_STAY_STATUSES,
       })
-      .andWhere(
-        `LOWER(TRIM(COALESCE(s.channel_name, ''))) NOT IN (:...direct)`,
-        { direct: ['', ...DIRECT_CHANNEL_NAMES] },
-      )
       .andWhere(
         `(COALESCE((SELECT n.status FROM guest_pin_notice n
             WHERE n.credential_id = c.id
