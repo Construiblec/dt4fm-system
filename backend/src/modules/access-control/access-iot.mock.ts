@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { createHash, randomUUID } from 'crypto';
+import { randomUUID } from 'crypto';
 import { AccessIotGateway } from './access-iot.gateway';
 import {
   AccessIotBuilding,
@@ -8,6 +8,7 @@ import {
   AccessIotHealth,
   CredentialDeviceResult,
   CredentialWriteResult,
+  DeleteCredentialRequest,
   InventoryPage,
   InventoryUser,
   LiveSessionRequest,
@@ -16,6 +17,7 @@ import {
   TriggerRequest,
   TriggerResult,
 } from './access-iot.types';
+import { deriveEmployeeNo } from './credential-scopes';
 
 /**
  * Los `_id` salen de `OPENMAINT_IOT_FALLBACK_SITE_ID` en `.env.example`. Son
@@ -105,8 +107,6 @@ const MANUAL_USERS: Record<string, { employeeNo: string; pin: string }[]> = {
 const CANONICAL_UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
-const PREFIX_BY_SUBJECT = { guest: 'G', tenant: 'T', employee: 'E' } as const;
-
 interface StoredCredential {
   request: PutCredentialRequest;
   devices: CredentialDeviceResult[];
@@ -182,7 +182,15 @@ export class AccessIotMockGateway extends AccessIotGateway {
           },
     );
 
-    this.store.set(credentialId, { request, devices });
+    // Como la VPS: el PUT solo escribe en su scope y no retira de los demás.
+    const previous = this.store.get(credentialId)?.devices ?? [];
+    const merged = [
+      ...previous.filter(
+        (old) => !devices.some((device) => device.deviceId === old.deviceId),
+      ),
+      ...devices,
+    ];
+    this.store.set(credentialId, { request, devices: merged });
 
     return Promise.resolve({
       credentialId,
@@ -191,14 +199,42 @@ export class AccessIotMockGateway extends AccessIotGateway {
     });
   }
 
-  deleteCredential(credentialId: string): Promise<CredentialWriteResult> {
+  deleteCredential(
+    credentialId: string,
+    request?: DeleteCredentialRequest,
+  ): Promise<CredentialWriteResult> {
     const stored = this.store.get(credentialId);
-    this.store.delete(credentialId);
+
+    if (request && !this.validDeletion(credentialId, request, stored)) {
+      return Promise.resolve({
+        credentialId,
+        state: 'failed',
+        devices: [],
+        errorCode: 'invalid_request',
+      });
+    }
+
+    const scopes = request?.scopes;
+    const removed = (stored?.devices ?? []).filter(
+      (device) =>
+        !scopes ||
+        scopes.some((scope) => scope === this.scopeOf(device.deviceId)),
+    );
+    const kept = (stored?.devices ?? []).filter(
+      (device) => !removed.includes(device),
+    );
+
+    if (stored && kept.length > 0) {
+      this.store.set(credentialId, { ...stored, devices: kept });
+    } else {
+      this.store.delete(credentialId);
+    }
 
     // Idempotente: borrar algo ya borrado es éxito, no 404.
-    const devices: CredentialDeviceResult[] = (stored?.devices ?? []).map(
-      (device) => ({ deviceId: device.deviceId, state: 'deleted' }),
-    );
+    const devices: CredentialDeviceResult[] = removed.map((device) => ({
+      deviceId: device.deviceId,
+      state: 'deleted',
+    }));
 
     return Promise.resolve({ credentialId, state: 'written', devices });
   }
@@ -398,20 +434,35 @@ export class AccessIotMockGateway extends AccessIotGateway {
     return 'partial';
   }
 
-  /**
-   * Deriva el identificador como hará la VPS: `DT4<X><8 HEX>`. Sin separadores
-   * porque Hikvision solo admite letras y números.
-   */
+  /** Mismas comprobaciones que la API central antes de contactar el gateway. */
+  private validDeletion(
+    credentialId: string,
+    request: DeleteCredentialRequest,
+    stored: StoredCredential | undefined,
+  ): boolean {
+    const building = stored
+      ? BUILDINGS.find((item) => item.buildingId === stored.request.buildingId)
+      : BUILDINGS.find((item) => item.code.toLowerCase() === request.siteId);
+    const suffix = deriveEmployeeNo(credentialId, 'guest').slice(-8);
+
+    return (
+      !!building &&
+      building.code.toLowerCase() === request.siteId &&
+      /^DT4[GTE][0-9A-F]{8}$/.test(request.employeeNo) &&
+      request.employeeNo.endsWith(suffix) &&
+      request.scopes.length > 0 &&
+      request.scopes.every((scope) => building.scopes.includes(scope))
+    );
+  }
+
+  private scopeOf(deviceId: string): string | undefined {
+    return DEVICES.find((device) => device.deviceId === deviceId)?.scope;
+  }
+
   private employeeNo(
     credentialId: string,
     subjectType: PutCredentialRequest['subjectType'],
   ): string {
-    const digest = createHash('sha256')
-      .update(credentialId)
-      .digest('hex')
-      .slice(0, 8)
-      .toUpperCase();
-
-    return `DT4${PREFIX_BY_SUBJECT[subjectType]}${digest}`;
+    return deriveEmployeeNo(credentialId, subjectType);
   }
 }

@@ -14,7 +14,9 @@ import {
   Repository,
 } from 'typeorm';
 import { OpenmaintService } from '../../integrations/openmaint/openmaint.service';
+import type { DeviceScope } from './access-iot.types';
 import { BuildingCatalogService } from './building-catalog.service';
+import { normalizeScopes, scopesOf, toWireScope } from './credential-scopes';
 import { CredentialService } from './credential.service';
 import {
   AccessCredential,
@@ -39,6 +41,23 @@ export const CAV_SUSPENDED_REASON = 'cav_suspended';
 /** Lo que acepta «Cambiar nivel de accesos»: `none` revoca todas las puertas. */
 export type AccessLevelChoice = CredentialScope | 'none';
 
+/** `accessScopes` (estado final) o el `accessLevel` anterior; exactamente uno. */
+export const accessLevelOf = (dto: {
+  accessScopes?: DeviceScope[];
+  accessLevel?: AccessLevelChoice;
+}): AccessLevelChoice => {
+  if ((dto.accessScopes === undefined) === (dto.accessLevel === undefined)) {
+    throw new BadRequestException('Envía accessScopes o accessLevel, no ambos');
+  }
+
+  return dto.accessScopes
+    ? (toWireScope(dto.accessScopes) ?? 'none')
+    : dto.accessLevel!;
+};
+
+/** `confirmed`: la puerta ya refleja lo pedido. `pending`/`failed`: todavía no. */
+export type AccessSyncStatus = 'confirmed' | 'pending' | 'failed';
+
 const NOT_APPLICABLE: PinNoticeView = {
   status: 'not_applicable',
   at: null,
@@ -61,6 +80,13 @@ export interface AuthorizationView {
   pinValidTo: string;
   /** `null` si el CAV revocó el acceso. */
   accessLevel: CredentialScope | null;
+  /** Lo pedido; `[]` si el CAV revocó el acceso. */
+  desiredScopes: DeviceScope[];
+  /** Lo que la VPS confirmó en las puertas. */
+  confirmedScopes: DeviceScope[];
+  syncStatus: AccessSyncStatus;
+  /** Código del último fallo (`pin_conflict`, `site_frozen`…), sin detalle de la VPS. */
+  syncError: string | null;
   accessRevoked: { at: string; by: string | null } | null;
   /** Si el PIN quedó escrito en la reserva de Hostaway (`doorCode`). */
   pinNotice: PinNoticeView;
@@ -144,6 +170,9 @@ export class AuthorizationsService {
     });
 
     const porReserva = new Map(vivas.map((c) => [c.subjectRef, c]));
+    const suspendidas = await this.suspendedFor(
+      stays.filter((stay) => stay.accessSuspendedAt),
+    );
     // Las revocadas por el CAV siguen en la lista para poder restaurarlas.
     const visibles = stays.filter(
       (stay) =>
@@ -163,7 +192,7 @@ export class AuthorizationsService {
       this.toView(
         stay,
         stay.accessSuspendedAt
-          ? null
+          ? (suspendidas.get(stay.hostawayReservationId) ?? null)
           : porReserva.get(stay.hostawayReservationId)!,
         etiquetas.get(stay.id) ?? '',
         avisos.get(stay.id) ?? NOT_APPLICABLE,
@@ -180,7 +209,7 @@ export class AuthorizationsService {
 
     return this.toView(
       stay,
-      credential,
+      credential ?? (await this.lastSuspended(stay)),
       etiquetas.get(stay.id) ?? '',
       avisos.get(stay.id) ?? NOT_APPLICABLE,
     );
@@ -327,6 +356,33 @@ export class AuthorizationsService {
     return { stay: resolved.stay, credential: resolved.credential };
   }
 
+  /** La credencial que el CAV retiró de cada estancia revocada: dice si el DELETE ya llegó. */
+  private async suspendedFor(
+    stays: GuestStay[],
+  ): Promise<Map<string, AccessCredential>> {
+    if (stays.length === 0) {
+      return new Map();
+    }
+
+    const filas = await this.credentials.find({
+      where: {
+        subjectType: 'guest',
+        subjectRef: In(stays.map((stay) => stay.hostawayReservationId)),
+        status: 'revoked',
+        revokedReason: CAV_SUSPENDED_REASON,
+      },
+      order: { updatedAt: 'DESC' },
+    });
+    const porReserva = new Map<string, AccessCredential>();
+
+    for (const fila of filas) {
+      if (!porReserva.has(fila.subjectRef))
+        porReserva.set(fila.subjectRef, fila);
+    }
+
+    return porReserva;
+  }
+
   private lastSuspended(stay: GuestStay): Promise<AccessCredential | null> {
     return this.credentials.findOne({
       where: {
@@ -361,7 +417,16 @@ export class AuthorizationsService {
       checkOut: this.checkTimes(stay).checkOut.toISOString(),
       pinValidFrom: stay.accessValidFrom.toISOString(),
       pinValidTo: stay.accessValidTo.toISOString(),
-      accessLevel: credential?.scope ?? null,
+      accessLevel: stay.accessSuspendedAt ? null : (credential?.scope ?? null),
+      desiredScopes:
+        stay.accessSuspendedAt || !credential ? [] : scopesOf(credential.scope),
+      confirmedScopes: normalizeScopes(credential?.confirmedScopes),
+      syncStatus: !credential
+        ? 'confirmed'
+        : credential.syncState === 'synced'
+          ? 'confirmed'
+          : credential.syncState,
+      syncError: credential?.syncError ?? null,
       accessRevoked: stay.accessSuspendedAt
         ? {
             at: stay.accessSuspendedAt.toISOString(),

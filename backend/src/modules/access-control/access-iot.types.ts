@@ -99,6 +99,13 @@ export interface PutCredentialRequest {
   unitId?: number | null;
 }
 
+/** Body cerrado del `DELETE`: un sitio, el `employeeNo` exacto del alta y los scopes a retirar. */
+export interface DeleteCredentialRequest {
+  siteId: string;
+  employeeNo: string;
+  scopes: DeviceScope[];
+}
+
 export interface AccessIotHealthDevice {
   deviceId: string;
   online: boolean;

@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Cron } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Not, Repository } from 'typeorm';
+import { FindOptionsWhere, In, Not, Repository } from 'typeorm';
 import { BUSINESS_TIMEZONE } from '../push-notifications/scheduler/scheduler.constants';
 import { CredentialService } from './credential.service';
 import { AccessCredential } from './entities/access-credential.entity';
@@ -33,8 +33,14 @@ export class SyncRetryService {
       return;
     }
 
+    // Los sitios congelados quedan fuera: si no, ocuparían el lote sin avanzar nunca.
+    const frozen = await this.credentialService.frozenBuildingIds();
+    const where: FindOptionsWhere<AccessCredential> = {
+      syncState: Not('synced'),
+      ...(frozen.length > 0 ? { buildingId: Not(In(frozen)) } : {}),
+    };
     const pending = await this.credentials.find({
-      where: { syncState: Not('synced') },
+      where,
       order: { updatedAt: 'ASC' },
       take: BATCH_SIZE,
     });

@@ -6,7 +6,7 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
-import type { CredentialDeviceResult } from '../access-iot.types';
+import type { CredentialDeviceResult, DeviceScope } from '../access-iot.types';
 
 export type SubjectType = 'guest' | 'tenant' | 'employee';
 export type CredentialScope = 'pedestrian' | 'vehicular' | 'both';
@@ -89,6 +89,30 @@ export class AccessCredential {
 
   @Column({ name: 'sync_detail', type: 'jsonb', nullable: true })
   syncDetail: SyncDetailDevice[] | null;
+
+  /** Scopes confirmados en la puerta; `scope` es lo deseado. Solo cambia con una respuesta `written`. */
+  @Column({
+    name: 'confirmed_scopes',
+    type: 'text',
+    array: true,
+    default: '{}',
+  })
+  confirmedScopes: DeviceScope[];
+
+  /** El `employeeNo` exacto que devolvió el `PUT`; el `DELETE` lo exige. */
+  @Column({ name: 'employee_no', type: 'text', nullable: true })
+  employeeNo: string | null;
+
+  /** Reescribir todos los scopes: cambió la vigencia, el PIN o la conciliación vio un desfase. */
+  @Column({ name: 'rewrite_pending', type: 'boolean', default: false })
+  rewritePending: boolean;
+
+  /** Código sanitizado del último fallo, nunca el cuerpo de la VPS. */
+  @Column({ name: 'sync_error', type: 'text', nullable: true })
+  syncError: string | null;
+
+  @Column({ name: 'last_synced_at', type: 'timestamptz', nullable: true })
+  lastSyncedAt: Date | null;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;

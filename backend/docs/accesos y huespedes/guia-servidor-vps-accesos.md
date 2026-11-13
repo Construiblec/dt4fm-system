@@ -212,7 +212,8 @@ Cuerpo que envía el backend:
 ```
 
 - `scope` — `pedestrian` / `vehicular` / `both`. Determina en qué dispositivos del edificio se escribe.
-  `both` = todos.
+  `both` = todos. **Solo añade**: no retira de los demás scopes; eso lo hace el `DELETE` por scopes
+  (ver [nota-cambio-scopes.md](nota-cambio-scopes.md)).
 - `subjectType` — `guest` / `tenant` / `employee`. Solo para derivar el prefijo del `employeeNo`.
 - `unitId` — puede venir `null`. No condiciona el acceso.
 
@@ -253,6 +254,9 @@ entrada es lo que después usa la conciliación. **Devuélvelo siempre en las en
 
 Misma forma de respuesta. **Debe ser idempotente: borrar algo ya borrado devuelve éxito, no `404`.**
 Es la operación crítica del módulo y la que no puede quedarse a medias en silencio.
+
+Body cerrado `{ "siteId", "employeeNo", "scopes" }`: el `employeeNo` exacto del `PUT` y solo los scopes
+a retirar (ver [nota-cambio-scopes.md](nota-cambio-scopes.md)).
 
 ### `GET /v1/credentials/{credentialId}` — estado real
 

@@ -16,6 +16,7 @@ import type {
   ListAuthorizationsParams,
   ListAuthorizationsResponse,
 } from "@/modules/supervisor-cav/types/Authorization";
+import { ACCESS_SCOPES_BY_LEVEL } from "@/modules/supervisor-cav/types/Authorization";
 
 /**
  * Endpoints del backend (módulo `access-control`):
@@ -23,7 +24,7 @@ import type {
  *   GET  /access-authorizations?from&to             próximos check-ins
  *   GET  /access-authorizations/:stayId             detalle (nunca trae el PIN)
  *   POST /access-authorizations/:stayId/regenerate  renueva el PIN
- *   POST /access-authorizations/:stayId/access-level { accessLevel }  (`none` revoca)
+ *   POST /access-authorizations/:stayId/access-level { accessScopes }  (`[]` revoca)
  *
  * El backend guarda el PIN en la reserva de Hostaway; al renovarlo, además avisa por el chat.
  *
@@ -99,7 +100,7 @@ export const updateAccessLevel = async (
   try {
     const { data } = await api.post<AuthorizationResponse>(
       `/access-authorizations/${id}/access-level`,
-      { accessLevel },
+      { accessScopes: ACCESS_SCOPES_BY_LEVEL[accessLevel] },
       { headers: getAuthHeaders() },
     );
     return data;

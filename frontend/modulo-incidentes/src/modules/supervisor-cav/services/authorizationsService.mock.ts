@@ -4,6 +4,7 @@ import type {
   AuthorizationResponse,
   ListAuthorizationsResponse,
 } from "@/modules/supervisor-cav/types/Authorization";
+import { ACCESS_SCOPES_BY_LEVEL } from "@/modules/supervisor-cav/types/Authorization";
 
 /**
  * Datos quemados para Autorizaciones. Se activan con `VITE_CAV_MOCK=true`
@@ -94,11 +95,19 @@ export const mockUpdateAccessLevel = async (
   await delay();
   authorizations = authorizations.map((item) => {
     if (item.id !== id) return item;
+    const scopes = ACCESS_SCOPES_BY_LEVEL[accessLevel];
+    const sync = {
+      desiredScopes: scopes,
+      confirmedScopes: scopes,
+      syncStatus: "confirmed" as const,
+      syncError: null,
+    };
     if (accessLevel !== "none") {
-      return { ...item, accessLevel, accessRevoked: null };
+      return { ...item, ...sync, accessLevel, accessRevoked: null };
     }
     return {
       ...item,
+      ...sync,
       accessLevel: null,
       accessRevoked: item.accessRevoked ?? {
         at: new Date().toISOString(),

@@ -1,14 +1,31 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { FindOptionsWhere, In, Repository } from 'typeorm';
 import { AccessIotGateway } from './access-iot.gateway';
-import { CredentialWriteResult } from './access-iot.types';
+import {
+  CredentialDeviceResult,
+  CredentialWriteResult,
+  DeviceScope,
+} from './access-iot.types';
 import { BuildingCatalogService } from './building-catalog.service';
+import {
+  deriveEmployeeNo,
+  intersectScopes,
+  normalizeScopes,
+  sameScopes,
+  SCOPE_ORDER,
+  scopesOf,
+  subtractScopes,
+  toWireScope,
+  unionScopes,
+} from './credential-scopes';
 import {
   AccessCredential,
   CredentialScope,
@@ -26,6 +43,21 @@ const MAX_PIN_CONFLICT_RETRIES = 3;
 
 /** Tope de la VPS; el nombre completo se conserva aquí. */
 const DISPLAY_NAME_MAX = 128;
+
+/** `syncError` de una ampliación abortada: el PIN choca con otro usuario del scope nuevo. */
+export const PIN_CONFLICT_ERROR = 'pin_conflict';
+
+/** `syncError` de un sitio fuera de `ACCESS_SCOPED_SITES`: no recibe mutaciones. */
+export const SITE_FROZEN_ERROR = 'site_frozen';
+
+/**
+ * `legacy`: contrato anterior (PUT con el ámbito completo, DELETE sin body).
+ * `scoped`: diferencias por scope contra la API central. `frozen`: no sale nada.
+ */
+type SiteMode =
+  | { kind: 'legacy' }
+  | { kind: 'scoped'; siteId: string }
+  | { kind: 'frozen' };
 
 export interface IssueCredentialInput {
   subjectType: SubjectType;
@@ -53,6 +85,7 @@ export class CredentialService {
     private readonly cipher: PinCipherService,
     private readonly catalog: BuildingCatalogService,
     private readonly iot: AccessIotGateway,
+    private readonly config: ConfigService,
   ) {}
 
   /**
@@ -95,23 +128,18 @@ export class CredentialService {
     reason: string,
     deferSync = false,
   ): Promise<AccessCredential> {
-    const credential = await this.credentials.findOne({ where: { id } });
+    return this.mutate(
+      id,
+      (credential) => {
+        if (credential.status === 'revoked') {
+          return false;
+        }
 
-    if (!credential) {
-      throw new NotFoundException('Credencial no encontrada');
-    }
-
-    if (credential.status === 'revoked') {
-      return credential;
-    }
-
-    credential.status = 'revoked';
-    credential.revokedReason = reason;
-    credential.syncState = 'pending';
-    credential.syncAttempts = 0;
-    await this.credentials.save(credential);
-
-    return this.push(credential, deferSync);
+        credential.status = 'revoked';
+        credential.revokedReason = reason;
+      },
+      deferSync,
+    );
   }
 
   /** Revoca en bloque; se usa al cancelarse una reserva. */
@@ -141,43 +169,21 @@ export class CredentialService {
     validTo: Date,
     deferSync = false,
   ): Promise<AccessCredential> {
-    const credential = await this.credentials.findOne({ where: { id } });
-
-    if (!credential) {
-      throw new NotFoundException('Credencial no encontrada');
-    }
-
     if (validTo <= validFrom) {
       throw new BadRequestException(
         'La vigencia debe terminar después de empezar',
       );
     }
 
-    credential.validFrom = validFrom;
-    credential.validTo = validTo;
-    credential.syncState = 'pending';
-    credential.syncAttempts = 0;
-    await this.credentials.save(credential);
-
-    return this.push(credential, deferSync);
-  }
-
-  /** Con `deferSync` el empuje corre sin esperarlo; si falla, lo recoge `sync-retry`. */
-  private push(
-    credential: AccessCredential,
-    deferSync = false,
-  ): Promise<AccessCredential> {
-    if (!deferSync) {
-      return this.sync(credential);
-    }
-
-    void this.sync(credential).catch((error) =>
-      this.logger.warn(
-        `Empuje diferido de ${credential.id} fallido: ${this.describe(error)}`,
-      ),
+    return this.mutate(
+      id,
+      (credential) => {
+        credential.validFrom = validFrom;
+        credential.validTo = validTo;
+        credential.rewritePending = true;
+      },
+      deferSync,
     );
-
-    return Promise.resolve(credential);
   }
 
   /**
@@ -186,21 +192,32 @@ export class CredentialService {
    * está en `pending` y el barrido de reintentos la recoge.
    */
   async sync(credential: AccessCredential): Promise<AccessCredential> {
-    try {
-      const result =
-        credential.status === 'revoked' || credential.status === 'expired'
-          ? await this.iot.deleteCredential(credential.id)
-          : await this.write(credential);
+    return this.withLock(credential.id, async () =>
+      this.syncLocked(
+        (await this.credentials.findOne({ where: { id: credential.id } })) ??
+          credential,
+      ),
+    );
+  }
 
-      return this.applyResult(credential, result);
-    } catch (error) {
-      credential.syncAttempts += 1;
-      credential.syncState = 'pending';
-      this.logger.warn(
-        `Sincronización fallida de ${credential.id}: ${this.describe(error)}`,
-      );
-      return this.credentials.save(credential);
+  /** Edificios cuyo sitio no está en `ACCESS_SCOPED_SITES`: los barridos los saltan. */
+  async frozenBuildingIds(): Promise<number[]> {
+    const enabled = this.scopedSites();
+
+    if (enabled.length === 0) {
+      return [];
     }
+
+    const sites = await this.catalog.siteIds();
+
+    return [...sites]
+      .filter(([, siteId]) => !enabled.includes(siteId))
+      .map(([buildingId]) => buildingId);
+  }
+
+  /** Si el edificio usa el contrato por scopes. */
+  async isScoped(buildingId: number): Promise<boolean> {
+    return (await this.siteMode(buildingId)).kind === 'scoped';
   }
 
   async list(filters: {
@@ -238,49 +255,53 @@ export class CredentialService {
   }
 
   /**
-   * Cambia el ámbito de una credencial viva **sin tocar el PIN**: el dueño ya
-   * lo tiene anotado, igual que en un cambio de fechas. El `PUT` a la VPS
-   * declara el estado deseado completo, así que ampliar escribe en las puertas
-   * nuevas y reducir la retira de las que dejan de estar en el ámbito.
+   * Cambia el ámbito de una credencial viva **sin tocar el PIN**. El `PUT` solo
+   * añade, así que ampliar escribe el scope nuevo y reducir lo retira con un
+   * `DELETE`. Repetir un ámbito ya confirmado no genera operaciones.
    */
   async changeScope(
     id: string,
     scope: CredentialScope,
   ): Promise<AccessCredential> {
-    const credential = await this.findById(id);
+    const result = await this.mutate(id, async (credential) => {
+      if (!LIVE_STATUSES.includes(credential.status)) {
+        throw new BadRequestException(
+          'Solo se puede cambiar el ámbito de una credencial vigente',
+        );
+      }
 
-    if (!LIVE_STATUSES.includes(credential.status)) {
-      throw new BadRequestException(
-        'Solo se puede cambiar el ámbito de una credencial vigente',
+      if (credential.scope === scope) {
+        // Si aún no se confirmó, se vuelve a intentar en vez de esperar al barrido.
+        return credential.syncState !== 'synced';
+      }
+
+      await this.assertScopeAvailable(credential.buildingId, scope);
+
+      // El índice único es por (sujeto, ámbito): si ya hay otra credencial viva
+      // con el ámbito destino, mover esta crearía un duplicado.
+      const colision = await this.findLive(
+        credential.subjectType,
+        credential.subjectRef,
+        scope,
+      );
+
+      if (colision) {
+        throw new BadRequestException(
+          `El sujeto ya tiene una credencial vigente con ámbito ${scope}`,
+        );
+      }
+
+      credential.scope = scope;
+      credential.syncError = null;
+    });
+
+    if (result.syncError === PIN_CONFLICT_ERROR && result.scope !== scope) {
+      throw new ConflictException(
+        'El PIN coincide con el de otro usuario de esa entrada, así que no se amplió el acceso. Renueva el PIN y vuelve a intentarlo.',
       );
     }
 
-    if (credential.scope === scope) {
-      return credential;
-    }
-
-    await this.assertScopeAvailable(credential.buildingId, scope);
-
-    // El índice único es por (sujeto, ámbito): si ya hay otra credencial viva
-    // con el ámbito destino, mover esta crearía un duplicado.
-    const colision = await this.findLive(
-      credential.subjectType,
-      credential.subjectRef,
-      scope,
-    );
-
-    if (colision) {
-      throw new BadRequestException(
-        `El sujeto ya tiene una credencial vigente con ámbito ${scope}`,
-      );
-    }
-
-    credential.scope = scope;
-    credential.syncState = 'pending';
-    credential.syncAttempts = 0;
-    await this.credentials.save(credential);
-
-    return this.sync(credential);
+    return result;
   }
 
   /**
@@ -293,55 +314,51 @@ export class CredentialService {
     validFrom: Date,
     validTo: Date,
   ): Promise<AccessCredential> {
-    const credential = await this.findById(id);
+    return this.mutate(id, async (credential) => {
+      if (credential.status !== 'revoked') {
+        throw new BadRequestException(
+          'Solo se puede reactivar una credencial revocada',
+        );
+      }
 
-    if (credential.status !== 'revoked') {
-      throw new BadRequestException(
-        'Solo se puede reactivar una credencial revocada',
-      );
-    }
+      if (validTo <= new Date()) {
+        throw new BadRequestException('La estancia ya terminó');
+      }
 
-    if (validTo <= new Date()) {
-      throw new BadRequestException('La estancia ya terminó');
-    }
+      await this.assertScopeAvailable(credential.buildingId, scope);
 
-    await this.assertScopeAvailable(credential.buildingId, scope);
+      if (
+        await this.findLiveBySubject(
+          credential.subjectType,
+          credential.subjectRef,
+        )
+      ) {
+        throw new BadRequestException(
+          'El sujeto ya tiene una credencial vigente',
+        );
+      }
 
-    if (
-      await this.findLiveBySubject(
-        credential.subjectType,
-        credential.subjectRef,
-      )
-    ) {
-      throw new BadRequestException(
-        'El sujeto ya tiene una credencial vigente',
-      );
-    }
+      const pinTomado = await this.credentials.count({
+        where: {
+          buildingId: credential.buildingId,
+          pinFingerprint: credential.pinFingerprint,
+          status: In(LIVE_STATUSES),
+        },
+      });
 
-    const pinTomado = await this.credentials.count({
-      where: {
-        buildingId: credential.buildingId,
-        pinFingerprint: credential.pinFingerprint,
-        status: In(LIVE_STATUSES),
-      },
+      if (pinTomado > 0) {
+        throw new BadRequestException(
+          'El PIN ya está asignado a otra credencial del edificio',
+        );
+      }
+
+      credential.scope = scope;
+      credential.validFrom = validFrom;
+      credential.validTo = validTo;
+      credential.status = 'pending';
+      credential.revokedReason = null;
+      credential.rewritePending = true;
     });
-
-    if (pinTomado > 0) {
-      throw new BadRequestException(
-        'El PIN ya está asignado a otra credencial del edificio',
-      );
-    }
-
-    credential.scope = scope;
-    credential.validFrom = validFrom;
-    credential.validTo = validTo;
-    credential.status = 'pending';
-    credential.revokedReason = null;
-    credential.syncState = 'pending';
-    credential.syncAttempts = 0;
-    await this.credentials.save(credential);
-
-    return this.sync(credential);
   }
 
   /**
@@ -354,25 +371,22 @@ export class CredentialService {
    * `GuestPinNoticeService` reescribe el PIN en la reserva: la huella cambia.
    */
   async regeneratePin(id: string): Promise<AccessCredential> {
-    const credential = await this.findById(id);
+    const result = await this.mutate(id, async (credential) => {
+      if (!LIVE_STATUSES.includes(credential.status)) {
+        throw new BadRequestException(
+          'Solo se puede renovar el PIN de una credencial vigente',
+        );
+      }
 
-    if (!LIVE_STATUSES.includes(credential.status)) {
-      throw new BadRequestException(
-        'Solo se puede renovar el PIN de una credencial vigente',
-      );
-    }
+      // `rotatePin` respeta la unicidad por edificio y el enfriamiento, porque
+      // pasa por el mismo `PinGeneratorService` que la emisión.
+      await this.rotatePin(credential);
+      credential.rewritePending = true;
+    });
 
-    // `rotatePin` ya respeta la unicidad por edificio y el enfriamiento, porque
-    // pasa por el mismo `PinGeneratorService` que la emisión.
-    const rotada = await this.rotatePin(credential);
+    this.logger.log(`PIN renovado para la credencial ${result.id}`);
 
-    rotada.syncState = 'pending';
-    rotada.syncAttempts = 0;
-    await this.credentials.save(rotada);
-
-    this.logger.log(`PIN renovado para la credencial ${rotada.id}`);
-
-    return this.sync(rotada);
+    return result;
   }
 
   /**
@@ -442,41 +456,442 @@ export class CredentialService {
     return this.cipher.decrypt(credential.pinCiphertext);
   }
 
+  /**
+   * Serializa por credencial lo que hacen el endpoint, los webhooks y los cron.
+   * Candado de sesión porque abarca la llamada a la VPS, que no va en transacción.
+   */
+  protected async withLock<T>(id: string, work: () => Promise<T>): Promise<T> {
+    const runner = this.credentials.manager.connection.createQueryRunner();
+    const key = `access_credential:${id}`;
+
+    await runner.connect();
+
+    try {
+      await runner.query('SELECT pg_advisory_lock(hashtext($1))', [key]);
+      return await work();
+    } finally {
+      try {
+        await runner.query('SELECT pg_advisory_unlock(hashtext($1))', [key]);
+      } finally {
+        await runner.release();
+      }
+    }
+  }
+
+  /** Con `deferSync` el empuje corre sin esperarlo; si falla, lo recoge `sync-retry`. */
+  private push(
+    credential: AccessCredential,
+    deferSync = false,
+  ): Promise<AccessCredential> {
+    if (!deferSync) {
+      return this.sync(credential);
+    }
+
+    void this.sync(credential).catch((error) =>
+      this.logger.warn(
+        `Empuje diferido de ${credential.id} fallido: ${this.describe(error)}`,
+      ),
+    );
+
+    return Promise.resolve(credential);
+  }
+
+  /**
+   * Aplica `change` bajo el candado de la credencial y la sincroniza. Si
+   * `change` devuelve `false` no hay nada que hacer.
+   */
+  private mutate(
+    id: string,
+    change: (
+      credential: AccessCredential,
+    ) => boolean | void | Promise<boolean | void>,
+    deferSync = false,
+  ): Promise<AccessCredential> {
+    return this.withLock(id, async () => {
+      const credential = await this.findById(id);
+
+      if ((await change(credential)) === false) {
+        return credential;
+      }
+
+      credential.syncState = 'pending';
+      credential.syncAttempts = 0;
+      await this.credentials.save(credential);
+
+      if (!deferSync) {
+        return this.syncLocked(credential);
+      }
+
+      // Espera al candado, que este `mutate` suelta al volver.
+      void this.sync(credential).catch((error) =>
+        this.logger.warn(
+          `Empuje diferido de ${credential.id} fallido: ${this.describe(error)}`,
+        ),
+      );
+
+      return credential;
+    });
+  }
+
+  private async syncLocked(
+    credential: AccessCredential,
+  ): Promise<AccessCredential> {
+    try {
+      const mode = await this.siteMode(credential.buildingId);
+
+      if (mode.kind === 'frozen') {
+        return await this.freeze(credential);
+      }
+
+      return mode.kind === 'scoped'
+        ? await this.syncScoped(credential, mode.siteId)
+        : await this.syncLegacy(credential);
+    } catch (error) {
+      credential.syncAttempts += 1;
+      credential.syncState = 'pending';
+      this.logger.warn(
+        `Sincronización fallida de ${credential.id}: ${this.describe(error)}`,
+      );
+      return this.credentials.save(credential);
+    }
+  }
+
+  /** Sitio fuera del piloto: queda pendiente, sin gastar intentos, hasta que se habilite. */
+  private async freeze(
+    credential: AccessCredential,
+  ): Promise<AccessCredential> {
+    if (
+      credential.syncState === 'pending' &&
+      credential.syncError === SITE_FROZEN_ERROR
+    ) {
+      return credential;
+    }
+
+    credential.syncState = 'pending';
+    credential.syncError = SITE_FROZEN_ERROR;
+    return this.credentials.save(credential);
+  }
+
+  /** Contrato anterior: el PUT declara el ámbito completo y el DELETE va sin body. */
+  private async syncLegacy(
+    credential: AccessCredential,
+  ): Promise<AccessCredential> {
+    const live = LIVE_STATUSES.includes(credential.status);
+    const result = live
+      ? await this.write(credential, credential.scope)
+      : await this.iot.deleteCredential(credential.id);
+
+    credential.syncDetail = result.devices ?? [];
+    credential.syncAttempts += 1;
+    this.captureEmployeeNo(credential, result);
+
+    if (result.state === 'written') {
+      // El PUT solo añade: lo que hubiera antes sigue en la puerta.
+      credential.confirmedScopes = live
+        ? unionScopes(
+            normalizeScopes(credential.confirmedScopes),
+            scopesOf(credential.scope),
+          )
+        : [];
+      credential.rewritePending = false;
+      this.markSynced(credential);
+    } else if (result.state === 'failed') {
+      credential.syncState = 'failed';
+      credential.syncError = result.errorCode ?? 'failed';
+      this.logger.error(
+        `Escritura fallida de ${credential.id}: ${result.errorCode ?? 'sin código'}`,
+      );
+    } else {
+      credential.syncState = 'pending';
+
+      // Un `partial` trae código si un aparato falló, y `device_full` no se arregla solo.
+      if (result.errorCode) {
+        this.logger.warn(
+          `Escritura ${result.state} de ${credential.id}: ${result.errorCode}`,
+        );
+      }
+    }
+
+    return this.credentials.save(credential);
+  }
+
+  /**
+   * Solo las diferencias entre lo deseado y lo confirmado: un `PUT` por lo que
+   * falta y un `DELETE` exacto por lo que sobra. Lo confirmado solo cambia con
+   * lo que la VPS dio por hecho.
+   */
+  private async syncScoped(
+    credential: AccessCredential,
+    siteId: string,
+  ): Promise<AccessCredential> {
+    const available = (await this.catalog.buildingScopes(
+      credential.buildingId,
+    )) ?? [...SCOPE_ORDER];
+    const live = LIVE_STATUSES.includes(credential.status);
+    const desired = (): DeviceScope[] =>
+      live ? intersectScopes(scopesOf(credential.scope), available) : [];
+    let confirmed = normalizeScopes(credential.confirmedScopes);
+    let failed = false;
+    let operated = false;
+    let leftovers: DeviceScope[] = [];
+
+    const toWrite = credential.rewritePending
+      ? desired()
+      : subtractScopes(desired(), confirmed);
+
+    if (toWrite.length > 0) {
+      // Rotar el PIN solo si nada en la puerta conserva el anterior; si no, se aborta (ampliación o cambio de scope).
+      const allowRotate = credential.rewritePending || confirmed.length === 0;
+      const result = await this.write(
+        credential,
+        toWireScope(toWrite)!,
+        allowRotate,
+      );
+      operated = true;
+      this.mergeDetail(credential, result.devices);
+
+      if (result.errorCode === 'pin_conflict' && !allowRotate) {
+        // Ampliación abortada: vuelve a lo confirmado y retira lo que alcanzó a escribirse.
+        this.logger.warn(
+          `Ampliación de ${credential.id} abortada por pin_conflict`,
+        );
+        credential.scope = toWireScope(confirmed) ?? credential.scope;
+        credential.syncError = PIN_CONFLICT_ERROR;
+
+        if (result.devices.some((device) => device.state === 'written')) {
+          leftovers = toWrite;
+        }
+      } else {
+        confirmed = unionScopes(
+          confirmed,
+          await this.scopesDone(result, toWrite, 'written'),
+        );
+
+        if (!this.captureEmployeeNo(credential, result)) {
+          failed = true;
+        } else if (result.state === 'failed') {
+          failed = true;
+          credential.syncError = result.errorCode ?? 'failed';
+        } else if (result.state === 'written') {
+          credential.rewritePending = false;
+        }
+      }
+
+      credential.confirmedScopes = confirmed;
+      await this.credentials.save(credential);
+    }
+
+    const target = desired();
+    const toRemove = live
+      ? unionScopes(subtractScopes(confirmed, target), leftovers)
+      : intersectScopes(
+          unionScopes(confirmed, scopesOf(credential.scope)),
+          available,
+        );
+    // No se quita el último acceso que funciona antes de confirmar el nuevo (Peatonal↔Vehicular).
+    const keepsAccess =
+      !live ||
+      leftovers.length > 0 ||
+      intersectScopes(confirmed, target).length > 0;
+
+    if (toRemove.length > 0 && keepsAccess) {
+      const result = await this.iot.deleteCredential(credential.id, {
+        siteId,
+        employeeNo:
+          credential.employeeNo ??
+          deriveEmployeeNo(credential.id, credential.subjectType),
+        scopes: toRemove,
+      });
+      operated = true;
+      this.mergeDetail(credential, result.devices);
+      confirmed = subtractScopes(
+        confirmed,
+        await this.scopesDone(result, toRemove, 'deleted'),
+      );
+
+      if (result.state === 'failed') {
+        failed = true;
+        credential.syncError = result.errorCode ?? 'failed';
+      }
+    }
+
+    if (operated) {
+      credential.syncAttempts += 1;
+      this.logger.log(
+        `Sincronización de ${credential.id}: +[${toWrite.join(',')}] -[${toRemove.join(',')}] confirmado=[${confirmed.join(',')}]`,
+      );
+    }
+
+    credential.confirmedScopes = confirmed;
+
+    if (failed) {
+      credential.syncState = 'failed';
+      this.logger.error(
+        `Escritura fallida de ${credential.id}: ${credential.syncError ?? 'sin código'}`,
+      );
+    } else if (sameScopes(confirmed, target) && !credential.rewritePending) {
+      this.markSynced(credential);
+    } else {
+      credential.syncState = 'pending';
+    }
+
+    return this.credentials.save(credential);
+  }
+
+  /** Con `allowRotate`, un `pin_conflict` regenera el PIN y reintenta; sin él se devuelve tal cual. */
   private async write(
     credential: AccessCredential,
+    scope: CredentialScope,
+    allowRotate = true,
   ): Promise<CredentialWriteResult> {
-    let current = credential;
-
     for (let attempt = 1; attempt <= MAX_PIN_CONFLICT_RETRIES; attempt += 1) {
-      const result = await this.iot.putCredential(current.id, {
-        buildingId: current.buildingId,
-        scope: current.scope,
-        subjectType: current.subjectType,
-        pin: this.cipher.decrypt(current.pinCiphertext),
-        validFrom: toWireTimestamp(current.validFrom),
-        validTo: toWireTimestamp(current.validTo),
-        displayName: current.displayName.slice(0, DISPLAY_NAME_MAX),
-        unitId: current.openmaintUnitId,
+      const result = await this.iot.putCredential(credential.id, {
+        buildingId: credential.buildingId,
+        scope,
+        subjectType: credential.subjectType,
+        pin: this.cipher.decrypt(credential.pinCiphertext),
+        validFrom: toWireTimestamp(credential.validFrom),
+        validTo: toWireTimestamp(credential.validTo),
+        displayName: credential.displayName.slice(0, DISPLAY_NAME_MAX),
+        unitId: credential.openmaintUnitId,
       });
 
       // El terminal comparte espacio de PINes con usuarios cargados a mano, que
       // el backend no conoce: la única salida es regenerar y reintentar.
-      if (result.errorCode !== 'pin_conflict') {
+      if (result.errorCode !== 'pin_conflict' || !allowRotate) {
         return result;
       }
 
       this.logger.warn(
-        `PIN en conflicto para ${current.id}; se regenera (intento ${attempt})`,
+        `PIN en conflicto para ${credential.id}; se regenera (intento ${attempt})`,
       );
-      current = await this.rotatePin(current);
+      await this.rotatePin(credential);
     }
 
     return {
-      credentialId: current.id,
+      credentialId: credential.id,
       state: 'failed',
       devices: [],
       errorCode: 'pin_conflict',
     };
+  }
+
+  private markSynced(credential: AccessCredential): void {
+    credential.syncState = 'synced';
+    credential.lastSyncedAt = new Date();
+
+    // Un `pin_conflict` de ampliación se conserva para que el CAV vea por qué no se amplió.
+    if (credential.syncError !== PIN_CONFLICT_ERROR) {
+      credential.syncError = null;
+    }
+
+    // `pending` no significa «no funciona»: significa «aún no está en todas
+    // las puertas». Solo cuando lo está pasa a activa.
+    if (credential.status === 'pending') {
+      credential.status = 'active';
+    }
+  }
+
+  /**
+   * Scopes con resultado seguro: todos si el agregado es `written`; en un
+   * `partial`, los que tienen todos sus aparatos en el estado esperado.
+   */
+  private async scopesDone(
+    result: CredentialWriteResult,
+    requested: DeviceScope[],
+    done: 'written' | 'deleted',
+  ): Promise<DeviceScope[]> {
+    if (result.state === 'written') return requested;
+    if (result.state !== 'partial') return [];
+
+    let byDevice: Map<string, DeviceScope>;
+
+    try {
+      byDevice = await this.catalog.deviceScopes();
+    } catch {
+      return [];
+    }
+
+    return requested.filter((scope) => {
+      const devices = result.devices.filter(
+        (device) => byDevice.get(device.deviceId) === scope,
+      );
+
+      return (
+        devices.length > 0 && devices.every((device) => device.state === done)
+      );
+    });
+  }
+
+  /** Guarda el `employeeNo` del PUT; `false` si los aparatos discrepan o no coincide con el guardado. */
+  private captureEmployeeNo(
+    credential: AccessCredential,
+    result: CredentialWriteResult,
+  ): boolean {
+    const numbers = new Set(
+      result.devices
+        .filter((device) => device.state === 'written' && device.employeeNo)
+        .map((device) => device.employeeNo!),
+    );
+    const [employeeNo] = [...numbers];
+
+    if (
+      numbers.size > 1 ||
+      (employeeNo &&
+        credential.employeeNo &&
+        employeeNo !== credential.employeeNo)
+    ) {
+      credential.syncError = 'employee_no_mismatch';
+      this.logger.error(
+        `employeeNo inconsistente para ${credential.id}: no se confirma`,
+      );
+      return false;
+    }
+
+    if (employeeNo) credential.employeeNo = employeeNo;
+
+    return true;
+  }
+
+  /** `sync_detail` por aparato: el PUT de un scope no borra lo anotado de otro. */
+  private mergeDetail(
+    credential: AccessCredential,
+    devices: CredentialDeviceResult[] = [],
+  ): void {
+    const detail = new Map(
+      (credential.syncDetail ?? []).map((entry) => [entry.deviceId, entry]),
+    );
+
+    for (const device of devices) {
+      if (device.state === 'deleted') {
+        detail.delete(device.deviceId);
+      } else {
+        detail.set(device.deviceId, device);
+      }
+    }
+
+    credential.syncDetail = [...detail.values()];
+  }
+
+  private scopedSites(): string[] {
+    return (this.config.get<string>('ACCESS_SCOPED_SITES') ?? '')
+      .split(',')
+      .map((site) => site.trim().toLowerCase())
+      .filter(Boolean);
+  }
+
+  private async siteMode(buildingId: number): Promise<SiteMode> {
+    const enabled = this.scopedSites();
+
+    if (enabled.length === 0) {
+      return { kind: 'legacy' };
+    }
+
+    const siteId = await this.catalog.siteIdOf(buildingId);
+
+    return siteId && enabled.includes(siteId)
+      ? { kind: 'scoped', siteId }
+      : { kind: 'frozen' };
   }
 
   private async persistWithFreshPin(
@@ -503,6 +918,7 @@ export class CredentialService {
         guestStayId: input.guestStayId ?? null,
         syncState: 'pending',
         syncAttempts: 0,
+        confirmedScopes: [],
       }),
     );
   }
@@ -516,40 +932,6 @@ export class CredentialService {
 
     credential.pinCiphertext = this.cipher.encrypt(pin);
     credential.pinFingerprint = fingerprint;
-
-    return this.credentials.save(credential);
-  }
-
-  private async applyResult(
-    credential: AccessCredential,
-    result: CredentialWriteResult,
-  ): Promise<AccessCredential> {
-    credential.syncDetail = result.devices ?? [];
-    credential.syncAttempts += 1;
-
-    if (result.state === 'written') {
-      credential.syncState = 'synced';
-
-      // `pending` no significa «no funciona»: significa «aún no está en todas
-      // las puertas». Solo cuando lo está pasa a activa.
-      if (credential.status === 'pending') {
-        credential.status = 'active';
-      }
-    } else if (result.state === 'failed') {
-      credential.syncState = 'failed';
-      this.logger.error(
-        `Escritura fallida de ${credential.id}: ${result.errorCode ?? 'sin código'}`,
-      );
-    } else {
-      credential.syncState = 'pending';
-
-      // Un `partial` trae código si un aparato falló, y `device_full` no se arregla solo.
-      if (result.errorCode) {
-        this.logger.warn(
-          `Escritura ${result.state} de ${credential.id}: ${result.errorCode}`,
-        );
-      }
-    }
 
     return this.credentials.save(credential);
   }

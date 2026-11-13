@@ -1350,6 +1350,121 @@ describe('AccessControlController (e2e)', () => {
           .expect(400);
       });
 
+      describe('con el contrato por scopes (ACCESS_SCOPED_SITES)', () => {
+        const scopes = (stayId: string, accessScopes: string[]) =>
+          request(app.getHttpServer())
+            .post(`/access-authorizations/${stayId}/access-level`)
+            .set(CAV_SESSION)
+            .send({ accessScopes });
+
+        beforeEach(() => {
+          process.env.ACCESS_SCOPED_SITES = 'inglaterra';
+          mocks.accessIot.getHealth.mockResolvedValue({
+            buildings: [
+              {
+                buildingId: ING_BUILDING_ID,
+                siteId: 'inglaterra',
+                gatewayOnline: true,
+              },
+              {
+                buildingId: PRA_BUILDING_ID,
+                siteId: 'pradera',
+                gatewayOnline: true,
+              },
+            ],
+          });
+          catalog.invalidate();
+        });
+
+        afterEach(() => {
+          delete process.env.ACCESS_SCOPED_SITES;
+          mocks.accessIot.getHealth.mockResolvedValue({ buildings: [] });
+          catalog.invalidate();
+        });
+
+        it('desmarcar vehicular retira solo vehicular con un DELETE exacto', async () => {
+          const estancia = await crearEstancia();
+          await scopes(estancia!.id, ['pedestrian', 'vehicular']).expect(200);
+          const credencial = await credentialService.findLiveBySubject(
+            'guest',
+            '44712233',
+          );
+          mocks.accessIot.putCredential.mockClear();
+
+          const res = await scopes(estancia!.id, ['pedestrian']).expect(200);
+
+          expect(mocks.accessIot.putCredential).not.toHaveBeenCalled();
+          expect(mocks.accessIot.deleteCredential).toHaveBeenCalledWith(
+            credencial!.id,
+            {
+              siteId: 'inglaterra',
+              employeeNo: 'DT4TABCDEF01',
+              scopes: ['vehicular'],
+            },
+          );
+          expect(res.body.data).toMatchObject({
+            accessLevel: 'pedestrian',
+            desiredScopes: ['pedestrian'],
+            confirmedScopes: ['pedestrian'],
+            syncStatus: 'confirmed',
+            syncError: null,
+          });
+        });
+
+        it('una revocación que no llega se muestra pendiente, no confirmada', async () => {
+          const estancia = await crearEstancia();
+          mocks.accessIot.deleteCredential.mockResolvedValueOnce({
+            credentialId: 'x',
+            state: 'unreachable',
+            devices: [],
+            errorCode: 'gateway_unreachable',
+          });
+
+          const res = await scopes(estancia!.id, []).expect(200);
+
+          expect(res.body.data).toMatchObject({
+            accessLevel: null,
+            desiredScopes: [],
+            confirmedScopes: ['pedestrian'],
+            syncStatus: 'pending',
+          });
+        });
+
+        it('409 si el PIN choca al ampliar, sin cambiar el PIN ni el nivel', async () => {
+          const estancia = await crearEstancia();
+          const antes = await huellaDe('44712233');
+          mocks.accessIot.putCredential.mockResolvedValueOnce({
+            credentialId: 'x',
+            state: 'failed',
+            devices: [],
+            errorCode: 'pin_conflict',
+          });
+
+          await scopes(estancia!.id, ['pedestrian', 'vehicular']).expect(409);
+
+          expect(await huellaDe('44712233')).toBe(antes);
+          const detalle = await request(app.getHttpServer())
+            .get(`/access-authorizations/${estancia!.id}`)
+            .set(CAV_SESSION)
+            .expect(200);
+          expect(detalle.body.data).toMatchObject({
+            accessLevel: 'pedestrian',
+            confirmedScopes: ['pedestrian'],
+            syncError: 'pin_conflict',
+          });
+        });
+
+        it('400 si llegan accessScopes y accessLevel a la vez', async () => {
+          const estancia = await crearEstancia();
+
+          await request(app.getHttpServer())
+            .post(`/access-authorizations/${estancia!.id}/access-level`)
+            .set(CAV_SESSION)
+            .send({ accessScopes: ['pedestrian'], accessLevel: 'both' })
+            .expect(400);
+        });
+      });
+
       describe('revocar y restaurar', () => {
         const nivel = (stayId: string, accessLevel: string) =>
           request(app.getHttpServer())

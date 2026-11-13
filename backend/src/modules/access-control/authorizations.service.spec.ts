@@ -239,11 +239,15 @@ describe('AuthorizationsService', () => {
         'accessRevoked',
         'checkIn',
         'checkOut',
+        'confirmedScopes',
+        'desiredScopes',
         'guestName',
         'id',
         'pinNotice',
         'pinValidFrom',
         'pinValidTo',
+        'syncError',
+        'syncStatus',
         'unitLabel',
       ]);
     });
