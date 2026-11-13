@@ -114,7 +114,7 @@ jobs:
 
           echo "Render respondió HTTP $estado: $cuerpo"
 
-          if [ "$estado" != "200" ] && [ "$estado" != "201" ]; then
+          if ! printf '%s' "$estado" | grep -q '^2[0-9][0-9]$'; then
             echo "::error::El deploy hook de producción devolvió HTTP $estado. Si es 401 o 404, la URL fue revocada: regenérala en Render (Settings -> Deploy Hook) y actualiza el secret RENDER_DEPLOY_HOOK."
             exit 1
           fi
@@ -142,7 +142,7 @@ jobs:
 
           echo "Render respondió HTTP $estado: $cuerpo"
 
-          if [ "$estado" != "200" ] && [ "$estado" != "201" ]; then
+          if ! printf '%s' "$estado" | grep -q '^2[0-9][0-9]$'; then
             echo "::error::El deploy hook de staging devolvió HTTP $estado. Si es 401 o 404, la URL fue revocada: regenérala en Render (Settings -> Deploy Hook) y actualiza el secret RENDER_DEPLOY_HOOK_STAGING."
             exit 1
           fi

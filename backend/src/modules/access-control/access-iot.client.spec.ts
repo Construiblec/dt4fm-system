@@ -301,6 +301,31 @@ describe('AccessIotClient', () => {
     expect(request).toHaveBeenCalledTimes(1);
   });
 
+  it('el DELETE por scopes manda el body cerrado como JSON', async () => {
+    const { request, client } = cliente({
+      credentialId: '3f9a2b11-0000-4000-8000-000000000000',
+      state: 'written',
+      devices: [],
+    });
+
+    await client.deleteCredential('3f9a2b11-0000-4000-8000-000000000000', {
+      siteId: 'inglaterra',
+      employeeNo: 'DT4G688B2FCB',
+      scopes: ['vehicular'],
+    });
+
+    const [[enviado]] = request.mock.calls as [[AxiosRequestConfig]];
+    expect(enviado.method).toBe('DELETE');
+    expect(enviado.data).toEqual({
+      siteId: 'inglaterra',
+      employeeNo: 'DT4G688B2FCB',
+      scopes: ['vehicular'],
+    });
+    expect(enviado.headers).toMatchObject({
+      'Content-Type': 'application/json',
+    });
+  });
+
   it('GET de una credencial con 404 not_found es null', async () => {
     const { client } = cliente(conRespuesta(404, { code: 'not_found' }));
 

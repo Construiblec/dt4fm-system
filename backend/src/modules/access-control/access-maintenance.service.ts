@@ -2,15 +2,24 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Cron } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, LessThan, Repository } from 'typeorm';
+import { In, LessThan, MoreThan, Not, Repository } from 'typeorm';
 import { BUSINESS_TIMEZONE } from '../push-notifications/scheduler/scheduler.constants';
 import { AccessIotGateway } from './access-iot.gateway';
-import { InventoryUser } from './access-iot.types';
+import { AccessIotDevice, InventoryUser } from './access-iot.types';
+import {
+  deriveEmployeeNo,
+  normalizeScopes,
+  scopesOf,
+  unionScopes,
+} from './credential-scopes';
 import { CredentialService, LIVE_STATUSES } from './credential.service';
 import { AccessCredential } from './entities/access-credential.entity';
 
 /** Tope defensivo de páginas, para no iterar sin fin ante un cursor anómalo. */
 const MAX_INVENTORY_PAGES = 50;
+
+/** Cuánto atrás se buscan credenciales cerradas que puedan seguir en un aparato. */
+const CLOSED_LOOKBACK_MS = 60 * 24 * 60 * 60 * 1000;
 
 /** El terminal guarda la vigencia al segundo; los milisegundos de Postgres no cuentan. */
 const sameSecond = (wire: string | null | undefined, date: Date): boolean =>
@@ -42,11 +51,12 @@ export class AccessMaintenanceService {
       take: 200,
     });
 
+    // `update` y no `save`: no pisa lo que una sincronización en curso esté anotando.
     for (const credential of vencidas) {
-      credential.status = 'expired';
-      credential.syncState = 'pending';
-      credential.syncAttempts = 0;
-      await this.credentials.save(credential);
+      await this.credentials.update(
+        { id: credential.id, status: In(LIVE_STATUSES) },
+        { status: 'expired', syncState: 'pending', syncAttempts: 0 },
+      );
     }
 
     if (vencidas.length > 0) {
@@ -62,10 +72,12 @@ export class AccessMaintenanceService {
   async purge(): Promise<void> {
     if (!this.enabled()) return;
 
+    const frozen = await this.credentialService.frozenBuildingIds();
+    const building = frozen.length > 0 ? { buildingId: Not(In(frozen)) } : {};
     const porBorrar = await this.credentials.find({
       where: [
-        { status: 'expired', syncState: 'pending' },
-        { status: 'revoked', syncState: 'pending' },
+        { status: 'expired', syncState: 'pending', ...building },
+        { status: 'revoked', syncState: 'pending', ...building },
       ],
       take: 200,
     });
@@ -92,7 +104,7 @@ export class AccessMaintenanceService {
 
     for (const device of devices) {
       try {
-        await this.reconcileDevice(device.deviceId);
+        await this.reconcileDevice(device.deviceId, device);
       } catch (error) {
         this.logger.warn(
           `No se pudo conciliar ${device.deviceId}: ${this.describe(error)}`,
@@ -101,7 +113,10 @@ export class AccessMaintenanceService {
     }
   }
 
-  async reconcileDevice(deviceId: string): Promise<void> {
+  async reconcileDevice(
+    deviceId: string,
+    device?: AccessIotDevice,
+  ): Promise<void> {
     const inventario = await this.readInventory(deviceId);
     const gestionados = inventario.filter((user) => user.managed);
     const ajenos = inventario.length - gestionados.length;
@@ -146,10 +161,70 @@ export class AccessMaintenanceService {
         this.logger.warn(
           `Credencial ${credential.id} ${motivo} ${deviceId}: se reprograma su escritura`,
         );
-        credential.syncState = 'pending';
-        credential.syncAttempts = 0;
-        await this.credentials.save(credential);
+        await this.credentials.update(credential.id, {
+          syncState: 'pending',
+          syncAttempts: 0,
+          rewritePending: true,
+        });
       }
+    }
+
+    if (device && (await this.credentialService.isScoped(device.buildingId))) {
+      await this.flagStrayScopes(device, enAparato);
+    }
+  }
+
+  /**
+   * Un PIN presente en un aparato cuyo scope ya no le corresponde: una reducción
+   * o revocación que nunca llegó. Se anota como confirmado para que `sync()`
+   * emita el DELETE exacto de ese scope.
+   */
+  private async flagStrayScopes(
+    device: AccessIotDevice,
+    enAparato: Map<string, InventoryUser>,
+  ): Promise<void> {
+    if (enAparato.size === 0) return;
+
+    const candidatas = await this.credentials.find({
+      where: [
+        { buildingId: device.buildingId, status: In(LIVE_STATUSES) },
+        {
+          buildingId: device.buildingId,
+          status: In(['revoked', 'expired']),
+          validTo: MoreThan(new Date(Date.now() - CLOSED_LOOKBACK_MS)),
+        },
+      ],
+      take: 2000,
+    });
+
+    for (const credential of candidatas) {
+      const employeeNo =
+        credential.employeeNo ??
+        deriveEmployeeNo(credential.id, credential.subjectType);
+
+      if (!enAparato.has(employeeNo)) continue;
+
+      const deseados = LIVE_STATUSES.includes(credential.status)
+        ? scopesOf(credential.scope)
+        : [];
+      const confirmados = normalizeScopes(credential.confirmedScopes);
+
+      if (
+        deseados.includes(device.scope) ||
+        (confirmados.includes(device.scope) &&
+          credential.syncState !== 'synced')
+      ) {
+        continue;
+      }
+
+      this.logger.warn(
+        `Credencial ${credential.id} sigue en ${device.deviceId} (${device.scope}) sin corresponderle: se programa su retirada`,
+      );
+      await this.credentials.update(credential.id, {
+        confirmedScopes: unionScopes(confirmados, [device.scope]),
+        syncState: 'pending',
+        syncAttempts: 0,
+      });
     }
   }
 

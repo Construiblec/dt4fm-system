@@ -108,6 +108,48 @@ describe('AccessIotMockGateway', () => {
     await expect(gateway.getCredential('cred-8')).resolves.toBeNull();
   });
 
+  it('el PUT solo añade en su scope: no retira de los demás', async () => {
+    await gateway.putCredential('cred-11', peticion({ scope: 'both' }));
+    await gateway.putCredential('cred-11', peticion({ scope: 'pedestrian' }));
+
+    const enPuertas = (await gateway.getCredential('cred-11'))!.devices;
+    expect(enPuertas.map((device) => device.deviceId)).toEqual([
+      'ING-VEHICULAR-1',
+      'ING-PEATONAL-1',
+    ]);
+  });
+
+  it('el DELETE por scopes retira solo esos scopes y exige el employeeNo de la credencial', async () => {
+    const { devices } = await gateway.putCredential(
+      'cred-12',
+      peticion({ scope: 'both' }),
+    );
+    const employeeNo = devices[0].employeeNo!;
+
+    await expect(
+      gateway.deleteCredential('cred-12', {
+        siteId: 'ing',
+        employeeNo: 'DT4G00000000',
+        scopes: ['vehicular'],
+      }),
+    ).resolves.toMatchObject({ state: 'failed', errorCode: 'invalid_request' });
+
+    await expect(
+      gateway.deleteCredential('cred-12', {
+        siteId: 'ing',
+        employeeNo,
+        scopes: ['vehicular'],
+      }),
+    ).resolves.toMatchObject({
+      state: 'written',
+      devices: [{ deviceId: 'ING-VEHICULAR-1', state: 'deleted' }],
+    });
+    const restantes = (await gateway.getCredential('cred-12'))!.devices;
+    expect(restantes.map((device) => device.deviceId)).toEqual([
+      'ING-PEATONAL-1',
+    ]);
+  });
+
   it('el inventario distingue lo gestionado de lo cargado a mano', async () => {
     await gateway.putCredential('cred-9', peticion());
 

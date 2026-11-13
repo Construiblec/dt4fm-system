@@ -125,6 +125,8 @@ process.env.ACCESS_IOT_USE_MOCK = 'true';
 process.env.ACCESS_IOT_URL ??= 'http://accesos.invalid';
 process.env.ACCESS_IOT_TOKEN ??= 'mock-client-id:mock-client-secret';
 process.env.ACCESS_SCHEDULER_ENABLED = 'false';
+// Contrato anterior por defecto, aunque el `.env` local active el piloto; cada suite lo enciende si lo prueba.
+process.env.ACCESS_SCOPED_SITES = '';
 process.env.ACCESS_ALLOW_PIN_REVEAL = 'false';
 process.env.ACCESS_REMOTE_OPEN_ENABLED = 'true';
 process.env.LIVE_VIDEO_ENABLED = 'true';

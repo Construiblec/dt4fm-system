@@ -4,6 +4,7 @@ import type {
   AuthorizationResponse,
   ListAuthorizationsResponse,
 } from "@/modules/supervisor-cav/types/Authorization";
+import { ACCESS_SCOPES_BY_LEVEL } from "@/modules/supervisor-cav/types/Authorization";
 
 /**
  * Datos quemados para Autorizaciones. Se activan con `VITE_CAV_MOCK=true`
@@ -55,6 +56,22 @@ let authorizations: Authorization[] = [
     accessLevel: null,
     accessRevoked: { at: daysFromNow(-1, "15:40:00"), by: "jperez" },
   },
+  {
+    // Vehicular desmarcado que la barrera no confirmó: deja ver «Reintentar».
+    id: "6b1f2c80-0d2a-4f1e-9a33-1c7e5b204a04",
+    guestName: "Luis Vera",
+    unitLabel: "Inglaterra · UI R105",
+    checkIn: daysFromNow(0),
+    checkOut: daysFromNow(2, "11:00:00"),
+    pinValidFrom: daysFromNow(0, "13:00:00"),
+    pinValidTo: daysFromNow(2, "16:00:00"),
+    accessLevel: "pedestrian",
+    accessRevoked: null,
+    desiredScopes: ["pedestrian"],
+    confirmedScopes: ["pedestrian", "vehicular"],
+    syncStatus: "failed",
+    syncError: "gateway_rejected",
+  },
 ];
 
 /** Una API real tarda; sin esto los estados de carga nunca se ven. */
@@ -94,11 +111,19 @@ export const mockUpdateAccessLevel = async (
   await delay();
   authorizations = authorizations.map((item) => {
     if (item.id !== id) return item;
+    const scopes = ACCESS_SCOPES_BY_LEVEL[accessLevel];
+    const sync = {
+      desiredScopes: scopes,
+      confirmedScopes: scopes,
+      syncStatus: "confirmed" as const,
+      syncError: null,
+    };
     if (accessLevel !== "none") {
-      return { ...item, accessLevel, accessRevoked: null };
+      return { ...item, ...sync, accessLevel, accessRevoked: null };
     }
     return {
       ...item,
+      ...sync,
       accessLevel: null,
       accessRevoked: item.accessRevoked ?? {
         at: new Date().toISOString(),

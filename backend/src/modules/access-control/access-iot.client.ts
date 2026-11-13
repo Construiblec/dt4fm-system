@@ -17,6 +17,7 @@ import {
   AccessIotErrorCode,
   AccessIotHealth,
   CredentialWriteResult,
+  DeleteCredentialRequest,
   InventoryPage,
   LiveSession,
   LiveSessionErrorCode,
@@ -202,10 +203,23 @@ export class AccessIotClient extends AccessIotGateway {
     });
   }
 
-  async deleteCredential(credentialId: string): Promise<CredentialWriteResult> {
+  async deleteCredential(
+    credentialId: string,
+    request?: DeleteCredentialRequest,
+  ): Promise<CredentialWriteResult> {
     return this.writeCredential(`DELETE /v1/credentials/${credentialId}`, {
       method: 'DELETE',
       url: `/v1/credentials/${encodeURIComponent(credentialId)}`,
+      ...(request
+        ? {
+            data: {
+              siteId: request.siteId,
+              employeeNo: request.employeeNo,
+              scopes: request.scopes,
+            },
+            headers: { 'Content-Type': 'application/json' },
+          }
+        : {}),
     });
   }
 
