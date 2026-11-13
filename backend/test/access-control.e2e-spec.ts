@@ -1377,7 +1377,7 @@ describe('AccessControlController (e2e)', () => {
         });
 
         afterEach(() => {
-          delete process.env.ACCESS_SCOPED_SITES;
+          process.env.ACCESS_SCOPED_SITES = '';
           mocks.accessIot.getHealth.mockResolvedValue({ buildings: [] });
           catalog.invalidate();
         });

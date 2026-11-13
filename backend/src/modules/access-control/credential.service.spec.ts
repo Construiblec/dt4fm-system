@@ -286,6 +286,49 @@ describe('CredentialService', () => {
       expect(result.confirmedScopes).toEqual(['pedestrian', 'vehicular']);
     });
 
+    it('revocar otra vez una revocada sin confirmar reintenta el DELETE', async () => {
+      const { service, del, issue } = harness('ing');
+      const credential = await issue('both');
+      del.mockResolvedValueOnce({
+        credentialId: credential.id,
+        state: 'unreachable',
+        devices: [],
+        errorCode: 'gateway_unreachable',
+      });
+
+      const pendiente = await service.revoke(credential.id, 'manual');
+      expect(pendiente.syncState).toBe('pending');
+
+      const reintento = await service.revoke(credential.id, 'manual');
+
+      expect(del).toHaveBeenCalledTimes(2);
+      expect(reintento).toMatchObject({
+        syncState: 'synced',
+        confirmedScopes: [],
+      });
+      await service.revoke(credential.id, 'manual');
+      expect(del).toHaveBeenCalledTimes(2);
+    });
+
+    it('renovar el PIN tras un `pin_conflict` borra el aviso', async () => {
+      const { service, put, issue } = harness('ing');
+      const credential = await issue();
+      put.mockResolvedValueOnce({
+        credentialId: credential.id,
+        state: 'failed',
+        devices: [],
+        errorCode: 'pin_conflict',
+      });
+      await expect(service.changeScope(credential.id, 'both')).rejects.toThrow(
+        ConflictException,
+      );
+
+      const renovada = await service.regeneratePin(credential.id);
+
+      expect(renovada.syncError).toBeNull();
+      expect(renovada.syncState).toBe('synced');
+    });
+
     it('un cambio de fechas reescribe todos los scopes con el mismo PIN', async () => {
       const { service, put, issue } = harness('ing');
       const credential = await issue('both');

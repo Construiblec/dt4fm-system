@@ -131,8 +131,9 @@ export class CredentialService {
     return this.mutate(
       id,
       (credential) => {
+        // Ya revocada: solo se reintenta si el retiro aún no llegó a la puerta.
         if (credential.status === 'revoked') {
-          return false;
+          return credential.syncState !== 'synced';
         }
 
         credential.status = 'revoked';
@@ -292,7 +293,6 @@ export class CredentialService {
       }
 
       credential.scope = scope;
-      credential.syncError = null;
     });
 
     if (result.syncError === PIN_CONFLICT_ERROR && result.scope !== scope) {
@@ -514,8 +514,10 @@ export class CredentialService {
         return credential;
       }
 
+      // Cada cambio es una intención nueva: el error anterior ya no aplica.
       credential.syncState = 'pending';
       credential.syncAttempts = 0;
+      credential.syncError = null;
       await this.credentials.save(credential);
 
       if (!deferSync) {
@@ -634,6 +636,7 @@ export class CredentialService {
     let failed = false;
     let operated = false;
     let leftovers: DeviceScope[] = [];
+    let aborted = false;
 
     const toWrite = credential.rewritePending
       ? desired()
@@ -657,6 +660,7 @@ export class CredentialService {
         );
         credential.scope = toWireScope(confirmed) ?? credential.scope;
         credential.syncError = PIN_CONFLICT_ERROR;
+        aborted = true;
 
         if (result.devices.some((device) => device.state === 'written')) {
           leftovers = toWrite;
@@ -730,7 +734,7 @@ export class CredentialService {
         `Escritura fallida de ${credential.id}: ${credential.syncError ?? 'sin código'}`,
       );
     } else if (sameScopes(confirmed, target) && !credential.rewritePending) {
-      this.markSynced(credential);
+      this.markSynced(credential, aborted);
     } else {
       credential.syncState = 'pending';
     }
@@ -776,12 +780,12 @@ export class CredentialService {
     };
   }
 
-  private markSynced(credential: AccessCredential): void {
+  /** `keepError`: la ampliación abortada conserva `pin_conflict` para que el CAV vea por qué no se amplió. */
+  private markSynced(credential: AccessCredential, keepError = false): void {
     credential.syncState = 'synced';
     credential.lastSyncedAt = new Date();
 
-    // Un `pin_conflict` de ampliación se conserva para que el CAV vea por qué no se amplió.
-    if (credential.syncError !== PIN_CONFLICT_ERROR) {
+    if (!keepError) {
       credential.syncError = null;
     }
 

@@ -263,10 +263,20 @@ export class AuthorizationsService {
         await this.stays.save(stay);
       }
 
-      for (const viva of await this.credentialService.findLiveForGuest(
+      const vivas = await this.credentialService.findLiveForGuest(
         stay.hostawayReservationId,
-      )) {
+      );
+
+      for (const viva of vivas) {
         await this.credentialService.revoke(viva.id, CAV_SUSPENDED_REASON);
+      }
+
+      // «Reintentar» sobre un acceso ya revocado: vuelve a enviar el retiro si no llegó.
+      const revocada =
+        vivas.length === 0 ? await this.lastSuspended(stay) : null;
+
+      if (revocada && revocada.syncState !== 'synced') {
+        await this.credentialService.revoke(revocada.id, CAV_SUSPENDED_REASON);
       }
 
       this.logger.log(`Acceso revocado por el CAV en la estancia ${stay.id}`);

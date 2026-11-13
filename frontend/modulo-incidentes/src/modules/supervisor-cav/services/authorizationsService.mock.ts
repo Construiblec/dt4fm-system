@@ -56,6 +56,22 @@ let authorizations: Authorization[] = [
     accessLevel: null,
     accessRevoked: { at: daysFromNow(-1, "15:40:00"), by: "jperez" },
   },
+  {
+    // Vehicular desmarcado que la barrera no confirmó: deja ver «Reintentar».
+    id: "6b1f2c80-0d2a-4f1e-9a33-1c7e5b204a04",
+    guestName: "Luis Vera",
+    unitLabel: "Inglaterra · UI R105",
+    checkIn: daysFromNow(0),
+    checkOut: daysFromNow(2, "11:00:00"),
+    pinValidFrom: daysFromNow(0, "13:00:00"),
+    pinValidTo: daysFromNow(2, "16:00:00"),
+    accessLevel: "pedestrian",
+    accessRevoked: null,
+    desiredScopes: ["pedestrian"],
+    confirmedScopes: ["pedestrian", "vehicular"],
+    syncStatus: "failed",
+    syncError: "gateway_rejected",
+  },
 ];
 
 /** Una API real tarda; sin esto los estados de carga nunca se ven. */

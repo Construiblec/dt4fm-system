@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, CheckCircle2, Clock, Info } from "lucide-react";
 import { AppLayout } from "@/app/layout/AppLayout";
+import { AccessLevelCard } from "@/modules/supervisor-cav/components/AccessLevelCard";
 import { AccessLevelSheet } from "@/modules/supervisor-cav/components/AccessLevelSheet";
 import { RenewPinSheet } from "@/modules/supervisor-cav/components/RenewPinSheet";
 import {
@@ -10,10 +11,9 @@ import {
   updateAccessLevel,
 } from "@/modules/supervisor-cav/services/authorizationsService";
 import { getApiErrorMessage } from "@/modules/supervisor-cav/services/cavApi";
-import {
-  ACCESS_LEVEL_LABELS,
-  type AccessLevelChoice,
-  type Authorization,
+import type {
+  AccessLevelChoice,
+  Authorization,
 } from "@/modules/supervisor-cav/types/Authorization";
 import { formatDayMonthYearTime } from "@/shared/utils/dateUtils";
 
@@ -75,16 +75,42 @@ export const AuthorizationDetailPage = () => {
 
   const handleChangeAccessLevel = async (level: AccessLevelChoice) => {
     const response = await updateAccessLevel(id, level);
+    const applied = (response.data.syncStatus ?? "confirmed") === "confirmed";
     setAuthorization(response.data);
     setShowLevelModal(false);
     setActionError(null);
+    // Si las puertas aún no lo confirman, la tarjeta ya lo dice: no se anuncia como hecho.
     setActionMessage(
-      level === "none"
-        ? "Acceso revocado"
-        : authorization?.accessRevoked
-          ? "Acceso restaurado"
-          : null,
+      !applied
+        ? null
+        : level === "none"
+          ? "Acceso revocado"
+          : authorization?.accessRevoked
+            ? "Acceso restaurado"
+            : null,
     );
+  };
+
+  /** Reenvía el mismo nivel: el backend vuelve a aplicar lo que no llegó a las puertas. */
+  const handleRetry = async () => {
+    if (!authorization) return;
+
+    try {
+      setActionLoading(true);
+      setActionError(null);
+      setActionMessage(null);
+      const response = await updateAccessLevel(
+        id,
+        authorization.accessRevoked
+          ? "none"
+          : (authorization.accessLevel ?? "none"),
+      );
+      setAuthorization(response.data);
+    } catch (err) {
+      setActionError(getApiErrorMessage(err, "No se pudo reintentar"));
+    } finally {
+      setActionLoading(false);
+    }
   };
 
   const revoked = authorization?.accessRevoked ?? null;
@@ -144,46 +170,18 @@ export const AuthorizationDetailPage = () => {
                 </p>
               </div>
 
-              <div className="rounded-xl bg-white p-4 shadow-sm">
-                <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">
-                  Nivel de acceso
-                </p>
-                {revoked ? (
-                  <>
-                    <p className="mt-0.5 text-sm font-semibold text-red-700">
-                      Acceso revocado
-                    </p>
-                    <p className="mt-0.5 text-xs text-slate-500">
-                      Revocado
-                      {revoked.by ? ` por ${revoked.by}` : ""} ·{" "}
-                      {formatDayMonthYearTime(revoked.at)}
-                    </p>
-                  </>
-                ) : (
-                  <p className="mt-0.5 text-sm font-semibold text-slate-900">
-                    {authorization.accessLevel
-                      ? ACCESS_LEVEL_LABELS[authorization.accessLevel]
-                      : ""}
-                  </p>
-                )}
-                <button
-                  type="button"
-                  onClick={() => setShowLevelModal(true)}
-                  className={
-                    revoked
-                      ? "mt-3 w-full rounded-lg bg-brand px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-hover"
-                      : "mt-3 w-full rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-                  }
-                >
-                  {revoked ? "Restaurar acceso" : "Cambiar nivel de accesos"}
-                </button>
-              </div>
+              <AccessLevelCard
+                authorization={authorization}
+                onChange={() => setShowLevelModal(true)}
+                onRetry={() => void handleRetry()}
+                retrying={actionLoading}
+              />
 
               <div className="flex items-start gap-2 rounded-lg bg-slate-100 p-3 text-xs text-slate-500">
                 <Info className="h-4 w-4 shrink-0" />
                 <span>
                   {revoked
-                    ? "El huésped no puede abrir ninguna puerta. Al restaurar el acceso vuelve con el mismo PIN."
+                    ? `${(authorization.syncStatus ?? "confirmed") === "confirmed" ? "El huésped no puede abrir ninguna puerta." : "Cuando se confirme, el huésped no podrá abrir ninguna puerta."} Al restaurar el acceso vuelve con el mismo PIN.`
                     : "El PIN se genera al confirmarse la reserva y se guarda en la reserva de Hostaway."}
                 </span>
               </div>
