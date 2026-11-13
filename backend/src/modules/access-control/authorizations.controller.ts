@@ -19,7 +19,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { SessionRoleService } from '../../integrations/openmaint/session-role.service';
-import { AuthorizationsService } from './authorizations.service';
+import { accessLevelOf, AuthorizationsService } from './authorizations.service';
 import { requireCavIdentity } from './cav-session';
 import { ChangeAccessLevelDto } from './dto/change-access-level.dto';
 import { ListAuthorizationsQueryDto } from './dto/list-authorizations.dto';
@@ -141,9 +141,18 @@ export class AuthorizationsController {
   @ApiOperation({
     summary: 'Cambiar a qué habilita el PIN',
     description:
-      'El PIN **no** cambia. `none` revoca el acceso a todas las puertas; elegir un nivel sobre un acceso revocado lo restaura con el mismo PIN.',
+      'Recibe el estado final (`accessScopes`). El PIN **no** cambia. `[]` revoca el acceso a todas las puertas; elegir scopes sobre un acceso revocado lo restaura con el mismo PIN. La respuesta dice qué quedó confirmado en la puerta (`syncStatus`).',
   })
-  @ApiResponse({ status: 200, description: 'Nivel actualizado.' })
+  @ApiResponse({
+    status: 200,
+    description:
+      'Solicitud aplicada; `syncStatus` indica si ya está confirmada en la puerta o pendiente.',
+  })
+  @ApiResponse({
+    status: 409,
+    description:
+      'El PIN coincide con otro usuario de la entrada pedida: no se amplió el acceso.',
+  })
   @ApiResponse({
     status: 400,
     description:
@@ -160,15 +169,16 @@ export class AuthorizationsController {
       authorization,
       sessionToken,
     );
+    const level = accessLevelOf(dto);
 
     this.logger.log(
-      `Nivel de acceso: estancia=${stayId} nivel=${dto.accessLevel} usuario=${username}`,
+      `Nivel de acceso: estancia=${stayId} nivel=${level} usuario=${username}`,
     );
 
     return {
       data: await this.authorizations.changeAccessLevel(
         stayId,
-        dto.accessLevel,
+        level,
         sessionId,
         username,
       ),

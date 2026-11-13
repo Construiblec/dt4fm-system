@@ -4,6 +4,7 @@ import {
   AccessIotDevice,
   AccessIotHealth,
   CredentialWriteResult,
+  DeleteCredentialRequest,
   InventoryPage,
   LiveSessionRequest,
   LiveSessionResult,
@@ -29,9 +30,10 @@ export abstract class AccessIotGateway {
     request: PutCredentialRequest,
   ): Promise<CredentialWriteResult>;
 
-  /** Idempotente: borrar algo ya borrado es éxito, no `404`. */
+  /** Idempotente: borrar algo ya borrado es éxito. Sin `request` es el DELETE previo al contrato por scopes. */
   abstract deleteCredential(
     credentialId: string,
+    request?: DeleteCredentialRequest,
   ): Promise<CredentialWriteResult>;
 
   /** Lo que la VPS ve hoy en el dispositivo, no lo que cree recordar. */

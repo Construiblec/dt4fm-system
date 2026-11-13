@@ -239,11 +239,15 @@ describe('AuthorizationsService', () => {
         'accessRevoked',
         'checkIn',
         'checkOut',
+        'confirmedScopes',
+        'desiredScopes',
         'guestName',
         'id',
         'pinNotice',
         'pinValidFrom',
         'pinValidTo',
+        'syncError',
+        'syncStatus',
         'unitLabel',
       ]);
     });
@@ -498,6 +502,32 @@ describe('AuthorizationsService', () => {
         expect(revoke).toHaveBeenCalledWith('cred-2', CAV_SUSPENDED_REASON);
         expect(vista.accessLevel).toBeNull();
         expect(vista.accessRevoked?.by).toBe('cav.ana');
+      });
+
+      it('`none` sobre una estancia ya revocada reintenta el retiro que no llegó', async () => {
+        const { service, revoke } = harness({
+          stays: [stayWith({ accessSuspendedAt: new Date() })],
+          revoked: credentialWith({
+            id: 'cred-1',
+            status: 'revoked',
+            syncState: 'failed',
+          }),
+        });
+
+        await service.changeAccessLevel(STAY, 'none', 'sesion', 'cav.ana');
+
+        expect(revoke).toHaveBeenCalledWith('cred-1', CAV_SUSPENDED_REASON);
+      });
+
+      it('`none` sobre una revocada ya confirmada no envía nada', async () => {
+        const { service, revoke } = harness({
+          stays: [stayWith({ accessSuspendedAt: new Date() })],
+          revoked: credentialWith({ status: 'revoked', syncState: 'synced' }),
+        });
+
+        await service.changeAccessLevel(STAY, 'none', 'sesion', 'cav.ana');
+
+        expect(revoke).not.toHaveBeenCalled();
       });
 
       it('un nivel sobre una estancia revocada reactiva la misma credencial', async () => {

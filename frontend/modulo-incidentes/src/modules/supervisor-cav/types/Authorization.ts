@@ -7,8 +7,23 @@
  */
 export type AccessLevel = "pedestrian" | "vehicular" | "both";
 
-/** Lo que se envía al backend: `none` revoca el acceso a todas las puertas. */
+/** Lo que elige el supervisor: `none` revoca el acceso a todas las puertas. */
 export type AccessLevelChoice = AccessLevel | "none";
+
+/** Cada puerta por separado: peatonal (incluye lavadoras) y vehicular. */
+export type AccessScope = "pedestrian" | "vehicular";
+
+/** Estado final que se envía al backend. */
+export const ACCESS_SCOPES_BY_LEVEL: Record<AccessLevelChoice, AccessScope[]> =
+  {
+    pedestrian: ["pedestrian"],
+    vehicular: ["vehicular"],
+    both: ["pedestrian", "vehicular"],
+    none: [],
+  };
+
+/** `confirmed`: las puertas ya reflejan lo pedido; `pending`/`failed`, todavía no. */
+export type AccessSyncStatus = "confirmed" | "pending" | "failed";
 
 export const ACCESS_LEVEL_LABELS: Record<AccessLevel, string> = {
   pedestrian: "Acceso peatonal",
@@ -32,6 +47,12 @@ export type Authorization = {
   pinValidTo: string;
   /** `null` si el CAV revocó el acceso. */
   accessLevel: AccessLevel | null;
+  /** Lo pedido y lo confirmado en las puertas; difieren mientras `syncStatus` no es `confirmed`. */
+  desiredScopes?: AccessScope[];
+  confirmedScopes?: AccessScope[];
+  syncStatus?: AccessSyncStatus;
+  /** Código del último fallo, p. ej. `pin_conflict`. */
+  syncError?: string | null;
   /** Quién y cuándo lo revocó; `null` si el acceso está vigente. */
   accessRevoked: { at: string; by: string | null } | null;
   /** Si el PIN quedó guardado en la reserva de Hostaway; `not_applicable` si está apagado o revocado. */

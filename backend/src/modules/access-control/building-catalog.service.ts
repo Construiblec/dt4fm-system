@@ -1,6 +1,10 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { AccessIotGateway } from './access-iot.gateway';
-import { AccessIotBuilding, AccessIotDevice } from './access-iot.types';
+import {
+  AccessIotBuilding,
+  AccessIotDevice,
+  DeviceScope,
+} from './access-iot.types';
 
 const CACHE_TTL_MS = 10 * 60 * 1000;
 
@@ -16,6 +20,8 @@ export class BuildingCatalogService implements OnModuleInit {
   private cachedAt = 0;
   private devicesCache: AccessIotDevice[] | null = null;
   private devicesCachedAt = 0;
+  private sitesCache: Map<number, string> | null = null;
+  private sitesCachedAt = 0;
 
   constructor(private readonly iot: AccessIotGateway) {}
 
@@ -61,6 +67,8 @@ export class BuildingCatalogService implements OnModuleInit {
     this.cachedAt = 0;
     this.devicesCache = null;
     this.devicesCachedAt = 0;
+    this.sitesCache = null;
+    this.sitesCachedAt = 0;
   }
 
   /**
@@ -90,6 +98,53 @@ export class BuildingCatalogService implements OnModuleInit {
 
       throw error;
     }
+  }
+
+  /** `buildingId → siteId` según `/v1/health`, el único endpoint que publica el `siteId`. */
+  async siteIds(): Promise<Map<number, string>> {
+    if (this.sitesCache && Date.now() - this.sitesCachedAt < CACHE_TTL_MS) {
+      return this.sitesCache;
+    }
+
+    try {
+      const { buildings } = await this.iot.getHealth();
+      this.sitesCache = new Map(
+        buildings
+          .filter((building) => !!building.siteId)
+          .map((building) => [building.buildingId, building.siteId!]),
+      );
+      this.sitesCachedAt = Date.now();
+      return this.sitesCache;
+    } catch (error) {
+      if (this.sitesCache) {
+        this.logger.warn(
+          `Salud de la VPS no disponible; se sirven los sitios cacheados: ${this.describe(error)}`,
+        );
+        return this.sitesCache;
+      }
+
+      throw error;
+    }
+  }
+
+  async siteIdOf(buildingId: number): Promise<string | null> {
+    return (await this.siteIds()).get(buildingId) ?? null;
+  }
+
+  /** Scopes que tiene el edificio; `null` si el catálogo no lo conoce. */
+  async buildingScopes(buildingId: number): Promise<DeviceScope[] | null> {
+    const building = (await this.list()).find(
+      (item) => item.buildingId === buildingId,
+    );
+
+    return building ? building.scopes : null;
+  }
+
+  /** `deviceId → scope`, para leer por scope un resultado `partial`. */
+  async deviceScopes(): Promise<Map<string, DeviceScope>> {
+    return new Map(
+      (await this.devices()).map((device) => [device.deviceId, device.scope]),
+    );
   }
 
   async isCovered(buildingId: number): Promise<boolean> {

@@ -1,18 +1,37 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsIn } from 'class-validator';
+import { ApiPropertyOptional } from '@nestjs/swagger';
+import {
+  ArrayMaxSize,
+  ArrayUnique,
+  IsArray,
+  IsIn,
+  IsOptional,
+} from 'class-validator';
 
 /**
- * El equivalente de `ChangeScopeDto` para la pantalla del Supervisor CAV, que
- * llama al campo `accessLevel` en vez de `scope`. Son el `CredentialScope` más
- * `none`, que revoca todas las puertas.
+ * Estado final que pide el Supervisor CAV. `accessScopes` es el formato nuevo;
+ * `accessLevel` se mantiene mientras el frontend anterior siga desplegado.
  */
 export class ChangeAccessLevelDto {
-  @ApiProperty({
+  @ApiPropertyOptional({
     description:
-      'A qué habilita el PIN. `none` lo retira de todas las puertas; un nivel sobre un acceso revocado lo restaura con el mismo PIN.',
-    enum: ['pedestrian', 'vehicular', 'both', 'none'],
-    example: 'both',
+      'Scopes finales. `[]` retira el PIN de todas las puertas; uno o dos sobre un acceso revocado lo restauran con el mismo PIN.',
+    type: [String],
+    enum: ['pedestrian', 'vehicular'],
+    example: ['pedestrian'],
   })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(2)
+  @ArrayUnique()
+  @IsIn(['pedestrian', 'vehicular'], { each: true })
+  accessScopes?: ('pedestrian' | 'vehicular')[];
+
+  @ApiPropertyOptional({
+    description: 'Formato anterior, equivalente a `accessScopes`.',
+    enum: ['pedestrian', 'vehicular', 'both', 'none'],
+    deprecated: true,
+  })
+  @IsOptional()
   @IsIn(['pedestrian', 'vehicular', 'both', 'none'])
-  accessLevel: 'pedestrian' | 'vehicular' | 'both' | 'none';
+  accessLevel?: 'pedestrian' | 'vehicular' | 'both' | 'none';
 }
