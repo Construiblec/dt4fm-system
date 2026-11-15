@@ -1,0 +1,20 @@
+﻿area;guia_area;nombre_item;descripcion_criterio
+Dormitorios;Observa tendido de camas, polvo en superficies, ventanas y cortinas.;Tendido de camas;Sábanas estiradas sin arrugas, almohadas alineadas y cubrecama limpio.
+Dormitorios;Observa tendido de camas, polvo en superficies, ventanas y cortinas.;Polvo en superficies;Pasa la mano por veladores, repisas, cabecera y marcos.
+Dormitorios;Observa tendido de camas, polvo en superficies, ventanas y cortinas.;Ventanas y cortinas;Vidrios sin marcas, rieles sin polvo, cortinas colgadas y sin manchas.
+Cocina;Revisa electrodomésticos, veladores, salpicaderos, grifería y suministros.;Electrodomésticos;Refrigeradora, microondas, licuadora y cocina limpios por dentro y por fuera, y operativos.
+Cocina;Revisa electrodomésticos, veladores, salpicaderos, grifería y suministros.;Mesones y mobiliario;Superficies de trabajo, comedor auxiliar y gabinetes libres de migas, líquidos o grasa.
+Cocina;Revisa electrodomésticos, veladores, salpicaderos, grifería y suministros.;Salpicaderos;Pared posterior a la estufa y lavaplatos sin salpicaduras de grasa ni manchas de agua.
+Cocina;Revisa electrodomésticos, veladores, salpicaderos, grifería y suministros.;Grifería y fregadero;Lavaplatos limpio, sin restos en el desagüe, grifería brillante sin sarro ni fugas.
+Cocina;Revisa electrodomésticos, veladores, salpicaderos, grifería y suministros.;Suministros (sal, azúcar y aceite);Verificación y reposición de sal, azúcar y aceite en envases limpios y con nivel adecuado.
+Baños;Revisión de lavabos, inodoros, duchas, pisos, toallas y suministros (papel higiénico y jabón).;Lavabos y espejos;Lavamanos, grifería y espejo sin manchas de pasta dental, marcas de agua ni cabellos.
+Baños;Revisión de lavabos, inodoros, duchas, pisos, toallas y suministros (papel higiénico y jabón).;Inodoros;Taza, asiento y base desinfectados, sin manchas, sin sarro y con descarga funcional.
+Baños;Revisión de lavabos, inodoros, duchas, pisos, toallas y suministros (papel higiénico y jabón).;Duchas;Paredes, cortina o vidrio templado, grifería y drenaje libres de jabón acumulado, sarro o cabellos.
+Baños;Revisión de lavabos, inodoros, duchas, pisos, toallas y suministros (papel higiénico y jabón).;Pisos de baño;Piso barrido y trapeado, seco, sin cabellos ni manchas en las esquinas o detrás del inodoro.
+Baños;Revisión de lavabos, inodoros, duchas, pisos, toallas y suministros (papel higiénico y jabón).;Toallas y suministros;"Toallas limpias y bien dobladas; reposición completa de papel higiénico y jabón."
+Áreas restantes;Revisión de pisos, muebles, iluminación, armarios, televisión, decoración, etc.;Pisos generales;Pisos de sala, comedor y pasillos aspirados/trapeados, sin polvo ni manchas debajo de muebles.
+Áreas restantes;Revisión de pisos, muebles, iluminación, armarios, televisión, decoración, etc.;Muebles y armarios;"Sofás, sillas y mesas sin manchas ni polvo; interior de armarios limpio, vacío y con colgadores."
+Áreas restantes;Revisión de pisos, muebles, iluminación, armarios, televisión, decoración, etc.;Iluminación;Todas las luminarias, focos y lámparas encendiendo correctamente y libres de polvo o insectos.
+Áreas restantes;Revisión de pisos, muebles, iluminación, armarios, televisión, decoración, etc.;Televisión y decoración;Pantalla de TV sin huellas, control remoto funcional con baterías, cuadros y adornos alineados y sin polvo.
+Revisión general;Verificación final de limpieza profunda y estado integral de la unidad antes de la salida.;Ausencia de suciedad general;Inspección panorámica de techos, esquinas, puertas y zócalos sin telarañas, basura ni olores extraños.
+Revisión general;Verificación final de limpieza profunda y estado integral de la unidad antes de la salida.;Ausencia de manchas en unidad;Verificación final de paredes, tapices, cortinas y lencería libres de manchas visibles al entregar.
