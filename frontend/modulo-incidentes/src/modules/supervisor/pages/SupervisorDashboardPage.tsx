@@ -1,32 +1,20 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { AppLayout } from "@/app/layout/AppLayout";
 import { AppHeader } from "@/shared/components/AppHeader";
 import { useSupervisorTasks } from "@/modules/supervisor/hooks/useSupervisorTasks";
 import { SupervisorTaskCard } from "@/modules/supervisor/components/SupervisorTaskCard";
 import { SupervisorFilters } from "@/modules/supervisor/components/SupervisorFilters";
 import { FloatingReportButton } from "@/modules/incidentes/components/FloatingReportButton";
-import { ReviewModal } from "@/modules/supervisor/components/ReviewModal";
-import type { CleaningTask } from "@/modules/incidentes/types/CleaningTask";
 import { ClipboardList } from "lucide-react";
 
 export const SupervisorDashboardPage = () => {
   const { tasks, loading, error, total, filters, load, applyFilters, clearFilters } =
     useSupervisorTasks();
-  const [taskToReview, setTaskToReview] = useState<CleaningTask | null>(null);
 
   useEffect(() => {
     void load({});
   }, [load]);
 
-  const handleReviewSuccess = (taskId: number, approved: boolean) => {
-    // Actualiza la fase localmente sin refetch para evitar parpadeo
-    void load({
-      phase: filters.phase || undefined,
-      date: filters.date || undefined,
-      employeeId: filters.employeeId ? Number(filters.employeeId) : undefined,
-    });
-    console.info(`Tarea ${taskId} ${approved ? "aprobada" : "rechazada"}`);
-  };
 
   const pendingReview = tasks.filter((t) => t.phase === "Completed").length;
 
@@ -94,7 +82,6 @@ export const SupervisorDashboardPage = () => {
                   <SupervisorTaskCard
                     key={task.id}
                     task={task}
-                    onReview={setTaskToReview}
                   />
                 ))}
               </div>
@@ -105,14 +92,6 @@ export const SupervisorDashboardPage = () => {
         <FloatingReportButton />
       </main>
 
-      {/* Review modal */}
-      {taskToReview && (
-        <ReviewModal
-          task={taskToReview}
-          onClose={() => setTaskToReview(null)}
-          onSuccess={handleReviewSuccess}
-        />
-      )}
     </AppLayout>
   );
 };

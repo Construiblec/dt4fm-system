@@ -16,6 +16,21 @@ const DEFAULT_FILTERS: Filters = {
   employeeId: "",
 };
 
+/** Cuántas limpiezas trae el panel. */
+const PANEL_LIMIT = 200;
+
+/**
+ * Completed y Reviewed, salvo las `Completed` anteriores al corte de la
+ * supervisión: quedan así, sin supervisión, y no se listan.
+ */
+export const isSupervisable = (task: CleaningTask) => {
+  if (task.phase === "Reviewed") return true;
+  if (task.phase !== "Completed") return false;
+  // Un backend anterior no manda estos campos: entonces se lista como antes.
+  if (task.supervisionEligible === undefined) return true;
+  return Boolean(task.supervision) || task.supervisionEligible;
+};
+
 export const useSupervisorTasks = () => {
   const [tasks, setTasks] = useState<CleaningTask[]>([]);
   const [loading, setLoading] = useState(false);
@@ -27,9 +42,14 @@ export const useSupervisorTasks = () => {
     try {
       setLoading(true);
       setError(null);
-      const response = await fetchAllCleaningTasks(params);
-      const allowedPhases = ["Completed", "Reviewed"];
-      const filteredData = response.data.filter(t => allowedPhases.includes(t.phase));
+      // Las recién creadas primero y con margen: con 50 sin orden, las
+      // limpiezas nuevas podían quedar fuera del panel.
+      const response = await fetchAllCleaningTasks({
+        limit: PANEL_LIMIT,
+        sort: "newest",
+        ...params,
+      });
+      const filteredData = response.data.filter(isSupervisable);
       // Por revisar primero y revisadas al final; en cada sección, la más antigua arriba.
       setTasks(sortTasksForSupervision(filteredData));
       setTotal(filteredData.length);
