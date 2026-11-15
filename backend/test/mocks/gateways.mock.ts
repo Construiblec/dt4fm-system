@@ -44,6 +44,54 @@ export type CleaningTasksOpenmaintServiceMock = ReturnType<
   typeof createCleaningTasksOpenmaintServiceMock
 >;
 
+// ─── CleaningSupervisionsOpenmaintService ───────────────────────────────────
+// Ids del lookup CleaningSupervisionStatus como en openMAINT (14/11/2026).
+
+export const SUPERVISION_PHASE_IDS = {
+  Draft: 11851473,
+  InCorrection: 11851493,
+  Fixed: 11851499,
+  Confirmed: 11851513,
+  Approved: 11851532,
+  Cancelled: 11851548,
+} as const;
+
+export const createCleaningSupervisionsOpenmaintServiceMock = () => ({
+  getPhaseIds: jest
+    .fn()
+    .mockResolvedValue(new Map(Object.entries(SUPERVISION_PHASE_IDS))),
+  phaseId: jest.fn((phase: keyof typeof SUPERVISION_PHASE_IDS) =>
+    Promise.resolve(SUPERVISION_PHASE_IDS[phase]),
+  ),
+  getSupervision: jest.fn().mockResolvedValue(null),
+  findByTask: jest.fn().mockResolvedValue([]),
+  findByUnit: jest.fn().mockResolvedValue([]),
+  findByCorrector: jest.fn().mockResolvedValue([]),
+  findRecent: jest.fn().mockResolvedValue([]),
+  createSupervision: jest.fn().mockResolvedValue({ _id: 5000 }),
+  updateSupervision: jest.fn().mockResolvedValue(null),
+  listFindings: jest.fn().mockResolvedValue([]),
+  createFinding: jest.fn().mockResolvedValue({ _id: 6000 }),
+  updateFinding: jest.fn().mockResolvedValue(null),
+  deleteFinding: jest.fn().mockResolvedValue(undefined),
+  listFindingAttachments: jest.fn().mockResolvedValue([]),
+  uploadFindingAttachment: jest
+    .fn()
+    .mockResolvedValue({ _id: 'att-nov-1', name: 'nov_1.jpg' }),
+  deleteFindingAttachment: jest.fn().mockResolvedValue(undefined),
+  downloadFindingAttachment: jest.fn().mockResolvedValue({
+    data: Buffer.from('mock'),
+    contentType: 'image/jpeg',
+    fileName: 'nov_1.jpg',
+  }),
+  findTemplateCard: jest.fn().mockResolvedValue(null),
+  findTasksByUnit: jest.fn().mockResolvedValue([]),
+});
+
+export type CleaningSupervisionsOpenmaintServiceMock = ReturnType<
+  typeof createCleaningSupervisionsOpenmaintServiceMock
+>;
+
 // ─── PreventiveMaintenanceOpenmaintService ──────────────────────────────────
 // Ojo: esta misma clase se inyecta también en MaintenanceSupervisionModule
 // como provider propio (instancia separada en tiempo de ejecución real, pero
@@ -326,7 +374,10 @@ export const MAINT_CATEGORIES = [
     id: 2,
     code: 'LIM',
     name: 'Limpieza',
-    subcategories: [{ id: 21, name: 'Manchas', isOther: false }],
+    subcategories: [
+      { id: 21, name: 'Manchas', isOther: false },
+      { id: 29, name: 'Otro', isOther: true },
+    ],
   },
   {
     id: 1,

@@ -35,6 +35,7 @@ import {
   isCoordinatorRole,
   isSupervisorOrCoordinatorRole,
 } from './constants/roles.constants';
+import { isSupervisionPanelRole } from './constants/supervision.constants';
 import {
   CleaningTasksService,
   isSupervisorRole,
@@ -49,7 +50,6 @@ import { GetCleaningTasksQueryDto } from './dto/get-cleaning-tasks-query.dto';
 import { GetCheckoutsQueryDto } from './dto/get-checkouts-query.dto';
 import { PauseTaskDto } from './dto/pause-task.dto';
 import { ReopenTaskDto } from './dto/reopen-task.dto';
-import { ReviewTaskDto } from './dto/review-task.dto';
 import { UpdateCleaningTaskDto } from './dto/update-cleaning-task.dto';
 import { UploadAttachmentDto } from './dto/upload-attachment.dto';
 
@@ -397,7 +397,16 @@ export class CleaningTasksController {
     @Headers('x-session-token') sessionToken: string,
   ) {
     this.requireSessionToken(sessionToken);
-    await this.requireCoordinatorRole(sessionToken);
+    // SupervisorLimpieza también: elige al Corrector de una supervisión.
+    const role = await this.sessionRoleService.resolveRole(sessionToken);
+    if (
+      !isCoordinatorRole(role ?? undefined) &&
+      !isSupervisionPanelRole(role)
+    ) {
+      throw new ForbiddenException(
+        'El rol no tiene acceso a la lista de empleados de limpieza',
+      );
+    }
     return this.cleaningTasksService.listCleaningEmployees();
   }
 
@@ -668,42 +677,6 @@ export class CleaningTasksController {
     return this.cleaningTasksService.completeTask(
       taskId,
       employeeId,
-      dto,
-      sessionToken,
-    );
-  }
-
-  /**
-   * PATCH /cleaning-tasks/:taskId/review
-   * Transición Completed → Reviewed (o de vuelta a Assigned si rejected).
-   * Solo para SuperUser/SupervisorLimpieza.
-   */
-  @Patch(':taskId/review')
-  @ApiOperation({
-    summary: 'Revisar una tarea de limpieza completada (Aprobar/Rechazar)',
-  })
-  @ApiParam({ name: 'taskId', description: 'ID de la tarea', type: 'integer' })
-  @ApiHeader({
-    name: 'x-session-token',
-    description: 'Token de sesión del supervisor',
-    required: true,
-  })
-  @ApiResponse({
-    status: 200,
-    description:
-      'Revisión registrada. La tarea pasa a Reviewed o retorna a Assigned.',
-  })
-  async reviewTask(
-    @Param('taskId', ParseIntPipe) taskId: number,
-    @Body(new ValidationPipe({ transform: true })) dto: ReviewTaskDto,
-    @Headers('x-session-token') sessionToken: string,
-  ) {
-    this.requireSessionToken(sessionToken);
-    const role = await this.requireSupervisorRole(sessionToken);
-
-    return this.cleaningTasksService.reviewTask(
-      taskId,
-      role,
       dto,
       sessionToken,
     );
