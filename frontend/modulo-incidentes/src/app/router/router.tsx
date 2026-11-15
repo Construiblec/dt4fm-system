@@ -19,6 +19,10 @@ import { MyReportsPage } from "@/modules/incidentes/pages/MyReportsPage";
 import { MyReportDetailPage } from "@/modules/incidentes/pages/MyReportDetailPage";
 import { SupervisorDashboardPage } from "@/modules/supervisor/pages/SupervisorDashboardPage";
 import { SupervisorTaskDetailPage } from "@/modules/supervisor/pages/SupervisorTaskDetailPage";
+import { SupervisionStartPage } from "@/modules/supervisor/pages/SupervisionStartPage";
+import { SupervisionChecklistPage } from "@/modules/supervisor/pages/SupervisionChecklistPage";
+import { SupervisionAssignPage } from "@/modules/supervisor/pages/SupervisionAssignPage";
+import { SupervisionSummaryPage } from "@/modules/supervisor/pages/SupervisionSummaryPage";
 import { AsistenteSLDashboardPage } from "@/modules/asistente-sl/pages/AsistenteSLDashboardPage";
 import { AsistenteSLTaskDetailPage } from "@/modules/asistente-sl/pages/AsistenteSLTaskDetailPage";
 import { MaintenanceSupervisorDashboardPage } from "@/modules/supervisor-mantenimiento/pages/MaintenanceSupervisorDashboardPage";
@@ -97,6 +101,19 @@ export const router = createBrowserRouter([
       </RequireRole>
     ),
   },
+  // ── Supervisión posterior de limpieza ──────────────────────────────────────
+  // Solo SupervisorLimpieza: AsistenteSL y SuperUser no tienen este panel.
+  ...[
+    { path: "/supervision/tarea/:taskId", element: <SupervisionStartPage /> },
+    { path: "/supervision/:id/checklist", element: <SupervisionChecklistPage /> },
+    { path: "/supervision/:id/asignar", element: <SupervisionAssignPage /> },
+    { path: "/supervision/:id", element: <SupervisionSummaryPage /> },
+  ].map(({ path, element }) => ({
+    path,
+    element: (
+      <RequireRole roles={["SupervisorLimpieza"]}>{element}</RequireRole>
+    ),
+  })),
   // ── Asistente de Supervisión de Limpiezas ─────────────────────────────────
   {
     path: "/asistente-sl",
