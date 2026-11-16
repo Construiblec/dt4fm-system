@@ -1,23 +1,14 @@
-import { useEffect } from "react";
 import { AppLayout } from "@/app/layout/AppLayout";
 import { AppHeader } from "@/shared/components/AppHeader";
-import {
-  PANEL_WINDOW_DAYS,
-  useSupervisorTasks,
-} from "@/modules/supervisor/hooks/useSupervisorTasks";
+import { useSupervisorTasks } from "@/modules/supervisor/hooks/useSupervisorTasks";
 import { SupervisorFilters } from "@/modules/supervisor/components/SupervisorFilters";
 import { FloatingReportButton } from "@/modules/incidentes/components/FloatingReportButton";
 import { ClipboardList } from "lucide-react";
 import { AsistenteSLTaskCard } from "@/modules/asistente-sl/components/AsistenteSLTaskCard";
 
 export const AsistenteSLDashboardPage = () => {
-  const { tasks, loading, error, total, filters, load, applyFilters, clearFilters } =
+  const { tasks, loading, error, total, filters, applyFilters, clearFilters } =
     useSupervisorTasks();
-
-  useEffect(() => {
-    void load({});
-  }, [load]);
-
 
   const pendingReview = tasks.filter((t) => t.phase === "Completed").length;
 
@@ -32,9 +23,6 @@ export const AsistenteSLDashboardPage = () => {
             <h1 className="text-center text-2xl font-bold text-slate-900">
               Asistente de Supervisión de Limpiezas
             </h1>
-            <p className="-mt-3 text-center text-xs text-slate-500">
-              Limpiezas terminadas en los últimos {PANEL_WINDOW_DAYS} días
-            </p>
 
             {/* Stats bar */}
             <div className="flex gap-3">
@@ -51,7 +39,9 @@ export const AsistenteSLDashboardPage = () => {
             {/* Filters */}
             <SupervisorFilters
               phase={filters.phase}
+              date={filters.date}
               onPhaseChange={(phase) => applyFilters({ phase })}
+              onDateChange={(date) => applyFilters({ date })}
               onClear={clearFilters}
             />
 
@@ -74,8 +64,7 @@ export const AsistenteSLDashboardPage = () => {
               <div className="flex flex-col items-center gap-3 rounded-xl bg-white p-8 shadow-sm text-center">
                 <ClipboardList className="h-10 w-10 text-slate-300" />
                 <p className="text-sm text-slate-400">
-                  No hay limpiezas terminadas en los últimos {PANEL_WINDOW_DAYS}{" "}
-                  días
+                  No hay tareas con los filtros actuales
                 </p>
               </div>
             )}

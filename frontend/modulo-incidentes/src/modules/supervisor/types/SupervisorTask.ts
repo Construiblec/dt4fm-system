@@ -3,8 +3,10 @@ import type { SupervisionSummary } from "@/modules/supervisor/types/Supervision"
 
 export type GetAllCleaningTasksParams = {
   phase?: string;
-  /** Solo las que terminaron después de este instante (ISO), por fecha de fin. */
+  /** Terminaron desde este instante, incluido (ISO), por fecha de fin. */
   endedFrom?: string;
+  /** Terminaron antes de este instante, excluido (ISO). Con `endedFrom` es un día. */
+  endedTo?: string;
   employeeId?: number;
   limit?: number;
   offset?: number;
