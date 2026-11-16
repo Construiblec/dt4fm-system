@@ -99,8 +99,8 @@ const timeOf = (iso: string | null | undefined): number | null => {
  * Reglas que vienen del plan (revisión del 14/11/2026):
  * - El borrador nace al finalizar la limpieza. Abrir una limpieza `Completed`
  *   desde el panel lo recupera (o lo crea) si tiene fecha de fin y nadie
- *   limpió la unidad después. No hay fecha de corte: el panel solo lista los
- *   últimos 7 días, pero el backend no limita.
+ *   limpió la unidad después. No hay fecha de corte: el panel lista por día de
+ *   finalización (hoy por defecto), pero el backend no limita por fecha.
  * - Crear un borrador anula los borradores anteriores de la misma unidad.
  * - Panel y acciones de supervisión: solo `SupervisorLimpieza`. Coordinación
  *   lee. El operario ve y resuelve solo lo suyo en `InCorrection`.

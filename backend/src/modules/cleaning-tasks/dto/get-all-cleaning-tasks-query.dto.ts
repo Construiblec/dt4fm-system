@@ -55,15 +55,28 @@ export class GetAllCleaningTasksQueryDto {
   @IsString()
   date?: string;
 
-  /** Solo las que terminaron después de este instante (ActualEndTime). */
+  /** Solo las que terminaron desde este instante, incluido (ActualEndTime). */
   @ApiPropertyOptional({
     description:
-      'Solo limpiezas con fecha de fin posterior a este instante (ISO 8601)',
-    example: '2026-11-09T13:00:00.000Z',
+      'Solo limpiezas con fecha de fin desde este instante, incluido (ISO 8601)',
+    example: '2026-11-16T05:00:00.000Z',
   })
   @IsOptional()
   @IsISO8601()
   endedFrom?: string;
+
+  /**
+   * Solo las que terminaron antes de este instante, excluido. Con `endedFrom`
+   * forma el rango [desde, hasta): el día completo es de medianoche a medianoche.
+   */
+  @ApiPropertyOptional({
+    description:
+      'Solo limpiezas con fecha de fin antes de este instante, excluido (ISO 8601)',
+    example: '2026-11-17T05:00:00.000Z',
+  })
+  @IsOptional()
+  @IsISO8601()
+  endedTo?: string;
 
   /** Filtrar por ID de empleado */
   @ApiPropertyOptional({

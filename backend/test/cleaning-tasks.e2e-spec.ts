@@ -58,27 +58,31 @@ describe('CleaningTasksController (e2e)', () => {
         .expect(403);
     });
 
-    it('reenvía endedFrom (los últimos 7 días del panel de supervisión)', async () => {
-      const endedFrom = '2026-11-09T13:00:00.000Z';
+    it('reenvía el día de finalización (endedFrom y endedTo) del panel de supervisión', async () => {
+      const endedFrom = '2026-11-16T05:00:00.000Z';
+      const endedTo = '2026-11-17T05:00:00.000Z';
 
       await request(app.getHttpServer())
-        .get(`/cleaning-tasks/all?endedFrom=${endedFrom}`)
+        .get(`/cleaning-tasks/all?endedFrom=${endedFrom}&endedTo=${endedTo}`)
         .set('x-session-token', 'mock-session-token')
         .expect(200);
 
       expect(mocks.cleaningTasksOpenmaint.getAllTasks).toHaveBeenCalledWith(
-        expect.objectContaining({ endedFrom }),
+        expect.objectContaining({ endedFrom, endedTo }),
       );
     });
 
-    it('400 si endedFrom no es una fecha ISO', async () => {
-      await request(app.getHttpServer())
-        .get('/cleaning-tasks/all?endedFrom=ayer')
-        .set('x-session-token', 'mock-session-token')
-        .expect(400);
+    it.each(['endedFrom', 'endedTo'])(
+      '400 si %s no es una fecha ISO',
+      async (param) => {
+        await request(app.getHttpServer())
+          .get(`/cleaning-tasks/all?${param}=ayer`)
+          .set('x-session-token', 'mock-session-token')
+          .expect(400);
 
-      expect(mocks.cleaningTasksOpenmaint.getAllTasks).not.toHaveBeenCalled();
-    });
+        expect(mocks.cleaningTasksOpenmaint.getAllTasks).not.toHaveBeenCalled();
+      },
+    );
 
     // BP-003: antes el controller solo exigía que x-role viniera presente, y
     // el VALOR no se validaba contra la sesión de openMAINT — bastaba con

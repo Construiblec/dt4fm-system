@@ -90,7 +90,7 @@ La API (`resolvedBySupervisor: boolean`) y el frontend no leen ni escriben nada 
 
 **Sin fecha de corte.** Ya no existe la variable `SUPERVISION_START_DATE`: cualquier `Completed` sin supervisión que se abra, también las anteriores a esta función, crea su borrador. Solo se crea al abrirla, nunca en bloque.
 
-**Qué lista el panel.** `GET /cleaning-tasks/all?endedFrom=<hace 7 días>` filtra por `ActualEndTime`, así que el panel de SupervisorLimpieza (y el de AsistenteSL, que comparte listado) solo muestra lo terminado en los últimos 7 días. Es una ventana móvil, sin selector de fecha. El backend **no** limita `POST /cleaning-supervisions` a esa ventana: una limpieza más vieja se puede abrir por enlace directo o por un aviso antiguo y crea su borrador. Las supervisiones abiertas de más de 7 días salen de la lista y se siguen abriendo desde el aviso push (`/supervision/:id`).
+**Qué lista el panel.** El panel de SupervisorLimpieza (y el de AsistenteSL, que comparte listado) abre con las limpiezas **terminadas hoy** y un selector de fecha para cambiar de día; la goma vuelve a hoy y a todas las fases, y si se borra la fecha se ven todas (las 200 más recientes). Pide `GET /cleaning-tasks/all?endedFrom=…&endedTo=…`, que filtra por `ActualEndTime`. El día lo corta el navegador en hora de Ecuador (UTC−5): de las 00:00 de ese día a las 00:00 del siguiente. El backend **no** limita `POST /cleaning-supervisions` por fecha: una limpieza de otro día se puede abrir por enlace directo o por un aviso y crea su borrador. Una supervisión abierta (en corrección o resuelta) de otro día no sale en la lista de hoy: se busca cambiando el día, o se abre desde el aviso push (`/supervision/:id`).
 
 **Reabrir.** Primero se anula la supervisión abierta (no se borra: conserva las novedades y las fotos) y después se reabre la limpieza. Si la anulación falla, la reapertura falla entera, para que la siguiente finalización no reutilice las novedades viejas.
 
@@ -132,7 +132,7 @@ Todos los endpoints llevan `x-session-token`. La descarga también acepta `?toke
 
 **Cambios en `/cleaning-tasks`:**
 - **Retirados:** se quitó `PATCH /:taskId/review` (el método `reviewTask` queda sin ruta) y `canReview` ahora siempre es `false`.
-- **`GET /all`:** cada limpieza trae `supervision` (la última, o `null`). Acepta `endedFrom` (ISO 8601): solo las que tienen `ActualEndTime` posterior. Ya no trae `supervisionEligible`.
+- **`GET /all`:** cada limpieza trae `supervision` (la última, o `null`). Acepta `endedFrom` (incluido) y `endedTo` (excluido), ambos ISO 8601: solo las que tienen `ActualEndTime` en ese rango. Ya no trae `supervisionEligible`.
 - **Detalle de supervisión y coordinación:** trae `supervision`.
 - **`GET /cleaning-supervisions/:id`:** el `task` trae también `plannedStartTime`, `actualStartTime`, `actualEndTime`, `executionTime` y `checkoutDate`, para mostrar inicio, fin, duración y retraso en las pantallas de supervisión.
 - **`GET /employees`:** también lo puede usar SupervisorLimpieza.

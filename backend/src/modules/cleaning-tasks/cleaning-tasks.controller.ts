@@ -95,6 +95,7 @@ export class CleaningTasksController {
       phase: query.phase,
       date: query.date,
       endedFrom: query.endedFrom,
+      endedTo: query.endedTo,
       employeeId: query.employeeId,
       sort: query.sort,
     });

@@ -523,6 +523,7 @@ export class CleaningTasksService {
       phase?: string;
       date?: string;
       endedFrom?: string;
+      endedTo?: string;
       employeeId?: number;
       sort?: 'newest';
     } = {},

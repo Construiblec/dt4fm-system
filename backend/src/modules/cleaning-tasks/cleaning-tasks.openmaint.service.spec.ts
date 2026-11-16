@@ -152,18 +152,27 @@ describe('CleaningTasksOpenmaintService — limpiezas del operario', () => {
 });
 
 describe('CleaningTasksOpenmaintService — todas las limpiezas', () => {
+  // -05:00 llega a openMAINT como el mismo instante en UTC. El inicio se corre
+  // 1 ms porque `greater` es estricto: así el borde queda incluido.
   const endedFromFilter = {
     simple: {
       attribute: 'ActualEndTime',
       operator: 'greater',
-      // -05:00 llega a openMAINT como el mismo instante en UTC.
-      value: ['2026-11-09T13:00:00.000Z'],
+      value: ['2026-11-09T12:59:59.999Z'],
+    },
+  };
+  // El fin va tal cual: `less` estricto deja el borde fuera.
+  const endedToFilter = {
+    simple: {
+      attribute: 'ActualEndTime',
+      operator: 'less',
+      value: ['2026-11-10T13:00:00.000Z'],
     },
   };
   const filterOf = (path: string): unknown =>
     JSON.parse(decodeURIComponent(path.split('filter=')[1])) as unknown;
 
-  it('endedFrom filtra ActualEndTime con greater', async () => {
+  it('endedFrom filtra ActualEndTime con greater, con el borde incluido', async () => {
     const get = jest.fn().mockResolvedValue({ data: [] });
     const service = buildService(get);
 
@@ -171,6 +180,50 @@ describe('CleaningTasksOpenmaintService — todas las limpiezas', () => {
 
     const [[path]] = get.mock.calls as [[string, string]];
     expect(filterOf(path)).toEqual({ attribute: endedFromFilter });
+  });
+
+  it('endedTo filtra ActualEndTime con less, con el borde excluido', async () => {
+    const get = jest.fn().mockResolvedValue({ data: [] });
+    const service = buildService(get);
+
+    await service.getAllTasks({ endedTo: '2026-11-10T08:00:00-05:00' });
+
+    const [[path]] = get.mock.calls as [[string, string]];
+    expect(filterOf(path)).toEqual({ attribute: endedToFilter });
+  });
+
+  it('un día completo: de medianoche a medianoche en hora de Ecuador', async () => {
+    const get = jest.fn().mockResolvedValue({ data: [] });
+    const service = buildService(get);
+
+    await service.getAllTasks({
+      endedFrom: '2026-11-16T00:00:00-05:00',
+      endedTo: '2026-11-17T00:00:00-05:00',
+    });
+
+    const [[path]] = get.mock.calls as [[string, string]];
+    expect(filterOf(path)).toEqual({
+      and: [
+        {
+          attribute: {
+            simple: {
+              attribute: 'ActualEndTime',
+              operator: 'greater',
+              value: ['2026-11-16T04:59:59.999Z'],
+            },
+          },
+        },
+        {
+          attribute: {
+            simple: {
+              attribute: 'ActualEndTime',
+              operator: 'less',
+              value: ['2026-11-17T05:00:00.000Z'],
+            },
+          },
+        },
+      ],
+    });
   });
 
   it('endedFrom se combina con la fase en un and', async () => {
