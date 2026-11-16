@@ -69,6 +69,10 @@ export type SupervisionDetail = {
     description?: string | null;
     phase?: string;
     actualEndTime?: string | null;
+    /** «Observaciones»: las escribe la coordinación al crear o editar la limpieza. */
+    observations?: string | null;
+    /** «Observaciones del equipo»: notas del operario y bitácora de pausas. */
+    teamObservations?: string | null;
     employee?: { id: number; name: string } | null;
   } | null;
   unit: { id: number; description: string | null } | null;

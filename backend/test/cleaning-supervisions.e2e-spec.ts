@@ -297,6 +297,32 @@ describe('CleaningSupervisionsController (e2e)', () => {
     });
   });
 
+  describe('GET /:id · observaciones de la limpieza', () => {
+    it('trae las de la coordinación y las del equipo, sin el borrador', async () => {
+      mocks.cleaningSupervisionsOpenmaint.getSupervision.mockResolvedValueOnce(
+        supervision(),
+      );
+      mocks.cleaningTasksOpenmaint.getTaskByIdWithSession.mockResolvedValue({
+        data: task({
+          Observations: 'Revisar la terraza',
+          TeamObservations:
+            '[Pausado: 2026-12-05 | 10:20]: sin detergente\n[Reanudado: 2026-12-05 | 10:34]\nNota 1\nFalta un foco {texto a medias}',
+        }),
+      });
+
+      const res = await request(app.getHttpServer())
+        .get('/cleaning-supervisions/5000')
+        .set('x-session-token', TOKEN)
+        .expect(200);
+
+      expect(res.body.data.task).toMatchObject({
+        observations: 'Revisar la terraza',
+        teamObservations:
+          '[Pausado: 2026-12-05 | 10:20]: sin detergente\n[Reanudado: 2026-12-05 | 10:34]\nNota 1\nFalta un foco',
+      });
+    });
+  });
+
   describe('novedades', () => {
     const addFinding = (body: Record<string, unknown>) =>
       request(app.getHttpServer())

@@ -61,6 +61,7 @@ import {
   parseSupervisionChecklist,
   SupervisionPoint,
 } from './utils/supervision-checklist.util';
+import { stripDraftObservations } from './utils/team-observations.util';
 
 /** Quién llama, resuelto desde su sesión de openMAINT (nunca desde cabeceras del cliente). */
 type Viewer =
@@ -846,6 +847,9 @@ export class CleaningSupervisionsService implements OnModuleInit {
               description: task.Description ?? null,
               phase: taskPhase(task),
               actualEndTime: task.ActualEndTime ?? null,
+              // Las de la coordinación y las del equipo (sin el borrador).
+              observations: task.Observations ?? null,
+              teamObservations: stripDraftObservations(task.TeamObservations),
               employee: task.Employee
                 ? { id: task.Employee, name: task._Employee_description ?? '' }
                 : null,

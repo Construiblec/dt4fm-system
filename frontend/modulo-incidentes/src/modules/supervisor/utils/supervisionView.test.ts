@@ -16,6 +16,7 @@ import {
   plural,
   pointLabel,
   resolvedFindings,
+  teamNotes,
 } from "@/modules/supervisor/utils/supervisionView";
 
 const finding = (
@@ -135,6 +136,31 @@ describe("groupFindingsByArea (pantalla del operario)", () => {
     expect(groupFindingsByArea([], [finding({ id: 1 })])).toEqual([
       { name: "Otros puntos", findings: [finding({ id: 1 })] },
     ]);
+  });
+});
+
+describe("teamNotes (observaciones del equipo)", () => {
+  it("deja las notas y quita la bitácora de pausas", () => {
+    expect(
+      teamNotes(
+        "[Pausado: 2026-12-05 | 10:20]: sin detergente\n[Reanudado: 2026-12-05 | 10:34]\nNota 1\nFalta un foco en el baño",
+      ),
+    ).toBe("Falta un foco en el baño");
+  });
+
+  it("sin notas, solo pausas, no hay nada que mostrar", () => {
+    expect(
+      teamNotes(
+        "[Pausado: 2026-12-05 | 10:20]: almuerzo\n[Reanudado: 2026-12-05 | 11:00]",
+      ),
+    ).toBeNull();
+    expect(teamNotes(null)).toBeNull();
+  });
+
+  it("quita los rótulos «Nota N»", () => {
+    expect(teamNotes("Nota 1\nVidrio roto\nNota 2\nToalla manchada")).toBe(
+      "Vidrio roto\nToalla manchada",
+    );
   });
 });
 

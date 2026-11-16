@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { CheckCircle2, CircleCheck, RefreshCw } from "lucide-react";
 import { AppLayout } from "@/app/layout/AppLayout";
+import { TaskObservations } from "@/modules/supervisor/components/TaskObservations";
 import { FindingCard } from "@/modules/supervisor/components/FindingCard";
 import {
   Avatar,
@@ -175,6 +176,8 @@ export const SupervisionSummaryPage = () => {
                   tone="slate"
                 />
               </div>
+
+              <TaskObservations task={supervision.task} collapsible />
 
               <section className="space-y-2 rounded-3xl bg-white p-5 shadow-sm">
                 <SectionLabel>Por área</SectionLabel>

@@ -1,3 +1,5 @@
+import { parseTeamLog } from "@/modules/coordinador/domain/tasks";
+import { cleanObservationText } from "@/shared/utils/textUtils";
 import type {
   SupervisionArea,
   SupervisionFinding,
@@ -94,3 +96,16 @@ export const pendingFindings = (findings: SupervisionFinding[]) =>
 /** Las que el supervisor resolvió al momento: no se envían al operario. */
 export const resolvedFindings = (findings: SupervisionFinding[]) =>
   findings.filter((finding) => finding.resolvedBySupervisor);
+
+/**
+ * Solo las notas que escribió el equipo, sin la bitácora de pausas
+ * (`[Pausado: …]`, `[Reanudado: …]`) ni los rótulos «Nota N».
+ */
+export const teamNotes = (text: string | null | undefined): string | null => {
+  const notes = parseTeamLog(text)
+    .filter((entry) => entry.type === "note")
+    .map((entry) => cleanObservationText(entry.text))
+    .filter(Boolean)
+    .join("\n\n");
+  return notes || null;
+};

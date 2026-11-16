@@ -3,6 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { ClipboardX, Play } from "lucide-react";
 import { AppLayout } from "@/app/layout/AppLayout";
+import { TaskObservations } from "@/modules/supervisor/components/TaskObservations";
 import {
   SectionLabel,
   SupervisionHeader,
@@ -169,6 +170,7 @@ export const SupervisionStartPage = () => {
                     {formatDayMonthYear(task?.actualEndTime)}
                   </span>
                 </div>
+                <TaskObservations task={task} />
               </section>
 
               <section className="space-y-3 rounded-3xl bg-white p-5 shadow-sm">

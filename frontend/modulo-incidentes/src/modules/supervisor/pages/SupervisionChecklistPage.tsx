@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Navigate, useNavigate, useParams } from "react-router-dom";
 import { Check, ChevronDown, ChevronUp, Info, Plus, X } from "lucide-react";
 import { AppLayout } from "@/app/layout/AppLayout";
+import { TaskObservations } from "@/modules/supervisor/components/TaskObservations";
 import { FindingCard } from "@/modules/supervisor/components/FindingCard";
 import {
   FindingEditor,
@@ -219,6 +220,10 @@ export const SupervisionChecklistPage = () => {
               No se pudo leer el checklist de supervisión. Revisa la plantilla
               SUPERVISION en Checklists.
             </p>
+          ) : null}
+
+          {supervision ? (
+            <TaskObservations task={supervision.task} collapsible />
           ) : null}
 
           {areas.map((area, areaIndex) => {
