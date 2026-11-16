@@ -477,11 +477,15 @@ describe('CleaningSupervisionsController (e2e)', () => {
             _id: 1,
             Employee: OPERATOR_ID,
             _Phase_code: 'InCorrection',
+            _Supervisor_description: 'Rosa Quishpe',
           }),
           supervision({ _id: 2, Employee: OPERATOR_ID, _Phase_code: 'Fixed' }),
           supervision({ _id: 3, Employee: OPERATOR_ID, _Phase_code: 'Draft' }),
         ],
       );
+      mocks.cleaningTasksOpenmaint.getUnitById.mockResolvedValueOnce({
+        data: { Description: 'R302', _Building_description: 'Torre A' },
+      });
 
       const res = await request(app.getHttpServer())
         .get('/cleaning-supervisions/mine')
@@ -489,6 +493,16 @@ describe('CleaningSupervisionsController (e2e)', () => {
         .expect(200);
 
       expect(res.body.data.map((s) => s.id)).toEqual([1]);
+      // Lo necesario para rotular la tarjeta del operario.
+      expect(res.body.data[0]).toMatchObject({
+        taskId: 777,
+        taskNumber: 'CT.2026.0001',
+        actualEndTime: '2026-12-05T15:00:00Z',
+        unit: { id: 300, description: 'R302 - Estudio 02' },
+        buildingName: 'Torre A',
+        supervisor: 'Rosa Quishpe',
+        findingsCount: 0,
+      });
       expect(
         mocks.cleaningSupervisionsOpenmaint.findByCorrector,
       ).toHaveBeenCalledWith(OPERATOR_ID);

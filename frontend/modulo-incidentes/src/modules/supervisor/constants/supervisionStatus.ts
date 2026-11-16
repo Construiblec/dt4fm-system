@@ -26,6 +26,10 @@ export const getSupervisionPhaseLabel = (
   phase: SupervisionPhase | null | undefined,
 ) => (phase ? (PHASES[phase]?.label ?? phase) : "Sin supervisión");
 
+export const getSupervisionPhaseLevel = (
+  phase: SupervisionPhase | null | undefined,
+): StatusLevel | undefined => (phase ? PHASES[phase]?.level : undefined);
+
 export const getSupervisionPhasePill = (
   phase: SupervisionPhase | null | undefined,
 ) => (phase && PHASES[phase] ? STATUS_LEVELS[PHASES[phase].level] : UNKNOWN_STATUS)

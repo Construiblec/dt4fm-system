@@ -112,7 +112,7 @@ Todos los endpoints llevan `x-session-token`. La descarga también acepta `?toke
 |---|---|
 | `GET /cleaning-supervisions/template` | Áreas y puntos del checklist |
 | `POST /cleaning-supervisions` `{ taskId }` | Devuelve la abierta o recupera el Draft (409 con `reason`) |
-| `GET /cleaning-supervisions/mine` | Las del operario en InCorrection |
+| `GET /cleaning-supervisions/mine` | Las del operario en InCorrection, con número de limpieza, fecha, unidad, edificio, supervisor y novedades pendientes |
 | `GET /cleaning-supervisions/:id` | Detalle: novedades, fotos, checklist y `can.*` |
 | `POST /:id/start` | Asigna el Supervisor |
 | `POST/PATCH/DELETE /:id/findings[/:findingId]` | Novedades (solo Draft). Aceptan `resolvedBySupervisor` |

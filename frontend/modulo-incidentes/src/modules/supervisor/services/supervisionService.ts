@@ -6,6 +6,7 @@ import type {
   ApiEnvelope,
   CleaningEmployee,
   FindingInput,
+  MyCorrection,
   SupervisionDetail,
   SupervisionFinding,
   SupervisionPhoto,
@@ -168,6 +169,26 @@ export const approveSupervision = (id: number) =>
   call(() =>
     api.post<ApiEnvelope<SupervisionDetail>>(
       `/cleaning-supervisions/${id}/approve`,
+      {},
+      { headers: headers() },
+    ),
+  );
+
+// ─── Operario ────────────────────────────────────────────────────────────────
+
+/** Las correcciones que el supervisor le asignó al operario conectado. */
+export const fetchMyCorrections = () =>
+  call(() =>
+    api.get<ApiEnvelope<MyCorrection[]>>("/cleaning-supervisions/mine", {
+      headers: headers(),
+    }),
+  );
+
+/** «Resuelto»: la supervisión pasa a `Fixed` y se avisa al supervisor. */
+export const markCorrectionsFixed = (id: number) =>
+  call(() =>
+    api.post<ApiEnvelope<{ id: number; phase: string }>>(
+      `/cleaning-supervisions/${id}/fixed`,
       {},
       { headers: headers() },
     ),

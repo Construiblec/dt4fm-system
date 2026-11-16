@@ -23,6 +23,7 @@ import { SupervisionStartPage } from "@/modules/supervisor/pages/SupervisionStar
 import { SupervisionChecklistPage } from "@/modules/supervisor/pages/SupervisionChecklistPage";
 import { SupervisionAssignPage } from "@/modules/supervisor/pages/SupervisionAssignPage";
 import { SupervisionSummaryPage } from "@/modules/supervisor/pages/SupervisionSummaryPage";
+import { CleaningCorrectionsPage } from "@/modules/supervisor/pages/CleaningCorrectionsPage";
 import { AsistenteSLDashboardPage } from "@/modules/asistente-sl/pages/AsistenteSLDashboardPage";
 import { AsistenteSLTaskDetailPage } from "@/modules/asistente-sl/pages/AsistenteSLTaskDetailPage";
 import { MaintenanceSupervisorDashboardPage } from "@/modules/supervisor-mantenimiento/pages/MaintenanceSupervisorDashboardPage";
@@ -66,6 +67,8 @@ export const router = createBrowserRouter([
     path: "/cleaning-tasks/:id/execute",
     element: <CleaningTaskExecutionPage />,
   },
+  // Correcciones del operario: el backend solo deja entrar a su Corrector.
+  { path: "/cleaning-corrections/:id", element: <CleaningCorrectionsPage /> },
   { path: "/visitor-form", element: <VisitorFormPage /> },
   { path: "/report-incident", element: <ReportIncidentPage /> },
   { path: "/incidents/:id", element: <IncidentDetailPage /> },

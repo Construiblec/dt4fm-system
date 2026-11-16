@@ -119,6 +119,20 @@ export type FindingInput = {
   resolvedBySupervisor?: boolean;
 };
 
+/** Una supervisión en corrección asignada al operario (`GET /mine`). */
+export type MyCorrection = {
+  id: number;
+  taskId: number | null;
+  taskNumber: string | null;
+  actualEndTime: string | null;
+  unit: { id: number; description: string | null } | null;
+  buildingName: string | null;
+  supervisor: string | null;
+  phase: SupervisionPhase | null;
+  /** Solo las que no resolvió el supervisor: las que tiene que corregir. */
+  findingsCount: number;
+};
+
 export type CleaningEmployee = {
   id: number;
   name: string;

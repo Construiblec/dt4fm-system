@@ -10,6 +10,7 @@ import {
   findingTitle,
   findingsByArea,
   findingsOfPoint,
+  groupFindingsByArea,
   initialsOf,
   pendingFindings,
   plural,
@@ -97,6 +98,43 @@ describe("supervisionView", () => {
     expect(initialsOf("Rosa Quishpe Andrade")).toBe("RQ");
     expect(plural(1, "novedad", "novedades")).toBe("1 novedad");
     expect(plural(2, "novedad", "novedades")).toBe("2 novedades");
+  });
+});
+
+describe("groupFindingsByArea (pantalla del operario)", () => {
+  it("agrupa en el orden del checklist y omite las áreas sin novedades", () => {
+    const findings = [
+      finding({ id: 1, index: 3 }),
+      finding({ id: 2, index: 1 }),
+      finding({ id: 3, index: 2 }),
+    ];
+
+    expect(
+      groupFindingsByArea(areas, findings).map((group) => ({
+        name: group.name,
+        ids: group.findings.map((f) => f.id),
+      })),
+    ).toEqual([
+      { name: "Dormitorios", ids: [2, 3] },
+      { name: "Cocina", ids: [1] },
+    ]);
+  });
+
+  it("las que no caen en ningún punto conocido van al final", () => {
+    const groups = groupFindingsByArea(areas, [
+      finding({ id: 1, index: 99 }),
+      finding({ id: 2, index: null }),
+      finding({ id: 3, index: 3 }),
+    ]);
+
+    expect(groups.map((group) => group.name)).toEqual(["Cocina", "Otros puntos"]);
+    expect(groups[1].findings.map((f) => f.id)).toEqual([1, 2]);
+  });
+
+  it("sin checklist legible, todas van a «Otros puntos»", () => {
+    expect(groupFindingsByArea([], [finding({ id: 1 })])).toEqual([
+      { name: "Otros puntos", findings: [finding({ id: 1 })] },
+    ]);
   });
 });
 

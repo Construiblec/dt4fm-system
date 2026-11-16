@@ -40,6 +40,32 @@ export const findingsByArea = (
     };
   });
 
+/**
+ * Novedades agrupadas por área, en el orden del checklist. Solo las áreas con
+ * novedades; las que no caen en ningún punto conocido van al final.
+ */
+export const groupFindingsByArea = (
+  areas: SupervisionArea[],
+  findings: SupervisionFinding[],
+) => {
+  const placed = new Set<number>();
+  const groups = areas
+    .map((area) => {
+      const indexes = new Set(area.points.map((point) => point.index));
+      const own = findings.filter(
+        (finding) => finding.index !== null && indexes.has(finding.index),
+      );
+      own.forEach((finding) => placed.add(finding.id));
+      return { name: area.name, findings: own };
+    })
+    .filter((group) => group.findings.length > 0);
+
+  const rest = findings.filter((finding) => !placed.has(finding.id));
+  return rest.length > 0
+    ? [...groups, { name: "Otros puntos", findings: rest }]
+    : groups;
+};
+
 /** «Dormitorios · Polvo en superficies», o el número si el checklist no se pudo leer. */
 export const pointLabel = (finding: SupervisionFinding) =>
   finding.point

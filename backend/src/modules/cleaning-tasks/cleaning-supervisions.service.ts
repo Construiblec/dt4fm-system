@@ -636,16 +636,38 @@ export class CleaningSupervisionsService implements OnModuleInit {
       await this.gateway.findByCorrector(viewer.employeeId)
     ).filter((s) => this.phaseOf(s) === SUPERVISION_PHASES.IN_CORRECTION);
     const data = await Promise.all(
-      supervisions.map(async (s) => ({
-        id: s._id,
-        taskId: s.CleaningTask ?? null,
-        unit: s.Unit
-          ? { id: s.Unit, description: s._Unit_description ?? null }
-          : null,
-        phase: this.phaseOf(s),
-        findingsCount: this.pendingOf(await this.gateway.listFindings(s._id))
-          .length,
-      })),
+      supervisions.map(async (s) => {
+        // La limpieza y la ubicación solo rotulan la tarjeta: si fallan, sin ellas.
+        const [findings, task, location] = await Promise.all([
+          this.gateway.listFindings(s._id),
+          s.CleaningTask
+            ? this.tasksGateway
+                .getTaskByIdWithSession(s.CleaningTask)
+                .then((r) => r?.data ?? null)
+                .catch(() => null)
+            : Promise.resolve(null),
+          this.unitLocation(s).catch(() => ({
+            unitName: null,
+            buildingName: null,
+          })),
+        ]);
+        return {
+          id: s._id,
+          taskId: s.CleaningTask ?? null,
+          taskNumber: task?.TaskNumber ?? null,
+          actualEndTime: task?.ActualEndTime ?? null,
+          unit: s.Unit
+            ? {
+                id: s.Unit,
+                description: s._Unit_description ?? location.unitName,
+              }
+            : null,
+          buildingName: location.buildingName,
+          supervisor: s._Supervisor_description ?? null,
+          phase: this.phaseOf(s),
+          findingsCount: this.pendingOf(findings).length,
+        };
+      }),
     );
     return { success: true, data, meta: { total: data.length } };
   }
