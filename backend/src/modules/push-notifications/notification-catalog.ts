@@ -30,8 +30,8 @@ export const DEEP_LINKS = {
     `/supervisor-mantenimiento/corrective/${id}`,
   preventiveDetail: (id: string | number) =>
     `/supervisor-mantenimiento/preventive/${id}`,
-  /** Ficha de la limpieza en el panel de AsistenteSL / SuperUser. */
-  cleaningDetail: (id: string | number) => `/supervisor/tasks/${id}`,
+  /** Ficha de la limpieza para AsistenteSL y SuperUser (ambos entran a esta ruta). */
+  cleaningDetail: (id: string | number) => `/asistente-sl/tasks/${id}`,
   /** Inicio de la supervisión de una limpieza (solo SupervisorLimpieza). */
   cleaningSupervisionStart: (taskId: string | number) =>
     `/supervision/tarea/${taskId}`,

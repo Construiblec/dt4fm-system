@@ -72,7 +72,6 @@ describe('CleaningSupervisionsController (e2e)', () => {
   });
 
   beforeEach(() => {
-    process.env.SUPERVISION_START_DATE = '2026-12-01T00:00:00-05:00';
     asRole('SupervisorLimpieza');
     mocks.openmaint.resolveCleaningEmployeeId.mockResolvedValue(null);
     mocks.cleaningTasksOpenmaint.getCleaningActivity.mockResolvedValue({
@@ -99,7 +98,6 @@ describe('CleaningSupervisionsController (e2e)', () => {
   });
 
   afterAll(async () => {
-    delete process.env.SUPERVISION_START_DATE;
     await app?.close();
   });
 
@@ -168,7 +166,7 @@ describe('CleaningSupervisionsController (e2e)', () => {
       ).not.toHaveBeenCalled();
     });
 
-    it('recupera el borrador de una limpieza posterior al corte', async () => {
+    it('crea el borrador de una Completed sin supervisión', async () => {
       mocks.cleaningTasksOpenmaint.getTaskByIdWithSession.mockResolvedValue({
         data: task(),
       });
@@ -188,14 +186,28 @@ describe('CleaningSupervisionsController (e2e)', () => {
       });
     });
 
-    it('409 legacy: la limpieza terminó antes del corte', async () => {
+    it('sin fecha de corte: una limpieza antigua también crea su borrador', async () => {
       mocks.cleaningTasksOpenmaint.getTaskByIdWithSession.mockResolvedValue({
         data: task({ ActualEndTime: '2026-11-10T15:00:00Z' }),
       });
+      mocks.cleaningSupervisionsOpenmaint.createSupervision.mockResolvedValueOnce(
+        supervision(),
+      );
 
-      const res = await open().expect(409);
+      await open().expect(201);
 
-      expect(res.body.reason).toBe('legacy');
+      expect(
+        mocks.cleaningSupervisionsOpenmaint.createSupervision,
+      ).toHaveBeenCalledTimes(1);
+    });
+
+    it('400 sin fecha de fin: no crea nada ni anula borradores de la unidad', async () => {
+      mocks.cleaningTasksOpenmaint.getTaskByIdWithSession.mockResolvedValue({
+        data: task({ ActualEndTime: null }),
+      });
+
+      await open().expect(400);
+
       expect(
         mocks.cleaningSupervisionsOpenmaint.createSupervision,
       ).not.toHaveBeenCalled();
@@ -219,17 +231,6 @@ describe('CleaningSupervisionsController (e2e)', () => {
       const res = await open().expect(409);
 
       expect(res.body.reason).toBe('superseded');
-    });
-
-    it('409 disabled: sin SUPERVISION_START_DATE no hay recuperación', async () => {
-      delete process.env.SUPERVISION_START_DATE;
-      mocks.cleaningTasksOpenmaint.getTaskByIdWithSession.mockResolvedValue({
-        data: task(),
-      });
-
-      const res = await open().expect(409);
-
-      expect(res.body.reason).toBe('disabled');
     });
 
     it('409 reviewed: una limpieza revisada sin supervisión no crea otra', async () => {
@@ -323,6 +324,35 @@ describe('CleaningSupervisionsController (e2e)', () => {
     });
   });
 
+  describe('GET /:id · tiempos de la limpieza', () => {
+    it('trae inicio planeado y real, fin, tiempo trabajado y checkout', async () => {
+      mocks.cleaningSupervisionsOpenmaint.getSupervision.mockResolvedValueOnce(
+        supervision(),
+      );
+      mocks.cleaningTasksOpenmaint.getTaskByIdWithSession.mockResolvedValue({
+        data: task({
+          PlannedStartTime: '2026-12-05T13:00:00Z',
+          ActualStartTime: '2026-12-05T13:20:00Z',
+          ExecutionTime: 85,
+          CheckoutDate: '2026-12-05',
+        }),
+      });
+
+      const res = await request(app.getHttpServer())
+        .get('/cleaning-supervisions/5000')
+        .set('x-session-token', TOKEN)
+        .expect(200);
+
+      expect(res.body.data.task).toMatchObject({
+        plannedStartTime: '2026-12-05T13:00:00Z',
+        actualStartTime: '2026-12-05T13:20:00Z',
+        actualEndTime: '2026-12-05T15:00:00Z',
+        executionTime: 85,
+        checkoutDate: '2026-12-05',
+      });
+    });
+  });
+
   describe('novedades', () => {
     const addFinding = (body: Record<string, unknown>) =>
       request(app.getHttpServer())
@@ -356,8 +386,8 @@ describe('CleaningSupervisionsController (e2e)', () => {
         Index: 2,
         Subcategory: 21,
         Observation: 'Polvo',
-        // Sin marcar: la marca provisional de «resuelto» queda vacía.
-        Description: null,
+        // Sin marcar: «resuelto por supervisor» se escribe en false.
+        SolvedBySuperv: false,
       });
     });
 
@@ -604,6 +634,205 @@ describe('CleaningSupervisionsController (e2e)', () => {
     });
   });
 
+  describe('fotos del arreglo (operario)', () => {
+    const finding = {
+      _id: 6000,
+      Supervision: 5000,
+      Index: 1,
+      Subcategory: 21,
+      SolvedBySuperv: false,
+    };
+    const mine = (overrides: Record<string, unknown> = {}) =>
+      supervision({
+        Employee: OPERATOR_ID,
+        _Phase_code: 'InCorrection',
+        ...overrides,
+      });
+    const upload = () =>
+      request(app.getHttpServer())
+        .post('/cleaning-supervisions/5000/findings/6000/fix-photos')
+        .set('x-session-token', TOKEN)
+        .attach('file', Buffer.from('img'), {
+          filename: 'foto.jpg',
+          contentType: 'image/jpeg',
+        });
+    const remove = (attachmentId: string, path = 'fix-photos') =>
+      request(app.getHttpServer())
+        .delete(
+          `/cleaning-supervisions/5000/findings/6000/${path}/${attachmentId}`,
+        )
+        .set('x-session-token', TOKEN);
+
+    beforeEach(() => {
+      asOperator();
+      mocks.cleaningSupervisionsOpenmaint.getSupervision.mockResolvedValue(
+        mine(),
+      );
+      mocks.cleaningSupervisionsOpenmaint.listFindings.mockResolvedValue([
+        finding,
+      ]);
+    });
+
+    afterEach(() => {
+      mocks.cleaningSupervisionsOpenmaint.listFindingAttachments.mockResolvedValue(
+        [],
+      );
+    });
+
+    it('sube la foto con el prefijo arr_ y la devuelve con su URL', async () => {
+      const res = await upload().expect(201);
+
+      expect(
+        mocks.cleaningSupervisionsOpenmaint.uploadFindingAttachment,
+      ).toHaveBeenCalledWith(
+        6000,
+        expect.anything(),
+        expect.stringMatching(/^arr_/),
+      );
+      expect(res.body.data).toMatchObject({
+        id: 'att-nov-1',
+        downloadUrl:
+          '/cleaning-supervisions/5000/findings/6000/attachments/att-nov-1/download',
+      });
+    });
+
+    it('400 a la tercera foto del arreglo', async () => {
+      mocks.cleaningSupervisionsOpenmaint.listFindingAttachments.mockResolvedValue(
+        [
+          { _id: 'f1', name: 'arr_1.jpg' },
+          { _id: 'f2', name: 'arr_2.jpg' },
+        ],
+      );
+
+      await upload().expect(400);
+
+      expect(
+        mocks.cleaningSupervisionsOpenmaint.uploadFindingAttachment,
+      ).not.toHaveBeenCalled();
+    });
+
+    it('las fotos del supervisor no cuentan para el tope del arreglo', async () => {
+      mocks.cleaningSupervisionsOpenmaint.listFindingAttachments.mockResolvedValue(
+        [
+          { _id: 'n1', name: 'nov_1.jpg' },
+          { _id: 'n2', name: 'nov_2.jpg' },
+        ],
+      );
+
+      await upload().expect(201);
+    });
+
+    it('403 en la supervisión de otro operario', async () => {
+      mocks.cleaningSupervisionsOpenmaint.getSupervision.mockResolvedValue(
+        mine({ Employee: 1 }),
+      );
+
+      await upload().expect(403);
+
+      expect(
+        mocks.cleaningSupervisionsOpenmaint.uploadFindingAttachment,
+      ).not.toHaveBeenCalled();
+    });
+
+    it('400 si la supervisión ya no está en corrección', async () => {
+      mocks.cleaningSupervisionsOpenmaint.getSupervision.mockResolvedValue(
+        mine({ _Phase_code: 'Fixed' }),
+      );
+
+      await upload().expect(400);
+    });
+
+    it('400 si el supervisor ya resolvió la novedad', async () => {
+      mocks.cleaningSupervisionsOpenmaint.listFindings.mockResolvedValue([
+        { ...finding, SolvedBySuperv: true },
+      ]);
+
+      await upload().expect(400);
+    });
+
+    it('403 si quien sube es el supervisor', async () => {
+      asRole('SupervisorLimpieza');
+
+      await upload().expect(403);
+
+      expect(
+        mocks.cleaningSupervisionsOpenmaint.uploadFindingAttachment,
+      ).not.toHaveBeenCalled();
+    });
+
+    it('borra su propia foto del arreglo', async () => {
+      mocks.cleaningSupervisionsOpenmaint.listFindingAttachments.mockResolvedValue(
+        [{ _id: 'f1', name: 'arr_1.jpg' }],
+      );
+
+      await remove('f1').expect(200);
+
+      expect(
+        mocks.cleaningSupervisionsOpenmaint.deleteFindingAttachment,
+      ).toHaveBeenCalledWith(6000, 'f1');
+    });
+
+    it('403 al borrar por esta ruta una foto del supervisor', async () => {
+      mocks.cleaningSupervisionsOpenmaint.listFindingAttachments.mockResolvedValue(
+        [{ _id: 'n1', name: 'nov_1.jpg' }],
+      );
+
+      await remove('n1').expect(403);
+
+      expect(
+        mocks.cleaningSupervisionsOpenmaint.deleteFindingAttachment,
+      ).not.toHaveBeenCalled();
+    });
+
+    it('el supervisor no borra una foto del arreglo', async () => {
+      asRole('SupervisorLimpieza');
+      mocks.cleaningSupervisionsOpenmaint.getSupervision.mockResolvedValue(
+        supervision(),
+      );
+      mocks.cleaningSupervisionsOpenmaint.listFindingAttachments.mockResolvedValue(
+        [{ _id: 'f1', name: 'arr_1.jpg' }],
+      );
+
+      await remove('f1', 'photos').expect(403);
+
+      expect(
+        mocks.cleaningSupervisionsOpenmaint.deleteFindingAttachment,
+      ).not.toHaveBeenCalled();
+    });
+
+    it('el operario ve la foto del arreglo que subió', async () => {
+      mocks.cleaningSupervisionsOpenmaint.listFindingAttachments.mockResolvedValue(
+        [{ _id: 'f1', name: 'arr_1.jpg' }],
+      );
+
+      await request(app.getHttpServer())
+        .get(
+          '/cleaning-supervisions/5000/findings/6000/attachments/f1/download',
+        )
+        .set('x-session-token', TOKEN)
+        .expect(200);
+    });
+
+    it('el detalle separa las fotos de la novedad de las del arreglo', async () => {
+      asRole('SupervisorLimpieza');
+      mocks.cleaningSupervisionsOpenmaint.listFindingAttachments.mockResolvedValue(
+        [
+          { _id: 'n1', name: 'nov_1.jpg' },
+          { _id: 'f1', name: 'arr_1.jpg' },
+        ],
+      );
+
+      const res = await request(app.getHttpServer())
+        .get('/cleaning-supervisions/5000')
+        .set('x-session-token', TOKEN)
+        .expect(200);
+
+      const [first] = res.body.data.findings;
+      expect(first.photos.map((p) => p.id)).toEqual(['n1']);
+      expect(first.fixPhotos.map((p) => p.id)).toEqual(['f1']);
+    });
+  });
+
   describe('POST /:id/approve', () => {
     const approve = () =>
       request(app.getHttpServer())
@@ -680,27 +909,22 @@ describe('CleaningSupervisionsController (e2e)', () => {
   });
 
   describe('resuelto por el supervisor', () => {
-    const RESOLVED = 'Resuelto por supervisor';
     const resolved = {
       _id: 6001,
       Supervision: 5000,
       Index: 1,
       Subcategory: 21,
-      Description: RESOLVED,
+      SolvedBySuperv: true,
     };
     const pending = {
       _id: 6002,
       Supervision: 5000,
       Index: 2,
       Subcategory: 21,
-      Description: null,
+      SolvedBySuperv: false,
     };
 
-    afterEach(() => {
-      delete process.env.OPENMAINT_FINDING_RESOLVED_ATTRIBUTE;
-    });
-
-    it('crear marcada escribe la marca provisional en Description', async () => {
+    it('crear marcada escribe SolvedBySuperv: true', async () => {
       mocks.cleaningSupervisionsOpenmaint.getSupervision.mockResolvedValue(
         supervision(),
       );
@@ -714,12 +938,29 @@ describe('CleaningSupervisionsController (e2e)', () => {
       expect(res.body.data.resolvedBySupervisor).toBe(true);
       expect(
         mocks.cleaningSupervisionsOpenmaint.createFinding,
+      ).toHaveBeenCalledWith(expect.objectContaining({ SolvedBySuperv: true }));
+    });
+
+    it('crear sin marcar escribe SolvedBySuperv: false', async () => {
+      mocks.cleaningSupervisionsOpenmaint.getSupervision.mockResolvedValue(
+        supervision(),
+      );
+
+      const res = await request(app.getHttpServer())
+        .post('/cleaning-supervisions/5000/findings')
+        .set('x-session-token', TOKEN)
+        .send({ index: 1, subcategoryId: 21 })
+        .expect(201);
+
+      expect(res.body.data.resolvedBySupervisor).toBe(false);
+      expect(
+        mocks.cleaningSupervisionsOpenmaint.createFinding,
       ).toHaveBeenCalledWith(
-        expect.objectContaining({ Description: RESOLVED }),
+        expect.objectContaining({ SolvedBySuperv: false }),
       );
     });
 
-    it('desmarcar borra la marca y no toca el resto', async () => {
+    it('desmarcar escribe false y no toca el resto', async () => {
       mocks.cleaningSupervisionsOpenmaint.getSupervision.mockResolvedValue(
         supervision(),
       );
@@ -739,7 +980,7 @@ describe('CleaningSupervisionsController (e2e)', () => {
         Index: 1,
         Subcategory: 21,
         Observation: 'Mancha',
-        Description: null,
+        SolvedBySuperv: false,
       });
     });
 
@@ -760,29 +1001,7 @@ describe('CleaningSupervisionsController (e2e)', () => {
       expect(res.body.data.resolvedBySupervisor).toBe(true);
       expect(
         mocks.cleaningSupervisionsOpenmaint.updateFinding.mock.calls[0][1],
-      ).not.toHaveProperty('Description');
-    });
-
-    it('con el atributo configurado, escribe el booleano y limpia Description', async () => {
-      process.env.OPENMAINT_FINDING_RESOLVED_ATTRIBUTE = 'ResolvedBySupervisor';
-      mocks.cleaningSupervisionsOpenmaint.getSupervision.mockResolvedValue(
-        supervision(),
-      );
-
-      await request(app.getHttpServer())
-        .post('/cleaning-supervisions/5000/findings')
-        .set('x-session-token', TOKEN)
-        .send({ index: 1, subcategoryId: 21, resolvedBySupervisor: true })
-        .expect(201);
-
-      expect(
-        mocks.cleaningSupervisionsOpenmaint.createFinding,
-      ).toHaveBeenCalledWith(
-        expect.objectContaining({
-          ResolvedBySupervisor: true,
-          Description: null,
-        }),
-      );
+      ).not.toHaveProperty('SolvedBySuperv');
     });
 
     it('400 al asignar si todas están resueltas', async () => {

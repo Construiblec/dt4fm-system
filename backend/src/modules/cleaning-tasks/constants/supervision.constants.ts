@@ -56,18 +56,25 @@ export const isSupervisionPanelRole = (role: string | null | undefined) =>
 /** Categoría de mantenimiento cuyas subcategorías son las novedades. */
 export const CLEANING_CATEGORY_CODE = 'LIM';
 
-/**
- * Variable de entorno con la fecha de corte (ISO con zona). Las limpiezas que
- * terminaron antes no reciben supervisión y quedan en `Completed`.
- */
-export const SUPERVISION_START_DATE_ENV = 'SUPERVISION_START_DATE';
-
 /** Prefijo de las fotos de una novedad; lo pone siempre el backend. */
 export const FINDING_PHOTO_PREFIX = 'nov_';
 
+/**
+ * Fotos del arreglo que sube el Corrector. Son adjuntos de la misma
+ * `CleaningFinding`: lo que las distingue es el prefijo del nombre, igual que
+ * `supervision_` en la evidencia de `CleaningTask`. Los adjuntos de clase traen
+ * el nombre en `name`; `fileName` llega vacío.
+ */
+export const FIX_PHOTO_PREFIX = 'arr_';
+export const MAX_FIX_PHOTOS = 2;
+
+export const isFixPhoto = (attachment: {
+  name?: string | null;
+  fileName?: string | null;
+}): boolean =>
+  Boolean(
+    (attachment.name ?? attachment.fileName)?.startsWith(FIX_PHOTO_PREFIX),
+  );
+
 /** Motivos por los que abrir una limpieza no crea su supervisión. */
-export type SupervisionUnavailableReason =
-  | 'legacy'
-  | 'superseded'
-  | 'disabled'
-  | 'reviewed';
+export type SupervisionUnavailableReason = 'superseded' | 'reviewed';

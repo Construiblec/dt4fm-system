@@ -81,8 +81,7 @@ export class CleaningSupervisionsController {
   @ApiHeader(SESSION_HEADER)
   @ApiResponse({
     status: 409,
-    description:
-      'La limpieza no se supervisa: reason = legacy | superseded | disabled | reviewed',
+    description: 'La limpieza no se supervisa: reason = superseded | reviewed',
   })
   async open(
     @Body(new ValidationPipe({ transform: true })) dto: OpenSupervisionDto,
@@ -200,6 +199,56 @@ export class CleaningSupervisionsController {
     @Headers('x-session-token') sessionToken: string,
   ) {
     return this.service.deletePhoto(
+      id,
+      findingId,
+      attachmentId,
+      this.token(sessionToken),
+    );
+  }
+
+  @Post(':id/findings/:findingId/fix-photos')
+  @UseInterceptors(FileInterceptor('file'))
+  @ApiOperation({
+    summary:
+      'Foto del arreglo (el Corrector, en InCorrection; máximo 2 por novedad)',
+  })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { file: { type: 'string', format: 'binary' } },
+      required: ['file'],
+    },
+  })
+  @ApiParam({ name: 'id', type: 'integer' })
+  @ApiParam({ name: 'findingId', type: 'integer' })
+  @ApiHeader(SESSION_HEADER)
+  async uploadFixPhoto(
+    @Param('id', ParseIntPipe) id: number,
+    @Param('findingId', ParseIntPipe) findingId: number,
+    @UploadedFile() file: UploadedPhoto | undefined,
+    @Headers('x-session-token') sessionToken: string,
+  ) {
+    const token = this.token(sessionToken);
+    if (!file) throw new BadRequestException('File is required');
+    return this.service.uploadFixPhoto(id, findingId, file, token);
+  }
+
+  @Delete(':id/findings/:findingId/fix-photos/:attachmentId')
+  @ApiOperation({
+    summary: 'Borrar una foto del arreglo (el Corrector, en InCorrection)',
+  })
+  @ApiParam({ name: 'id', type: 'integer' })
+  @ApiParam({ name: 'findingId', type: 'integer' })
+  @ApiParam({ name: 'attachmentId', type: 'string' })
+  @ApiHeader(SESSION_HEADER)
+  async deleteFixPhoto(
+    @Param('id', ParseIntPipe) id: number,
+    @Param('findingId', ParseIntPipe) findingId: number,
+    @Param('attachmentId') attachmentId: string,
+    @Headers('x-session-token') sessionToken: string,
+  ) {
+    return this.service.deleteFixPhoto(
       id,
       findingId,
       attachmentId,

@@ -94,6 +94,7 @@ export class CleaningTasksController {
       offset: query.offset,
       phase: query.phase,
       date: query.date,
+      endedFrom: query.endedFrom,
       employeeId: query.employeeId,
       sort: query.sort,
     });

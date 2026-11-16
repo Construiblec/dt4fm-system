@@ -5,7 +5,6 @@ import {
   Injectable,
   Logger,
   NotFoundException,
-  OnModuleInit,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { describeError } from '../../common/logging/describe-error.util';
@@ -31,11 +30,13 @@ import { isCoordinatorRole } from './constants/roles.constants';
 import {
   CLEANING_CATEGORY_CODE,
   FINDING_PHOTO_PREFIX,
+  FIX_PHOTO_PREFIX,
+  isFixPhoto,
   isOpenSupervisionPhase,
   isSupervisionPanelRole,
   MAX_FINDING_PHOTOS,
+  MAX_FIX_PHOTOS,
   SUPERVISION_PHASES,
-  SUPERVISION_START_DATE_ENV,
   SupervisionPhase,
   SupervisionUnavailableReason,
 } from './constants/supervision.constants';
@@ -45,12 +46,6 @@ import {
   UpdateFindingDto,
 } from './dto/cleaning-supervision.dto';
 import { readCsvTemplate } from './utils/csv-template.util';
-import {
-  FINDING_RESOLVED_ATTRIBUTE_ENV,
-  isFindingResolved,
-  normalizeResolvedAttribute,
-  resolvedFields,
-} from './utils/finding-resolution.util';
 import {
   assertValidPhoto,
   buildUniqueFileName,
@@ -80,12 +75,8 @@ export type SupervisionSummary = {
 const TEMPLATE_CACHE_MS = 5 * 60_000;
 
 const unavailableMessages: Record<SupervisionUnavailableReason, string> = {
-  legacy:
-    'La limpieza terminó antes de que empezara la supervisión; no se supervisa.',
   superseded:
     'La unidad ya tiene una limpieza más reciente; esta ya no se puede supervisar.',
-  disabled:
-    'La supervisión de limpiezas anteriores no está habilitada (falta SUPERVISION_START_DATE).',
   reviewed: 'La limpieza ya fue revisada y no tiene supervisión.',
 };
 
@@ -106,9 +97,10 @@ const timeOf = (iso: string | null | undefined): number | null => {
  * `Reviewed` solo al aprobar la unidad.
  *
  * Reglas que vienen del plan (revisión del 14/11/2026):
- * - El borrador nace al finalizar la limpieza. Abrir una limpieza desde el
- *   panel solo recupera el borrador si terminó después de
- *   `SUPERVISION_START_DATE` y nadie limpió la unidad después.
+ * - El borrador nace al finalizar la limpieza. Abrir una limpieza `Completed`
+ *   desde el panel lo recupera (o lo crea) si tiene fecha de fin y nadie
+ *   limpió la unidad después. No hay fecha de corte: el panel solo lista los
+ *   últimos 7 días, pero el backend no limita.
  * - Crear un borrador anula los borradores anteriores de la misma unidad.
  * - Panel y acciones de supervisión: solo `SupervisorLimpieza`. Coordinación
  *   lee. El operario ve y resuelve solo lo suyo en `InCorrection`.
@@ -117,7 +109,7 @@ const timeOf = (iso: string | null | undefined): number | null => {
  * el rol y la propiedad antes de tocar openMAINT.
  */
 @Injectable()
-export class CleaningSupervisionsService implements OnModuleInit {
+export class CleaningSupervisionsService {
   private readonly logger = new Logger(CleaningSupervisionsService.name);
   private readonly templateCache = new Map<
     number,
@@ -133,38 +125,6 @@ export class CleaningSupervisionsService implements OnModuleInit {
     private readonly pushDispatch: PushDispatchService,
     private readonly configService: ConfigService,
   ) {}
-
-  onModuleInit() {
-    const raw = this.configService.get<string>(SUPERVISION_START_DATE_ENV);
-    if (!raw) {
-      this.logger.warn(
-        `Falta ${SUPERVISION_START_DATE_ENV}: las supervisiones solo se crean al finalizar una limpieza; abrir una limpieza ya terminada no recupera su borrador.`,
-      );
-    } else if (this.startDate() === null) {
-      this.logger.warn(
-        `${SUPERVISION_START_DATE_ENV}="${raw}" no es una fecha válida: se ignora.`,
-      );
-    }
-  }
-
-  /** Fecha de corte, o null si no está configurada o no se entiende. */
-  startDate(): number | null {
-    return timeOf(this.configService.get<string>(SUPERVISION_START_DATE_ENV));
-  }
-
-  /** Una limpieza Completed sin supervisión que todavía se puede supervisar. */
-  isEligibleForSupervision(task: {
-    _phase_description?: string;
-    phase?: unknown;
-    ActualEndTime?: string | null;
-  }): boolean {
-    const phase = task._phase_description ?? String(task.phase);
-    const cutoff = this.startDate();
-    const end = timeOf(task.ActualEndTime);
-    return (
-      phase === 'Completed' && cutoff !== null && end !== null && end >= cutoff
-    );
-  }
 
   // ─── Ciclo de vida ligado a la limpieza ─────────────────────────────────────
 
@@ -261,9 +221,9 @@ export class CleaningSupervisionsService implements OnModuleInit {
   }
 
   /**
-   * Devuelve la supervisión abierta de una limpieza o recupera su borrador.
-   * Solo recupera si la limpieza terminó después del corte y la unidad no se
-   * volvió a limpiar; si no, 409 con el motivo.
+   * Devuelve la supervisión abierta de una limpieza o crea su borrador.
+   * Solo lo crea si la limpieza tiene fecha de fin y la unidad no se volvió a
+   * limpiar; si no, 409 con el motivo (o 400 sin fecha de fin).
    */
   async openForTask(taskId: number, sessionToken: string) {
     const viewer = await this.requirePanel(sessionToken);
@@ -288,10 +248,14 @@ export class CleaningSupervisionsService implements OnModuleInit {
       );
     }
 
-    const cutoff = this.startDate();
-    if (cutoff === null) this.unavailable('disabled');
+    // Sin fin no se puede saber si la superaron, y `cancelSupersededDrafts` la
+    // tomaría por la más nueva y anularía los borradores de toda la unidad.
     const end = timeOf(task.ActualEndTime);
-    if (end === null || end < cutoff) this.unavailable('legacy');
+    if (end === null) {
+      throw new BadRequestException(
+        'La limpieza no tiene fecha de finalización; no se puede supervisar.',
+      );
+    }
     if (await this.isSuperseded(task, end)) {
       this.unavailable('superseded');
     }
@@ -358,7 +322,7 @@ export class CleaningSupervisionsService implements OnModuleInit {
       Index: dto.index,
       Subcategory: subcategory.id,
       Observation: observation,
-      ...resolvedFields(resolvedBySupervisor, this.resolvedAttribute()),
+      SolvedBySuperv: resolvedBySupervisor,
     });
     return {
       success: true,
@@ -397,16 +361,15 @@ export class CleaningSupervisionsService implements OnModuleInit {
       observationInput,
     );
 
-    const attribute = this.resolvedAttribute();
     const resolvedBySupervisor =
-      dto.resolvedBySupervisor ?? isFindingResolved(current, attribute);
+      dto.resolvedBySupervisor ?? current.SolvedBySuperv === true;
     await this.gateway.updateFinding(findingId, {
       Index: index,
       Subcategory: subcategory.id,
       Observation: observation,
       // Solo se reescribe la marca si llega: así no se toca al editar el texto.
       ...(dto.resolvedBySupervisor !== undefined
-        ? resolvedFields(dto.resolvedBySupervisor, attribute)
+        ? { SolvedBySuperv: dto.resolvedBySupervisor }
         : {}),
     });
     return {
@@ -442,29 +405,17 @@ export class CleaningSupervisionsService implements OnModuleInit {
     await this.requireFinding(id, findingId);
     assertValidPhoto(file);
 
-    const existing = await this.gateway.listFindingAttachments(findingId);
+    // Las del arreglo (`arr_`) son del operario y llevan su propio tope.
+    const existing = (
+      await this.gateway.listFindingAttachments(findingId)
+    ).filter((a) => !isFixPhoto(a));
     if (existing.length >= MAX_FINDING_PHOTOS) {
       throw new BadRequestException(
         `Máximo ${MAX_FINDING_PHOTOS} fotos por novedad`,
       );
     }
 
-    const fileName = buildUniqueFileName(file, FINDING_PHOTO_PREFIX);
-    const uploaded = await this.gateway.uploadFindingAttachment(
-      findingId,
-      file,
-      fileName,
-    );
-    if (!uploaded?._id) {
-      // Sin id no hay forma de mostrarla ni borrarla: no se informa éxito.
-      throw new BadRequestException(
-        'openMAINT no confirmó la foto; vuelve a intentarlo',
-      );
-    }
-    return {
-      success: true,
-      data: this.toPhoto(id, findingId, uploaded, fileName),
-    };
+    return this.upload(id, findingId, file, FINDING_PHOTO_PREFIX);
   }
 
   async deletePhoto(
@@ -477,7 +428,61 @@ export class CleaningSupervisionsService implements OnModuleInit {
     const supervision = await this.requireSupervision(id);
     this.assertPhase(supervision, [SUPERVISION_PHASES.DRAFT]);
     await this.requireFinding(id, findingId);
-    await this.requireAttachment(findingId, attachmentId);
+    const attachment = await this.requireAttachment(findingId, attachmentId);
+    if (isFixPhoto(attachment)) {
+      throw new ForbiddenException(
+        'Las fotos del arreglo las borra el operario que corrige',
+      );
+    }
+    await this.gateway.deleteFindingAttachment(findingId, attachmentId);
+    return { success: true, data: { id: attachmentId, deleted: true } };
+  }
+
+  /**
+   * Foto del arreglo: solo el Corrector, mientras la supervisión está en
+   * corrección. Es opcional: «Resuelto» no la exige.
+   */
+  async uploadFixPhoto(
+    id: number,
+    findingId: number,
+    file: UploadedFile,
+    sessionToken: string,
+  ) {
+    await this.requireCorrector(id, sessionToken);
+    const finding = await this.requireFinding(id, findingId);
+    if (finding.SolvedBySuperv === true) {
+      throw new BadRequestException(
+        'El supervisor resolvió esta novedad: no hay nada que corregir',
+      );
+    }
+    assertValidPhoto(file);
+
+    const existing = (
+      await this.gateway.listFindingAttachments(findingId)
+    ).filter(isFixPhoto);
+    if (existing.length >= MAX_FIX_PHOTOS) {
+      throw new BadRequestException(
+        `Máximo ${MAX_FIX_PHOTOS} fotos del arreglo por novedad`,
+      );
+    }
+
+    return this.upload(id, findingId, file, FIX_PHOTO_PREFIX);
+  }
+
+  async deleteFixPhoto(
+    id: number,
+    findingId: number,
+    attachmentId: string,
+    sessionToken: string,
+  ) {
+    await this.requireCorrector(id, sessionToken);
+    await this.requireFinding(id, findingId);
+    const attachment = await this.requireAttachment(findingId, attachmentId);
+    if (!isFixPhoto(attachment)) {
+      throw new ForbiddenException(
+        'Solo puedes borrar las fotos del arreglo, no las del supervisor',
+      );
+    }
     await this.gateway.deleteFindingAttachment(findingId, attachmentId);
     return { success: true, data: { id: attachmentId, deleted: true } };
   }
@@ -535,19 +540,7 @@ export class CleaningSupervisionsService implements OnModuleInit {
 
   /** «Resuelto»: solo el Corrector asignado y con la supervisión en InCorrection. */
   async markFixed(id: number, sessionToken: string) {
-    const viewer = await this.resolveViewer(sessionToken);
-    if (viewer.kind !== 'operator') {
-      throw new ForbiddenException(
-        'Solo el operario asignado puede marcar las correcciones como resueltas',
-      );
-    }
-    const supervision = await this.requireSupervision(id);
-    if (supervision.Employee !== viewer.employeeId) {
-      throw new ForbiddenException(
-        'Estas correcciones no están asignadas a ti',
-      );
-    }
-    this.assertPhase(supervision, [SUPERVISION_PHASES.IN_CORRECTION]);
+    const supervision = await this.requireCorrector(id, sessionToken);
 
     await this.setPhase(id, SUPERVISION_PHASES.FIXED);
     void this.notifyFixed(supervision);
@@ -846,7 +839,12 @@ export class CleaningSupervisionsService implements OnModuleInit {
               taskNumber: task.TaskNumber ?? null,
               description: task.Description ?? null,
               phase: taskPhase(task),
+              // Lo que enseñaba la ficha de la limpieza: tiempos y checkout.
+              plannedStartTime: task.PlannedStartTime ?? null,
+              actualStartTime: task.ActualStartTime ?? null,
               actualEndTime: task.ActualEndTime ?? null,
+              executionTime: task.ExecutionTime ?? null,
+              checkoutDate: task.CheckoutDate ?? null,
               // Las de la coordinación y las del equipo (sin el borrador).
               observations: task.Observations ?? null,
               teamObservations: stripDraftObservations(task.TeamObservations),
@@ -906,17 +904,9 @@ export class CleaningSupervisionsService implements OnModuleInit {
     };
   }
 
-  /** Atributo booleano de «resuelto», o null mientras se usa `Description`. */
-  private resolvedAttribute(): string | null {
-    return normalizeResolvedAttribute(
-      this.configService.get<string>(FINDING_RESOLVED_ATTRIBUTE_ENV),
-    );
-  }
-
   /** Novedades que van a corrección: las que el supervisor no resolvió. */
   private pendingOf(findings: FindingCard[]): FindingCard[] {
-    const attribute = this.resolvedAttribute();
-    return findings.filter((f) => !isFindingResolved(f, attribute));
+    return findings.filter((f) => f.SolvedBySuperv !== true);
   }
 
   private toFinding(
@@ -942,13 +932,39 @@ export class CleaningSupervisionsService implements OnModuleInit {
           }
         : null,
       observation: finding.Observation ?? null,
-      resolvedBySupervisor: isFindingResolved(
-        finding,
-        this.resolvedAttribute(),
-      ),
-      photos: attachments.map((a) =>
-        this.toPhoto(supervisionId, finding._id, a),
-      ),
+      resolvedBySupervisor: finding.SolvedBySuperv === true,
+      // Antes (las del supervisor) y después (las del operario que corrigió).
+      photos: attachments
+        .filter((a) => !isFixPhoto(a))
+        .map((a) => this.toPhoto(supervisionId, finding._id, a)),
+      fixPhotos: attachments
+        .filter(isFixPhoto)
+        .map((a) => this.toPhoto(supervisionId, finding._id, a)),
+    };
+  }
+
+  /** Sube el adjunto con el prefijo de su origen y devuelve la foto ya con su URL. */
+  private async upload(
+    supervisionId: number,
+    findingId: number,
+    file: UploadedFile,
+    prefix: string,
+  ) {
+    const fileName = buildUniqueFileName(file, prefix);
+    const uploaded = await this.gateway.uploadFindingAttachment(
+      findingId,
+      file,
+      fileName,
+    );
+    if (!uploaded?._id) {
+      // Sin id no hay forma de mostrarla ni borrarla: no se informa éxito.
+      throw new BadRequestException(
+        'openMAINT no confirmó la foto; vuelve a intentarlo',
+      );
+    }
+    return {
+      success: true,
+      data: this.toPhoto(supervisionId, findingId, uploaded, fileName),
     };
   }
 
@@ -1160,6 +1176,30 @@ export class CleaningSupervisionsService implements OnModuleInit {
       );
     }
     return { kind: 'panel', role: role as string };
+  }
+
+  /**
+   * El Corrector asignado, con la supervisión en corrección: el único que
+   * marca «Resuelto» y sube o borra fotos del arreglo.
+   */
+  private async requireCorrector(
+    id: number,
+    sessionToken: string,
+  ): Promise<SupervisionCard> {
+    const viewer = await this.resolveViewer(sessionToken);
+    if (viewer.kind !== 'operator') {
+      throw new ForbiddenException(
+        'Solo el operario asignado puede corregir esta supervisión',
+      );
+    }
+    const supervision = await this.requireSupervision(id);
+    if (supervision.Employee !== viewer.employeeId) {
+      throw new ForbiddenException(
+        'Estas correcciones no están asignadas a ti',
+      );
+    }
+    this.assertPhase(supervision, [SUPERVISION_PHASES.IN_CORRECTION]);
+    return supervision;
   }
 
   /**

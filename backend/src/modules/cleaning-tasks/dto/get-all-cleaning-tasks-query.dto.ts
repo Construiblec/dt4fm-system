@@ -1,5 +1,12 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsInt, Min, IsString, IsIn } from 'class-validator';
+import {
+  IsOptional,
+  IsInt,
+  Min,
+  IsString,
+  IsIn,
+  IsISO8601,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 import { PHASE_NAMES } from '../constants/phase.constants';
 
@@ -47,6 +54,16 @@ export class GetAllCleaningTasksQueryDto {
   @IsOptional()
   @IsString()
   date?: string;
+
+  /** Solo las que terminaron después de este instante (ActualEndTime). */
+  @ApiPropertyOptional({
+    description:
+      'Solo limpiezas con fecha de fin posterior a este instante (ISO 8601)',
+    example: '2026-11-09T13:00:00.000Z',
+  })
+  @IsOptional()
+  @IsISO8601()
+  endedFrom?: string;
 
   /** Filtrar por ID de empleado */
   @ApiPropertyOptional({

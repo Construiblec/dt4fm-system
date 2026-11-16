@@ -566,7 +566,8 @@ export class CleaningTasksOpenmaintService {
 
   /**
    * Obtiene todas las tareas de limpieza (sin filtro de empleado).
-   * Soporta filtros opcionales: phase, date (GeneratedDate), employeeId.
+   * Soporta filtros opcionales: phase, date (GeneratedDate), endedFrom
+   * (ActualEndTime), employeeId.
    * Usa la sesión interna del sistema con executeWithRetry.
    */
   async getAllTasks(
@@ -575,13 +576,23 @@ export class CleaningTasksOpenmaintService {
       offset?: number;
       phase?: string;
       date?: string;
+      /** Solo las que terminaron después de este instante (ISO). */
+      endedFrom?: string;
       employeeId?: number;
       /** 'newest': las recién creadas primero (por id descendente). */
       sort?: 'newest';
     } = {},
   ): Promise<OpenmaintCardsResponse> {
     return this.executeWithRetry(async (sessionId) => {
-      const { limit = 50, offset = 0, phase, date, employeeId, sort } = options;
+      const {
+        limit = 50,
+        offset = 0,
+        phase,
+        date,
+        endedFrom,
+        employeeId,
+        sort,
+      } = options;
 
       const conditions: any[] = [];
 
@@ -601,6 +612,19 @@ export class CleaningTasksOpenmaintService {
             attribute: 'GeneratedDate',
             operator: 'equal',
             value: date,
+          },
+        });
+      }
+
+      // `greater` es estricto y `greaterOrEqual` no existe (500): para una
+      // ventana móvil el borde da igual. Reabrir limpia ActualEndTime, así que
+      // las reabiertas quedan fuera hasta que vuelvan a terminar.
+      if (endedFrom) {
+        conditions.push({
+          simple: {
+            attribute: 'ActualEndTime',
+            operator: 'greater',
+            value: [new Date(endedFrom).toISOString()],
           },
         });
       }

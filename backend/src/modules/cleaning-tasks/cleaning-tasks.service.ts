@@ -522,6 +522,7 @@ export class CleaningTasksService {
       offset?: number;
       phase?: string;
       date?: string;
+      endedFrom?: string;
       employeeId?: number;
       sort?: 'newest';
     } = {},
@@ -598,12 +599,6 @@ export class CleaningTasksService {
         : null,
       // Última supervisión de la limpieza; null si no tiene.
       supervision: supervisions?.get(task._id) ?? null,
-      // Completed sin supervisión que el panel todavía puede supervisar
-      // (terminó después de SUPERVISION_START_DATE). Las anteriores quedan fuera.
-      supervisionEligible: supervisions
-        ? !supervisions.has(task._id) &&
-          this.supervisions.isEligibleForSupervision(task)
-        : false,
     }));
   }
 
@@ -702,8 +697,6 @@ export class CleaningTasksService {
         // Supervisión y coordinación ven el estado de la supervisión; el
         // detalle completo sale de GET /cleaning-supervisions/:id.
         supervision,
-        supervisionEligible:
-          !supervision && this.supervisions.isEligibleForSupervision(task),
       },
     };
   }

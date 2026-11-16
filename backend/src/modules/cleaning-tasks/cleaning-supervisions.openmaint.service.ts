@@ -41,10 +41,8 @@ export type SupervisionCard = {
 
 export type FindingCard = {
   _id: number;
-  /** Hoy guarda la marca provisional «Resuelto por supervisor». */
-  Description?: string | null;
-  /** El atributo de `OPENMAINT_FINDING_RESOLVED_ATTRIBUTE`, cuando exista. */
-  [attribute: string]: unknown;
+  /** «Resuelto por supervisor»: la novedad no va a corrección. */
+  SolvedBySuperv?: boolean | null;
   Supervision?: number | null;
   Index?: number | null;
   Subcategory?: number | null;

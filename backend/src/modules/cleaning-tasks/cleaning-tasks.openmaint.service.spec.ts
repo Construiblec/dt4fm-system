@@ -150,3 +150,62 @@ describe('CleaningTasksOpenmaintService — limpiezas del operario', () => {
     expect(path).not.toContain('sort=');
   });
 });
+
+describe('CleaningTasksOpenmaintService — todas las limpiezas', () => {
+  const endedFromFilter = {
+    simple: {
+      attribute: 'ActualEndTime',
+      operator: 'greater',
+      // -05:00 llega a openMAINT como el mismo instante en UTC.
+      value: ['2026-11-09T13:00:00.000Z'],
+    },
+  };
+  const filterOf = (path: string): unknown =>
+    JSON.parse(decodeURIComponent(path.split('filter=')[1])) as unknown;
+
+  it('endedFrom filtra ActualEndTime con greater', async () => {
+    const get = jest.fn().mockResolvedValue({ data: [] });
+    const service = buildService(get);
+
+    await service.getAllTasks({ endedFrom: '2026-11-09T08:00:00-05:00' });
+
+    const [[path]] = get.mock.calls as [[string, string]];
+    expect(filterOf(path)).toEqual({ attribute: endedFromFilter });
+  });
+
+  it('endedFrom se combina con la fase en un and', async () => {
+    const get = jest.fn().mockResolvedValue({ data: [] });
+    const service = buildService(get);
+
+    await service.getAllTasks({
+      phase: 'Completed',
+      endedFrom: '2026-11-09T08:00:00-05:00',
+    });
+
+    const [[path]] = get.mock.calls as [[string, string]];
+    expect(filterOf(path)).toEqual({
+      and: [
+        {
+          attribute: {
+            simple: {
+              attribute: 'phase',
+              operator: 'equal',
+              value: 'Completed',
+            },
+          },
+        },
+        { attribute: endedFromFilter },
+      ],
+    });
+  });
+
+  it('sin endedFrom no añade filtro', async () => {
+    const get = jest.fn().mockResolvedValue({ data: [] });
+    const service = buildService(get);
+
+    await service.getAllTasks({ limit: 200, sort: 'newest' });
+
+    const [[path]] = get.mock.calls as [[string, string]];
+    expect(path).not.toContain('filter=');
+  });
+});

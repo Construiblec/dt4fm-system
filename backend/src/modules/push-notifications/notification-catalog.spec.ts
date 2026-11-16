@@ -112,8 +112,8 @@ describe('cleaningCompleted', () => {
     ).toBe('/supervision/tarea/777');
   });
 
-  it('el resto de supervisión abre la ficha, en la ruta que sí existe', () => {
-    expect(cleaningCompleted(base).deepLink).toBe('/supervisor/tasks/777');
+  it('AsistenteSL y SuperUser abren su ficha, a la que sí pueden entrar', () => {
+    expect(cleaningCompleted(base).deepLink).toBe('/asistente-sl/tasks/777');
   });
 });
 
