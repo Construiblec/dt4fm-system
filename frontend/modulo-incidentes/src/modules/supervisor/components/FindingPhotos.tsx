@@ -9,7 +9,25 @@ import { TakePhotoButton } from "@/shared/components/TakePhotoButton";
 import { buildAttachmentUrl } from "@/shared/utils/attachmentUrl";
 import { MAX_FINDING_PHOTOS } from "@/modules/supervisor/utils/supervisionView";
 
+/** Las mismas fotos con dos orígenes: lo único que cambia es cómo se nombran. */
+const COPY = {
+  finding: {
+    alt: "Foto de la novedad",
+    zoomed: "Foto de la novedad ampliada",
+    plural: "fotos",
+    empty: "Sin fotos",
+  },
+  fix: {
+    alt: "Foto del arreglo",
+    zoomed: "Foto del arreglo ampliada",
+    plural: "fotos del arreglo",
+    empty: "Sin fotos del arreglo",
+  },
+} as const;
+
 type Props = {
+  /** Fotos de la novedad (supervisor) o del arreglo (operario). */
+  variant?: keyof typeof COPY;
   /** Fotos que openMAINT ya confirmó. */
   photos: SupervisionPhoto[];
   /** Elegidas en este dispositivo: subiendo o fallidas. */
@@ -26,6 +44,7 @@ type Props = {
 
 /** Fotos de una novedad (máximo 2). Solo pinta; las acciones vienen de fuera. */
 export const FindingPhotos = ({
+  variant = "finding",
   photos,
   localPhotos = [],
   editable,
@@ -36,6 +55,7 @@ export const FindingPhotos = ({
   onDiscard,
   onError,
 }: Props) => {
+  const copy = COPY[variant];
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const remaining = Math.max(
     0,
@@ -48,7 +68,7 @@ export const FindingPhotos = ({
     if (files.length === 0) return;
     if (files.length > remaining) {
       onError?.(
-        `Cada novedad admite ${MAX_FINDING_PHOTOS} fotos. Te ${remaining === 1 ? "queda 1" : `quedan ${remaining}`}.`,
+        `Cada novedad admite ${MAX_FINDING_PHOTOS} ${copy.plural}. Te ${remaining === 1 ? "queda 1" : `quedan ${remaining}`}.`,
       );
       return;
     }
@@ -56,7 +76,7 @@ export const FindingPhotos = ({
   };
 
   if (!editable && photos.length === 0 && localPhotos.length === 0) {
-    return <p className="text-xs text-slate-500">Sin fotos</p>;
+    return <p className="text-xs text-slate-500">{copy.empty}</p>;
   }
 
   return (
@@ -77,7 +97,7 @@ export const FindingPhotos = ({
               >
                 <img
                   src={url}
-                  alt="Foto de la novedad"
+                  alt={copy.alt}
                   className="h-full w-full object-cover"
                 />
               </button>
@@ -169,13 +189,14 @@ export const FindingPhotos = ({
       </div>
       {editable ? (
         <p className="mt-1.5 text-xs text-slate-500">
-          {photos.length + localPhotos.length}/{MAX_FINDING_PHOTOS} fotos
+          {photos.length + localPhotos.length}/{MAX_FINDING_PHOTOS}{" "}
+          {copy.plural}
         </p>
       ) : null}
 
       <PhotoLightbox
         url={lightboxUrl}
-        alt="Foto de la novedad ampliada"
+        alt={copy.zoomed}
         onClose={() => setLightboxUrl(null)}
       />
     </div>

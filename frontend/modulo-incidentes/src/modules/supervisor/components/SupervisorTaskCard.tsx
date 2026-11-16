@@ -26,14 +26,21 @@ type Props = {
 };
 
 /**
- * Una limpieza Completed abre la supervisión para SupervisorLimpieza (único rol
- * con ese panel); para el resto, y en cualquier otra fase, abre la ficha.
+ * SupervisorLimpieza (único rol con panel de supervisión) abre la supervisión
+ * de la limpieza: la crea si es `Completed` y la muestra si ya existe. Una
+ * `Reviewed` sin supervisión (anterior a esta función) no tiene nada que abrir.
+ * El resto (SuperUser) abre la ficha de AsistenteSL.
  */
-const supervisionTarget = (task: CleaningTask) => {
-  if (getCurrentRole() !== "SupervisorLimpieza") return null;
-  if (task.phase !== "Completed") return null;
-  if (!task.supervision && task.supervisionEligible === false) return null;
-  return `/supervision/tarea/${task.id}`;
+const cardTarget = (task: CleaningTask): { to?: string; label: string } => {
+  if (getCurrentRole() !== "SupervisorLimpieza") {
+    return { to: `/asistente-sl/tasks/${task.id}`, label: "Ver detalle" };
+  }
+  if (task.phase === "Completed") {
+    return { to: `/supervision/tarea/${task.id}`, label: "Supervisar" };
+  }
+  return task.supervision
+    ? { to: `/supervision/tarea/${task.id}`, label: "Ver supervisión" }
+    : { label: "Ver detalle" };
 };
 
 export const SupervisorTaskCard = ({ task }: Props) => {
@@ -45,7 +52,7 @@ export const SupervisorTaskCard = ({ task }: Props) => {
     !isReopened;
   const now = useMinuteClock(mayBeLate);
   const lateness = getCleaningLateness(task, now);
-  const target = supervisionTarget(task);
+  const target = cardTarget(task);
 
   return (
     <WorkCard
@@ -71,8 +78,8 @@ export const SupervisorTaskCard = ({ task }: Props) => {
           </span>
         ) : null
       }
-      to={target ?? `/supervisor/tasks/${task.id}`}
-      actionLabel={target ? "Supervisar" : "Ver detalle"}
+      to={target.to}
+      actionLabel={target.label}
     />
   );
 };

@@ -3,7 +3,8 @@ import type { SupervisionSummary } from "@/modules/supervisor/types/Supervision"
 
 export type GetAllCleaningTasksParams = {
   phase?: string;
-  date?: string;
+  /** Solo las que terminaron después de este instante (ISO), por fecha de fin. */
+  endedFrom?: string;
   employeeId?: number;
   limit?: number;
   offset?: number;
@@ -96,8 +97,6 @@ export type CleaningTaskDetail = {
   checklistDetail: ChecklistDetail | null;
   /** Última supervisión (solo para supervisión y coordinación). */
   supervision?: SupervisionSummary | null;
-  /** `Completed` sin supervisión que todavía se puede supervisar (posterior al corte). */
-  supervisionEligible?: boolean;
 };
 
 export type ReopenTaskPayload = {

@@ -62,8 +62,6 @@ export type CleaningTask = {
     phaseLabel: string | null;
     corrector: { id: number; name: string } | null;
   } | null;
-  /** `Completed` sin supervisión que el panel todavía puede supervisar. */
-  supervisionEligible?: boolean;
 };
 
 export type GetMyCleaningTasksResponse = {

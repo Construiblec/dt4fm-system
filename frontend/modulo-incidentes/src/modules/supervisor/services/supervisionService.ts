@@ -147,6 +147,31 @@ export const deleteFindingPhoto = (
     ),
   );
 
+/** Foto del arreglo: la sube el Corrector mientras la supervisión está en corrección. */
+export const uploadFixPhoto = (id: number, findingId: number, file: File) => {
+  const formData = new FormData();
+  formData.append("file", file);
+  return call(() =>
+    api.post<ApiEnvelope<SupervisionPhoto>>(
+      `/cleaning-supervisions/${id}/findings/${findingId}/fix-photos`,
+      formData,
+      { headers: { ...headers(), "Content-Type": "multipart/form-data" } },
+    ),
+  );
+};
+
+export const deleteFixPhoto = (
+  id: number,
+  findingId: number,
+  attachmentId: string,
+) =>
+  call(() =>
+    api.delete(
+      `/cleaning-supervisions/${id}/findings/${findingId}/fix-photos/${encodeURIComponent(attachmentId)}`,
+      { headers: headers() },
+    ),
+  );
+
 export const assignCorrector = (id: number, employeeId: number) =>
   call(() =>
     api.post<ApiEnvelope<SupervisionDetail>>(

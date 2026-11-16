@@ -6,30 +6,23 @@ import type { GetAllCleaningTasksParams } from "@/modules/supervisor/types/Super
 
 type Filters = {
   phase: string;
-  date: string;
   employeeId: string;
 };
 
 const DEFAULT_FILTERS: Filters = {
   phase: "",
-  date: "",
   employeeId: "",
 };
 
 /** Cuántas limpiezas trae el panel. */
 const PANEL_LIMIT = 200;
 
-/**
- * Completed y Reviewed, salvo las `Completed` anteriores al corte de la
- * supervisión: quedan así, sin supervisión, y no se listan.
- */
-export const isSupervisable = (task: CleaningTask) => {
-  if (task.phase === "Reviewed") return true;
-  if (task.phase !== "Completed") return false;
-  // Un backend anterior no manda estos campos: entonces se lista como antes.
-  if (task.supervisionEligible === undefined) return true;
-  return Boolean(task.supervision) || task.supervisionEligible;
-};
+/** El panel solo lista lo que terminó en estos días (ventana móvil, sin selector de fecha). */
+export const PANEL_WINDOW_DAYS = 7;
+
+/** Completed y Reviewed: lo que ya terminó y se puede supervisar o consultar. */
+export const isSupervisable = (task: CleaningTask) =>
+  task.phase === "Completed" || task.phase === "Reviewed";
 
 export const useSupervisorTasks = () => {
   const [tasks, setTasks] = useState<CleaningTask[]>([]);
@@ -43,10 +36,14 @@ export const useSupervisorTasks = () => {
       setLoading(true);
       setError(null);
       // Las recién creadas primero y con margen: con 50 sin orden, las
-      // limpiezas nuevas podían quedar fuera del panel.
+      // limpiezas nuevas podían quedar fuera del panel. `endedFrom` filtra en
+      // openMAINT por la fecha de fin, para que el tope no recorte la ventana.
       const response = await fetchAllCleaningTasks({
         limit: PANEL_LIMIT,
         sort: "newest",
+        endedFrom: new Date(
+          Date.now() - PANEL_WINDOW_DAYS * 86_400_000,
+        ).toISOString(),
         ...params,
       });
       const filteredData = response.data.filter(isSupervisable);
@@ -67,7 +64,6 @@ export const useSupervisorTasks = () => {
 
       const params: GetAllCleaningTasksParams = {};
       if (merged.phase) params.phase = merged.phase;
-      if (merged.date) params.date = merged.date;
       if (merged.employeeId) params.employeeId = Number(merged.employeeId);
 
       void load(params);

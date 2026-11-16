@@ -34,7 +34,7 @@ describe("isSafeToUpdate", () => {
       "/report-incident",
       "/incidents/12",
       "/preventive-maintenance/5",
-      "/supervisor/tasks/9",
+      "/supervision/tarea/9",
       "/asistente-sl/tasks/9",
       "/coordinador/nueva",
       "/coordinador/checklists/nuevo",

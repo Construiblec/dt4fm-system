@@ -21,6 +21,7 @@ const finding = (id: number, extra: Partial<SupervisionFinding> = {}) =>
     observation: null,
     resolvedBySupervisor: false,
     photos: [],
+    fixPhotos: [],
     ...extra,
   }) as SupervisionFinding;
 
@@ -71,5 +72,19 @@ describe("findingCache (cambios optimistas)", () => {
       "a",
     );
     expect(next.findings[0].photos.map((p) => p.id)).toEqual(["b"]);
+  });
+
+  it("quita una foto del arreglo sin tocar las del supervisor", () => {
+    const photo = (id: string) => ({ id, fileName: null, uploadDate: null, downloadUrl: "/x" });
+    const next = removePhoto(
+      detail([
+        finding(1, { photos: [photo("a")], fixPhotos: [photo("a"), photo("b")] }),
+      ]),
+      1,
+      "a",
+      "fixPhotos",
+    );
+    expect(next.findings[0].fixPhotos.map((p) => p.id)).toEqual(["b"]);
+    expect(next.findings[0].photos.map((p) => p.id)).toEqual(["a"]);
   });
 });

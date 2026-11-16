@@ -5,9 +5,11 @@ import {
   createFinding,
   deleteFinding,
   deleteFindingPhoto,
+  deleteFixPhoto,
   describeSupervisionError,
   updateFinding,
   uploadFindingPhoto,
+  uploadFixPhoto,
 } from "@/modules/supervisor/services/supervisionService";
 import type {
   LocalPhoto,
@@ -36,6 +38,22 @@ export type NewFinding = {
 
 type Result = { ok: true } | { ok: false; error: string };
 
+/**
+ * Qué fotos maneja el hook: las que toma el supervisor al registrar la novedad
+ * o las del arreglo que sube el operario. Cambia el campo del detalle y las
+ * llamadas; el resto (vista previa local, reintento, borrado optimista) es igual.
+ */
+const PHOTO_KINDS = {
+  finding: {
+    field: "photos",
+    upload: uploadFindingPhoto,
+    remove: deleteFindingPhoto,
+  },
+  fix: { field: "fixPhotos", upload: uploadFixPhoto, remove: deleteFixPhoto },
+} as const;
+
+export type PhotoKind = keyof typeof PHOTO_KINDS;
+
 /** Acciones en vuelo por supervisión: la recarga espera a la última. */
 const inFlight = new Map<number, number>();
 
@@ -53,13 +71,17 @@ const nextLocalId = () => `local-${Date.now()}-${(localSeq += 1)}`;
  *
  * Las fotos que todavía no confirmó openMAINT viven aparte (`localPhotos`):
  * así una recarga no se lleva una foto fallida antes de reintentarla.
+ *
+ * `kind: "fix"` es la vista del operario: solo usa las acciones de fotos.
  */
 export const useFindingActions = (
   supervisionId: number,
   onError: (message: string) => void,
+  kind: PhotoKind = "finding",
 ) => {
   const queryClient = useQueryClient();
   const key = supervisionKey(supervisionId);
+  const photoKind = PHOTO_KINDS[kind];
   const [localPhotos, setLocalPhotos] = useState<Record<number, LocalPhoto[]>>(
     {},
   );
@@ -135,7 +157,7 @@ export const useFindingActions = (
   /** Sube una foto local; si openMAINT la confirma, pasa a ser una foto más. */
   const uploadLocal = async (findingId: number, photo: LocalPhoto) => {
     try {
-      const { data } = await uploadFindingPhoto(
+      const { data } = await photoKind.upload(
         supervisionId,
         findingId,
         photo.file,
@@ -143,7 +165,9 @@ export const useFindingActions = (
       update((detail) => ({
         ...detail,
         findings: detail.findings.map((f) =>
-          f.id === findingId ? { ...f, photos: [...f.photos, data] } : f,
+          f.id === findingId
+            ? { ...f, [photoKind.field]: [...f[photoKind.field], data] }
+            : f,
         ),
       }));
       dropLocal(findingId, photo.localId);
@@ -167,6 +191,7 @@ export const useFindingActions = (
         observation: input.observation || null,
         resolvedBySupervisor: input.resolvedBySupervisor,
         photos: [],
+        fixPhotos: [],
         syncing: "creating",
       }),
     );
@@ -323,17 +348,18 @@ export const useFindingActions = (
   /** Borra una foto ya subida; si falla, vuelve. */
   const deletePhoto = async (finding: SupervisionFinding, photoId: string) => {
     await begin();
-    const photo = finding.photos.find((p) => p.id === photoId);
-    update((detail) => removePhoto(detail, finding.id, photoId));
+    const { field } = photoKind;
+    const photo = finding[field].find((p) => p.id === photoId);
+    update((detail) => removePhoto(detail, finding.id, photoId, field));
     try {
-      await deleteFindingPhoto(supervisionId, finding.id, photoId);
+      await photoKind.remove(supervisionId, finding.id, photoId);
     } catch (error) {
       if (photo) {
         update((detail) => ({
           ...detail,
           findings: detail.findings.map((f) =>
-            f.id === finding.id && !f.photos.some((p) => p.id === photoId)
-              ? { ...f, photos: [...f.photos, photo] }
+            f.id === finding.id && !f[field].some((p) => p.id === photoId)
+              ? { ...f, [field]: [...f[field], photo] }
               : f,
           ),
         }));

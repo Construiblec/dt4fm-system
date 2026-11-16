@@ -29,6 +29,7 @@ const finding = (
   observation: null,
   resolvedBySupervisor: false,
   photos: [],
+  fixPhotos: [],
   ...overrides,
 });
 
@@ -181,20 +182,11 @@ describe("isSupervisable (panel de SupervisorLimpieza)", () => {
   const task = (overrides: Partial<CleaningTask>) =>
     ({ id: 1, phase: "Completed", ...overrides }) as CleaningTask;
 
-  it("deja fuera las Completed anteriores al corte", () => {
-    expect(
-      isSupervisable(task({ supervision: null, supervisionEligible: false })),
-    ).toBe(false);
-  });
-
-  it("lista las Completed con supervisión o posteriores al corte", () => {
-    expect(
-      isSupervisable(task({ supervision: null, supervisionEligible: true })),
-    ).toBe(true);
+  it("lista las Completed, con o sin supervisión", () => {
+    expect(isSupervisable(task({ supervision: null }))).toBe(true);
     expect(
       isSupervisable(
         task({
-          supervisionEligible: false,
           supervision: {
             id: 5,
             phase: "InCorrection",
@@ -206,12 +198,9 @@ describe("isSupervisable (panel de SupervisorLimpieza)", () => {
     ).toBe(true);
   });
 
-  it("siempre lista las Reviewed y nunca las demás fases", () => {
+  it("lista las Reviewed y nunca las que no terminaron", () => {
     expect(isSupervisable(task({ phase: "Reviewed" }))).toBe(true);
     expect(isSupervisable(task({ phase: "Assigned" }))).toBe(false);
-  });
-
-  it("con un backend sin estos campos, lista las Completed como antes", () => {
-    expect(isSupervisable(task({}))).toBe(true);
+    expect(isSupervisable(task({ phase: "InExecution" }))).toBe(false);
   });
 });

@@ -3,18 +3,25 @@ import { useNavigate, useParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { CircleCheck, ClipboardList } from "lucide-react";
 import { AppLayout } from "@/app/layout/AppLayout";
-import { FindingCard } from "@/modules/supervisor/components/FindingCard";
+import {
+  FindingCard,
+  type FixPhotoActions,
+} from "@/modules/supervisor/components/FindingCard";
 import {
   SectionLabel,
   SupervisionHeader,
 } from "@/modules/supervisor/components/SupervisionHeader";
+import { useFindingActions } from "@/modules/supervisor/hooks/useFindingActions";
 import { myCorrectionsKey } from "@/modules/supervisor/hooks/useMyCorrections";
 import { useSupervision } from "@/modules/supervisor/hooks/useSupervision";
 import {
   describeSupervisionError,
   markCorrectionsFixed,
 } from "@/modules/supervisor/services/supervisionService";
-import type { SupervisionPhase } from "@/modules/supervisor/types/Supervision";
+import type {
+  SupervisionFinding,
+  SupervisionPhase,
+} from "@/modules/supervisor/types/Supervision";
 import {
   groupFindingsByArea,
   plural,
@@ -40,8 +47,9 @@ const CLOSED_MESSAGE: Partial<Record<SupervisionPhase, string>> = {
 
 /**
  * Correcciones del operario: las novedades que le asignó el supervisor, con
- * sus fotos, agrupadas por área. «Resuelto» cierra el conjunto; no se
- * resuelve punto por punto ni se suben fotos del arreglo.
+ * sus fotos, agrupadas por área. Cada novedad admite hasta 2 fotos del arreglo
+ * (opcionales) que el supervisor verá junto a las suyas. «Resuelto» cierra el
+ * conjunto; no se resuelve punto por punto.
  */
 export const CleaningCorrectionsPage = () => {
   const navigate = useNavigate();
@@ -55,6 +63,22 @@ export const CleaningCorrectionsPage = () => {
   const [working, setWorking] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const actions = useFindingActions(id, setError, "fix");
+
+  /** Las fotos del arreglo de una novedad: subir, reintentar, quitar y borrar. */
+  const fixActions = (finding: SupervisionFinding): FixPhotoActions => ({
+    localPhotos: actions.localPhotos[finding.id],
+    onAdd: (files) => void actions.addPhotos(finding, files),
+    onDelete: (photoId) => void actions.deletePhoto(finding, photoId),
+    onRetry: (photo) => void actions.retryPhoto(finding.id, photo),
+    onDiscard: (photo) => actions.discardPhoto(finding.id, photo),
+    onError: setError,
+  });
+
+  // «Resuelto» espera a que las fotos terminen; una foto fallida se reintenta o se quita.
+  const failedPhotos = Object.values(actions.localPhotos)
+    .flat()
+    .filter((photo) => photo.status === "failed").length;
 
   const findings = supervision?.findings ?? [];
   const groups = supervision
@@ -130,7 +154,8 @@ export const CleaningCorrectionsPage = () => {
               <span>
                 El supervisor encontró{" "}
                 <strong>{plural(findings.length, "novedad", "novedades")}</strong>
-                . Corrígelas y pulsa «Resuelto».
+                . Corrígelas, sube una foto del arreglo si puedes y pulsa
+                «Resuelto».
               </span>
             </p>
           ) : null}
@@ -145,7 +170,11 @@ export const CleaningCorrectionsPage = () => {
                     {group.name} · {group.findings.length}
                   </SectionLabel>
                   {group.findings.map((finding) => (
-                    <FindingCard key={finding.id} finding={finding} />
+                    <FindingCard
+                      key={finding.id}
+                      finding={finding}
+                      fix={fixActions(finding)}
+                    />
                   ))}
                 </section>
               ))
@@ -167,11 +196,15 @@ export const CleaningCorrectionsPage = () => {
             <button
               type="button"
               onClick={() => setConfirming(true)}
-              disabled={working}
+              disabled={working || actions.busy || failedPhotos > 0}
               className="flex min-h-14 w-full items-center justify-center gap-2 rounded-2xl bg-brand px-4 text-sm font-bold text-white shadow-md transition hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-60"
             >
               <CircleCheck className="h-5 w-5" aria-hidden />
-              Resuelto
+              {actions.busy
+                ? "Guardando fotos…"
+                : failedPhotos > 0
+                  ? "Hay fotos sin subir"
+                  : "Resuelto"}
             </button>
           </div>
         ) : null}

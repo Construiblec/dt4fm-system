@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { CheckCircle2, CircleCheck, RefreshCw } from "lucide-react";
 import { AppLayout } from "@/app/layout/AppLayout";
 import { TaskObservations } from "@/modules/supervisor/components/TaskObservations";
+import { TaskTimes } from "@/modules/supervisor/components/TaskTimes";
 import { FindingCard } from "@/modules/supervisor/components/FindingCard";
 import {
   Avatar,
@@ -176,6 +177,19 @@ export const SupervisionSummaryPage = () => {
                   tone="slate"
                 />
               </div>
+
+              {supervision.task ? (
+                <section className="space-y-3 rounded-3xl bg-white p-5 shadow-sm">
+                  <SectionLabel>Limpieza</SectionLabel>
+                  <TaskTimes
+                    checkoutDate={supervision.task.checkoutDate}
+                    plannedStartTime={supervision.task.plannedStartTime}
+                    actualStartTime={supervision.task.actualStartTime}
+                    actualEndTime={supervision.task.actualEndTime}
+                    executionTime={supervision.task.executionTime}
+                  />
+                </section>
+              ) : null}
 
               <TaskObservations task={supervision.task} collapsible />
 

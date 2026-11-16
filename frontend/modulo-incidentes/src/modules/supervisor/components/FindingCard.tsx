@@ -10,6 +10,18 @@ import {
   pointLabel,
 } from "@/modules/supervisor/utils/supervisionView";
 
+/** Acciones del operario sobre las fotos del arreglo; sin ellas solo se ven. */
+export type FixPhotoActions = {
+  localPhotos?: LocalPhoto[];
+  onAdd: (files: File[]) => void;
+  onDelete: (photoId: string) => void;
+  onRetry: (photo: LocalPhoto) => void;
+  onDiscard: (photo: LocalPhoto) => void;
+  onError: (message: string) => void;
+};
+
+const CAPTION = "mb-1.5 text-xs font-semibold text-slate-600";
+
 type Props = {
   finding: SupervisionFinding;
   /** En el checklist se muestra bajo su punto, así que sobra repetirlo. */
@@ -18,6 +30,8 @@ type Props = {
   editable?: boolean;
   /** Las fotos completas; si no, solo cuántas hay. */
   showPhotos?: boolean;
+  /** Vista del operario: puede subir y borrar las fotos del arreglo. */
+  fix?: FixPhotoActions;
   localPhotos?: LocalPhoto[];
   onEdit?: () => void;
   onDelete?: () => void;
@@ -40,6 +54,7 @@ export const FindingCard = ({
   showPoint = true,
   editable = false,
   showPhotos = true,
+  fix,
   localPhotos = [],
   onEdit,
   onDelete,
@@ -54,6 +69,9 @@ export const FindingCard = ({
   // Mientras se crea no tiene id real: nada de esta tarjeta se puede tocar.
   const locked = finding.syncing !== undefined;
   const resolved = finding.resolvedBySupervisor;
+  // El «después»: editable para el operario; para el resto, solo si lo subió.
+  const showFix =
+    showPhotos && (fix !== undefined || finding.fixPhotos.length > 0);
 
   return (
     <article
@@ -129,17 +147,38 @@ export const FindingCard = ({
       </div>
 
       {showPhotos ? (
-        <FindingPhotos
-          photos={finding.photos}
-          localPhotos={localPhotos}
-          editable={editable}
-          disabled={locked}
-          onAdd={onAddPhotos}
-          onDelete={onDeletePhoto}
-          onRetry={onRetryPhoto}
-          onDiscard={onDiscardPhoto}
-          onError={onError}
-        />
+        <div>
+          {showFix ? <p className={CAPTION}>Novedad</p> : null}
+          <FindingPhotos
+            photos={finding.photos}
+            localPhotos={localPhotos}
+            editable={editable}
+            disabled={locked}
+            onAdd={onAddPhotos}
+            onDelete={onDeletePhoto}
+            onRetry={onRetryPhoto}
+            onDiscard={onDiscardPhoto}
+            onError={onError}
+          />
+        </div>
+      ) : null}
+
+      {showFix ? (
+        <div>
+          <p className={CAPTION}>{fix ? "Fotos del arreglo" : "Arreglo"}</p>
+          <FindingPhotos
+            variant="fix"
+            photos={finding.fixPhotos}
+            localPhotos={fix?.localPhotos}
+            editable={fix !== undefined}
+            disabled={locked}
+            onAdd={fix?.onAdd}
+            onDelete={fix?.onDelete}
+            onRetry={fix?.onRetry}
+            onDiscard={fix?.onDiscard}
+            onError={fix?.onError}
+          />
+        </div>
       ) : null}
 
       {editable ? (

@@ -4,6 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { ClipboardX, Play } from "lucide-react";
 import { AppLayout } from "@/app/layout/AppLayout";
 import { TaskObservations } from "@/modules/supervisor/components/TaskObservations";
+import { TaskTimes } from "@/modules/supervisor/components/TaskTimes";
 import {
   SectionLabel,
   SupervisionHeader,
@@ -23,13 +24,13 @@ import {
 import type { SupervisionDetail } from "@/modules/supervisor/types/Supervision";
 import { ErrorModal } from "@/shared/components/ErrorModal";
 import { LoadingModal } from "@/shared/components/LoadingModal";
-import { formatDayMonthYear, formatTime } from "@/shared/utils/dateUtils";
 import { formatEmployeeName } from "@/shared/utils/nameUtils";
 
 /**
  * Pantalla 1 · Inicio. Abre la supervisión de una limpieza `Completed`: la que
- * ya existe o, si falló al finalizar, recupera su borrador. Las limpiezas
- * anteriores al corte o superadas por otra no se supervisan (409 con motivo).
+ * ya existe o, si falló al finalizar (o es anterior a esta función), crea su
+ * borrador. Una superada por otra limpieza de la unidad no se supervisa (409
+ * con motivo).
  */
 export const SupervisionStartPage = () => {
   const navigate = useNavigate();
@@ -77,7 +78,7 @@ export const SupervisionStartPage = () => {
     };
   }, [taskId, queryClient]);
 
-  const backToTask = () => navigate(`/supervisor/tasks/${taskId}`);
+  const backToPanel = () => navigate("/supervisor");
 
   const handleStart = async () => {
     if (!supervision) return;
@@ -122,7 +123,7 @@ export const SupervisionStartPage = () => {
         <SupervisionHeader
           kicker="Supervisión"
           title={isDraft || !supervision ? "Nueva supervisión" : "Supervisión"}
-          onBack={backToTask}
+          onBack={backToPanel}
         />
 
         <div className="mx-auto w-full max-w-md space-y-4 px-4 pt-4">
@@ -132,10 +133,10 @@ export const SupervisionStartPage = () => {
               <p className="text-sm text-slate-700">{blocked}</p>
               <button
                 type="button"
-                onClick={backToTask}
+                onClick={backToPanel}
                 className="min-h-11 rounded-xl border border-slate-300 px-4 text-sm font-semibold text-slate-700"
               >
-                Volver a la limpieza
+                Volver al panel
               </button>
             </section>
           ) : null}
@@ -158,18 +159,17 @@ export const SupervisionStartPage = () => {
                     {unitName}
                   </h2>
                   <p className="text-sm text-slate-500">
-                    {task?.actualEndTime
-                      ? `Limpieza terminada ${formatTime(task.actualEndTime)}`
-                      : "Limpieza terminada"}
+                    {task?.taskNumber || "Limpieza terminada"}
                     {cleanedBy ? ` · ${cleanedBy}` : ""}
                   </p>
                 </div>
-                <div className="flex items-center justify-between rounded-xl bg-slate-50 px-3 py-3 text-sm">
-                  <span className="text-slate-500">Fecha</span>
-                  <span className="font-bold text-slate-900">
-                    {formatDayMonthYear(task?.actualEndTime)}
-                  </span>
-                </div>
+                <TaskTimes
+                  checkoutDate={task?.checkoutDate}
+                  plannedStartTime={task?.plannedStartTime}
+                  actualStartTime={task?.actualStartTime}
+                  actualEndTime={task?.actualEndTime}
+                  executionTime={task?.executionTime}
+                />
                 <TaskObservations task={task} />
               </section>
 

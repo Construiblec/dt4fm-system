@@ -43,11 +43,7 @@ export const isOpenSupervision = (phase: SupervisionPhase | null | undefined) =>
   phase === "Confirmed";
 
 export const unavailableMessage: Record<string, string> = {
-  legacy:
-    "Esta limpieza terminó antes de que empezara la supervisión, así que no se supervisa.",
   superseded:
     "La unidad ya tiene una limpieza más reciente: supervisa esa en su lugar.",
-  disabled:
-    "La supervisión de limpiezas ya terminadas no está habilitada en este ambiente.",
   reviewed: "Esta limpieza ya fue revisada.",
 };

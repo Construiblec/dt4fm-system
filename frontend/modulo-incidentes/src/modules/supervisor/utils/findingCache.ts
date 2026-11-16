@@ -76,11 +76,15 @@ export const restoreFinding = (
   return withFindings(detail, findings);
 };
 
+/** Qué fotos de la novedad se tocan: las del supervisor o las del arreglo. */
+export type PhotoField = "photos" | "fixPhotos";
+
 /** Quita una foto confirmada de una novedad (borrado optimista). */
 export const removePhoto = (
   detail: SupervisionDetail,
   findingId: number,
   photoId: string,
+  field: PhotoField = "photos",
 ): SupervisionDetail =>
   withFindings(
     detail,
@@ -88,7 +92,7 @@ export const removePhoto = (
       finding.id === findingId
         ? {
             ...finding,
-            photos: finding.photos.filter((photo) => photo.id !== photoId),
+            [field]: finding[field].filter((photo) => photo.id !== photoId),
           }
         : finding,
     ),

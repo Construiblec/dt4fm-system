@@ -43,7 +43,10 @@ export type SupervisionFinding = {
   observation: string | null;
   /** El supervisor la resolvió al momento: no va a corrección. */
   resolvedBySupervisor: boolean;
+  /** Las que tomó el supervisor al registrar la novedad (el «antes»). */
   photos: SupervisionPhoto[];
+  /** Las que subió el operario al corregir (el «después»); opcionales. */
+  fixPhotos: SupervisionPhoto[];
   /** Solo en el cliente: la acción todavía no terminó en el servidor. */
   syncing?: "creating" | "saving" | "deleting";
 };
@@ -68,7 +71,12 @@ export type SupervisionDetail = {
     taskNumber?: string | null;
     description?: string | null;
     phase?: string;
+    plannedStartTime?: string | null;
+    actualStartTime?: string | null;
     actualEndTime?: string | null;
+    /** Tiempo trabajado acumulado, en minutos. */
+    executionTime?: number | null;
+    checkoutDate?: string | null;
     /** «Observaciones»: las escribe la coordinación al crear o editar la limpieza. */
     observations?: string | null;
     /** «Observaciones del equipo»: notas del operario y bitácora de pausas. */
@@ -110,11 +118,7 @@ export type SupervisionTemplate = {
 };
 
 /** Motivo del 409 al abrir una limpieza que no se supervisa. */
-export type SupervisionUnavailableReason =
-  | "legacy"
-  | "superseded"
-  | "disabled"
-  | "reviewed";
+export type SupervisionUnavailableReason = "superseded" | "reviewed";
 
 export type FindingInput = {
   index: number;

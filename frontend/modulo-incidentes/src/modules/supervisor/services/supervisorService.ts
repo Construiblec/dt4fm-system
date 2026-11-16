@@ -37,13 +37,13 @@ function handleUnauthorized(error: unknown): never {
 export const fetchAllCleaningTasks = async (
   params: GetAllCleaningTasksParams = {},
 ): Promise<GetAllCleaningTasksResponse> => {
-  const { phase, date, employeeId, limit = 50, offset = 0, sort } = params;
+  const { phase, endedFrom, employeeId, limit = 50, offset = 0, sort } = params;
 
   const queryParams = new URLSearchParams();
   queryParams.set("limit", String(limit));
   queryParams.set("offset", String(offset));
   if (phase) queryParams.set("phase", phase);
-  if (date) queryParams.set("date", date);
+  if (endedFrom) queryParams.set("endedFrom", endedFrom);
   if (employeeId) queryParams.set("employeeId", String(employeeId));
   if (sort) queryParams.set("sort", sort);
 
