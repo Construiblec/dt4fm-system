@@ -1,3 +1,5 @@
+import type { SupervisionPhase } from "@/modules/supervisor/types/Supervision";
+
 export type CleaningTaskUnit = {
   id: number;
   code: string;
@@ -53,6 +55,13 @@ export type CleaningTask = {
   source: string;
   unit: CleaningTaskUnit | null;
   employee: CleaningTaskEmployee;
+  /** Última supervisión; solo llega en `/cleaning-tasks/all`. */
+  supervision?: {
+    id: number;
+    phase: SupervisionPhase | null;
+    phaseLabel: string | null;
+    corrector: { id: number; name: string } | null;
+  } | null;
 };
 
 export type GetMyCleaningTasksResponse = {

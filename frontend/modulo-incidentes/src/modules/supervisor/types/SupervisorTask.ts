@@ -1,11 +1,17 @@
 import type { CleaningTask } from "@/modules/incidentes/types/CleaningTask";
+import type { SupervisionSummary } from "@/modules/supervisor/types/Supervision";
 
 export type GetAllCleaningTasksParams = {
   phase?: string;
-  date?: string;
+  /** Terminaron desde este instante, incluido (ISO), por fecha de fin. */
+  endedFrom?: string;
+  /** Terminaron antes de este instante, excluido (ISO). Con `endedFrom` es un día. */
+  endedTo?: string;
   employeeId?: number;
   limit?: number;
   offset?: number;
+  /** Las recién creadas primero, para que el límite no deje fuera las nuevas. */
+  sort?: "newest";
 };
 
 export type GetAllCleaningTasksResponse = {
@@ -15,20 +21,6 @@ export type GetAllCleaningTasksResponse = {
     total: number;
     limit: number;
     offset: number;
-  };
-};
-
-export type ReviewTaskPayload = {
-  approved: boolean;
-  reviewComments?: string;
-};
-
-export type ReviewTaskResponse = {
-  success: boolean;
-  data: {
-    id: number;
-    phase: string;
-    reviewComments: string | null;
   };
 };
 
@@ -100,10 +92,13 @@ export type CleaningTaskDetail = {
   attachments: Omit<TaskAttachment, "downloadUrl">[];
   canStart: boolean;
   canComplete: boolean;
+  /** Siempre `false`: aprobar pasa por la supervisión. */
   canReview: boolean;
   canReopen: boolean;
   canCancel: boolean;
   checklistDetail: ChecklistDetail | null;
+  /** Última supervisión (solo para supervisión y coordinación). */
+  supervision?: SupervisionSummary | null;
 };
 
 export type ReopenTaskPayload = {

@@ -1,4 +1,7 @@
 import {
+  cleaningCompleted,
+  cleaningCorrectionsAssigned,
+  cleaningCorrectionsFixed,
   cleaningReopened,
   correctiveOpened,
   joinLocation,
@@ -97,5 +100,59 @@ describe('cleaningReopened', () => {
 
     expect(message.body).toMatch(/…»$/);
     expect(message.body.length).toBeLessThan(160);
+  });
+});
+
+describe('cleaningCompleted', () => {
+  const base = { id: 777, employeeName: 'María', location: 'R302' };
+
+  it('SupervisorLimpieza abre el inicio de la supervisión', () => {
+    expect(
+      cleaningCompleted({ ...base, toSupervisionPanel: true }).deepLink,
+    ).toBe('/supervision/tarea/777');
+  });
+
+  it('AsistenteSL y SuperUser abren su ficha, a la que sí pueden entrar', () => {
+    expect(cleaningCompleted(base).deepLink).toBe('/asistente-sl/tasks/777');
+  });
+});
+
+describe('correcciones de limpieza', () => {
+  it('el aviso al Corrector abre sus correcciones y cuenta las novedades', () => {
+    const message = cleaningCorrectionsAssigned({
+      id: 777,
+      supervisionId: 5000,
+      location: 'R302',
+      findingsCount: 2,
+    });
+
+    expect(message.type).toBe('cleaning.corrections-assigned');
+    expect(message.body).toBe('Tienes 2 correcciones en R302');
+    expect(message.deepLink).toBe('/cleaning-corrections/5000');
+    expect(message.entityKind).toBe('cleaning');
+    expect(message.entityId).toBe('777');
+  });
+
+  it('en singular con una sola novedad', () => {
+    const message = cleaningCorrectionsAssigned({
+      id: 777,
+      supervisionId: 5000,
+      location: 'R302',
+      findingsCount: 1,
+    });
+
+    expect(message.body).toBe('Tienes 1 corrección en R302');
+  });
+
+  it('«Resuelto» avisa a supervisión y abre el resumen', () => {
+    const message = cleaningCorrectionsFixed({
+      id: 777,
+      supervisionId: 5000,
+      employeeName: 'María',
+      location: 'R302',
+    });
+
+    expect(message.type).toBe('cleaning.corrections-fixed');
+    expect(message.deepLink).toBe('/supervision/5000');
   });
 });

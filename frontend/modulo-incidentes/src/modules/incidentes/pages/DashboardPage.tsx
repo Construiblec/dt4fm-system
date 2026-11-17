@@ -32,6 +32,8 @@ import {
   useCleaningTaskExecutionStore,
 } from "@/store/cleaningTaskExecutionStore";
 import { Pagination } from "@/shared/components/Pagination";
+import { CorrectionCard } from "@/modules/supervisor/components/CorrectionCard";
+import { useMyCorrections } from "@/modules/supervisor/hooks/useMyCorrections";
 
 type Tab = "maintenance" | "cleaning";
 type MaintenanceKind = "corrective" | "preventive";
@@ -90,6 +92,11 @@ export const DashboardPage = () => {
   const [cleaningTasks, setCleaningTasks] = useState<CleaningTask[]>([]);
   const [cleaningLoading, setCleaningLoading] = useState(true);
   const [cleaningError, setCleaningError] = useState<string | null>(null);
+
+  // Correcciones que le asignó el supervisor: van aparte de las limpiezas
+  // porque no dependen del día ni de la fase elegidos.
+  const { corrections, isError: correctionsError } =
+    useMyCorrections(!supplierUser);
 
   // Filtros de limpieza. `null` es hoy: se recalcula en cada render para que,
   // pasada la medianoche, la vista por defecto siga siendo el día en curso.
@@ -282,6 +289,13 @@ export const DashboardPage = () => {
                     }`}
                 >
                   Limpieza
+                  {/* El dashboard abre en Mantenimiento: sin esto, las correcciones no se ven. */}
+                  {corrections.length > 0 ? (
+                    <span className="ml-1.5 inline-flex min-w-5 items-center justify-center rounded-full bg-amber-500 px-1.5 text-xs font-bold text-white">
+                      <span className="sr-only">, correcciones pendientes: </span>
+                      {corrections.length}
+                    </span>
+                  ) : null}
                 </button>
               </div>
             )}
@@ -468,6 +482,27 @@ export const DashboardPage = () => {
             {/* ── Tab: Limpieza (oculto para proveedores) ─────────────────── */}
             {!supplierUser && activeTab === "cleaning" ? (
               <>
+                {corrections.length > 0 ? (
+                  <section aria-labelledby="corrections-title" className="space-y-3">
+                    <h3
+                      id="corrections-title"
+                      className="text-base font-bold text-slate-900"
+                    >
+                      Correcciones ({corrections.length})
+                    </h3>
+                    <div className="space-y-4">
+                      {corrections.map((correction) => (
+                        <CorrectionCard key={correction.id} correction={correction} />
+                      ))}
+                    </div>
+                  </section>
+                ) : null}
+                {correctionsError ? (
+                  <p className="text-xs text-slate-500">
+                    No se pudieron cargar tus correcciones.
+                  </p>
+                ) : null}
+
                 {!cleaningLoading &&
                   !cleaningError &&
                   cleaningTasks.length > 0 ? (

@@ -6,10 +6,9 @@ import { TaskDetailInfo } from "@/modules/supervisor/components/TaskDetailInfo";
 import { TaskDetailChecklist } from "@/modules/supervisor/components/TaskDetailChecklist";
 import { TaskDetailPhotos } from "@/modules/supervisor/components/TaskDetailPhotos";
 import { SupervisionEvidenceSection } from "@/modules/supervisor/components/SupervisionEvidenceSection";
-import { ReviewModal } from "@/modules/supervisor/components/ReviewModal";
 import { ReopenModal } from "@/modules/supervisor/components/ReopenModal";
 import { LoadingModal } from "@/shared/components/LoadingModal";
-import { ArrowLeft, ClipboardCheck, RotateCcw } from "lucide-react";
+import { ArrowLeft, RotateCcw } from "lucide-react";
 
 export const AsistenteSLTaskDetailPage = () => {
   const navigate = useNavigate();
@@ -17,7 +16,6 @@ export const AsistenteSLTaskDetailPage = () => {
   const taskId = Number(id);
 
   const { detail, attachments, loading, error, reload } = useTaskDetail(taskId);
-  const [showReviewModal, setShowReviewModal] = useState(false);
   const [showReopenModal, setShowReopenModal] = useState(false);
 
   if (!Number.isFinite(taskId) || taskId <= 0) {
@@ -85,20 +83,8 @@ export const AsistenteSLTaskDetailPage = () => {
 
               {/* Acciones del supervisor */}
               <div className="space-y-3 pb-4">
-                {/* Revisar — solo si canReview (Completed) */}
-                {detail.canReview && (
-                  <button
-                    type="button"
-                    onClick={() => setShowReviewModal(true)}
-                    className="flex w-full items-center justify-center gap-2 rounded-2xl bg-fuchsia-600 px-4 py-4 text-sm font-bold text-white shadow-md transition hover:bg-fuchsia-700"
-                  >
-                    <ClipboardCheck className="h-5 w-5" />
-                    Revisar y aprobar tarea
-                  </button>
-                )}
-
-                {/* Reabrir — solo si está Revisada */}
-                {detail.canReopen && detail.phase === "Reviewed" && (
+                {/* Reabrir: repetir la limpieza entera (Completed o Reviewed). */}
+                {detail.canReopen && (
                   <button
                     type="button"
                     onClick={() => setShowReopenModal(true)}
@@ -122,42 +108,6 @@ export const AsistenteSLTaskDetailPage = () => {
 
         <LoadingModal open={loading} message="Cargando detalle..." />
       </main>
-
-      {/* Review modal */}
-      {showReviewModal && detail && (
-        <ReviewModal
-          task={{
-            id: detail.id,
-            type: detail.type as "CleaningTask",
-            taskNumber: detail.taskNumber,
-            description: detail.description,
-            phase: detail.phase,
-            generatedDate: detail.generatedDate,
-            plannedStartTime: detail.plannedStartTime ?? "",
-            plannedEndTime: detail.plannedEndTime ?? "",
-            actualStartTime: detail.actualStartTime,
-            actualEndTime: detail.actualEndTime,
-            executionTime: detail.executionTime ?? null,
-            delayTime: detail.delayTime ?? null,
-            taskObservations: detail.taskObservations,
-            supervisionObserv: detail.supervisionObserv,
-            teamObservations: detail.teamObservations,
-            isPaused: detail.isPaused,
-            sessionStartedAt: detail.sessionStartedAt,
-            sessionBaseMinutes: detail.sessionBaseMinutes,
-            hostawayReservation: detail.hostawayReservation,
-            checkoutDate: detail.checkoutDate,
-            source: detail.source,
-            unit: detail.unit,
-            employee: detail.employee ?? { id: 0, name: "Sin asignar" },
-          }}
-          onClose={() => setShowReviewModal(false)}
-          onSuccess={() => {
-            setShowReviewModal(false);
-            void reload();
-          }}
-        />
-      )}
 
       {/* Reopen modal */}
       {showReopenModal && detail && (

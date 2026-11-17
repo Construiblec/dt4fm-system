@@ -3,6 +3,7 @@ import {
   BrushCleaning,
   CalendarClock,
   CheckCircle2,
+  ClipboardCheck,
   ClipboardList,
   Clock,
   Megaphone,
@@ -88,6 +89,17 @@ export const NOTIFICATION_STYLES: Record<string, NotificationStyle> = {
     icon: RotateCcw,
     text: "text-rose-700",
     soft: "bg-rose-50",
+  },
+  // Ámbar como la fase «En corrección» de la supervisión.
+  "cleaning.corrections-assigned": {
+    icon: ClipboardList,
+    text: "text-amber-700",
+    soft: "bg-amber-50",
+  },
+  "cleaning.corrections-fixed": {
+    icon: ClipboardCheck,
+    text: "text-indigo-700",
+    soft: "bg-indigo-50",
   },
 };
 

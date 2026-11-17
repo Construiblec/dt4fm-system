@@ -15,6 +15,8 @@ export const NOTIFICATION_TYPES = {
   CLEANING_DELAYED: 'cleaning.delayed',
   CLEANING_COMPLETED: 'cleaning.completed',
   CLEANING_REOPENED: 'cleaning.reopened',
+  CLEANING_CORRECTIONS_ASSIGNED: 'cleaning.corrections-assigned',
+  CLEANING_CORRECTIONS_FIXED: 'cleaning.corrections-fixed',
 } as const;
 
 export { MAINTENANCE_SUPERVISOR_ROLES, CLEANING_SUPERVISOR_ROLES };
@@ -28,7 +30,17 @@ export const DEEP_LINKS = {
     `/supervisor-mantenimiento/corrective/${id}`,
   preventiveDetail: (id: string | number) =>
     `/supervisor-mantenimiento/preventive/${id}`,
-  cleaningDetail: (id: string | number) => `/supervisor/task/${id}`,
+  /** Ficha de la limpieza para AsistenteSL y SuperUser (ambos entran a esta ruta). */
+  cleaningDetail: (id: string | number) => `/asistente-sl/tasks/${id}`,
+  /** Inicio de la supervisión de una limpieza (solo SupervisorLimpieza). */
+  cleaningSupervisionStart: (taskId: string | number) =>
+    `/supervision/tarea/${taskId}`,
+  /** Resumen de una supervisión (solo SupervisorLimpieza). */
+  cleaningSupervisionSummary: (supervisionId: string | number) =>
+    `/supervision/${supervisionId}`,
+  /** Vista del operario con las novedades que tiene que corregir. */
+  cleaningCorrections: (supervisionId: string | number) =>
+    `/cleaning-corrections/${supervisionId}`,
   /** Vista del operario: la tarea abre en su pantalla previa, sin arrancar el tiempo. */
   cleaningTaskAssignee: (id: string | number) =>
     `/cleaning-tasks/${id}/execute`,
@@ -203,15 +215,55 @@ export const cleaningDelayed = (input: {
   entityId: String(input.id),
 });
 
+/**
+ * `toSupervisionPanel` decide a dónde abre: SupervisorLimpieza va al inicio de
+ * la supervisión; AsistenteSL y SuperUser, que no tienen ese panel, a la ficha.
+ */
 export const cleaningCompleted = (input: {
   id: string | number;
   employeeName: string;
   location: string;
+  toSupervisionPanel?: boolean;
 }): PushMessage => ({
   type: NOTIFICATION_TYPES.CLEANING_COMPLETED,
   title: 'Completada: Limpieza',
   body: `${input.employeeName} ha terminado una limpieza en ${input.location}`,
-  deepLink: DEEP_LINKS.cleaningDetail(input.id),
+  deepLink: input.toSupervisionPanel
+    ? DEEP_LINKS.cleaningSupervisionStart(input.id)
+    : DEEP_LINKS.cleaningDetail(input.id),
+  entityKind: 'cleaning',
+  entityId: String(input.id),
+});
+
+/** Va al operario elegido como Corrector. `id` es la limpieza (entityKind cleaning). */
+export const cleaningCorrectionsAssigned = (input: {
+  id: string | number;
+  supervisionId: string | number;
+  location: string;
+  findingsCount: number;
+}): PushMessage => ({
+  type: NOTIFICATION_TYPES.CLEANING_CORRECTIONS_ASSIGNED,
+  title: 'Correcciones: Limpieza',
+  body:
+    input.findingsCount === 1
+      ? `Tienes 1 corrección en ${input.location}`
+      : `Tienes ${input.findingsCount} correcciones en ${input.location}`,
+  deepLink: DEEP_LINKS.cleaningCorrections(input.supervisionId),
+  entityKind: 'cleaning',
+  entityId: String(input.id),
+});
+
+/** Va a SupervisorLimpieza cuando el Corrector pulsa «Resuelto». */
+export const cleaningCorrectionsFixed = (input: {
+  id: string | number;
+  supervisionId: string | number;
+  employeeName: string;
+  location: string;
+}): PushMessage => ({
+  type: NOTIFICATION_TYPES.CLEANING_CORRECTIONS_FIXED,
+  title: 'Corregida: Limpieza',
+  body: `${input.employeeName} marcó como resueltas las correcciones en ${input.location}`,
+  deepLink: DEEP_LINKS.cleaningSupervisionSummary(input.supervisionId),
   entityKind: 'cleaning',
   entityId: String(input.id),
 });
