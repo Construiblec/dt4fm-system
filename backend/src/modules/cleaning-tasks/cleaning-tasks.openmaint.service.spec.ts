@@ -203,26 +203,24 @@ describe('CleaningTasksOpenmaintService — todas las limpiezas', () => {
 
     const [[path]] = get.mock.calls as [[string, string]];
     expect(filterOf(path)).toEqual({
-      and: [
-        {
-          attribute: {
+      attribute: {
+        and: [
+          {
             simple: {
               attribute: 'ActualEndTime',
               operator: 'greater',
               value: ['2026-11-16T04:59:59.999Z'],
             },
           },
-        },
-        {
-          attribute: {
+          {
             simple: {
               attribute: 'ActualEndTime',
               operator: 'less',
               value: ['2026-11-17T05:00:00.000Z'],
             },
           },
-        },
-      ],
+        ],
+      },
     });
   });
 
@@ -237,18 +235,18 @@ describe('CleaningTasksOpenmaintService — todas las limpiezas', () => {
 
     const [[path]] = get.mock.calls as [[string, string]];
     expect(filterOf(path)).toEqual({
-      and: [
-        {
-          attribute: {
+      attribute: {
+        and: [
+          {
             simple: {
               attribute: 'phase',
               operator: 'equal',
               value: 'Completed',
             },
           },
-        },
-        { attribute: endedFromFilter },
-      ],
+          endedFromFilter,
+        ],
+      },
     });
   });
 
