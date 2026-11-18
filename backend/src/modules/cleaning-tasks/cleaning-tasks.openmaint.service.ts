@@ -655,15 +655,12 @@ export class CleaningTasksOpenmaintService {
       }
 
       let filterParam = '';
-      if (conditions.length === 1) {
+      if (conditions.length > 0) {
+        // El `and` va dentro de `attribute`: `{and: [{attribute}, …]}` da 500.
+        const attribute =
+          conditions.length === 1 ? conditions[0] : { and: conditions };
         filterParam = `&filter=${encodeURIComponent(
-          JSON.stringify({ attribute: conditions[0] }),
-        )}`;
-      } else if (conditions.length > 1) {
-        filterParam = `&filter=${encodeURIComponent(
-          JSON.stringify({
-            and: conditions.map((c) => ({ attribute: c })),
-          }),
+          JSON.stringify({ attribute }),
         )}`;
       }
 
