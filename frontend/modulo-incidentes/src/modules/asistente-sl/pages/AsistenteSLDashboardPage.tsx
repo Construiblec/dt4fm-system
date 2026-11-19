@@ -1,7 +1,11 @@
 import { AppLayout } from "@/app/layout/AppLayout";
 import { AppHeader } from "@/shared/components/AppHeader";
-import { useSupervisorTasks } from "@/modules/supervisor/hooks/useSupervisorTasks";
-import { SupervisorFilters } from "@/modules/supervisor/components/SupervisorFilters";
+import {
+  useSupervisorTasks,
+  SUPERVISOR_PHASES,
+} from "@/modules/supervisor/hooks/useSupervisorTasks";
+import { CleaningFilters } from "@/modules/incidentes/components/CleaningFilters";
+import { todayYmd } from "@/modules/coordinador/domain/dates";
 import { FloatingReportButton } from "@/modules/incidentes/components/FloatingReportButton";
 import { ClipboardList } from "lucide-react";
 import { AsistenteSLTaskCard } from "@/modules/asistente-sl/components/AsistenteSLTaskCard";
@@ -37,11 +41,13 @@ export const AsistenteSLDashboardPage = () => {
             </div>
 
             {/* Filters */}
-            <SupervisorFilters
-              phase={filters.phase}
-              date={filters.date}
+            <CleaningFilters
+              phases={SUPERVISOR_PHASES}
+              phaseFilter={filters.phase}
               onPhaseChange={(phase) => applyFilters({ phase })}
-              onDateChange={(date) => applyFilters({ date })}
+              day={filters.date}
+              today={todayYmd()}
+              onDayChange={(date) => applyFilters({ date })}
               onClear={clearFilters}
             />
 
