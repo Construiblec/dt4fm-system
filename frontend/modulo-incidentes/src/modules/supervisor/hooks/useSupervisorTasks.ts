@@ -11,6 +11,13 @@ type Filters = {
   employeeId: string;
 };
 
+/** Fases del selector del panel; `""` es «Todas», como en `defaultFilters`. */
+export const SUPERVISOR_PHASES = [
+  { value: "", label: "Todas las fases" },
+  { value: "Completed", label: "Completada" },
+  { value: "Reviewed", label: "Revisada" },
+];
+
 /**
  * Al abrir: las limpiezas terminadas hoy, de cualquier fase. Se calcula al
  * abrir y no al cargar el módulo: la PWA puede quedar abierta de un día a otro.
