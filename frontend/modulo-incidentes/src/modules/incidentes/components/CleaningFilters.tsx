@@ -10,6 +10,8 @@ const PHASES = [
 ];
 
 type Props = {
+  /** Fases del selector; por defecto las del operario. */
+  phases?: { value: string; label: string }[];
   phaseFilter: string;
   onPhaseChange: (value: string) => void;
   /** Día que se está viendo, YYYY-MM-DD */
@@ -23,6 +25,7 @@ const ICON_BUTTON =
   "flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-600 transition hover:bg-slate-200";
 
 export const CleaningFilters = ({
+  phases = PHASES,
   phaseFilter,
   onPhaseChange,
   day,
@@ -45,7 +48,7 @@ export const CleaningFilters = ({
           aria-label="Fase"
           className="flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-slate-400"
         >
-          {PHASES.map((p) => (
+          {phases.map((p) => (
             <option key={p.value} value={p.value}>
               {p.label}
             </option>

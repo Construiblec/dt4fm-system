@@ -1,4 +1,5 @@
 import { Navigate, createBrowserRouter } from "react-router-dom";
+import { LegacySupervisorTaskRedirect } from "@/app/router/LegacySupervisorTaskRedirect";
 import { RequireRole } from "@/app/router/RequireRole";
 import { AccountPage } from "@/modules/auth/pages/AccountPage";
 import { LoginPage } from "@/modules/auth/pages/LoginPage";
@@ -18,7 +19,11 @@ import { ReportIncidentPage } from "@/modules/incidentes/pages/ReportIncidentPag
 import { MyReportsPage } from "@/modules/incidentes/pages/MyReportsPage";
 import { MyReportDetailPage } from "@/modules/incidentes/pages/MyReportDetailPage";
 import { SupervisorDashboardPage } from "@/modules/supervisor/pages/SupervisorDashboardPage";
-import { SupervisorTaskDetailPage } from "@/modules/supervisor/pages/SupervisorTaskDetailPage";
+import { SupervisionStartPage } from "@/modules/supervisor/pages/SupervisionStartPage";
+import { SupervisionChecklistPage } from "@/modules/supervisor/pages/SupervisionChecklistPage";
+import { SupervisionAssignPage } from "@/modules/supervisor/pages/SupervisionAssignPage";
+import { SupervisionSummaryPage } from "@/modules/supervisor/pages/SupervisionSummaryPage";
+import { CleaningCorrectionsPage } from "@/modules/supervisor/pages/CleaningCorrectionsPage";
 import { AsistenteSLDashboardPage } from "@/modules/asistente-sl/pages/AsistenteSLDashboardPage";
 import { AsistenteSLTaskDetailPage } from "@/modules/asistente-sl/pages/AsistenteSLTaskDetailPage";
 import { MaintenanceSupervisorDashboardPage } from "@/modules/supervisor-mantenimiento/pages/MaintenanceSupervisorDashboardPage";
@@ -62,6 +67,8 @@ export const router = createBrowserRouter([
     path: "/cleaning-tasks/:id/execute",
     element: <CleaningTaskExecutionPage />,
   },
+  // Correcciones del operario: el backend solo deja entrar a su Corrector.
+  { path: "/cleaning-corrections/:id", element: <CleaningCorrectionsPage /> },
   { path: "/visitor-form", element: <VisitorFormPage /> },
   { path: "/report-incident", element: <ReportIncidentPage /> },
   { path: "/incidents/:id", element: <IncidentDetailPage /> },
@@ -89,14 +96,21 @@ export const router = createBrowserRouter([
       </RequireRole>
     ),
   },
-  {
-    path: "/supervisor/tasks/:id",
+  // Ficha retirada: los avisos viejos que la apuntan llevan a la de AsistenteSL.
+  { path: "/supervisor/tasks/:id", element: <LegacySupervisorTaskRedirect /> },
+  // ── Supervisión posterior de limpieza ──────────────────────────────────────
+  // Solo SupervisorLimpieza: AsistenteSL y SuperUser no tienen este panel.
+  ...[
+    { path: "/supervision/tarea/:taskId", element: <SupervisionStartPage /> },
+    { path: "/supervision/:id/checklist", element: <SupervisionChecklistPage /> },
+    { path: "/supervision/:id/asignar", element: <SupervisionAssignPage /> },
+    { path: "/supervision/:id", element: <SupervisionSummaryPage /> },
+  ].map(({ path, element }) => ({
+    path,
     element: (
-      <RequireRole roles={["SupervisorLimpieza", "SuperUser"]}>
-        <SupervisorTaskDetailPage />
-      </RequireRole>
+      <RequireRole roles={["SupervisorLimpieza"]}>{element}</RequireRole>
     ),
-  },
+  })),
   // ── Asistente de Supervisión de Limpiezas ─────────────────────────────────
   {
     path: "/asistente-sl",

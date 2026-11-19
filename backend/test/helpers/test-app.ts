@@ -14,6 +14,7 @@ import { OpenmaintServiceSession } from '../../src/integrations/openmaint/openma
 import { OpenmaintUsersService } from '../../src/integrations/openmaint/openmaint.users.service';
 
 import { CleaningTasksOpenmaintService } from '../../src/modules/cleaning-tasks/cleaning-tasks.openmaint.service';
+import { CleaningSupervisionsOpenmaintService } from '../../src/modules/cleaning-tasks/cleaning-supervisions.openmaint.service';
 import { PreventiveMaintenanceOpenmaintService } from '../../src/modules/preventive-maintenance/preventive-maintenance.openmaint.service';
 import { CorrectiveMaintOpenmaintService } from '../../src/modules/maintenance-supervision/corrective-maint.openmaint.service';
 import { EquipmentOpenmaintService } from '../../src/modules/corrective-maintenance/equipment.openmaint.service';
@@ -41,6 +42,7 @@ import {
 } from '../mocks/openmaint-core.mock';
 import {
   createCleaningTasksOpenmaintServiceMock,
+  createCleaningSupervisionsOpenmaintServiceMock,
   createPreventiveMaintenanceOpenmaintServiceMock,
   createCorrectiveMaintOpenmaintServiceMock,
   createEquipmentOpenmaintServiceMock,
@@ -86,6 +88,9 @@ export interface TestAppMocks {
   cleaningTasksOpenmaint: ReturnType<
     typeof createCleaningTasksOpenmaintServiceMock
   >;
+  cleaningSupervisionsOpenmaint: ReturnType<
+    typeof createCleaningSupervisionsOpenmaintServiceMock
+  >;
   preventiveOpenmaint: ReturnType<
     typeof createPreventiveMaintenanceOpenmaintServiceMock
   >;
@@ -118,6 +123,8 @@ export const createFreshMocks = (): TestAppMocks => ({
   openmaintServiceSession: createOpenmaintServiceSessionMock(),
   openmaintUsers: createOpenmaintUsersServiceMock(),
   cleaningTasksOpenmaint: createCleaningTasksOpenmaintServiceMock(),
+  cleaningSupervisionsOpenmaint:
+    createCleaningSupervisionsOpenmaintServiceMock(),
   preventiveOpenmaint: createPreventiveMaintenanceOpenmaintServiceMock(),
   correctiveOpenmaint: createCorrectiveMaintOpenmaintServiceMock(),
   equipmentOpenmaint: createEquipmentOpenmaintServiceMock(),
@@ -171,6 +178,8 @@ export async function createTestApp(
     .useValue(mocks.openmaintUsers)
     .overrideProvider(CleaningTasksOpenmaintService)
     .useValue(mocks.cleaningTasksOpenmaint)
+    .overrideProvider(CleaningSupervisionsOpenmaintService)
+    .useValue(mocks.cleaningSupervisionsOpenmaint)
     .overrideProvider(PreventiveMaintenanceOpenmaintService)
     .useValue(mocks.preventiveOpenmaint)
     .overrideProvider(CorrectiveMaintOpenmaintService)

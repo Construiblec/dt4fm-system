@@ -44,18 +44,29 @@ import { ReopenTaskDto } from './dto/reopen-task.dto';
 import { ReviewTaskDto } from './dto/review-task.dto';
 import { UpdateCleaningTaskDto } from './dto/update-cleaning-task.dto';
 import { UploadAttachmentDto } from './dto/upload-attachment.dto';
+import {
+  CleaningSupervisionsService,
+  SupervisionSummary,
+} from './cleaning-supervisions.service';
+import { SUPERVISION_TEMPLATE_CODE } from './constants/supervision.constants';
 import { readCsvTemplate } from './utils/csv-template.util';
-
-/** Tipo mínimo del archivo subido por multer (evita dependencia de @types/multer) */
-type UploadedFile = {
-  originalname: string;
-  mimetype: string;
-  size: number;
-  buffer: Buffer;
-};
+import {
+  assertValidPhoto,
+  buildUniqueFileName,
+  UploadedFile,
+} from './utils/photo-upload.util';
+import { validateSupervisionTemplate } from './utils/supervision-checklist.util';
+import {
+  extractDraftObservations,
+  stripDraftObservations,
+} from './utils/team-observations.util';
 
 const PHASE_LOOKUP = { Assigned: 'Assigned' };
 const SOURCE_LOOKUP = { Hostaway: 'Hostaway', Manual: 'Manual' };
+export {
+  extractDraftObservations,
+  stripDraftObservations,
+} from './utils/team-observations.util';
 export {
   SUPERVISOR_ROLES,
   isSupervisorRole,
@@ -107,38 +118,8 @@ export const isPausedTask = (task: any): boolean => {
   return lastPause !== -1 && lastPause > notes.lastIndexOf(RESUME_MARKER);
 };
 
-/**
- * Bloque de borrador al final de TeamObservations: `{lo que el empleado llevaba
- * escrito}`. Va anclado al final justo para que el recorte de longitud se coma la
- * bitácora vieja antes que el texto vivo, y para no confundirlo con unas llaves
- * escritas en medio de una observación.
- */
-const DRAFT_BLOCK = /\s*\{([\s\S]*)\}\s*$/;
-
 /** Tope de TeamObservations, bitácora y borrador incluidos. */
 const MAX_TEAM_OBSERVATIONS = 500;
-
-/**
- * Lo que el empleado llevaba escrito en el campo "Observaciones" cuando pausó.
- *
- * Es un borrador, no una observación: se guarda en OpenMAINT para que sobreviva a
- * la pausa (y a que cierre la app), pero nunca se muestra. Por eso viaja aparte y
- * `teamObservations` sale siempre limpio de este bloque.
- */
-export const extractDraftObservations = (
-  text: string | null | undefined,
-): string | null => {
-  const draft = DRAFT_BLOCK.exec(text ?? '')?.[1]?.trim();
-  return draft ? draft : null;
-};
-
-/** El texto visible: la bitácora sin el borrador. */
-export const stripDraftObservations = (
-  text: string | null | undefined,
-): string | null => {
-  const stripped = (text ?? '').replace(DRAFT_BLOCK, '').trim();
-  return stripped ? stripped : null;
-};
 
 /**
  * Instante en que arrancó la ejecución que está corriendo AHORA, o null si la
@@ -258,13 +239,6 @@ export const resolveSessionCarryMinutes = (task: any): number => {
   return carry;
 };
 const ALLOWED_UPLOAD_PHASES = ['InExecution', 'Completed'];
-const ALLOWED_MIME_TYPES = [
-  'image/jpeg',
-  'image/png',
-  'image/heic',
-  'image/heif',
-];
-const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
 /** Tope de fotos del operario. La evidencia de supervisión tiene el suyo. */
 const MAX_ATTACHMENTS = 10;
 /**
@@ -336,6 +310,7 @@ export class CleaningTasksService {
     private readonly openmaintService: CleaningTasksOpenmaintService,
     private readonly pushDispatch: PushDispatchService,
     private readonly configService: ConfigService,
+    private readonly supervisions: CleaningSupervisionsService,
   ) {}
 
   /**
@@ -547,13 +522,23 @@ export class CleaningTasksService {
       offset?: number;
       phase?: string;
       date?: string;
+      endedFrom?: string;
+      endedTo?: string;
       employeeId?: number;
       sort?: 'newest';
     } = {},
   ) {
     const { limit = 50, offset = 0 } = options;
-    const response = await this.openmaintService.getAllTasks(options);
-    const tasks = await this.toListItems(response.data ?? [], sessionToken);
+    const [response, supervisions] = await Promise.all([
+      this.openmaintService.getAllTasks(options),
+      // Nunca rechaza: sin supervisiones el listado sale igual, sin el resumen.
+      this.supervisions.summariesByTask(),
+    ]);
+    const tasks = await this.toListItems(
+      response.data ?? [],
+      sessionToken,
+      supervisions,
+    );
     return {
       success: true,
       data: tasks,
@@ -569,6 +554,7 @@ export class CleaningTasksService {
   private async toListItems(
     rawTasks: CleaningTaskCard[],
     sessionToken: string,
+    supervisions?: Map<number, SupervisionSummary>,
   ) {
     const uniqueUnitIds = [
       ...new Set(
@@ -612,6 +598,8 @@ export class CleaningTasksService {
             description: task._CleaningChecklist_description ?? null,
           }
         : null,
+      // Última supervisión de la limpieza; null si no tiene.
+      supervision: supervisions?.get(task._id) ?? null,
     }));
   }
 
@@ -699,7 +687,19 @@ export class CleaningTasksService {
     );
     const task = response?.data;
     if (!task) throw new NotFoundException(`Tarea ${taskId} no encontrada`);
-    return this.buildTaskDetail(task, sessionToken);
+    const [detail, supervision] = await Promise.all([
+      this.buildTaskDetail(task, sessionToken),
+      this.supervisions.summaryForTask(taskId),
+    ]);
+    return {
+      ...detail,
+      data: {
+        ...detail.data,
+        // Supervisión y coordinación ven el estado de la supervisión; el
+        // detalle completo sale de GET /cleaning-supervisions/:id.
+        supervision,
+      },
+    };
   }
 
   private async buildTaskDetail(task: any, sessionToken: string) {
@@ -757,7 +757,9 @@ export class CleaningTasksService {
         canStart: phaseDesc === 'Assigned',
         canComplete: phaseDesc === 'InExecution',
         canPause: phaseDesc === 'InExecution',
-        canReview: phaseDesc === 'Completed',
+        // La revisión directa se retiró: aprobar pasa por la supervisión
+        // (POST /cleaning-supervisions/:id/approve).
+        canReview: false,
         canReopen: phaseDesc === 'Completed' || phaseDesc === 'Reviewed',
         canCancel: phaseDesc === 'Assigned' || phaseDesc === 'InExecution',
         checklistDetail,
@@ -1089,6 +1091,21 @@ export class CleaningTasksService {
       sessionToken,
     );
 
+    // Borrador de la supervisión posterior. Si falla, la limpieza ya quedó
+    // Completed y sus tiempos no se tocan: el borrador se recupera cuando
+    // SupervisorLimpieza la abre desde su panel.
+    try {
+      await this.supervisions.createDraftAfterCompletion(
+        { ...task, _id: taskId },
+        response?.data?.ActualEndTime ?? now,
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Limpieza ${taskId} completada, pero no se pudo crear su supervisión: ` +
+          `${(error as Error)?.message}. Se recupera al abrirla desde supervisión.`,
+      );
+    }
+
     // Push a los supervisores de limpieza.
     void this.notifyCleaningCompleted(task, taskId, sessionToken);
 
@@ -1265,6 +1282,11 @@ export class CleaningTasksService {
       task.SupervisionObserv,
       reason ? `[Reabierto]: ${reason}` : '[Reabierto]',
     );
+    // Primero se anula la supervisión abierta (no se borra: conserva novedades
+    // y fotos). Va ANTES de reabrir: si quedara abierta, la próxima
+    // finalización la reutilizaría con las novedades viejas en vez de empezar
+    // una en blanco. Si falla, la reapertura falla entera y se puede reintentar.
+    await this.supervisions.cancelOpenForTask(taskId);
     const updated = await this.openmaintService.updateTaskWithSession(
       taskId,
       body,
@@ -1392,7 +1414,7 @@ export class CleaningTasksService {
       throw new BadRequestException(
         'Photos can only be uploaded when task is InExecution or Completed',
       );
-    this.assertValidPhoto(file);
+    assertValidPhoto(file);
     // La evidencia de supervisión no gasta el cupo del operario.
     const existing = await this.openmaintService.getAttachments(
       taskId,
@@ -1406,7 +1428,7 @@ export class CleaningTasksService {
         `Maximum ${MAX_ATTACHMENTS} photos allowed per task`,
       );
     const categoryCode = dto.category ?? 'Photo';
-    const uniqueName = this.buildUniqueFileName(file);
+    const uniqueName = buildUniqueFileName(file);
     // dto.description no se reenvía a propósito: la descripción es la que marca
     // la evidencia de supervisión, y el operario no debe poder escribirla.
     const response = await this.openmaintService.uploadAttachment(
@@ -1482,7 +1504,7 @@ export class CleaningTasksService {
     sessionToken: string,
   ) {
     await this.fetchTaskInSupervisionPhase(taskId, sessionToken);
-    this.assertValidPhoto(file);
+    assertValidPhoto(file);
 
     const existing = await this.openmaintService.getAttachments(
       taskId,
@@ -1496,7 +1518,7 @@ export class CleaningTasksService {
         `Máximo ${MAX_SUPERVISION_EVIDENCE} fotos de evidencia de supervisión por tarea`,
       );
 
-    const uniqueName = this.buildUniqueFileName(
+    const uniqueName = buildUniqueFileName(
       file,
       SUPERVISION_EVIDENCE_FILE_PREFIX,
     );
@@ -1632,22 +1654,6 @@ export class CleaningTasksService {
       uploadDate: a.created ?? a.modified ?? null,
       downloadUrl: `/cleaning-tasks/${taskId}/attachments/${a._id}/download`,
     };
-  }
-
-  private assertValidPhoto(file: UploadedFile): void {
-    if (!ALLOWED_MIME_TYPES.includes(file.mimetype))
-      throw new BadRequestException(
-        'Only jpg, jpeg, png, heic files are allowed',
-      );
-    if (file.size > MAX_FILE_SIZE_BYTES)
-      throw new BadRequestException('File size must not exceed 10MB');
-  }
-
-  private buildUniqueFileName(file: UploadedFile, prefix = ''): string {
-    const ext = file.originalname.includes('.')
-      ? file.originalname.split('.').pop()
-      : 'jpg';
-    return `${prefix}${Date.now()}_${Math.random().toString(36).slice(2, 7)}.${ext}`;
   }
 
   private validateOwnership(
@@ -2178,6 +2184,12 @@ export class CleaningTasksService {
     return {
       id: act._id,
       code: act.Code ?? null,
+      // La plantilla de supervisión no se asigna a limpiezas: la coordinación
+      // la excluye de los selectores y la edita con su formato de 4 columnas.
+      kind:
+        act.Code?.trim() === SUPERVISION_TEMPLATE_CODE
+          ? ('supervision' as const)
+          : ('execution' as const),
       description: act.Description ?? null,
       detalle: act.Detalle ?? '',
       plantilla: act._plantillaRota
@@ -2246,9 +2258,40 @@ export class CleaningTasksService {
     dto: SaveCleaningActivityDto,
     file?: { buffer: Buffer; originalname: string; mimetype: string },
   ) {
+    const current =
+      id === null ? null : await this.openmaintService.getCleaningActivity(id);
+    if (id !== null && !current?.data)
+      throw new NotFoundException(`Checklist ${id} no encontrado`);
+
+    // El Code de la plantilla de supervisión es como la encuentra el backend:
+    // no se puede cambiar ni quitar desde la PWA.
+    const isSupervisionTemplate =
+      current?.data?.Code?.trim() === SUPERVISION_TEMPLATE_CODE ||
+      (id === null && dto.code?.trim() === SUPERVISION_TEMPLATE_CODE);
+    if (
+      current?.data?.Code?.trim() === SUPERVISION_TEMPLATE_CODE &&
+      dto.code !== undefined &&
+      dto.code.trim() !== SUPERVISION_TEMPLATE_CODE
+    ) {
+      throw new BadRequestException(
+        `El checklist de supervisión debe conservar el código ${SUPERVISION_TEMPLATE_CODE}`,
+      );
+    }
+    if (isSupervisionTemplate && dto.removeTemplate && !file) {
+      throw new BadRequestException(
+        'El checklist de supervisión necesita su archivo CSV: reemplázalo en vez de quitarlo',
+      );
+    }
+
     if (file) {
       const parsed = readCsvTemplate(file.buffer);
       if (!parsed.ok) throw new BadRequestException(parsed.reason);
+      if (isSupervisionTemplate) {
+        // Cuatro columnas y el mismo número de puntos: las novedades guardan
+        // el número de fila, así que no se pueden quitar ni agregar filas.
+        const supervision = validateSupervisionTemplate(parsed.rows);
+        if (!supervision.ok) throw new BadRequestException(supervision.reason);
+      }
     }
 
     const detalle = dto.detalle?.trim() ?? '';
@@ -2274,10 +2317,7 @@ export class CleaningTasksService {
         throw new InternalServerErrorException(
           'OpenMAINT no devolvió el id del checklist',
         );
-    } else {
-      const current = await this.openmaintService.getCleaningActivity(id);
-      if (!current?.data)
-        throw new NotFoundException(`Checklist ${id} no encontrado`);
+    } else if (current?.data) {
       previousAttachment = current.data.Plantilla?.trim() || null;
       // Poner `Plantilla: null` quita el archivo anterior; es la única forma de
       // reemplazarlo sin chocar por el nombre del archivo.
@@ -2303,6 +2343,10 @@ export class CleaningTasksService {
       await this.openmaintService.updateCleaningActivity(activityId, {
         Plantilla: attachmentId,
       });
+    }
+
+    if (activityId !== null && isSupervisionTemplate) {
+      this.supervisions.invalidateTemplate(activityId);
     }
 
     return { saved: true, created: id === null, id: activityId };

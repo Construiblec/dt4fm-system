@@ -1,32 +1,18 @@
-import { useEffect, useState } from "react";
 import { AppLayout } from "@/app/layout/AppLayout";
 import { AppHeader } from "@/shared/components/AppHeader";
-import { useSupervisorTasks } from "@/modules/supervisor/hooks/useSupervisorTasks";
-import { SupervisorFilters } from "@/modules/supervisor/components/SupervisorFilters";
+import {
+  useSupervisorTasks,
+  SUPERVISOR_PHASES,
+} from "@/modules/supervisor/hooks/useSupervisorTasks";
+import { CleaningFilters } from "@/modules/incidentes/components/CleaningFilters";
+import { todayYmd } from "@/modules/coordinador/domain/dates";
 import { FloatingReportButton } from "@/modules/incidentes/components/FloatingReportButton";
-import { ReviewModal } from "@/modules/supervisor/components/ReviewModal";
-import type { CleaningTask } from "@/modules/incidentes/types/CleaningTask";
 import { ClipboardList } from "lucide-react";
 import { AsistenteSLTaskCard } from "@/modules/asistente-sl/components/AsistenteSLTaskCard";
 
 export const AsistenteSLDashboardPage = () => {
-  const { tasks, loading, error, total, filters, load, applyFilters, clearFilters } =
+  const { tasks, loading, error, total, filters, applyFilters, clearFilters } =
     useSupervisorTasks();
-  const [taskToReview, setTaskToReview] = useState<CleaningTask | null>(null);
-
-  useEffect(() => {
-    void load({});
-  }, [load]);
-
-  const handleReviewSuccess = (taskId: number, approved: boolean) => {
-    // Actualiza la fase localmente sin refetch para evitar parpadeo
-    void load({
-      phase: filters.phase || undefined,
-      date: filters.date || undefined,
-      employeeId: filters.employeeId ? Number(filters.employeeId) : undefined,
-    });
-    console.info(`Tarea ${taskId} ${approved ? "aprobada" : "rechazada"}`);
-  };
 
   const pendingReview = tasks.filter((t) => t.phase === "Completed").length;
 
@@ -55,11 +41,13 @@ export const AsistenteSLDashboardPage = () => {
             </div>
 
             {/* Filters */}
-            <SupervisorFilters
-              phase={filters.phase}
-              date={filters.date}
+            <CleaningFilters
+              phases={SUPERVISOR_PHASES}
+              phaseFilter={filters.phase}
               onPhaseChange={(phase) => applyFilters({ phase })}
-              onDateChange={(date) => applyFilters({ date })}
+              day={filters.date}
+              today={todayYmd()}
+              onDayChange={(date) => applyFilters({ date })}
               onClear={clearFilters}
             />
 
@@ -94,7 +82,6 @@ export const AsistenteSLDashboardPage = () => {
                   <AsistenteSLTaskCard
                     key={task.id}
                     task={task}
-                    onReview={setTaskToReview}
                   />
                 ))}
               </div>
@@ -105,14 +92,6 @@ export const AsistenteSLDashboardPage = () => {
         <FloatingReportButton />
       </main>
 
-      {/* Review modal */}
-      {taskToReview && (
-        <ReviewModal
-          task={taskToReview}
-          onClose={() => setTaskToReview(null)}
-          onSuccess={handleReviewSuccess}
-        />
-      )}
     </AppLayout>
   );
 };

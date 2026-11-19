@@ -8,8 +8,6 @@ import type {
   GetTaskDetailResponse,
   ReopenTaskPayload,
   ReopenTaskResponse,
-  ReviewTaskPayload,
-  ReviewTaskResponse,
   SupervisionEvidenceResponse,
 } from "@/modules/supervisor/types/SupervisorTask";
 import { redirectToLogin } from "@/shared/auth/returnTo";
@@ -39,14 +37,24 @@ function handleUnauthorized(error: unknown): never {
 export const fetchAllCleaningTasks = async (
   params: GetAllCleaningTasksParams = {},
 ): Promise<GetAllCleaningTasksResponse> => {
-  const { phase, date, employeeId, limit = 50, offset = 0 } = params;
+  const {
+    phase,
+    endedFrom,
+    endedTo,
+    employeeId,
+    limit = 50,
+    offset = 0,
+    sort,
+  } = params;
 
   const queryParams = new URLSearchParams();
   queryParams.set("limit", String(limit));
   queryParams.set("offset", String(offset));
   if (phase) queryParams.set("phase", phase);
-  if (date) queryParams.set("date", date);
+  if (endedFrom) queryParams.set("endedFrom", endedFrom);
+  if (endedTo) queryParams.set("endedTo", endedTo);
   if (employeeId) queryParams.set("employeeId", String(employeeId));
+  if (sort) queryParams.set("sort", sort);
 
   try {
     const { data } = await supervisorApi.get<GetAllCleaningTasksResponse>(
@@ -100,24 +108,6 @@ export const reopenCleaningTask = async (
   try {
     const { data } = await supervisorApi.patch<ReopenTaskResponse>(
       `/cleaning-tasks/${taskId}/reopen`,
-      payload,
-      { headers: getAuthHeaders() },
-    );
-    return data;
-  } catch (error) {
-    return handleUnauthorized(error);
-  }
-};
-
-// ─── Revisar una tarea ────────────────────────────────────────────────────────
-
-export const reviewCleaningTask = async (
-  taskId: number,
-  payload: ReviewTaskPayload,
-): Promise<ReviewTaskResponse> => {
-  try {
-    const { data } = await supervisorApi.patch<ReviewTaskResponse>(
-      `/cleaning-tasks/${taskId}/review`,
       payload,
       { headers: getAuthHeaders() },
     );

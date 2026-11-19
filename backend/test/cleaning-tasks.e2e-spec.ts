@@ -58,6 +58,32 @@ describe('CleaningTasksController (e2e)', () => {
         .expect(403);
     });
 
+    it('reenvía el día de finalización (endedFrom y endedTo) del panel de supervisión', async () => {
+      const endedFrom = '2026-11-16T05:00:00.000Z';
+      const endedTo = '2026-11-17T05:00:00.000Z';
+
+      await request(app.getHttpServer())
+        .get(`/cleaning-tasks/all?endedFrom=${endedFrom}&endedTo=${endedTo}`)
+        .set('x-session-token', 'mock-session-token')
+        .expect(200);
+
+      expect(mocks.cleaningTasksOpenmaint.getAllTasks).toHaveBeenCalledWith(
+        expect.objectContaining({ endedFrom, endedTo }),
+      );
+    });
+
+    it.each(['endedFrom', 'endedTo'])(
+      '400 si %s no es una fecha ISO',
+      async (param) => {
+        await request(app.getHttpServer())
+          .get(`/cleaning-tasks/all?${param}=ayer`)
+          .set('x-session-token', 'mock-session-token')
+          .expect(400);
+
+        expect(mocks.cleaningTasksOpenmaint.getAllTasks).not.toHaveBeenCalled();
+      },
+    );
+
     // BP-003: antes el controller solo exigía que x-role viniera presente, y
     // el VALOR no se validaba contra la sesión de openMAINT — bastaba con
     // forjar la cabecera. Ahora el rol se resuelve contra la sesión real, así
@@ -254,6 +280,63 @@ describe('CleaningTasksController (e2e)', () => {
         .expect(200);
 
       expect(res.body.success).toBe(true);
+      // Crea el borrador de supervisión de la limpieza, con Supervisor y
+      // Corrector vacíos.
+      expect(
+        mocks.cleaningSupervisionsOpenmaint.createSupervision,
+      ).toHaveBeenCalledWith({ CleaningTask: 777, Phase: 11851473 });
+    });
+
+    it('200 aunque falle crear la supervisión: la limpieza queda Completed', async () => {
+      mocks.cleaningTasksOpenmaint.getTaskById.mockResolvedValueOnce(
+        cleaningTaskResponse({
+          phase: PHASE_IDS.IN_EXECUTION,
+          employee: 4567,
+          actualStartTime: '2026-08-27T09:00:00Z',
+        }),
+      );
+      mocks.cleaningTasksOpenmaint.updateTaskWithSession.mockResolvedValueOnce({
+        data: { _id: 777 },
+      });
+      mocks.cleaningSupervisionsOpenmaint.createSupervision.mockRejectedValueOnce(
+        new Error('openMAINT caído'),
+      );
+
+      const res = await request(app.getHttpServer())
+        .patch('/cleaning-tasks/777/complete')
+        .set('x-session-token', 'mock-session-token')
+        .set('x-cleaning-employee-id', '4567')
+        .send({})
+        .expect(200);
+
+      expect(res.body.data.phase).toBe('Completed');
+    });
+
+    it('no duplica: si la limpieza ya tiene una supervisión abierta, la reutiliza', async () => {
+      mocks.cleaningTasksOpenmaint.getTaskById.mockResolvedValueOnce(
+        cleaningTaskResponse({
+          phase: PHASE_IDS.IN_EXECUTION,
+          employee: 4567,
+          actualStartTime: '2026-08-27T09:00:00Z',
+        }),
+      );
+      mocks.cleaningTasksOpenmaint.updateTaskWithSession.mockResolvedValueOnce({
+        data: { _id: 777 },
+      });
+      mocks.cleaningSupervisionsOpenmaint.findByTask.mockResolvedValueOnce([
+        { _id: 5001, CleaningTask: 777, _Phase_code: 'Draft' },
+      ]);
+
+      await request(app.getHttpServer())
+        .patch('/cleaning-tasks/777/complete')
+        .set('x-session-token', 'mock-session-token')
+        .set('x-cleaning-employee-id', '4567')
+        .send({})
+        .expect(200);
+
+      expect(
+        mocks.cleaningSupervisionsOpenmaint.createSupervision,
+      ).not.toHaveBeenCalled();
     });
 
     it('400 al completar directamente desde Assigned (nunca se inició)', async () => {
@@ -271,72 +354,16 @@ describe('CleaningTasksController (e2e)', () => {
   });
 
   describe('PATCH /:taskId/review', () => {
-    it('200: aprueba una tarea Completed → Reviewed', async () => {
-      mocks.cleaningTasksOpenmaint.getTaskById.mockResolvedValueOnce(
-        cleaningTaskResponse({ phase: PHASE_IDS.COMPLETED, employee: 4567 }),
-      );
-      mocks.cleaningTasksOpenmaint.updateTaskWithSession.mockResolvedValueOnce({
-        data: { _id: 777 },
-      });
-
-      const res = await request(app.getHttpServer())
-        .patch('/cleaning-tasks/777/review')
-        .set('x-session-token', 'mock-session-token')
-        .send({ approved: true })
-        .expect(200);
-
-      expect(res.body.data.phase).toBe('Reviewed');
-      expect(mocks.pushDispatch.notifyCleaningReopened).not.toHaveBeenCalled();
-    });
-
-    it('200: rechazar reabre la tarea y avisa al operario', async () => {
-      mocks.cleaningTasksOpenmaint.getTaskById.mockResolvedValueOnce(
-        cleaningTaskResponse({ phase: PHASE_IDS.COMPLETED, employee: 4567 }),
-      );
-      mocks.cleaningTasksOpenmaint.updateTaskWithSession.mockResolvedValueOnce({
-        data: { _id: 777 },
-      });
-
-      const res = await request(app.getHttpServer())
-        .patch('/cleaning-tasks/777/review')
-        .set('x-session-token', 'mock-session-token')
-        .send({ approved: false, reviewComments: 'Quedó sucio el baño' })
-        .expect(200);
-
-      expect(res.body.data.phase).toBe('Assigned');
-      expect(mocks.pushDispatch.notifyCleaningReopened).toHaveBeenCalledWith(
-        expect.objectContaining({
-          id: 777,
-          cleaningEmployeeId: 4567,
-          reason: 'Quedó sucio el baño',
-        }),
-      );
-    });
-
-    it('403 si el rol no es supervisor', async () => {
-      mocks.openmaint.getSession.mockResolvedValueOnce(
-        mockSession({ role: 'PersonalLimpieza' }),
-      );
-
+    it('404: la revisión directa se retiró; aprobar pasa por la supervisión', async () => {
       await request(app.getHttpServer())
         .patch('/cleaning-tasks/777/review')
         .set('x-session-token', 'mock-session-token')
         .send({ approved: true })
-        .expect(403);
+        .expect(404);
 
-      expect(mocks.cleaningTasksOpenmaint.getTaskById).not.toHaveBeenCalled();
-    });
-
-    it('400 al revisar una tarea que no está Completed', async () => {
-      mocks.cleaningTasksOpenmaint.getTaskById.mockResolvedValueOnce(
-        cleaningTaskResponse({ phase: PHASE_IDS.ASSIGNED, employee: 4567 }),
-      );
-
-      await request(app.getHttpServer())
-        .patch('/cleaning-tasks/777/review')
-        .set('x-session-token', 'mock-session-token')
-        .send({ approved: true })
-        .expect(400);
+      expect(
+        mocks.cleaningTasksOpenmaint.updateTaskWithSession,
+      ).not.toHaveBeenCalled();
     });
   });
 
@@ -380,6 +407,54 @@ describe('CleaningTasksController (e2e)', () => {
         .expect(200);
 
       expect(mocks.pushDispatch.notifyCleaningReopened).not.toHaveBeenCalled();
+    });
+
+    it('anula la supervisión abierta antes de reabrir, sin borrarla', async () => {
+      mocks.cleaningTasksOpenmaint.getTaskById.mockResolvedValueOnce(
+        cleaningTaskResponse({ phase: PHASE_IDS.COMPLETED, employee: 4567 }),
+      );
+      mocks.cleaningTasksOpenmaint.updateTaskWithSession.mockResolvedValueOnce({
+        data: { _id: 777 },
+      });
+      mocks.cleaningSupervisionsOpenmaint.findByTask.mockResolvedValueOnce([
+        { _id: 5001, CleaningTask: 777, _Phase_code: 'InCorrection' },
+        { _id: 4999, CleaningTask: 777, _Phase_code: 'Cancelled' },
+      ]);
+
+      await request(app.getHttpServer())
+        .patch('/cleaning-tasks/777/reopen')
+        .set('x-session-token', 'mock-session-token')
+        .send({})
+        .expect(200);
+
+      expect(
+        mocks.cleaningSupervisionsOpenmaint.updateSupervision,
+      ).toHaveBeenCalledTimes(1);
+      expect(
+        mocks.cleaningSupervisionsOpenmaint.updateSupervision,
+      ).toHaveBeenCalledWith(5001, { Phase: 11851548 });
+    });
+
+    it('si no se puede anular la supervisión, no reabre la limpieza', async () => {
+      mocks.cleaningTasksOpenmaint.getTaskById.mockResolvedValueOnce(
+        cleaningTaskResponse({ phase: PHASE_IDS.COMPLETED, employee: 4567 }),
+      );
+      mocks.cleaningSupervisionsOpenmaint.findByTask.mockResolvedValueOnce([
+        { _id: 5001, CleaningTask: 777, _Phase_code: 'Draft' },
+      ]);
+      mocks.cleaningSupervisionsOpenmaint.updateSupervision.mockRejectedValueOnce(
+        new Error('openMAINT caído'),
+      );
+
+      await request(app.getHttpServer())
+        .patch('/cleaning-tasks/777/reopen')
+        .set('x-session-token', 'mock-session-token')
+        .send({})
+        .expect(500);
+
+      expect(
+        mocks.cleaningTasksOpenmaint.updateTaskWithSession,
+      ).not.toHaveBeenCalled();
     });
 
     it('400 al reabrir una tarea Assigned (no reabrible)', async () => {
@@ -1089,7 +1164,18 @@ describe('CleaningTasksController (e2e)', () => {
         ]);
       });
 
-      it('403 para supervisión', async () => {
+      it('200 para SupervisorLimpieza: elige al Corrector', async () => {
+        await request(app.getHttpServer())
+          .get('/cleaning-tasks/employees')
+          .set('x-session-token', token)
+          .expect(200);
+      });
+
+      it('403 para AsistenteSL', async () => {
+        mocks.openmaint.getSession.mockResolvedValueOnce(
+          mockSession({ role: 'AsistenteSL' }),
+        );
+
         await request(app.getHttpServer())
           .get('/cleaning-tasks/employees')
           .set('x-session-token', token)

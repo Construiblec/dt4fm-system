@@ -6,6 +6,8 @@ import {
   PushMessage,
   cleaningAssigned,
   cleaningCompleted,
+  cleaningCorrectionsAssigned,
+  cleaningCorrectionsFixed,
   cleaningDelayed,
   cleaningReopened,
   correctiveAssigned,
@@ -17,6 +19,7 @@ import {
   preventiveResumed,
   preventiveSuspended,
 } from './notification-catalog';
+import { SUPERVISION_PANEL_ROLE as CLEANING_SUPERVISION_PANEL_ROLE } from '../cleaning-tasks/constants/supervision.constants';
 import { PushSenderService } from './push-sender.service';
 import { PushSubscriptionRepository } from './push-subscription.repository';
 
@@ -181,17 +184,69 @@ export class PushDispatchService {
     });
   }
 
+  /**
+   * Dos mensajes con distinto enlace: SupervisorLimpieza abre la supervisión;
+   * el resto de roles de supervisión, que no tienen ese panel, la ficha.
+   */
   async notifyCleaningCompleted(
     input: Location & { id: string | number; employeeName?: string | null },
   ): Promise<void> {
     await this.safe(async () => {
-      const message = cleaningCompleted({
+      const base = {
         id: input.id,
         employeeName: input.employeeName?.trim() || 'El empleado asignado',
         location: this.formatLocation(input),
+      };
+      const otherRoles = CLEANING_SUPERVISOR_ROLES.filter(
+        (role) => role !== CLEANING_SUPERVISION_PANEL_ROLE,
+      );
+
+      await this.toRoles(
+        [CLEANING_SUPERVISION_PANEL_ROLE],
+        cleaningCompleted({ ...base, toSupervisionPanel: true }),
+      );
+      if (otherRoles.length > 0) {
+        await this.toRoles(otherRoles, cleaningCompleted(base));
+      }
+    });
+  }
+
+  async notifyCleaningCorrectionsAssigned(
+    input: Location & {
+      id: string | number;
+      supervisionId: string | number;
+      cleaningEmployeeId: number;
+      findingsCount: number;
+    },
+  ): Promise<void> {
+    await this.safe(async () => {
+      const message = cleaningCorrectionsAssigned({
+        id: input.id,
+        supervisionId: input.supervisionId,
+        location: this.formatLocation(input),
+        findingsCount: input.findingsCount,
       });
 
-      await this.toRoles(CLEANING_SUPERVISOR_ROLES, message);
+      await this.toCleaningEmployee(input.cleaningEmployeeId, message);
+    });
+  }
+
+  async notifyCleaningCorrectionsFixed(
+    input: Location & {
+      id: string | number;
+      supervisionId: string | number;
+      employeeName?: string | null;
+    },
+  ): Promise<void> {
+    await this.safe(async () => {
+      const message = cleaningCorrectionsFixed({
+        id: input.id,
+        supervisionId: input.supervisionId,
+        employeeName: input.employeeName?.trim() || 'El operario',
+        location: this.formatLocation(input),
+      });
+
+      await this.toRoles([CLEANING_SUPERVISION_PANEL_ROLE], message);
     });
   }
 
