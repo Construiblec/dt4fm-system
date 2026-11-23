@@ -367,7 +367,7 @@ export type GuestLinkChannelMock = ReturnType<
 >;
 
 // ─── MaintCategoryCatalogService ──────────────────────────────────────────────
-// Catálogo fijo: Mantenimiento (Agua caliente, Otro) y Limpieza (Manchas).
+// Catálogo fijo: Limpieza, Mantenimiento y Otros (solo «Otro»).
 
 export const MAINT_CATEGORIES = [
   {
@@ -387,6 +387,12 @@ export const MAINT_CATEGORIES = [
       { id: 11, name: 'Sistema de agua caliente', isOther: false },
       { id: 19, name: 'Otro', isOther: true },
     ],
+  },
+  {
+    id: 3,
+    code: 'OTR',
+    name: 'Otros',
+    subcategories: [{ id: 39, name: 'Otro', isOther: true }],
   },
 ];
 

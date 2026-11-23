@@ -1,10 +1,18 @@
-import { Check, Sparkles, Tag, Wrench, type LucideIcon } from "lucide-react";
+import {
+  Check,
+  CircleHelp,
+  Sparkles,
+  Tag,
+  Wrench,
+  type LucideIcon,
+} from "lucide-react";
 import type { MaintCategory } from "@/shared/services/categoriesService";
 
 /** Icono y ayuda según el código de la categoría en OpenMaint. */
 const LOOK: Record<string, { icon: LucideIcon; hint: string }> = {
   LIM: { icon: Sparkles, hint: "Suciedad, manchas, olores o basura" },
   MNT: { icon: Wrench, hint: "Daños, fallas o algo que reparar" },
+  OTR: { icon: CircleHelp, hint: "Lo que no es limpieza ni mantenimiento" },
 };
 
 const lookOf = (category: MaintCategory) => {
@@ -12,6 +20,7 @@ const lookOf = (category: MaintCategory) => {
   if (byCode) return byCode;
   if (/limpi/i.test(category.name)) return LOOK.LIM;
   if (/manten/i.test(category.name)) return LOOK.MNT;
+  if (/^otr/i.test(category.name)) return LOOK.OTR;
   return { icon: Tag, hint: "" };
 };
 
@@ -42,7 +51,7 @@ export const CategoryPicker = ({
     aria-labelledby={labelledBy}
     aria-describedby={describedBy}
     aria-invalid={invalid || undefined}
-    className="grid grid-cols-2 gap-2"
+    className={`grid gap-2 ${variant === "compact" && categories.length === 3 ? "grid-cols-3" : "grid-cols-2"}`}
   >
     {categories.map((category) => {
       const { icon: Icon, hint } = lookOf(category);
@@ -81,7 +90,7 @@ export const CategoryPicker = ({
       return (
         <label
           key={category.id}
-          className={`relative flex cursor-pointer flex-col items-start gap-2 rounded-2xl p-3.5 transition has-[:focus-visible]:ring-4 has-[:focus-visible]:ring-brand/25 ${
+          className={`relative flex cursor-pointer last:odd:col-span-2 flex-col items-start gap-2 rounded-2xl p-3.5 transition has-[:focus-visible]:ring-4 has-[:focus-visible]:ring-brand/25 ${
             checked
               ? "border-2 border-brand bg-blue-50"
               : `border bg-white hover:border-slate-300 ${invalid ? "border-red-300" : "border-slate-200"}`
