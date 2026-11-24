@@ -1115,9 +1115,7 @@ export class CleaningSupervisionsService {
   }
 
   /** Puntos del checklist de una tarjeta de `CleaningActivity`: el CSV de `Plantilla` o, si no hay, `Detalle`. */
-  private async templatePoints(
-    activityId: number,
-  ): Promise<SupervisionPoint[]> {
+  async templatePoints(activityId: number): Promise<SupervisionPoint[]> {
     const cached = this.templateCache.get(activityId);
     if (cached && cached.expiresAt > Date.now()) return cached.points;
 

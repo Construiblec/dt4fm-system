@@ -20,10 +20,16 @@ export const createCleaningTasksOpenmaintServiceMock = () => ({
   getUnitById: jest.fn().mockResolvedValue(null),
   updateTaskWithSession: jest.fn().mockResolvedValue({ data: { _id: 777 } }),
   getAttachments: jest.fn().mockResolvedValue({ data: [] }),
+  getAttachmentsWithSession: jest.fn().mockResolvedValue({ data: [] }),
   deleteAttachment: jest.fn().mockResolvedValue(true),
   uploadAttachment: jest.fn().mockResolvedValue(true),
   getAllTasks: jest.fn().mockResolvedValue({ data: [], meta: { total: 0 } }),
   downloadAttachment: jest.fn().mockResolvedValue({
+    data: Buffer.from('mock'),
+    contentType: 'image/png',
+    fileName: 'mock.png',
+  }),
+  downloadAttachmentWithSession: jest.fn().mockResolvedValue({
     data: Buffer.from('mock'),
     contentType: 'image/png',
     fileName: 'mock.png',

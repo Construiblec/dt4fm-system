@@ -3,6 +3,7 @@ import {
   InternalServerErrorException,
   Logger,
 } from '@nestjs/common';
+import type { AxiosRequestConfig } from 'axios';
 import { describeError } from '../../common/logging/describe-error.util';
 import { OpenmaintClient } from '../../integrations/openmaint/openmaint.client';
 import { CleaningTasksSessionService } from './cleaning-tasks.session.service';
@@ -491,6 +492,18 @@ export class CleaningTasksOpenmaintService {
     }
   }
 
+  /** Adjuntos de una tarea con la sesión interna; el error sale sin envolver. */
+  async getAttachmentsWithSession(
+    taskId: number,
+  ): Promise<OpenmaintAttachmentsResponse> {
+    return this.executeWithRetry(async (sessionId) => {
+      return (await this.client.get(
+        `/classes/CleaningTask/cards/${taskId}/attachments`,
+        sessionId,
+      )) as OpenmaintAttachmentsResponse;
+    }, 'getAttachmentsWithSession');
+  }
+
   /**
    * Borra un attachment de una tarea.
    */
@@ -567,7 +580,8 @@ export class CleaningTasksOpenmaintService {
   /**
    * Obtiene todas las tareas de limpieza (sin filtro de empleado).
    * Soporta filtros opcionales: phase, date (GeneratedDate), el rango de
-   * `ActualEndTime` [endedFrom, endedTo) y employeeId.
+   * `ActualEndTime` [endedFrom, endedTo), el de `PlannedStartTime`
+   * [plannedFrom, plannedTo), employeeId y unitId.
    * Usa la sesión interna del sistema con executeWithRetry.
    */
   async getAllTasks(
@@ -580,7 +594,12 @@ export class CleaningTasksOpenmaintService {
       endedFrom?: string;
       /** Terminaron antes de este instante, excluido (ISO). */
       endedTo?: string;
+      /** Planificadas desde este instante, incluido (ISO). */
+      plannedFrom?: string;
+      /** Planificadas antes de este instante, excluido (ISO). */
+      plannedTo?: string;
       employeeId?: number;
+      unitId?: number;
       /** 'newest': las recién creadas primero (por id descendente). */
       sort?: 'newest';
     } = {},
@@ -593,7 +612,10 @@ export class CleaningTasksOpenmaintService {
         date,
         endedFrom,
         endedTo,
+        plannedFrom,
+        plannedTo,
         employeeId,
+        unitId,
         sort,
       } = options;
 
@@ -644,12 +666,45 @@ export class CleaningTasksOpenmaintService {
         });
       }
 
+      // Mismo patrón que el rango de ActualEndTime.
+      if (plannedFrom) {
+        conditions.push({
+          simple: {
+            attribute: 'PlannedStartTime',
+            operator: 'greater',
+            value: [
+              new Date(new Date(plannedFrom).getTime() - 1).toISOString(),
+            ],
+          },
+        });
+      }
+
+      if (plannedTo) {
+        conditions.push({
+          simple: {
+            attribute: 'PlannedStartTime',
+            operator: 'less',
+            value: [new Date(plannedTo).toISOString()],
+          },
+        });
+      }
+
       if (employeeId) {
         conditions.push({
           simple: {
             attribute: 'Employee',
             operator: 'equal',
             value: [employeeId],
+          },
+        });
+      }
+
+      if (unitId) {
+        conditions.push({
+          simple: {
+            attribute: 'Unit',
+            operator: 'equal',
+            value: [unitId],
           },
         });
       }
@@ -969,6 +1024,23 @@ export class CleaningTasksOpenmaintService {
         'Error al descargar el archivo desde OpenMAINT',
       );
     }
+  }
+
+  /** Binario de un adjunto con la sesión interna; el error sale sin envolver. */
+  async downloadAttachmentWithSession(
+    taskId: number,
+    attachmentId: string,
+    config?: AxiosRequestConfig,
+  ): Promise<{ data: Buffer; contentType: string; fileName: string }> {
+    return this.executeWithRetry(
+      (sessionId) =>
+        this.client.getBuffer(
+          `/classes/CleaningTask/cards/${taskId}/attachments/${encodeURIComponent(attachmentId)}/download`,
+          sessionId,
+          config,
+        ),
+      'downloadAttachmentWithSession',
+    );
   }
 
   async taskExistsByReservationId(reservationId: string): Promise<boolean> {

@@ -103,6 +103,15 @@ async function bootstrap() {
       },
       'x-guest-link-secret',
     )
+    .addApiKey(
+      {
+        type: 'apiKey',
+        name: 'x-api-key',
+        in: 'header',
+        description: 'Clave de la API de consulta de limpiezas',
+      },
+      'x-api-key',
+    )
     .addBasicAuth(
       {
         type: 'http',

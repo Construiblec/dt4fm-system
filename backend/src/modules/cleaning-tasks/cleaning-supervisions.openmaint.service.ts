@@ -3,6 +3,7 @@ import {
   InternalServerErrorException,
   Logger,
 } from '@nestjs/common';
+import type { AxiosRequestConfig } from 'axios';
 import { describeError } from '../../common/logging/describe-error.util';
 import { OpenmaintClient } from '../../integrations/openmaint/openmaint.client';
 import type {
@@ -141,6 +142,14 @@ export class CleaningSupervisionsOpenmaintService {
     }
   }
 
+  /** Con `strict`, una respuesta sin listado es un fallo y no un listado vacío. */
+  private rows<T>(response: CardsResponse<T> | undefined, strict: boolean) {
+    if (strict && !Array.isArray(response?.data)) {
+      throw new Error('la fuente respondió sin listado');
+    }
+    return response?.data ?? [];
+  }
+
   // ─── Lookup de fase ─────────────────────────────────────────────────────────
 
   async getPhaseIds(): Promise<Map<SupervisionPhase, number>> {
@@ -200,8 +209,13 @@ export class CleaningSupervisionsOpenmaintService {
   }
 
   /** Supervisiones de una limpieza, la más reciente primero. */
-  async findByTask(taskId: number): Promise<SupervisionCard[]> {
-    return this.findBy('CleaningTask', taskId, 'findSupervisionsByTask');
+  async findByTask(taskId: number, strict = false): Promise<SupervisionCard[]> {
+    return this.findBy(
+      'CleaningTask',
+      taskId,
+      'findSupervisionsByTask',
+      strict,
+    );
   }
 
   /** Supervisiones de una unidad, la más reciente primero. */
@@ -215,7 +229,10 @@ export class CleaningSupervisionsOpenmaintService {
   }
 
   /** Las últimas supervisiones, para resumirlas en los listados de limpiezas. */
-  async findRecent(limit = RECENT_LIMIT): Promise<SupervisionCard[]> {
+  async findRecent(
+    limit = RECENT_LIMIT,
+    strict = false,
+  ): Promise<SupervisionCard[]> {
     const response = await this.call(
       (sessionId) =>
         this.client.get(
@@ -225,13 +242,14 @@ export class CleaningSupervisionsOpenmaintService {
       'findRecentSupervisions',
       'No se pudieron leer las supervisiones en OpenMAINT',
     );
-    return response?.data ?? [];
+    return this.rows(response, strict);
   }
 
   private async findBy(
     attribute: string,
     value: number,
     operationName: string,
+    strict = false,
   ): Promise<SupervisionCard[]> {
     const response = await this.call(
       (sessionId) =>
@@ -242,7 +260,7 @@ export class CleaningSupervisionsOpenmaintService {
       operationName,
       'No se pudieron leer las supervisiones en OpenMAINT',
     );
-    return response?.data ?? [];
+    return this.rows(response, strict);
   }
 
   async createSupervision(
@@ -286,7 +304,10 @@ export class CleaningSupervisionsOpenmaintService {
 
   // ─── Novedades ──────────────────────────────────────────────────────────────
 
-  async listFindings(supervisionId: number): Promise<FindingCard[]> {
+  async listFindings(
+    supervisionId: number,
+    strict = false,
+  ): Promise<FindingCard[]> {
     const response = await this.call(
       (sessionId) =>
         this.client.get(
@@ -296,7 +317,7 @@ export class CleaningSupervisionsOpenmaintService {
       'listFindings',
       'No se pudieron leer las novedades en OpenMAINT',
     );
-    return response?.data ?? [];
+    return this.rows(response, strict);
   }
 
   async createFinding(body: Record<string, unknown>): Promise<FindingCard> {
@@ -347,7 +368,10 @@ export class CleaningSupervisionsOpenmaintService {
 
   // ─── Fotos de una novedad (adjuntos de CleaningFinding) ─────────────────────
 
-  async listFindingAttachments(findingId: number): Promise<AttachmentCard[]> {
+  async listFindingAttachments(
+    findingId: number,
+    strict = false,
+  ): Promise<AttachmentCard[]> {
     const response = await this.call(
       (sessionId) =>
         this.client.get(
@@ -357,7 +381,7 @@ export class CleaningSupervisionsOpenmaintService {
       'listFindingAttachments',
       'No se pudieron leer las fotos de la novedad en OpenMAINT',
     );
-    return response?.data ?? [];
+    return this.rows(response, strict);
   }
 
   /** Sin categoría DMS: la clase no la exige (subida comprobada el 14/11). */
@@ -406,12 +430,14 @@ export class CleaningSupervisionsOpenmaintService {
   async downloadFindingAttachment(
     findingId: number,
     attachmentId: string,
+    config?: AxiosRequestConfig,
   ): Promise<{ data: Buffer; contentType: string; fileName: string }> {
     return this.call(
       (sessionId) =>
         this.client.getBuffer(
           `/classes/${FINDING_CLASS}/cards/${findingId}/attachments/${encodeURIComponent(attachmentId)}/download`,
           sessionId,
+          config,
         ),
       'downloadFindingAttachment',
       'No se pudo descargar la foto de la novedad desde OpenMAINT',
