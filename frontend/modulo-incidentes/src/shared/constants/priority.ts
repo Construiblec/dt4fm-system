@@ -84,7 +84,7 @@ export const PRIORITY_GUIDE: Record<
 > = {
   Critical: {
     level: 1,
-    sla: "15 min a 2 h",
+    sla: "15 min a 2 horas laborables",
     action:
       "Atención inmediata. Se interrumpe cualquier tarea en curso para mitigar el riesgo.",
     examples:
@@ -92,14 +92,14 @@ export const PRIORITY_GUIDE: Record<
   },
   High: {
     level: 2,
-    sla: "2 a 8 h",
+    sla: "2 a 8 horas laborables",
     action: "Se atiende en el mismo turno de trabajo.",
     examples:
       "Falta de agua caliente en la suite, aire acondicionado o calefón fuera de servicio.",
   },
   Medium: {
     level: 3,
-    sla: "24 a 48 h",
+    sla: "24 a 48 horas laborables",
     action:
       "Se programa dentro de las siguientes 24 horas o en el cambio de turno.",
     examples:
@@ -107,7 +107,7 @@ export const PRIORITY_GUIDE: Record<
   },
   Low: {
     level: 4,
-    sla: "2 a 7 días",
+    sla: "2 a 7 días laborables",
     action: "Entra en la cola del plan de mantenimiento semanal.",
     examples:
       "Retoque de pintura en zócalos, ajuste de bisagra de armario, cambio de filtro programado.",
