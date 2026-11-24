@@ -122,6 +122,7 @@ describe('IncidentsController (e2e)', () => {
       expect(res.body.map((c: { name: string }) => c.name)).toEqual([
         'Limpieza',
         'Mantenimiento',
+        'Otros',
       ]);
     });
 

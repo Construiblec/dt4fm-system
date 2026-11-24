@@ -32,7 +32,7 @@ export const PriorityGuideSheet = ({ open, onClose }: SheetProps) => (
                 {guide.level} · {PRIORITY_ADJECTIVES[code]}
               </h3>
               <span
-                className={`rounded-full border bg-white px-2 py-0.5 text-xs font-semibold ${styles.border} ${styles.title}`}
+                className={`shrink-0 whitespace-nowrap rounded-full border bg-white px-2 py-0.5 text-xs font-semibold ${styles.border} ${styles.title}`}
               >
                 {guide.sla}
               </span>
