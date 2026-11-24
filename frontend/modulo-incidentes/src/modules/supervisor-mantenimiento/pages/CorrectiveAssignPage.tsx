@@ -32,7 +32,7 @@ import {
   getCategories,
   type MaintCategory,
 } from "@/shared/services/categoriesService";
-import { correctiveTitle } from "@/shared/utils/categoryLabel";
+import { correctiveTitle, onlySubcategory } from "@/shared/utils/categoryLabel";
 
 /**
  * «Asignar y programar» en pantalla completa: categoría, prioridad, inicio
@@ -248,36 +248,41 @@ export const CorrectiveAssignPage = () => {
                 onChange={(next) => {
                   if (next === categoryId) return;
                   setCategoryId(next);
-                  setSubcategoryId("");
+                  const only = onlySubcategory(
+                    categories.find((item) => item.id === next) ?? null,
+                  );
+                  setSubcategoryId(only ? String(only.id) : "");
                 }}
                 labelledBy="assignCategory-label"
               />
             </div>
 
-            <FormField
-              label="Subcategoría"
-              htmlFor="assignSubcategory"
-              help={
-                subcategory?.isOther
-                  ? undefined
-                  : "Viene del reporte. Si la cambias, el título del correctivo también cambia."
-              }
-            >
-              <SearchableSelect
-                id="assignSubcategory"
-                value={subcategoryId}
-                onChange={setSubcategoryId}
-                options={subcategoryOptions}
-                disabled={category === null}
-                placeholder={
-                  category
-                    ? "Selecciona una subcategoría"
-                    : "Elige primero la categoría"
+            {onlySubcategory(category) ? null : (
+              <FormField
+                label="Subcategoría"
+                htmlFor="assignSubcategory"
+                help={
+                  subcategory?.isOther
+                    ? undefined
+                    : "Viene del reporte. Si la cambias, el título del correctivo también cambia."
                 }
-                searchPlaceholder="Buscar subcategoría..."
-                emptyMessage="Sin subcategorías"
-              />
-            </FormField>
+              >
+                <SearchableSelect
+                  id="assignSubcategory"
+                  value={subcategoryId}
+                  onChange={setSubcategoryId}
+                  options={subcategoryOptions}
+                  disabled={category === null}
+                  placeholder={
+                    category
+                      ? "Selecciona una subcategoría"
+                      : "Elige primero la categoría"
+                  }
+                  searchPlaceholder="Buscar subcategoría..."
+                  emptyMessage="Sin subcategorías"
+                />
+              </FormField>
+            )}
 
             {subcategory?.isOther ? (
               <FormField

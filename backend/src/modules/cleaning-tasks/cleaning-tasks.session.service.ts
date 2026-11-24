@@ -1,5 +1,6 @@
 import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { isAxiosError } from 'axios';
 import { describeError } from '../../common/logging/describe-error.util';
 import { OpenmaintClient } from '../../integrations/openmaint/openmaint.client';
 
@@ -14,6 +15,11 @@ export class CleaningTasksSessionService implements OnModuleInit {
   private sessionId: string | null = null;
   private sessionExpiresAt: number = 0;
   private readonly SESSION_DURATION_MS = 30 * 60 * 1000; // 30 minutos
+  private readonly LOGIN_TIMEOUT_MS = 15_000;
+  // Insistir con una credencial rechazada bloquea la cuenta de servicio.
+  private readonly COOLDOWN_MS = 5 * 60 * 1000;
+  private refreshing: Promise<void> | null = null;
+  private coolingDownUntil = 0;
 
   constructor(
     private readonly client: OpenmaintClient,
@@ -40,23 +46,51 @@ export class CleaningTasksSessionService implements OnModuleInit {
     return this.sessionId || '';
   }
 
+  /** El último login fue rechazado (401/403) y aún no se vuelve a intentar. */
+  isCoolingDown(): boolean {
+    return Date.now() < this.coolingDownUntil;
+  }
+
   /**
-   * Fuerza el refresco de la sesión
+   * Fuerza el refresco de la sesión. Nunca rechaza; las llamadas simultáneas
+   * comparten un mismo login.
    */
   async refreshSession(): Promise<void> {
-    const username = this.configService.get<string>('OPENMAINT_USERNAME') ?? '';
-    const password = this.configService.get<string>('OPENMAINT_PASSWORD') ?? '';
+    if (this.refreshing) {
+      return this.refreshing;
+    }
 
+    if (this.isCoolingDown()) {
+      this.logger.debug('Login de servicio en enfriamiento: no se intenta');
+      return;
+    }
+
+    this.refreshing = this.login().finally(() => {
+      this.refreshing = null;
+    });
+
+    return this.refreshing;
+  }
+
+  private async login(): Promise<void> {
     try {
-      const response = await this.client.post(
+      const username =
+        this.configService.get<string>('OPENMAINT_USERNAME') ?? '';
+      const password =
+        this.configService.get<string>('OPENMAINT_PASSWORD') ?? '';
+
+      const response = (await this.client.post(
         '/sessions?scope=service&returnId=true',
         { username, password },
-      );
+        undefined,
+        { timeout: this.LOGIN_TIMEOUT_MS },
+      )) as { data?: { _id?: string } } | undefined;
 
       this.sessionId = response?.data?._id ?? null;
       this.sessionExpiresAt = Date.now() + this.SESSION_DURATION_MS;
 
       if (this.sessionId) {
+        this.coolingDownUntil = 0;
         // Ni el id ni un trozo: es la credencial de la cuenta de servicio, y
         // los primeros caracteres que se escribían aquí reducían lo que queda
         // por adivinar.
@@ -74,6 +108,15 @@ export class CleaningTasksSessionService implements OnModuleInit {
       );
       this.sessionId = null;
       this.sessionExpiresAt = 0;
+
+      const status = isAxiosError(error) ? error.response?.status : undefined;
+
+      if (status === 401 || status === 403) {
+        this.coolingDownUntil = Date.now() + this.COOLDOWN_MS;
+        this.logger.warn(
+          `Credencial de servicio rechazada: sin nuevos intentos hasta ${new Date(this.coolingDownUntil).toLocaleTimeString()}`,
+        );
+      }
     }
   }
 

@@ -20,10 +20,16 @@ export const createCleaningTasksOpenmaintServiceMock = () => ({
   getUnitById: jest.fn().mockResolvedValue(null),
   updateTaskWithSession: jest.fn().mockResolvedValue({ data: { _id: 777 } }),
   getAttachments: jest.fn().mockResolvedValue({ data: [] }),
+  getAttachmentsWithSession: jest.fn().mockResolvedValue({ data: [] }),
   deleteAttachment: jest.fn().mockResolvedValue(true),
   uploadAttachment: jest.fn().mockResolvedValue(true),
   getAllTasks: jest.fn().mockResolvedValue({ data: [], meta: { total: 0 } }),
   downloadAttachment: jest.fn().mockResolvedValue({
+    data: Buffer.from('mock'),
+    contentType: 'image/png',
+    fileName: 'mock.png',
+  }),
+  downloadAttachmentWithSession: jest.fn().mockResolvedValue({
     data: Buffer.from('mock'),
     contentType: 'image/png',
     fileName: 'mock.png',
@@ -367,7 +373,7 @@ export type GuestLinkChannelMock = ReturnType<
 >;
 
 // ─── MaintCategoryCatalogService ──────────────────────────────────────────────
-// Catálogo fijo: Mantenimiento (Agua caliente, Otro) y Limpieza (Manchas).
+// Catálogo fijo: Limpieza, Mantenimiento y Otros (solo «Otro»).
 
 export const MAINT_CATEGORIES = [
   {
@@ -387,6 +393,12 @@ export const MAINT_CATEGORIES = [
       { id: 11, name: 'Sistema de agua caliente', isOther: false },
       { id: 19, name: 'Otro', isOther: true },
     ],
+  },
+  {
+    id: 3,
+    code: 'OTR',
+    name: 'Otros',
+    subcategories: [{ id: 39, name: 'Otro', isOther: true }],
   },
 ];
 

@@ -17,6 +17,10 @@ describe("categoryLabel", () => {
     );
   });
 
+  it("no repite «Otro» en la categoría «Otros»", () => {
+    expect(categoryLabel({ name: "Otros" }, other)).toBe("Otros");
+  });
+
   it("devuelve null sin categoría", () => {
     expect(categoryLabel(null, null)).toBeNull();
   });

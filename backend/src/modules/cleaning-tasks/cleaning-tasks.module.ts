@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { OpenmaintModule } from '../../integrations/openmaint/openmaint.module';
 import { HostawayModule } from '../../integrations/hostaway/hostaway.module';
 import { PushNotificationsModule } from '../push-notifications/push-notifications.module';
+import { CleaningReadService } from './cleaning-read.service';
 import { CleaningSupervisionsController } from './cleaning-supervisions.controller';
 import { CleaningSupervisionsOpenmaintService } from './cleaning-supervisions.openmaint.service';
 import { CleaningSupervisionsService } from './cleaning-supervisions.service';
@@ -26,6 +27,8 @@ import { HostawaySyncSchedulerService } from './hostaway-sync.scheduler.service'
     CleaningSupervisionsService,
     CleaningSupervisionsOpenmaintService,
     HostawaySyncSchedulerService,
+    CleaningReadService,
   ],
+  exports: [CleaningReadService],
 })
 export class CleaningTasksModule {}

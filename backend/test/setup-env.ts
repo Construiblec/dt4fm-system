@@ -99,6 +99,16 @@ process.env.OPENMAINT_IOT_FALLBACK_SITE_ID ??= '3019998';
 // añadiría ~1.5s a cada test de la ruta de fallo de openMAINT.
 process.env.IOT_CREATE_MAX_ATTEMPTS = '1';
 
+// API de limpiezas, con `=` por el mismo motivo: la suite manda estas claves. Un
+// cliente por bloque de pruebas: el cupo (60/min) es por cliente y en memoria.
+process.env.CLEANINGS_API_KEYS = [
+  'listado:e2e-clave-listado-0123456789abcdefghij',
+  'ficha:e2e-clave-ficha-0123456789abcdefghijkl',
+  'archivos:e2e-clave-archivos-0123456789abcdefghi',
+  'varios:e2e-clave-varios-0123456789abcdefghijk',
+  'cupo:e2e-clave-cupo-0123456789abcdefghijklm',
+].join(',');
+
 // Correo: no debería llegar a usarse (MailerService va mockeado en todas las
 // suites salvo la propia de notifications, que mockea el proveedor por
 // debajo), pero se define por si algo lo lee al arrancar.

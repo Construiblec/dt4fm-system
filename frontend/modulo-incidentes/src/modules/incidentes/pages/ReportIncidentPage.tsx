@@ -38,7 +38,7 @@ import {
   getCategories,
   type MaintCategory,
 } from "@/shared/services/categoriesService";
-import { correctiveTitle } from "@/shared/utils/categoryLabel";
+import { correctiveTitle, onlySubcategory } from "@/shared/utils/categoryLabel";
 import { useInvalidateReportedIncidents } from "@/modules/incidentes/hooks/useReportedIncidents";
 
 type FormValues = {
@@ -773,8 +773,11 @@ export const ReportIncidentPage = () => {
                   onChange={(id) => {
                     if (String(id) === field.value) return;
                     field.onChange(String(id));
-                    // Las subcategorías dependen de la categoría.
-                    setValue("subcategoryId", "");
+                    // Las subcategorías dependen de la categoría; si hay una sola, queda elegida.
+                    const only = onlySubcategory(
+                      categories.find((item) => item.id === id) ?? null,
+                    );
+                    setValue("subcategoryId", only ? String(only.id) : "");
                     setValue("subcategoryOther", "");
                   }}
                   invalid={Boolean(fieldState.error)}
@@ -802,53 +805,55 @@ export const ReportIncidentPage = () => {
             ) : null}
           </section>
 
-          <section className="space-y-2">
-            <label
-              htmlFor="subcategoryId"
-              className="text-sm font-semibold text-slate-700"
-            >
-              Subcategoría{" "}
-              <span className="text-red-500" aria-hidden="true">
-                *
-              </span>
-            </label>
-            <Controller
-              control={control}
-              name="subcategoryId"
-              rules={{ required: "Elija la subcategoría." }}
-              render={({ field, fieldState }) => (
-                <SearchableSelect
-                  id="subcategoryId"
-                  value={field.value}
-                  onChange={field.onChange}
-                  onBlur={field.onBlur}
-                  options={subcategoryOptions}
-                  disabled={!selectedCategory}
-                  required
-                  invalid={Boolean(fieldState.error)}
-                  describedById={
-                    fieldState.error ? "subcategoryId-error" : undefined
-                  }
-                  placeholder={
-                    selectedCategory
-                      ? "Seleccionar subcategoría"
-                      : "Primero elige la categoría"
-                  }
-                  searchPlaceholder="Buscar subcategoría..."
-                  emptyMessage="Sin subcategorías"
-                />
-              )}
-            />
-            {errors.subcategoryId ? (
-              <p
-                id="subcategoryId-error"
-                role="alert"
-                className="text-xs font-medium text-red-500"
+          {onlySubcategory(selectedCategory) ? null : (
+            <section className="space-y-2">
+              <label
+                htmlFor="subcategoryId"
+                className="text-sm font-semibold text-slate-700"
               >
-                {errors.subcategoryId.message}
-              </p>
-            ) : null}
-          </section>
+                Subcategoría{" "}
+                <span className="text-red-500" aria-hidden="true">
+                  *
+                </span>
+              </label>
+              <Controller
+                control={control}
+                name="subcategoryId"
+                rules={{ required: "Elija la subcategoría." }}
+                render={({ field, fieldState }) => (
+                  <SearchableSelect
+                    id="subcategoryId"
+                    value={field.value}
+                    onChange={field.onChange}
+                    onBlur={field.onBlur}
+                    options={subcategoryOptions}
+                    disabled={!selectedCategory}
+                    required
+                    invalid={Boolean(fieldState.error)}
+                    describedById={
+                      fieldState.error ? "subcategoryId-error" : undefined
+                    }
+                    placeholder={
+                      selectedCategory
+                        ? "Seleccionar subcategoría"
+                        : "Primero elige la categoría"
+                    }
+                    searchPlaceholder="Buscar subcategoría..."
+                    emptyMessage="Sin subcategorías"
+                  />
+                )}
+              />
+              {errors.subcategoryId ? (
+                <p
+                  id="subcategoryId-error"
+                  role="alert"
+                  className="text-xs font-medium text-red-500"
+                >
+                  {errors.subcategoryId.message}
+                </p>
+              ) : null}
+            </section>
+          )}
 
           {selectedSubcategory?.isOther ? (
             <section className="space-y-2">

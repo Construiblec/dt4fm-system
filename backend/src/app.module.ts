@@ -9,6 +9,7 @@ import { IotAlarmsModule } from './modules/iot-alarms/iot-alarms.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { BuildingsModule } from './modules/buildings/buildings.module';
 import { CleaningTasksModule } from './modules/cleaning-tasks/cleaning-tasks.module';
+import { CleaningsApiModule } from './modules/cleanings-api/cleanings-api.module';
 import { BillingModule } from './modules/billing/billing.module';
 import { HealthModule } from './modules/health/health.module';
 import { PaymentsModule } from './modules/payments/payments.module';
@@ -44,6 +45,7 @@ import { VideoSurveillanceModule } from './modules/video-surveillance/video-surv
     CorrectiveMaintenanceModule,
     BuildingsModule,
     CleaningTasksModule,
+    CleaningsApiModule,
     BillingModule,
     HealthModule,
     PaymentsModule,
