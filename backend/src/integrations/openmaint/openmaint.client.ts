@@ -116,9 +116,11 @@ export class OpenmaintClient {
   async getBuffer(
     path: string,
     sessionId?: string,
+    config?: AxiosRequestConfig,
   ): Promise<{ data: Buffer; contentType: string; fileName: string }> {
     const response = await this.send<ArrayBuffer>('GET', path, () =>
       this.httpService.get<ArrayBuffer>(`${this.baseUrl}${path}`, {
+        ...config,
         headers: this.sessionHeaders(sessionId),
         responseType: 'arraybuffer',
       }),

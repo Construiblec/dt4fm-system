@@ -250,6 +250,52 @@ describe('CleaningTasksOpenmaintService — todas las limpiezas', () => {
     });
   });
 
+  it('plannedFrom/plannedTo filtran PlannedStartTime en [desde, hasta)', async () => {
+    const get = jest.fn().mockResolvedValue({ data: [] });
+    const service = buildService(get);
+
+    await service.getAllTasks({
+      plannedFrom: '2026-11-16T00:00:00-05:00',
+      plannedTo: '2026-11-17T00:00:00-05:00',
+    });
+
+    const [[path]] = get.mock.calls as [[string, string]];
+    expect(filterOf(path)).toEqual({
+      attribute: {
+        and: [
+          {
+            simple: {
+              attribute: 'PlannedStartTime',
+              operator: 'greater',
+              value: ['2026-11-16T04:59:59.999Z'],
+            },
+          },
+          {
+            simple: {
+              attribute: 'PlannedStartTime',
+              operator: 'less',
+              value: ['2026-11-17T05:00:00.000Z'],
+            },
+          },
+        ],
+      },
+    });
+  });
+
+  it('unitId filtra Unit por igualdad', async () => {
+    const get = jest.fn().mockResolvedValue({ data: [] });
+    const service = buildService(get);
+
+    await service.getAllTasks({ unitId: 321 });
+
+    const [[path]] = get.mock.calls as [[string, string]];
+    expect(filterOf(path)).toEqual({
+      attribute: {
+        simple: { attribute: 'Unit', operator: 'equal', value: [321] },
+      },
+    });
+  });
+
   it('sin endedFrom no añade filtro', async () => {
     const get = jest.fn().mockResolvedValue({ data: [] });
     const service = buildService(get);
@@ -258,5 +304,65 @@ describe('CleaningTasksOpenmaintService — todas las limpiezas', () => {
 
     const [[path]] = get.mock.calls as [[string, string]];
     expect(path).not.toContain('filter=');
+  });
+});
+
+describe('CleaningTasksOpenmaintService — adjuntos con la sesión interna', () => {
+  const buildWithBuffer = (get: jest.Mock, getBuffer: jest.Mock) =>
+    new CleaningTasksOpenmaintService(
+      { get, getBuffer } as never,
+      {
+        getSessionId: jest.fn().mockResolvedValue('session'),
+        refreshSession: jest.fn(),
+      } as never,
+    );
+
+  it('lista con la sesión de servicio y no envuelve el error', async () => {
+    const get = jest.fn().mockResolvedValueOnce({ data: [] });
+    const service = buildWithBuffer(get, jest.fn());
+
+    await service.getAttachmentsWithSession(7);
+    expect(get).toHaveBeenCalledWith(
+      '/classes/CleaningTask/cards/7/attachments',
+      'session',
+    );
+
+    const error = cmisError();
+    get.mockRejectedValueOnce(error);
+    await expect(service.getAttachmentsWithSession(7)).rejects.toBe(error);
+  });
+
+  it('codifica el id al descargar y no envuelve el error', async () => {
+    const getBuffer = jest.fn().mockResolvedValueOnce({});
+    const service = buildWithBuffer(jest.fn(), getBuffer);
+
+    await service.downloadAttachmentWithSession(7, '../../a b');
+    expect(getBuffer).toHaveBeenCalledWith(
+      '/classes/CleaningTask/cards/7/attachments/..%2F..%2Fa%20b/download',
+      'session',
+      undefined,
+    );
+
+    const error = cmisError();
+    getBuffer.mockRejectedValueOnce(error);
+    await expect(service.downloadAttachmentWithSession(7, 'a')).rejects.toBe(
+      error,
+    );
+  });
+
+  it('ante un 401 renueva la sesión y reintenta una vez', async () => {
+    const unauthorized = Object.assign(new Error('401'), {
+      response: { status: 401 },
+    });
+    const get = jest
+      .fn()
+      .mockRejectedValueOnce(unauthorized)
+      .mockResolvedValueOnce({ data: [] });
+    const service = buildWithBuffer(get, jest.fn());
+
+    await expect(service.getAttachmentsWithSession(7)).resolves.toEqual({
+      data: [],
+    });
+    expect(get).toHaveBeenCalledTimes(2);
   });
 });

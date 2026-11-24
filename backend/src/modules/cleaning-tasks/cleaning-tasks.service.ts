@@ -551,7 +551,7 @@ export class CleaningTasksService {
    * Además de lo de siempre trae el listing de Hostaway y el checklist, que son
    * lo que necesita la coordinación para mostrar y filtrar sin pedir cada ficha.
    */
-  private async toListItems(
+  async toListItems(
     rawTasks: CleaningTaskCard[],
     sessionToken: string,
     supervisions?: Map<number, SupervisionSummary>,

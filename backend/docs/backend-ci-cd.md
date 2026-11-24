@@ -95,6 +95,7 @@ Cada servicio tiene su propia instancia de openMAINT y su propia rama de Neon, a
 | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | Un par propio | Otro par distinto |
 | `APP_BASE_URL` | URL del frontend de producción | URL del frontend de desarrollo |
 | `PASSWORD_RESET_SECRET` | Un secreto propio | Otro distinto, para que un enlace de pruebas no valga en producción |
+| `CLEANINGS_API_KEYS` | Claves propias | Otras distintas |
 | `ENABLE_DOCS` | `false` | `true` |
 | `CONTIFICO_USE_MOCK` | `false` | `true`, y sin `CONTIFICO_API_KEY` ni `CONTIFICO_POS_TOKEN`: cada documento que Contifico acepta es una factura real |
 | `MAIL_REDIRECT_TO` | Vacía | Buzón de pruebas: todo correo sale hacia él, con el destinatario original en el asunto |
@@ -137,7 +138,10 @@ A continuación, el detalle de cada variable:
 | `OPENMAINT_OCCUPANCY_OWNER_CODE`| Código del lookup para filtrar destinatarios *owners*. | *(Opcional)* |
 | `OPENMAINT_OCCUPANCY_TENANT_CODE`| Código del lookup para filtrar destinatarios *tenants*. | *(Opcional)* |
 | `INCIDENT_NOTIFICATION_EMAIL`| Correo administrativo de notificación ante nuevos incidentes. | `admin@dt4fm.com` |
+| `CLEANINGS_API_KEYS` | Claves de la [API de consulta de limpiezas](integraciones/api-limpiezas.md): `nombre:clave` separado por comas, cada clave de 32 caracteres o más, sin comas ni coma final. El cliente envía solo la clave. Se genera con el comando de la cabecera de `.env.example`. Para rotar, añadir otra entrada con el mismo nombre (comparten cupo), cambiar el cliente y quitar la vieja. Sin valor, o con una entrada inválida, la API responde 503. | *(Secreto)* |
 | `CORS_ALLOWED_ORIGINS` | Orígenes con permiso de llamar a la API desde el navegador, separados por coma. Vacío usa los tres del piloto por defecto ([`cors.config.ts`](../src/config/cors.config.ts)). | `https://dt4fm-system-f7cc.vercel.app` |
+
+**Contraseña de servicio rechazada.** Si openMAINT responde 401 o 403 al iniciar la sesión de servicio de limpiezas, el backend no lo vuelve a intentar durante 5 minutos, para no bloquear la cuenta; mientras tanto la API de limpiezas responde 503. Tras corregir la contraseña en openMAINT hay que esperar hasta 5 minutos o reiniciar el servicio; si se corrige en Render, el redespliegue ya lo reinicia. Los demás módulos que usan la misma cuenta no tienen esta espera y siguen intentándolo.
 
 ### Base de datos y notificaciones push
 
