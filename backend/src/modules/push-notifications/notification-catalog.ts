@@ -17,6 +17,7 @@ export const NOTIFICATION_TYPES = {
   CLEANING_REOPENED: 'cleaning.reopened',
   CLEANING_CORRECTIONS_ASSIGNED: 'cleaning.corrections-assigned',
   CLEANING_CORRECTIONS_FIXED: 'cleaning.corrections-fixed',
+  CLEANING_PLAN_UPDATED: 'cleaning.plan-updated',
 } as const;
 
 export { MAINTENANCE_SUPERVISOR_ROLES, CLEANING_SUPERVISOR_ROLES };
@@ -202,6 +203,39 @@ export const cleaningAssigned = (input: {
   entityKind: 'cleaning',
   entityId: String(input.id),
 });
+
+export type CleaningPlanCounts = {
+  assigned: number;
+  rescheduled: number;
+  removed: number;
+  cancelled: number;
+};
+
+/** Resumen para un operario: no hay una sola limpieza, así que agrupa por él. */
+export const cleaningPlanUpdated = (input: {
+  cleaningEmployeeId: number;
+  counts: CleaningPlanCounts;
+}): PushMessage => {
+  const { assigned, rescheduled, removed, cancelled } = input.counts;
+  const parts: [number, string][] = [
+    [assigned, 'asignada'],
+    [rescheduled, 'reprogramada'],
+    [removed, 'retirada'],
+    [cancelled, 'cancelada'],
+  ];
+
+  return {
+    type: NOTIFICATION_TYPES.CLEANING_PLAN_UPDATED,
+    title: 'Plan actualizado: Limpieza',
+    body: parts
+      .filter(([count]) => count > 0)
+      .map(([count, word]) => `${count} ${word}${count === 1 ? '' : 's'}`)
+      .join(', '),
+    deepLink: DEEP_LINKS.cleaningList,
+    entityKind: 'cleaning',
+    entityId: `plan-${input.cleaningEmployeeId}`,
+  };
+};
 
 export const cleaningDelayed = (input: {
   id: string | number;

@@ -1183,12 +1183,14 @@ describe('CleaningTasksController (e2e)', () => {
       });
 
       describe('equipo de operarios', () => {
+        const original = process.env.OPENMAINT_CLEANING_TEAM_ID;
+
         afterEach(() => {
-          delete process.env.OPENMAINT_CLEANING_TEAM_ID;
+          process.env.OPENMAINT_CLEANING_TEAM_ID = original;
         });
 
         it('pide solo los del equipo de OPENMAINT_CLEANING_TEAM_ID', async () => {
-          process.env.OPENMAINT_CLEANING_TEAM_ID = '2397132';
+          process.env.OPENMAINT_CLEANING_TEAM_ID = '2397199';
           asCoordinator();
 
           await request(app.getHttpServer())
@@ -1198,10 +1200,11 @@ describe('CleaningTasksController (e2e)', () => {
 
           expect(
             mocks.cleaningTasksOpenmaint.listEmployees,
-          ).toHaveBeenCalledWith(2397132);
+          ).toHaveBeenCalledWith(2397199);
         });
 
         it('sin la variable, los pide todos', async () => {
+          delete process.env.OPENMAINT_CLEANING_TEAM_ID;
           asCoordinator();
 
           await request(app.getHttpServer())
@@ -1482,7 +1485,7 @@ describe('CleaningTasksController (e2e)', () => {
         });
         // Las limpiezas sueltas se consultan una por una: R5 se movió al 30, R4 ya no está.
         mocks.hostaway.getReservationCheckout.mockImplementation(
-          async (id: string) =>
+          (id: string) =>
             id === 'R5'
               ? {
                   reservationId: 'R5',

@@ -6,6 +6,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { CANCELLED_STATUSES } from '../../integrations/hostaway/hostaway.constants';
 import {
   UnitLocation,
   UnitResolverService,
@@ -28,15 +29,6 @@ import {
  * siquiera es una reserva— abría la puerta del edificio.
  */
 const ISSUING_STATUSES = ['new', 'modified', 'confirmed', 'ownerstay'];
-
-const CANCELLED_STATUSES = [
-  'cancelled',
-  'declined',
-  'expired',
-  'inquirydenied',
-  'inquirytimedout',
-  'inquirynotpossible',
-];
 
 export interface ReservationInput {
   hostawayReservationId: string;

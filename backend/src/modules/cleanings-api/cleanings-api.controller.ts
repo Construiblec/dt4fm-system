@@ -13,8 +13,6 @@ import {
   ApiProduces,
   ApiQuery,
   ApiResponse,
-  ApiSecurity,
-  ApiTags,
 } from '@nestjs/swagger';
 import { CleaningReadService } from '../cleaning-tasks/cleaning-read.service';
 import type {
@@ -24,6 +22,7 @@ import type {
   CleaningReadItem,
 } from '../cleaning-tasks/cleaning-read.types';
 import { CleaningsCacheService } from './cleanings-cache.service';
+import { CleaningsApiDocs } from './decorators/cleanings-api-docs.decorator';
 import {
   CLEANING_PHASES,
   EmptyQueryDto,
@@ -51,11 +50,13 @@ const toUtc = (value?: string) => value && new Date(value).toISOString();
 const toFilters = (dto: ListCleaningsQueryDto): CleaningReadFilters => ({
   phase: dto.phase,
   date: dto.date,
+  checkoutDate: dto.checkoutDate,
   plannedFrom: toUtc(dto.plannedFrom),
   plannedTo: toUtc(dto.plannedTo),
   endedFrom: toUtc(dto.endedFrom),
   endedTo: toUtc(dto.endedTo),
   employeeId: dto.employeeId,
+  assigned: dto.assigned,
   unitId: dto.unitId,
   limit: dto.limit,
   offset: dto.offset,
@@ -69,14 +70,7 @@ const toDownload = (file: CleaningReadFile): StreamableFile =>
   });
 
 // Los ids van como `unknown`: con `number`, el pipe global convierte «1e2» antes que PositiveIntPipe.
-@ApiTags('API de limpiezas')
-@ApiSecurity('x-api-key')
-@ApiResponse({ status: 400, description: 'Parámetro inválido o desconocido.' })
-@ApiResponse({ status: 401, description: 'Clave ausente o inválida.' })
-@ApiResponse({ status: 429, description: 'Cupo agotado (Retry-After: 60).' })
-@ApiResponse({ status: 502, description: 'Falló la lectura de la fuente.' })
-@ApiResponse({ status: 503, description: 'API o sesión no disponible.' })
-@ApiResponse({ status: 504, description: 'La fuente no respondió a tiempo.' })
+@CleaningsApiDocs()
 @UseGuards(CleaningsApiKeyGuard)
 @Controller('integrations/v1/cleanings')
 export class CleaningsApiController {
@@ -92,6 +86,12 @@ export class CleaningsApiController {
     name: 'date',
     required: false,
     description: 'Día de generación (YYYY-MM-DD)',
+    example: '2026-04-16',
+  })
+  @ApiQuery({
+    name: 'checkoutDate',
+    required: false,
+    description: 'Día de salida (YYYY-MM-DD)',
     example: '2026-04-16',
   })
   @ApiQuery({
@@ -122,6 +122,13 @@ export class CleaningsApiController {
     name: 'employeeId',
     required: false,
     schema: { type: 'integer', minimum: 1 },
+  })
+  @ApiQuery({
+    name: 'assigned',
+    required: false,
+    description:
+      'Con operario (true) o sin él (false); false no admite employeeId',
+    schema: { type: 'boolean' },
   })
   @ApiQuery({
     name: 'unitId',

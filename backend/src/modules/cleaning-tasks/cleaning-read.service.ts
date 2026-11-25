@@ -176,6 +176,21 @@ export class CleaningReadService implements CleaningReadContract {
     });
   }
 
+  item(id: number): Promise<CleaningReadItem> {
+    return this.execute(`item ${id}`, 'read', async (limiter) => {
+      const task = await this.requireTask(id, limiter);
+      const [last] = await limiter.run(() =>
+        this.supervisionsGateway.findByTask(id, true),
+      );
+      const [item] = await this.toItems(
+        [task],
+        new Map(last ? [[id, last]] : []),
+        limiter,
+      );
+      return item;
+    });
+  }
+
   detail(id: number): Promise<CleaningReadDetail> {
     return this.execute(`detail ${id}`, 'read', async (limiter) => {
       const task = await this.requireTask(id, limiter);
@@ -321,7 +336,7 @@ export class CleaningReadService implements CleaningReadContract {
   private takeSlot(kind: SlotKind): () => void {
     if (this.active[kind] >= MAX_ACTIVE[kind]) {
       throw new ServiceUnavailableException(
-        'Hay demasiadas consultas en curso; repite en unos segundos',
+        'Hay demasiadas consultas en curso: repetir en unos segundos',
       );
     }
     this.active[kind]++;

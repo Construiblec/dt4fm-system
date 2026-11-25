@@ -8,6 +8,7 @@ import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { AxiosError, AxiosRequestConfig, AxiosResponse } from 'axios';
 import { firstValueFrom } from 'rxjs';
+import { VALID_RESERVATION_STATUSES } from './hostaway.constants';
 import {
   getMockCheckouts,
   HostawayAccessReservation,
@@ -19,9 +20,6 @@ interface TokenCache {
   accessToken: string;
   expiresAt: number; // ms timestamp
 }
-
-// Solo estos statuses generan tarea de limpieza
-const VALID_RESERVATION_STATUSES = ['new', 'modified', 'confirmed'];
 
 /** Máximo por página que acepta Hostaway en /v1/reservations */
 const HOSTAWAY_PAGE_SIZE = 100;
@@ -41,6 +39,20 @@ export type HostawayCommunicationType =
   | 'email'
   | 'sms'
   | 'whatsapp';
+
+/** `checkoutDate` es `null` si la reserva no trae una fecha utilizable. */
+export type HostawayReservationState =
+  | {
+      kind: 'found';
+      /** En minúsculas. */
+      status: string;
+      checkoutDate: string | null;
+      checkoutTime: number | null;
+      listingId: string;
+      listingName: string;
+      guestName: string;
+    }
+  | { kind: 'not_found' };
 
 export interface HostawayConversation {
   id: number;
@@ -328,7 +340,8 @@ export class HostawayService {
         if (dep < dateFrom || dep > dateTo) continue;
 
         // Filtro 2: solo status válidos para generar tarea de limpieza
-        if (!VALID_RESERVATION_STATUSES.includes(r.status ?? '')) continue;
+        const status = String(r.status ?? '').toLowerCase();
+        if (!VALID_RESERVATION_STATUSES.includes(status)) continue;
 
         // El cursor puede solaparse entre páginas; evitamos duplicados.
         const id = String(r.hostawayReservationId ?? r.id ?? '');
@@ -588,7 +601,8 @@ export class HostawayService {
 
       const r = response.data?.result;
       if (!r?.departureDate) return null;
-      if (!VALID_RESERVATION_STATUSES.includes(r.status ?? '')) return null;
+      const status = String(r.status ?? '').toLowerCase();
+      if (!VALID_RESERVATION_STATUSES.includes(status)) return null;
 
       return {
         reservationId: String(r.hostawayReservationId ?? r.id ?? reservationId),
@@ -602,6 +616,95 @@ export class HostawayService {
       );
       return null;
     }
+  }
+
+  /**
+   * Estado actual de una reserva para decidir sobre su limpieza. A diferencia de
+   * `getReservationCheckout`, lanza si Hostaway no da una respuesta concluyente.
+   */
+  async getReservationState(
+    reservationId: string,
+  ): Promise<HostawayReservationState> {
+    if (this.useMock()) return this.mockReservationState(reservationId);
+
+    const token = await this.getAccessToken();
+    const response = await this.performRequest<{
+      status?: string;
+      result?: RawHostawayReservation | null;
+    }>(
+      `Estado de la reserva Hostaway ${reservationId}`,
+      () =>
+        firstValueFrom(
+          this.httpService.get(
+            `https://api.hostaway.com/v1/reservations/${encodeURIComponent(reservationId)}`,
+            {
+              timeout: this.requestTimeoutMs,
+              headers: { Authorization: `Bearer ${token}` },
+              // performRequest convierte todo error en 503: el 404 debe llegar como respuesta.
+              validateStatus: (status) => status === 200 || status === 404,
+            },
+          ),
+        ),
+      { maxRetries: 1 },
+    );
+
+    if (response.status === 404) return { kind: 'not_found' };
+
+    const r = response.data?.result;
+    const apiStatus = response.data?.status;
+    if (!r || (apiStatus && apiStatus !== 'success')) {
+      throw new ServiceUnavailableException(
+        `Hostaway no devolvió la reserva ${reservationId}`,
+      );
+    }
+    if (String(r.hostawayReservationId ?? r.id ?? '') !== reservationId) {
+      throw new ServiceUnavailableException(
+        `Hostaway devolvió otra reserva al pedir la ${reservationId}`,
+      );
+    }
+
+    const departure = String(r.departureDate ?? '').slice(0, 10);
+    return {
+      kind: 'found',
+      status: String(r.status ?? '')
+        .trim()
+        .toLowerCase(),
+      checkoutDate: /^\d{4}-\d{2}-\d{2}$/.test(departure) ? departure : null,
+      checkoutTime: r.checkOutTime ?? null,
+      listingId: String(r.listingMapId ?? ''),
+      listingName: r.listingName ?? '',
+      guestName: r.guestFirstName
+        ? `${r.guestFirstName} ${r.guestLastName ?? ''}`.trim()
+        : (r.guestName ?? 'Desconocido'),
+    };
+  }
+
+  private mockReservationState(
+    reservationId: string,
+  ): HostawayReservationState {
+    const date = /^HW-MOCK-(\d{4}-\d{2}-\d{2})-\d{3}$/.exec(reservationId)?.[1];
+    const found = date
+      ? getMockCheckouts(date).result.find(
+          (r) => r.reservationId === reservationId,
+        )
+      : undefined;
+
+    // Nunca `not_found`: en mock las reservas reales no se pueden consultar.
+    if (!found) {
+      throw new ServiceUnavailableException(
+        `[MOCK] La reserva ${reservationId} no existe en los datos de prueba`,
+      );
+    }
+
+    return {
+      kind: 'found',
+      status: 'new',
+      checkoutDate: found.checkoutDate,
+      checkoutTime: parseInt(String(found.checkoutTime), 10),
+      listingId: found.listingId,
+      listingName: found.listingName,
+      guestName: found.guestName,
+    };
   }
 
   /**
