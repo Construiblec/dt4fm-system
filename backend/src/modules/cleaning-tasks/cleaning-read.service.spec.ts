@@ -171,6 +171,7 @@ const build = (routes: Route[] = []) => {
     unused,
     unused,
     supervisions,
+    unused,
   );
   const service = new CleaningReadService(
     tasks,
@@ -239,6 +240,37 @@ describe('CleaningReadService', () => {
       const path = paths().find((p) => p.includes('CleaningTask/')) ?? '';
       expect(path).toContain('sort=');
       expect(decodeURIComponent(path)).toContain('"attribute":"Unit"');
+    });
+
+    it.each([
+      [true, 'isnotnull'],
+      [false, 'isnull'],
+    ])(
+      'checkoutDate y assigned=%j llegan a la fuente',
+      async (assigned, operator) => {
+        const { service, paths } = build();
+
+        await service.list({ ...page, checkoutDate: '2026-11-26', assigned });
+
+        const path = decodeURIComponent(
+          paths().find((p) => p.includes('CleaningTask/')) ?? '',
+        );
+        expect(path).toContain(
+          '{"attribute":"CheckoutDate","operator":"equal","value":"2026-11-26"}',
+        );
+        expect(path).toContain(
+          `{"attribute":"Employee","operator":"${operator}"}`,
+        );
+      },
+    );
+
+    it('sin esos filtros no se filtra por ellos', async () => {
+      const { service, paths } = build();
+
+      await service.list(page);
+
+      const path = paths().find((p) => p.includes('CleaningTask/'));
+      expect(path).not.toContain('filter=');
     });
 
     it('no saca campos que no estén en el contrato', async () => {
@@ -432,6 +464,67 @@ describe('CleaningReadService', () => {
       expect(items.every((i) => i.unit?.id === i.unitId)).toBe(true);
       expect(get).toHaveBeenCalledTimes(62);
       expect(max).toBe(5);
+    });
+  });
+
+  describe('item', () => {
+    it('sale igual que en el listado', async () => {
+      const { items } = await build().service.list(page);
+
+      await expect(build().service.item(10)).resolves.toEqual(items[0]);
+    });
+
+    it('lee la tarjeta y solo las supervisiones de esa limpieza', async () => {
+      const { service, paths } = build();
+
+      await service.item(10);
+
+      expect(paths()[0]).toBe('/classes/CleaningTask/cards/10');
+      const supervisions = paths().filter((p) =>
+        p.includes('CleaningSupervision'),
+      );
+      expect(supervisions).toHaveLength(1);
+      expect(decodeURIComponent(supervisions[0])).toContain('"value":[10]');
+    });
+
+    it('sin supervisiones => null; sin unidad legible => aviso', async () => {
+      const { service } = build([
+        [/CleaningSupervision\/cards/, { data: [] }],
+        [/Unit\/cards\/5$/, upstream(500)],
+      ]);
+
+      await expect(service.item(10)).resolves.toMatchObject({
+        supervision: null,
+        unit: null,
+        warnings: ['unit_unavailable'],
+      });
+    });
+
+    it.each([404, 400])('la fuente responde %i => 404', async (status) => {
+      const { service } = build([
+        [/CleaningTask\/cards\/10$/, upstream(status)],
+      ]);
+      await expect(service.item(10)).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('tarjeta vacía => 404', async () => {
+      const { service } = build([[/CleaningTask\/cards\/10$/, { data: null }]]);
+      await expect(service.item(10)).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it.each([/CleaningTask\/cards\/10$/, /CleaningSupervision\/cards/])(
+      'fallo en %s => 502',
+      async (route) => {
+        await expectBadGateway(
+          build([[route, upstream(500)]]).service.item(10),
+        );
+      },
+    );
+
+    it('supervisiones sin listado => 502, no null', async () => {
+      await expectBadGateway(
+        build([[/CleaningSupervision\/cards/, {}]]).service.item(10),
+      );
     });
   });
 
@@ -870,6 +963,7 @@ describe('CleaningReadService', () => {
     [string, (service: CleaningReadService) => Promise<unknown>]
   > = [
     ['list', (s) => s.list(page)],
+    ['item', (s) => s.item(10)],
     ['detail', (s) => s.detail(10)],
     ['attachment', (s) => s.attachment(10, 'adj 1')],
     ['findingPhoto', (s) => s.findingPhoto(10, 200, 300, 'foto-1')],

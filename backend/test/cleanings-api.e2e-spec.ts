@@ -17,7 +17,9 @@ const KEYS = {
   archivos: 'e2e-clave-archivos-0123456789abcdefghi',
   varios: 'e2e-clave-varios-0123456789abcdefghijk',
   cupo: 'e2e-clave-cupo-0123456789abcdefghijklm',
+  apoyo: 'e2e-clave-apoyo-0123456789abcdefghijkl',
 } as const;
+const API = '/integrations/v1';
 
 const EXECUTION_CHECKLIST = 9100;
 const SUPERVISION_CHECKLIST = 9200;
@@ -25,6 +27,8 @@ const SUPERVISION_CHECKLIST = 9200;
 // Lo único de los gateways que esta API puede tocar.
 const READ_METHODS = new Set([
   'getAllTasks',
+  'listEmployees',
+  'listChecklistOptions',
   'getTaskByIdWithSession',
   'getUnitById',
   'getCleaningActivity',
@@ -292,6 +296,9 @@ describe('CleaningsApiController (e2e)', () => {
         ]) {
           await request(app.getHttpServer()).get(`${BASE}${path}`).expect(401);
         }
+        for (const path of ['/cleaners', '/checklists', '/cleaning-sync']) {
+          await request(app.getHttpServer()).get(`${API}${path}`).expect(401);
+        }
         expect(calledMethods()).toEqual([]);
       });
 
@@ -300,34 +307,66 @@ describe('CleaningsApiController (e2e)', () => {
         ['con una clave corta', 'agente:corta'],
         ['con una entrada inválida', `varios:${KEYS.varios},sinclave`],
       ])('503 %s, aunque la clave sea buena', async (_case, configured) => {
-        const original = process.env.CLEANINGS_API_KEYS;
+        const { CLEANINGS_API_KEYS, CLEANINGS_WRITE_API_KEYS } = process.env;
         process.env.CLEANINGS_API_KEYS = configured;
+        process.env.CLEANINGS_WRITE_API_KEYS = '';
         try {
           await get(`${BASE}/1002`, KEYS.varios).expect(503);
         } finally {
-          process.env.CLEANINGS_API_KEYS = original;
+          Object.assign(process.env, {
+            CLEANINGS_API_KEYS,
+            CLEANINGS_WRITE_API_KEYS,
+          });
         }
         expect(calledMethods()).toEqual([]);
       });
 
-      it.each(['post', 'put', 'patch', 'delete'] as const)(
-        '404 con %s: la API es de solo lectura',
-        async (method) => {
-          for (const path of [
-            BASE,
-            `${BASE}/1003`,
-            `${BASE}/1003/attachments/att-1`,
-            `${BASE}/1003/supervisions/1/findings/2/photos/p-1`,
-          ]) {
-            await request(app.getHttpServer())
-              [method](path)
-              .set('x-api-key', KEYS.varios)
-              .send({ phase: 'Completed' })
-              .expect(404);
-          }
+      it.each([
+        ['patch', `${BASE}/1003`],
+        ['post', `${BASE}/1003/cancel`],
+        ['post', `${API}/plans`],
+      ] as const)(
+        '403 con una clave de lectura: %s %s',
+        async (method, path) => {
+          const res = await request(app.getHttpServer())
+            [method](path)
+            .set('x-api-key', KEYS.varios)
+            .send({ phase: 'Completed' })
+            .expect(403);
+
+          expect(res.headers['cache-control']).toBe('private, no-store');
+          expectNoLeaks(res.body);
           expect(calledMethods()).toEqual([]);
         },
       );
+
+      it.each([
+        ['post', [BASE, `${BASE}/1003`]],
+        ['patch', [BASE, `${BASE}/1003/cancel`, `${API}/plans`]],
+        ['put', [BASE, `${BASE}/1003`, `${API}/plans`]],
+        ['delete', [BASE, `${BASE}/1003`, `${BASE}/1003/cancel`]],
+        ['get', [`${BASE}/1003/cancel`, `${API}/plans`]],
+      ] as const)('404 con %s donde no hay ruta', async (method, paths) => {
+        for (const path of [
+          ...paths,
+          ...(method === 'get'
+            ? []
+            : [
+                `${BASE}/1003/attachments/att-1`,
+                `${BASE}/1003/supervisions/1/findings/2/photos/p-1`,
+                `${API}/cleaners`,
+                `${API}/checklists`,
+                `${API}/cleaning-sync`,
+              ]),
+        ]) {
+          await request(app.getHttpServer())
+            [method](path)
+            .set('x-api-key', KEYS.varios)
+            .send({ phase: 'Completed' })
+            .expect(404);
+        }
+        expect(calledMethods()).toEqual([]);
+      });
     });
 
     describe('listado', () => {
@@ -472,6 +511,44 @@ describe('CleaningsApiController (e2e)', () => {
       });
 
       it.each([
+        ['checkoutDate=2026-11-26', { checkoutDate: '2026-11-26' }],
+        ['assigned=true', { assigned: true }],
+        ['assigned=false', { assigned: false }],
+        ['assigned=true&employeeId=4567', { assigned: true, employeeId: 4567 }],
+        [
+          'checkoutDate=2026-11-27&assigned=false',
+          { checkoutDate: '2026-11-27', assigned: false },
+        ],
+      ])('el filtro ?%s llega a la fuente', async (query, filters) => {
+        await get(`${BASE}?${query}`, KEYS.listado).expect(200);
+
+        const { getAllTasks } = mocks.cleaningTasksOpenmaint;
+        expect(getAllTasks).toHaveBeenCalledTimes(1);
+        expect(getAllTasks).toHaveBeenCalledWith(
+          expect.objectContaining({ ...filters, sort: 'newest' }),
+        );
+      });
+
+      it('assigned=false no comparte caché con el listado sin filtro', async () => {
+        const { getAllTasks } = mocks.cleaningTasksOpenmaint;
+
+        await get(`${BASE}?unitId=1126`, KEYS.listado).expect(200);
+        await get(`${BASE}?unitId=1126&assigned=false`, KEYS.listado).expect(
+          200,
+        );
+
+        expect(getAllTasks).toHaveBeenCalledTimes(2);
+      });
+
+      it.each([
+        'checkoutDate=2026-02-31',
+        'checkoutDate=26/11/2026',
+        'checkoutDate=',
+        'assigned=1',
+        'assigned=si',
+        'assigned=',
+        'assigned=true&assigned=false',
+        'assigned=false&employeeId=4567',
         'fase=x',
         'phase=Completed&fase=x',
         'phase=Terminada',
@@ -1027,6 +1104,228 @@ describe('CleaningsApiController (e2e)', () => {
       });
     });
 
+    describe('operarios, checklists y sincronización', () => {
+      const FROM = '2026-11-26T05:00:00.000Z';
+      const TO = '2026-11-28T05:00:00.000Z';
+      const cleanersUrl = (from = FROM, to = TO) =>
+        `${API}/cleaners?${new URLSearchParams({ from, to }).toString()}`;
+
+      beforeEach(() => {
+        const tasks = mocks.cleaningTasksOpenmaint;
+        tasks.listEmployees.mockReset().mockResolvedValue({
+          data: [
+            { _id: 7012, Description: 'Beto Mora' },
+            { _id: 7011, Description: 'Ana Ruiz' },
+          ],
+        });
+        tasks.listChecklistOptions.mockReset().mockResolvedValue([
+          { id: 9100, code: 'EST', description: 'Checklist estudio' },
+          { id: 9200, code: 'SUPERVISION', description: 'Plantilla' },
+        ]);
+      });
+
+      it('cada operario del equipo con sus limpiezas del rango', async () => {
+        const card = (id: number, overrides: Record<string, unknown>) =>
+          taskCard(id, {
+            _phase_description: 'Assigned',
+            ActualStartTime: null,
+            ActualEndTime: null,
+            Employee: 7011,
+            PlannedStartTime: '2026-11-26T15:00:00Z',
+            PlannedEndTime: '2026-11-26T16:30:00Z',
+            ...overrides,
+          });
+        const { getAllTasks, listEmployees } = mocks.cleaningTasksOpenmaint;
+        getAllTasks.mockImplementation(({ phase }: { phase: string }) =>
+          Promise.resolve({
+            data:
+              phase === 'Assigned'
+                ? [
+                    card(1601, {}),
+                    // Fuera del rango, sin horario y de alguien ajeno al equipo.
+                    card(1602, {
+                      PlannedStartTime: '2026-11-29T15:00:00Z',
+                      PlannedEndTime: '2026-11-29T16:00:00Z',
+                    }),
+                    card(1603, {
+                      PlannedStartTime: null,
+                      PlannedEndTime: null,
+                    }),
+                    card(1604, { Employee: 9999 }),
+                  ]
+                : [
+                    card(1605, {
+                      _phase_description: 'InExecution',
+                      Employee: 7012,
+                      PlannedStartTime: '2026-11-25T15:00:00Z',
+                      PlannedEndTime: '2026-11-25T16:00:00Z',
+                      ActualStartTime: '2026-11-25T15:10:00Z',
+                    }),
+                  ],
+          }),
+        );
+
+        const res = await get(cleanersUrl(), KEYS.apoyo).expect(200);
+
+        expect(res.body.meta).toEqual({ from: FROM, to: TO });
+        expect(listEmployees).toHaveBeenCalledWith(2397132);
+        expect(res.body.data).toEqual([
+          {
+            id: 7011,
+            name: 'Ana Ruiz',
+            inExecutionId: null,
+            plannedMinutes: 90,
+            cleanings: [
+              {
+                id: 1601,
+                description: 'Limpieza - R302',
+                phase: 'Assigned',
+                plannedStartTime: '2026-11-26T15:00:00Z',
+                plannedEndTime: '2026-11-26T16:30:00Z',
+                isPaused: false,
+                actualStartTime: null,
+                checkoutDate: '2026-11-16',
+                unitId: 300,
+              },
+            ],
+            unscheduled: [expect.objectContaining({ id: 1603 })],
+          },
+          {
+            id: 7012,
+            name: 'Beto Mora',
+            inExecutionId: 1605,
+            plannedMinutes: 0,
+            cleanings: [
+              expect.objectContaining({ id: 1605, phase: 'InExecution' }),
+            ],
+            unscheduled: [],
+          },
+        ]);
+        expect(res.headers['cache-control']).toBe('private, no-store');
+        expectNoLeaks(res.body);
+      });
+
+      it('sin rango: hoy y mañana de Guayaquil', async () => {
+        const res = await get(`${API}/cleaners`, KEYS.apoyo).expect(200);
+
+        const today = new Date().toLocaleDateString('en-CA', {
+          timeZone: 'America/Guayaquil',
+        });
+        const from = new Date(`${today}T00:00:00-05:00`);
+        expect(res.body.meta).toEqual({
+          from: from.toISOString(),
+          to: new Date(from.getTime() + 2 * 86_400_000).toISOString(),
+        });
+      });
+
+      it('repetida sale de la caché', async () => {
+        const url = cleanersUrl('2026-12-01T05:00:00Z', '2026-12-02T05:00:00Z');
+
+        await get(url, KEYS.apoyo).expect(200);
+        await get(url, KEYS.apoyo).expect(200);
+
+        expect(
+          mocks.cleaningTasksOpenmaint.listEmployees,
+        ).toHaveBeenCalledTimes(1);
+      });
+
+      it.each([
+        `from=${FROM}`,
+        `to=${TO}`,
+        `from=${TO}&to=${FROM}`,
+        `from=${FROM}&to=${FROM}`,
+        'from=2026-11-26&to=2026-11-27',
+        'from=2026-11-26T05:00:00Z&to=2026-12-10T05:00:01Z',
+        `from=${FROM}&to=${TO}&employeeId=7011`,
+      ])('cleaners: 400 con ?%s, sin llamar a la fuente', async (query) => {
+        await get(`${API}/cleaners?${query}`, KEYS.apoyo).expect(400);
+        expect(calledMethods()).toEqual([]);
+      });
+
+      it.each([
+        ['el equipo', 'listEmployees'],
+        ['la agenda', 'getAllTasks'],
+      ] as const)(
+        'cleaners: 502 si no se puede leer %s, nunca una agenda vacía',
+        async (_case, method) => {
+          mocks.cleaningTasksOpenmaint[method].mockRejectedValue(
+            upstreamError(500),
+          );
+          const day = method === 'getAllTasks' ? '03' : '04';
+
+          const res = await get(
+            cleanersUrl(`2026-12-${day}T05:00:00Z`, '2026-12-05T05:00:00Z'),
+            KEYS.apoyo,
+          ).expect(502);
+
+          expectNoLeaks(res.body);
+        },
+      );
+
+      it('cleaners: 503 sin equipo configurado', async () => {
+        const original = process.env.OPENMAINT_CLEANING_TEAM_ID;
+        process.env.OPENMAINT_CLEANING_TEAM_ID = '';
+        try {
+          const res = await get(
+            cleanersUrl('2026-12-06T05:00:00Z', '2026-12-07T05:00:00Z'),
+            KEYS.apoyo,
+          ).expect(503);
+          expectNoLeaks(res.body);
+        } finally {
+          process.env.OPENMAINT_CLEANING_TEAM_ID = original;
+        }
+        expect(
+          mocks.cleaningTasksOpenmaint.listEmployees,
+        ).not.toHaveBeenCalled();
+      });
+
+      it('checklists: un fallo no se guarda y la plantilla de supervisión no sale', async () => {
+        const { listChecklistOptions } = mocks.cleaningTasksOpenmaint;
+        listChecklistOptions.mockRejectedValueOnce(upstreamError(500));
+
+        const failed = await get(`${API}/checklists`, KEYS.apoyo).expect(502);
+        expectNoLeaks(failed.body);
+        const res = await get(`${API}/checklists`, KEYS.apoyo).expect(200);
+
+        expect(res.body).toEqual({
+          data: [{ id: 9100, code: 'EST', description: 'Checklist estudio' }],
+        });
+      });
+
+      it('cleaning-sync: estado sin llamar a la fuente', async () => {
+        const res = await get(`${API}/cleaning-sync`, KEYS.apoyo).expect(200);
+
+        expect(res.body).toEqual({
+          data: {
+            enabled: false,
+            windowDays: 2,
+            lastRunAt: null,
+            lastSuccessAt: null,
+            lastResult: null,
+          },
+        });
+        expect(calledMethods()).toEqual([]);
+      });
+
+      it('checklists y cleaning-sync: 400 con cualquier parámetro', async () => {
+        await get(`${API}/checklists?limit=5`, KEYS.apoyo).expect(400);
+        await get(`${API}/cleaning-sync?run=true`, KEYS.apoyo).expect(400);
+        expect(calledMethods()).toEqual([]);
+      });
+
+      it('503 en enfriamiento', async () => {
+        isCoolingDown.mockReturnValue(true);
+
+        await get(
+          cleanersUrl('2026-12-08T05:00:00Z', '2026-12-09T05:00:00Z'),
+          KEYS.apoyo,
+        ).expect(503);
+
+        expect(getSessionId).not.toHaveBeenCalled();
+        expect(calledMethods()).toEqual([]);
+      });
+    });
+
     describe('cupos', () => {
       it('429 con Retry-After al agotar el cupo, sin afectar a otro cliente', async () => {
         const path = `${BASE}?unitId=1401`;
@@ -1065,12 +1364,16 @@ describe('CleaningsApiController (e2e)', () => {
       );
     });
 
-    it('GET /cleaning-tasks responde sin clave, con la misma forma', async () => {
+    it('GET /cleaning-tasks responde sin clave, con sesión de coordinación', async () => {
       const { getCleaningTasks } = mocks.cleaningTasksOpenmaint;
+      mocks.openmaint.getSession.mockResolvedValueOnce(
+        mockSession({ role: 'Coordinador' }),
+      );
       getCleaningTasks.mockResolvedValueOnce({ data: [taskCard(1501)] });
 
       const res = await request(app.getHttpServer())
         .get('/cleaning-tasks?date=2026-11-16')
+        .set('x-session-token', MOCK_SESSION_ID)
         .expect(200);
 
       expect(getCleaningTasks).toHaveBeenCalledWith('2026-11-16');

@@ -44,6 +44,7 @@ import { ReopenTaskDto } from './dto/reopen-task.dto';
 import { ReviewTaskDto } from './dto/review-task.dto';
 import { UpdateCleaningTaskDto } from './dto/update-cleaning-task.dto';
 import { UploadAttachmentDto } from './dto/upload-attachment.dto';
+import { CleaningReservationLockService } from './cleaning-reservation-lock.service';
 import {
   CleaningSupervisionsService,
   SupervisionSummary,
@@ -247,6 +248,18 @@ const MAX_ATTACHMENTS = 10;
  * (7 días) y solo ataja valores absurdos.
  */
 const MAX_TOTAL_EXECUTION_MINUTES = 1440 * 7;
+/** Alta con candado: si la fuente no responde, no se retiene para siempre. */
+const CREATE_TIMEOUT_MS = 20_000;
+const APPEARED_DELAYS_MS = [1_000, 4_000];
+
+/** El gateway envuelve el error: el de red (sin respuesta HTTP) va en `cause`. */
+const hasNoResponse = (error: unknown): boolean => {
+  const cause = (
+    error as { cause?: { isAxiosError?: boolean; response?: unknown } }
+  )?.cause;
+  return cause?.isAxiosError === true && !cause.response;
+};
+
 /** Ventana máxima consultable de checkouts, para acotar el costo hacia Hostaway. */
 const MAX_CHECKOUT_RANGE_DAYS = 92;
 
@@ -269,7 +282,7 @@ type UnitInfo = {
 };
 
 /** Fecha de hoy en Guayaquil (YYYY-MM-DD). `toISOString` da el día en UTC, que desde las 19:00 ya es mañana. */
-const guayaquilToday = (): string =>
+export const guayaquilToday = (): string =>
   new Date().toLocaleDateString('en-CA', { timeZone: 'America/Guayaquil' });
 
 /**
@@ -286,7 +299,7 @@ const nextTaskNumber = (): string => {
 };
 
 /** Una limpieza que el coordinador todavía puede editar o cancelar: no empezó y no está en pausa. */
-const isUnstartedTask = (task: {
+export const isUnstartedTask = (task: {
   _phase_description?: string;
   phase?: unknown;
   ActualStartTime?: string | null;
@@ -311,6 +324,7 @@ export class CleaningTasksService {
     private readonly pushDispatch: PushDispatchService,
     private readonly configService: ConfigService,
     private readonly supervisions: CleaningSupervisionsService,
+    private readonly reservationLock: CleaningReservationLockService,
   ) {}
 
   /**
@@ -411,16 +425,34 @@ export class CleaningTasksService {
     };
   }
 
-  async createCleaningTask(dto: CreateCleaningTaskDto) {
-    const exists = await this.openmaintService.taskExistsByReservationId(
-      dto.hostawayReservationId,
+  /** `ignoreTaskIds`: limpiezas que no cuentan como existentes (las que canceló la sincronización). */
+  async createCleaningTask(
+    dto: CreateCleaningTaskDto,
+    ignoreTaskIds: number[] = [],
+  ) {
+    const reservationId = dto.hostawayReservationId;
+    const alreadyExists = {
+      created: false as const,
+      message: `Ya existe una tarea para la reserva ${reservationId}`,
+    };
+    const exists = async () =>
+      ignoreTaskIds.length === 0
+        ? this.openmaintService.taskExistsByReservationId(reservationId)
+        : (
+            await this.openmaintService.findTasksByReservation(reservationId)
+          ).some((task) => !ignoreTaskIds.includes(task._id));
+
+    if (await exists()) return alreadyExists;
+    // Se vuelve a mirar con el candado tomado: otro proceso pudo crearla entre medias.
+    return this.reservationLock.run(reservationId, async () =>
+      (await exists()) ? alreadyExists : this.insertCleaningTask(dto, exists),
     );
-    if (exists) {
-      return {
-        created: false,
-        message: `Ya existe una tarea para la reserva ${dto.hostawayReservationId}`,
-      };
-    }
+  }
+
+  private async insertCleaningTask(
+    dto: CreateCleaningTaskDto,
+    exists: () => Promise<boolean>,
+  ) {
     const body: Record<string, unknown> = {
       TaskNumber: nextTaskNumber(),
       phase: PHASE_LOOKUP.Assigned,
@@ -436,24 +468,51 @@ export class CleaningTasksService {
     if (dto.plannedStartTime) body.PlannedStartTime = dto.plannedStartTime;
     if (dto.plannedEndTime) body.PlannedEndTime = dto.plannedEndTime;
     try {
-      const response = await this.openmaintService.createCleaningTask(body);
+      const response = await this.openmaintService.createCleaningTask(body, {
+        timeout: CREATE_TIMEOUT_MS,
+      });
       return {
-        created: true,
+        created: true as const,
         taskId: response.data?._id ?? null,
         taskNumber: response.data?.TaskNumber ?? null,
         reservationId: dto.hostawayReservationId,
       };
-    } catch {
+    } catch (error) {
+      // Sin respuesta pudo crearse igual: se mira antes de soltar el candado.
+      if (hasNoResponse(error) && (await this.appeared(exists))) {
+        return {
+          created: true as const,
+          taskId: null,
+          taskNumber: null,
+          reservationId: dto.hostawayReservationId,
+        };
+      }
       throw new InternalServerErrorException(
         `Error al crear tarea para reserva ${dto.hostawayReservationId}`,
       );
     }
   }
 
+  private async appeared(exists: () => Promise<boolean>): Promise<boolean> {
+    for (const delayMs of APPEARED_DELAYS_MS) {
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+      if (await exists().catch(() => false)) return true;
+    }
+    return false;
+  }
+
   async generateTasksFromCheckouts(checkouts: CreateCleaningTaskDto[]) {
-    const results = await Promise.allSettled(
-      checkouts.map((c) => this.createCleaningTask(c)),
-    );
+    const results: PromiseSettledResult<
+      Awaited<ReturnType<CleaningTasksService['createCleaningTask']>>
+    >[] = [];
+    // De a 10: el candado, que solo toman las que faltan, tiene su propio tope.
+    for (let i = 0; i < checkouts.length; i += 10) {
+      results.push(
+        ...(await Promise.allSettled(
+          checkouts.slice(i, i + 10).map((c) => this.createCleaningTask(c)),
+        )),
+      );
+    }
     const errors = results.flatMap((r, i) =>
       r.status === 'rejected'
         ? [

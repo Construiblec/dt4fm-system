@@ -77,6 +77,18 @@ describe('HostawayService', () => {
       );
     });
 
+    it('acepta el status con mayúsculas, como el listado', async () => {
+      const get = jest
+        .fn()
+        .mockReturnValue(
+          of({ data: { result: reservation({ status: 'Modified' }) } }),
+        );
+
+      await expect(
+        buildService(get).getReservationCheckout('67469867'),
+      ).resolves.toMatchObject({ checkoutDate: '2026-10-14' });
+    });
+
     it('una reserva cancelada cuenta como que ya no está', async () => {
       const get = jest
         .fn()
@@ -103,6 +115,119 @@ describe('HostawayService', () => {
       ).resolves.toBeNull();
     });
   });
+
+  describe('getReservationState', () => {
+    const reply = (result: unknown, over: object = {}) =>
+      jest
+        .fn()
+        .mockReturnValue(
+          of({ status: 200, data: { status: 'success', result }, ...over }),
+        );
+    const failure = (response?: object) =>
+      jest
+        .fn()
+        .mockReturnValue(
+          throwError(() => Object.assign(new Error('boom'), { response })),
+        );
+
+    it('devuelve el estado en minúsculas y los datos de la reserva', async () => {
+      const get = reply(reservation({ status: 'Modified', checkOutTime: 11 }));
+
+      await expect(
+        buildService(get).getReservationState('67469867'),
+      ).resolves.toEqual({
+        kind: 'found',
+        status: 'modified',
+        checkoutDate: '2026-10-14',
+        checkoutTime: 11,
+        listingId: '441669',
+        listingName: 'R315',
+        guestName: 'Desconocido',
+      });
+
+      const { validateStatus } = (
+        get.mock.calls as [string, { validateStatus: (s: number) => boolean }][]
+      )[0][1];
+      expect([200, 404, 401, 500].map(validateStatus)).toEqual([
+        true,
+        true,
+        false,
+        false,
+      ]);
+    });
+
+    it('sin fecha de salida la fecha es null', async () => {
+      const get = reply(reservation({ departureDate: null, status: null }));
+
+      await expect(
+        buildService(get).getReservationState('67469867'),
+      ).resolves.toMatchObject({ status: '', checkoutDate: null });
+    });
+
+    it('un 404 es not_found', async () => {
+      const get = jest
+        .fn()
+        .mockReturnValue(of({ status: 404, data: { status: 'fail' } }));
+
+      await expect(buildService(get).getReservationState('1')).resolves.toEqual(
+        { kind: 'not_found' },
+      );
+    });
+
+    it.each([
+      [
+        '200 con status fail',
+        reply(reservation(), { data: { status: 'fail' } }),
+      ],
+      ['200 sin result', reply(undefined)],
+      ['otra reserva', reply(reservation({ hostawayReservationId: '2' }))],
+      ['401', failure({ status: 401 })],
+      ['400', failure({ status: 400 })],
+      ['sin red', failure()],
+    ])('lanza con %s', async (_name, get) => {
+      await expect(
+        buildService(get).getReservationState('67469867'),
+      ).rejects.toThrow();
+      expect(get).toHaveBeenCalledTimes(1);
+    });
+
+    it('un 5xx se reintenta una vez y lanza', async () => {
+      jest.useFakeTimers();
+      try {
+        const get = failure({ status: 503 });
+        const outcome = expect(
+          buildService(get).getReservationState('67469867'),
+        ).rejects.toThrow();
+        await jest.advanceTimersByTimeAsync(5_000);
+        await outcome;
+        expect(get).toHaveBeenCalledTimes(2);
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it('en modo mock solo conoce sus reservas; las demás lanzan', async () => {
+      const service = new HostawayService(
+        {} as never,
+        config({ HOSTAWAY_USE_MOCK: 'true' }),
+      );
+
+      await expect(
+        service.getReservationState('HW-MOCK-2026-10-14-001'),
+      ).resolves.toMatchObject({
+        kind: 'found',
+        status: 'new',
+        checkoutDate: '2026-10-14',
+        checkoutTime: 11,
+        listingId: 'UNIT-101',
+      });
+      await expect(
+        service.getReservationState('HW-MOCK-2026-10-14-099'),
+      ).rejects.toThrow();
+      await expect(service.getReservationState('67469867')).rejects.toThrow();
+    });
+  });
+
   describe('setReservationDoorCode', () => {
     const buildWithPut = (
       put: jest.Mock,

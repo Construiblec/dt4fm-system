@@ -1,104 +1,46 @@
-import {
-  Injectable,
-  Logger,
-  OnModuleDestroy,
-  OnModuleInit,
-} from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { CleaningTasksService } from './cleaning-tasks.service';
+import { Cron } from '@nestjs/schedule';
+import { describeError } from '../../common/logging/describe-error.util';
+import { BUSINESS_TIMEZONE } from '../push-notifications/scheduler/scheduler.constants';
+import { CleaningSyncService } from './cleaning-sync.service';
 
-/**
- * Scheduler que ejecuta la sincronización Hostaway → OpenMAINT
- * automáticamente a medianoche cada día.
- *
- * Habilitación: establecer HOSTAWAY_SCHEDULER_ENABLED=true en el .env
- * Hora de ejecución: 00:00 hora local del servidor (configurable con
- *   HOSTAWAY_SCHEDULER_HOUR / HOSTAWAY_SCHEDULER_MINUTE, defecto 0:00)
- */
+/** Barrido de limpiezas cada 15 min. Solo con HOSTAWAY_SCHEDULER_ENABLED=true. */
 @Injectable()
-export class HostawaySyncSchedulerService
-  implements OnModuleInit, OnModuleDestroy
-{
+export class HostawaySyncSchedulerService {
   private readonly logger = new Logger(HostawaySyncSchedulerService.name);
-  private timeoutHandle: NodeJS.Timeout | null = null;
 
   constructor(
-    private readonly cleaningTasksService: CleaningTasksService,
+    private readonly cleaningSync: CleaningSyncService,
     private readonly configService: ConfigService,
   ) {}
 
-  onModuleInit() {
-    const enabled =
-      this.configService.get<string>('HOSTAWAY_SCHEDULER_ENABLED') === 'true';
-
-    if (!enabled) {
-      this.logger.log(
-        'Scheduler diario DESHABILITADO. Actívalo con HOSTAWAY_SCHEDULER_ENABLED=true',
-      );
+  @Cron('7,22,37,52 * * * *', { timeZone: BUSINESS_TIMEZONE })
+  async run(): Promise<void> {
+    if (
+      this.configService.get<string>('HOSTAWAY_SCHEDULER_ENABLED') !== 'true'
+    ) {
       return;
     }
 
-    this.scheduleNextRun();
-    this.logger.log('Scheduler diario Hostaway → openMAINT iniciado');
-  }
-
-  onModuleDestroy() {
-    if (this.timeoutHandle) {
-      clearTimeout(this.timeoutHandle);
-      this.timeoutHandle = null;
-    }
-  }
-
-  // ─── Internos ──────────────────────────────────────────────────────────────
-
-  private scheduleNextRun(): void {
-    const ms = this.msUntilNextRun();
-    const minutes = Math.round(ms / 60_000);
-    this.logger.log(`Próxima sincronización en ${minutes} minutos`);
-
-    this.timeoutHandle = setTimeout(async () => {
-      await this.runSync();
-      this.scheduleNextRun(); // volver a programar para el día siguiente
-    }, ms);
-  }
-
-  private msUntilNextRun(): number {
-    const hour = Number(
-      this.configService.get<string>('HOSTAWAY_SCHEDULER_HOUR') ?? '0',
-    );
-    const minute = Number(
-      this.configService.get<string>('HOSTAWAY_SCHEDULER_MINUTE') ?? '0',
-    );
-
-    const now = new Date();
-    const next = new Date(now);
-    next.setHours(hour, minute, 0, 0);
-
-    // Si la hora de hoy ya pasó, apuntar al día siguiente
-    if (next <= now) {
-      next.setDate(next.getDate() + 1);
-    }
-
-    return next.getTime() - now.getTime();
-  }
-
-  async runSync(): Promise<void> {
-    const today = new Date().toISOString().split('T')[0];
-    this.logger.log(`Ejecutando sincronización diaria para ${today}...`);
-
     try {
-      const results = await this.cleaningTasksService.syncFromHostaway(
-        today,
-        today,
-      );
-      this.logger.log(
-        `Sincronización completada → ` +
-          `creadas: ${results.created}, ` +
-          `omitidas: ${results.skipped}, ` +
-          `fallidas: ${results.failed}`,
-      );
+      const r = await this.cleaningSync.reconcileWindow();
+      const summary =
+        `Sincronización de limpiezas ${r.dateFrom} → ${r.dateTo}: ` +
+        `creadas=${r.created} actualizadas=${r.updated} canceladas=${r.cancelled} ` +
+        `sin_cambios=${r.unchanged} omitidas=${r.skipped} fallidas=${r.failed}`;
+
+      if (r.failed > 0) {
+        this.logger.warn(summary);
+      } else if (r.created + r.updated + r.cancelled > 0) {
+        this.logger.log(summary);
+      } else {
+        this.logger.debug(summary);
+      }
     } catch (error) {
-      this.logger.error(`Sincronización fallida: ${(error as Error).message}`);
+      this.logger.error(
+        `No se pudieron sincronizar las limpiezas — ${describeError(error)}`,
+      );
     }
   }
 }

@@ -75,6 +75,66 @@ describe('CleaningsCacheService', () => {
     },
   );
 
+  describe('clear', () => {
+    const deferred = () => {
+      let resolve: (value: string) => void = () => undefined;
+      let reject: (error: Error) => void = () => undefined;
+      const promise = new Promise<string>((res, rej) => {
+        resolve = res;
+        reject = rej;
+      });
+
+      return { promise, resolve, reject };
+    };
+
+    it('descarta lo guardado', async () => {
+      await cache.getOrLoad('k', () => Promise.resolve('viejo'));
+      cache.clear();
+
+      expect(await cache.getOrLoad('k', () => Promise.resolve('nuevo'))).toBe(
+        'nuevo',
+      );
+    });
+
+    it('una lectura anterior no se comparte ni repone datos viejos', async () => {
+      const old = deferred();
+      const before = cache.getOrLoad('k', () => old.promise);
+      await Promise.resolve();
+
+      cache.clear();
+      const load = jest.fn().mockResolvedValue('nuevo');
+      expect(await cache.getOrLoad('k', load)).toBe('nuevo');
+
+      old.resolve('viejo');
+      expect(await before).toBe('viejo');
+      expect(await cache.getOrLoad('k', load)).toBe('nuevo');
+      expect(load).toHaveBeenCalledTimes(1);
+    });
+
+    it.each(['resuelve', 'falla'])(
+      'si la anterior %s, no quita la que sigue en curso',
+      async (outcome) => {
+        const old = deferred();
+        const fresh = deferred();
+        const load = jest.fn(() => fresh.promise);
+        const before = cache.getOrLoad('k', () => old.promise);
+
+        cache.clear();
+        const after = cache.getOrLoad('k', load);
+
+        if (outcome === 'falla') old.reject(new Error('x'));
+        else old.resolve('viejo');
+        await Promise.allSettled([before]);
+
+        const joined = cache.getOrLoad('k', load);
+        fresh.resolve('nuevo');
+
+        expect(await Promise.all([after, joined])).toEqual(['nuevo', 'nuevo']);
+        expect(load).toHaveBeenCalledTimes(1);
+      },
+    );
+  });
+
   it('guarda como mucho 200 entradas y descarta la más vieja', async () => {
     const load = jest.fn((n: number) => Promise.resolve(n));
 

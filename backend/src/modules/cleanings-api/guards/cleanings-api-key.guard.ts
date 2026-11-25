@@ -1,6 +1,7 @@
 import {
   CanActivate,
   ExecutionContext,
+  ForbiddenException,
   HttpException,
   HttpStatus,
   Injectable,
@@ -9,20 +10,30 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createHash, timingSafeEqual } from 'crypto';
-import type { Request, Response } from 'express';
+import type { Response } from 'express';
 import { RateLimiterService } from '../../password-recovery/rate-limiter.service';
+import type { CleaningsRequest } from '../decorators/cleanings-client.decorator';
 
 export const CLEANINGS_API_KEY_HEADER = 'x-api-key';
 
+const READ_KEYS = 'CLEANINGS_API_KEYS';
+const WRITE_KEYS = 'CLEANINGS_WRITE_API_KEYS';
+
 const MIN_KEY_LENGTH = 32;
 const WINDOW_MS = 60 * 1000;
-const MAX_PER_CLIENT = 60;
+const MAX_READS_PER_CLIENT = 60;
+const MAX_WRITES_PER_CLIENT = 20;
 const MAX_INVALID_PER_IP = 20;
 
-type ApiClient = { name: string; digest: Buffer };
+type ApiClient = { name: string; digest: Buffer; canWrite: boolean };
+
+/** Con `valid: false` ninguna sirve; se conservan para detectar repetidas. */
+type KeyList = { clients: ApiClient[]; valid: boolean };
 
 @Injectable()
 export class CleaningsApiKeyGuard implements CanActivate {
+  protected readonly writes: boolean = false;
+
   constructor(
     private readonly configService: ConfigService,
     private readonly rateLimiter: RateLimiterService,
@@ -30,7 +41,7 @@ export class CleaningsApiKeyGuard implements CanActivate {
 
   canActivate(context: ExecutionContext): boolean {
     const http = context.switchToHttp();
-    const request = http.getRequest<Request>();
+    const request = http.getRequest<CleaningsRequest>();
     const response = http.getResponse<Response>();
 
     // Aquí y no con @Header: así también la llevan los errores (un 404 es cacheable).
@@ -38,9 +49,11 @@ export class CleaningsApiKeyGuard implements CanActivate {
 
     const clients = this.clients();
 
-    if (!clients) {
+    if (!clients.some((client) => client.canWrite || !this.writes)) {
       throw new ServiceUnavailableException(
-        'La API de limpiezas no está configurada',
+        this.writes
+          ? 'La escritura de limpiezas no está configurada'
+          : 'La API de limpiezas no está configurada',
       );
     }
 
@@ -58,49 +71,86 @@ export class CleaningsApiKeyGuard implements CanActivate {
       throw new UnauthorizedException('Clave de API ausente o inválida');
     }
 
-    this.limit(response, `cleanings-api:client:${client}`, MAX_PER_CLIENT);
+    this.limitClient(response, client);
+
+    if (this.writes && !client.canWrite) {
+      throw new ForbiddenException('La clave no tiene permiso de escritura');
+    }
+
+    request.cleaningsClient = client.name;
 
     return true;
   }
 
-  /** `null` si falta la variable o alguna entrada es inválida: se cierra entera. */
-  private clients(): ApiClient[] | null {
-    const raw =
-      this.configService.get<string>('CLEANINGS_API_KEYS')?.trim() ?? '';
+  /** Una clave en ambas listas anula la de escritura, nunca la de lectura. */
+  private clients(): ApiClient[] {
+    const read = this.load(READ_KEYS, false);
+    const write = this.load(WRITE_KEYS, true);
+    const shared = write.clients.some(({ digest }) =>
+      read.clients.some((client) => client.digest.equals(digest)),
+    );
 
-    if (!raw) return null;
+    return [
+      ...(read.valid ? read.clients : []),
+      ...(write.valid && !shared ? write.clients : []),
+    ];
+  }
 
+  /** Si falta la variable o alguna entrada es inválida, se cierra entera. */
+  private load(variable: string, canWrite: boolean): KeyList {
+    const raw = this.configService.get<string>(variable)?.trim() ?? '';
     const clients: ApiClient[] = [];
+    let valid = true;
 
     for (const entry of raw.split(',')) {
       const separator = entry.indexOf(':');
       const name = entry.slice(0, Math.max(separator, 0)).trim();
       const key = entry.slice(separator + 1).trim();
 
-      if (!name || key.length < MIN_KEY_LENGTH) return null;
+      if (!name || key.length < MIN_KEY_LENGTH) valid = false;
 
-      clients.push({ name, digest: this.digest(key) });
+      clients.push({ name, digest: this.digest(key), canWrite });
     }
 
-    return clients;
+    return { clients, valid };
   }
 
   // Recorre todas las claves: el tiempo no revela cuál coincidió.
   private match(
     received: string | string[] | undefined,
     clients: ApiClient[],
-  ): string | null {
+  ): ApiClient | null {
     if (typeof received !== 'string' || !received.trim()) return null;
 
     const digest = this.digest(received.trim());
-    let found: string | null = null;
+    let found: ApiClient | null = null;
 
     for (const client of clients) {
       const matches = timingSafeEqual(digest, client.digest);
-      found = matches ? client.name : found;
+      found = matches ? client : found;
     }
 
     return found;
+  }
+
+  // Contadores aparte: un cliente de lectura y otro de escritura pueden llamarse igual.
+  private limitClient(response: Response, client: ApiClient): void {
+    const { name, canWrite } = client;
+
+    if (this.writes && canWrite) {
+      this.limit(
+        response,
+        `cleanings-api:write:${name}`,
+        MAX_WRITES_PER_CLIENT,
+      );
+    } else {
+      const owner = canWrite ? 'writer' : 'client';
+      this.limit(
+        response,
+        `cleanings-api:${owner}:${name}`,
+        MAX_READS_PER_CLIENT,
+      );
+    }
   }
 
   private limit(response: Response, key: string, max: number): void {
@@ -108,7 +158,7 @@ export class CleaningsApiKeyGuard implements CanActivate {
 
     response.setHeader('Retry-After', '60');
     throw new HttpException(
-      'Demasiadas peticiones. Espera un minuto y vuelve a intentarlo.',
+      'Demasiadas peticiones: esperar un minuto antes de repetir',
       HttpStatus.TOO_MANY_REQUESTS,
     );
   }

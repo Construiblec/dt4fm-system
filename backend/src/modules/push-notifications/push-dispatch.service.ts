@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PushSubscription } from './entities/push-subscription.entity';
 import {
   CLEANING_SUPERVISOR_ROLES,
+  CleaningPlanCounts,
   MAINTENANCE_SUPERVISOR_ROLES,
   PushMessage,
   cleaningAssigned,
@@ -9,6 +10,7 @@ import {
   cleaningCorrectionsAssigned,
   cleaningCorrectionsFixed,
   cleaningDelayed,
+  cleaningPlanUpdated,
   cleaningReopened,
   correctiveAssigned,
   correctiveCompleted,
@@ -168,6 +170,21 @@ export class PushDispatchService {
       });
 
       await this.toCleaningEmployee(input.cleaningEmployeeId, message);
+    });
+  }
+
+  /** Resumen de varios cambios de planificación para un mismo operario. */
+  async notifyCleaningPlanUpdated(input: {
+    cleaningEmployeeId: number;
+    counts: CleaningPlanCounts;
+  }): Promise<void> {
+    await this.safe(async () => {
+      if (Object.values(input.counts).every((count) => count === 0)) return;
+
+      await this.toCleaningEmployee(
+        input.cleaningEmployeeId,
+        cleaningPlanUpdated(input),
+      );
     });
   }
 

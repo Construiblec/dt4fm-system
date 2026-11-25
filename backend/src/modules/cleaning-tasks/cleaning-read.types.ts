@@ -13,6 +13,10 @@ export type CleaningReadFilters = {
   endedTo?: string;
   employeeId?: number;
   unitId?: number;
+  /** Día de salida, YYYY-MM-DD. */
+  checkoutDate?: string;
+  /** `false` = sin operario. */
+  assigned?: boolean;
   limit: number;
   offset: number;
 };
@@ -132,6 +136,8 @@ export interface CleaningReadContract {
   list(
     filters: CleaningReadFilters,
   ): Promise<{ items: CleaningReadItem[]; total: number | null }>;
+  /** Como en el listado, recién leída. */
+  item(id: number): Promise<CleaningReadItem>;
   detail(id: number): Promise<CleaningReadDetail>;
   attachment(id: number, attachmentId: string): Promise<CleaningReadFile>;
   findingPhoto(

@@ -1,7 +1,9 @@
 import {
+  CleaningPlanCounts,
   cleaningCompleted,
   cleaningCorrectionsAssigned,
   cleaningCorrectionsFixed,
+  cleaningPlanUpdated,
   cleaningReopened,
   correctiveOpened,
   joinLocation,
@@ -114,6 +116,44 @@ describe('cleaningCompleted', () => {
 
   it('AsistenteSL y SuperUser abren su ficha, a la que sí pueden entrar', () => {
     expect(cleaningCompleted(base).deepLink).toBe('/asistente-sl/tasks/777');
+  });
+});
+
+describe('cleaningPlanUpdated', () => {
+  const build = (counts: Partial<CleaningPlanCounts>) =>
+    cleaningPlanUpdated({
+      cleaningEmployeeId: 42,
+      counts: {
+        assigned: 0,
+        rescheduled: 0,
+        removed: 0,
+        cancelled: 0,
+        ...counts,
+      },
+    });
+
+  it('agrupa por operario y abre el listado de limpiezas', () => {
+    expect(build({ rescheduled: 1 })).toEqual({
+      type: 'cleaning.plan-updated',
+      title: 'Plan actualizado: Limpieza',
+      body: '1 reprogramada',
+      deepLink: '/dashboard?tab=cleaning',
+      entityKind: 'cleaning',
+      entityId: 'plan-42',
+    });
+  });
+
+  it('concuerda en singular y omite los ceros', () => {
+    expect(build({ assigned: 2, rescheduled: 1, removed: 1 }).body).toBe(
+      '2 asignadas, 1 reprogramada, 1 retirada',
+    );
+    expect(build({ cancelled: 1 }).body).toBe('1 cancelada');
+  });
+
+  it('concuerda en plural', () => {
+    expect(
+      build({ assigned: 1, rescheduled: 3, removed: 2, cancelled: 4 }).body,
+    ).toBe('1 asignada, 3 reprogramadas, 2 retiradas, 4 canceladas');
   });
 });
 

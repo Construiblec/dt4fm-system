@@ -89,13 +89,14 @@ Cada servicio tiene su propia instancia de openMAINT y su propia rama de Neon, a
 | --- | --- | --- |
 | `OPENMAINT_URL` | Instancia de producción | Instancia de desarrollo |
 | `OPENMAINT_USERNAME` / `OPENMAINT_PASSWORD` | Credenciales de esa instancia | Las de la suya |
-| `OPENMAINT_CLEANING_TEAM_ID` | `_id` del equipo «Auxiliar operativo» en esa instancia | El de la suya (staging: `2397132`). Sin ella, el coordinador ve a todos los empleados (internos y externos) |
+| `OPENMAINT_CLEANING_TEAM_ID` | `_id` del equipo «Auxiliar operativo» en esa instancia | El de la suya (staging: `2397132`). Sin ella, el coordinador ve a todos los empleados (internos y externos), y la API de limpiezas responde 503 al asignar un operario y al listarlos: es obligatoria para planificar por la API |
 | `DATABASE_URL` | Rama `production`, **con** pooler | Rama `development`, **con** pooler |
 | `DATABASE_URL_DIRECT` | Rama `production`, **sin** pooler | Rama `development`, **sin** pooler |
 | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | Un par propio | Otro par distinto |
 | `APP_BASE_URL` | URL del frontend de producción | URL del frontend de desarrollo |
 | `PASSWORD_RESET_SECRET` | Un secreto propio | Otro distinto, para que un enlace de pruebas no valga en producción |
-| `CLEANINGS_API_KEYS` | Claves propias | Otras distintas |
+| `CLEANINGS_API_KEYS` / `CLEANINGS_WRITE_API_KEYS` | Claves propias, y distintas entre las dos listas | Otras distintas |
+| `HOSTAWAY_SCHEDULER_ENABLED` | `true`, si la sincronización automática se usa en este openMAINT | `true` solo si su openMAINT es propio. Un único entorno encendido por cada openMAINT: dos sobre el mismo duplican limpiezas. Apagada en desarrollo y en local si lo comparten con otro entorno que la tenga encendida |
 | `ENABLE_DOCS` | `false` | `true` |
 | `CONTIFICO_USE_MOCK` | `false` | `true`, y sin `CONTIFICO_API_KEY` ni `CONTIFICO_POS_TOKEN`: cada documento que Contifico acepta es una factura real |
 | `MAIL_REDIRECT_TO` | Vacía | Buzón de pruebas: todo correo sale hacia él, con el destinatario original en el asunto |
@@ -123,9 +124,8 @@ A continuación, el detalle de cada variable:
 | `HOSTAWAY_CLIENT_ID` | Client ID para la autenticación OAuth 2.0 con Hostaway. | `149703` |
 | `HOSTAWAY_CLIENT_SECRET`| Client Secret para Hostaway. | *(Secreto)* |
 | `HOSTAWAY_USE_MOCK` | Desactiva/Activa el uso de datos mock en lugar de la API. | `false` (en producción) |
-| `HOSTAWAY_SCHEDULER_ENABLED`| Habilita la sincronización diaria automática con Hostaway. | `true` |
-| `HOSTAWAY_SCHEDULER_HOUR` | Hora de ejecución (local del servidor) para el scheduler. | `0` (medianoche) |
-| `HOSTAWAY_SCHEDULER_MINUTE` | Minuto de ejecución del scheduler. | `0` |
+| `HOSTAWAY_SCHEDULER_ENABLED`| Habilita la sincronización automática de limpiezas con Hostaway: barrido cada 15 minutos y señal del webhook de reservas. Crea, actualiza y cancela limpiezas ([detalle](limpieza%20modulo/hostaway-checkouts.md)). Solo un entorno por cada openMAINT, y nunca con `HOSTAWAY_USE_MOCK=true`. Apagada, tampoco atiende el webhook. | `true` |
+| `HOSTAWAY_SYNC_DAYS` | Días que abarca la sincronización, contando hoy en hora de Guayaquil (1–14). Vacía o fuera de rango vale `2`: hoy y mañana. | `2` |
 | `MAIL_PROVIDER` | Proveedor del sistema de envío de correos electrónicos. | `smtp` |
 | `SMTP_HOST` | Host para el servicio SMTP (Brevo, AWS SES, etc). | `smtp-relay.brevo.com` |
 | `SMTP_PORT` | Puerto de conexión para SMTP. | `587` |
@@ -138,10 +138,24 @@ A continuación, el detalle de cada variable:
 | `OPENMAINT_OCCUPANCY_OWNER_CODE`| Código del lookup para filtrar destinatarios *owners*. | *(Opcional)* |
 | `OPENMAINT_OCCUPANCY_TENANT_CODE`| Código del lookup para filtrar destinatarios *tenants*. | *(Opcional)* |
 | `INCIDENT_NOTIFICATION_EMAIL`| Correo administrativo de notificación ante nuevos incidentes. | `admin@dt4fm.com` |
-| `CLEANINGS_API_KEYS` | Claves de la [API de consulta de limpiezas](integraciones/api-limpiezas.md): `nombre:clave` separado por comas, cada clave de 32 caracteres o más, sin comas ni coma final. El cliente envía solo la clave. Se genera con el comando de la cabecera de `.env.example`. Para rotar, añadir otra entrada con el mismo nombre (comparten cupo), cambiar el cliente y quitar la vieja. Sin valor, o con una entrada inválida, la API responde 503. | *(Secreto)* |
+| `CLEANINGS_API_KEYS` | Claves de lectura de la [API de limpiezas](integraciones/api-limpiezas.md): `nombre:clave` separado por comas, cada clave de 32 caracteres o más, sin comas ni coma final. El cliente envía solo la clave. Se genera con el comando de la cabecera de `.env.example`. Para rotar, añadir otra entrada con el mismo nombre (comparten cupo), cambiar el cliente y quitar la vieja. Una entrada inválida anula toda la lista. Si ninguna de las dos listas tiene claves válidas, la API responde 503. | *(Secreto)* |
+| `CLEANINGS_WRITE_API_KEYS` | Claves con permiso de escritura en la misma API, con el mismo formato; también leen. Sin valor, con una entrada inválida o con una clave repetida en `CLEANINGS_API_KEYS`, la escritura responde 503 y las claves de lectura siguen funcionando. Una clave de lectura en una ruta de escritura recibe 403. | *(Secreto)* |
 | `CORS_ALLOWED_ORIGINS` | Orígenes con permiso de llamar a la API desde el navegador, separados por coma. Vacío usa los tres del piloto por defecto ([`cors.config.ts`](../src/config/cors.config.ts)). | `https://dt4fm-system-f7cc.vercel.app` |
 
 **Contraseña de servicio rechazada.** Si openMAINT responde 401 o 403 al iniciar la sesión de servicio de limpiezas, el backend no lo vuelve a intentar durante 5 minutos, para no bloquear la cuenta; mientras tanto la API de limpiezas responde 503. Tras corregir la contraseña en openMAINT hay que esperar hasta 5 minutos o reiniciar el servicio; si se corrige en Render, el redespliegue ya lo reinicia. Los demás módulos que usan la misma cuenta no tienen esta espera y siguen intentándolo.
+
+### Puesta en marcha de la sincronización y de la escritura de limpiezas
+
+En este orden y en cada entorno:
+
+1. **Migraciones `1790000000000-CreateCleaningSyncCancellation` y `1790100000000-CreateCleaningSyncBaseline`, antes que el código nuevo.** Crean `cleaning_sync_cancellation`, donde la sincronización marca lo que cancela, y `cleaning_sync_baseline`, con lo último que dijo Hostaway de cada reserva. En producción la aplica el *Pre-Deploy Command* y en desarrollo el *Start Command* ([sección 2](#2-configuración-de-los-servicios-en-render)); en local, `npm run migration:run`. Sin la tabla, la sincronización no cancela ni recrea: esas reservas cuentan como fallidas en cada pasada.
+2. **Desplegar con `HOSTAWAY_SCHEDULER_ENABLED=false`** y comprobar que la versión nueva responde (`GET /health`).
+3. **Definir** `OPENMAINT_CLEANING_TEAM_ID` y, si un cliente va a planificar, `CLEANINGS_WRITE_API_KEYS`.
+4. **Decidir qué entorno sincroniza cada openMAINT** y encender `HOSTAWAY_SCHEDULER_ENABLED=true` solo en ese, con `HOSTAWAY_USE_MOCK=false`. Si cambia de entorno, apagarla en el anterior antes de encenderla en el nuevo.
+5. **Comprobar** `GET /integrations/v1/cleaning-sync` con una clave de lectura: `enabled: true` y, pasados 15 minutos, `lastSuccessAt` con valor. Sus datos viven en memoria y se vacían al reiniciar.
+6. **Retirar** `HOSTAWAY_SCHEDULER_HOUR` y `HOSTAWAY_SCHEDULER_MINUTE` del panel: el código ya no las lee.
+
+El servicio cierra con `SIGTERM`: en un despliegue se envían los avisos agrupados pendientes (hasta 10 s). Una caída brusca puede perderlos; los cambios ya están guardados.
 
 ### Base de datos y notificaciones push
 

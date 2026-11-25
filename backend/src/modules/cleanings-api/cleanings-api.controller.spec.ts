@@ -48,6 +48,7 @@ describe('CleaningsApiController', () => {
     limiter = { hit: jest.fn().mockReturnValue(true) };
     reader = {
       list: jest.fn().mockResolvedValue(listOf(1, 1)),
+      item: jest.fn(),
       detail: jest.fn().mockResolvedValue({ id: 7 }),
       attachment: jest.fn(),
       findingPhoto: jest.fn(),
@@ -100,11 +101,13 @@ describe('CleaningsApiController', () => {
         .query({
           phase: 'Completed',
           date: '2028-02-29',
+          checkoutDate: '2028-02-28',
           plannedFrom: '2026-11-16T00:00-05:00',
           plannedTo: '2026-11-17T05:00:00.5Z',
           endedFrom: '2026-11-16T05:00:00Z',
           endedTo: '2026-11-16T10:00:00+04:30',
           employeeId: '4',
+          assigned: 'true',
           unitId: '5',
           limit: '100',
           offset: '20',
@@ -114,11 +117,13 @@ describe('CleaningsApiController', () => {
       expect(reader.list).toHaveBeenCalledWith({
         phase: 'Completed',
         date: '2028-02-29',
+        checkoutDate: '2028-02-28',
         plannedFrom: '2026-11-16T05:00:00.000Z',
         plannedTo: '2026-11-17T05:00:00.500Z',
         endedFrom: '2026-11-16T05:00:00.000Z',
         endedTo: '2026-11-16T05:30:00.000Z',
         employeeId: 4,
+        assigned: true,
         unitId: 5,
         limit: 100,
         offset: 20,
@@ -136,6 +141,15 @@ describe('CleaningsApiController', () => {
       'date=2026-02-31',
       'date=2026-2-1',
       'date=2026-02-01T00:00:00Z',
+      'checkoutDate=',
+      'checkoutDate=2026-02-31',
+      'assigned=',
+      'assigned=1',
+      'assigned=TRUE',
+      'assigned=true&assigned=true',
+      'assigned[]=true',
+      'assigned=false&employeeId=4',
+      'employeeId=4&assigned=false',
       'plannedFrom=',
       'plannedFrom=2026-11-16',
       'plannedFrom=2026-11-16T00:00:00',
@@ -186,6 +200,16 @@ describe('CleaningsApiController', () => {
 
       expect(body.meta.total).toBe(total);
       expect(body.meta.nextOffset).toBe(expected);
+    });
+
+    it('assigned=false llega como booleano', async () => {
+      await get(`${BASE}?assigned=false`).expect(200);
+
+      expect(reader.list).toHaveBeenCalledWith({
+        assigned: false,
+        limit: 50,
+        offset: 0,
+      });
     });
 
     it('una sola lectura para consultas equivalentes, simultáneas o seguidas', async () => {
@@ -370,6 +394,8 @@ describe('CleaningsApiController', () => {
     );
 
     expect(names.sort()).toEqual([
+      'assigned',
+      'checkoutDate',
       'date',
       'employeeId',
       'endedFrom',
