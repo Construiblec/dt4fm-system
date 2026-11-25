@@ -366,11 +366,15 @@ describe('Sincronización de limpiezas (e2e)', () => {
     it('la sincronización y el botón a la vez crean una sola', async () => {
       const id = reserve();
       bothMissFirst();
+      two.mocks.openmaint.getSession.mockResolvedValue(
+        mockSession({ role: 'Coordinador' }),
+      );
 
       const [action, button] = await Promise.all([
         one.sync.reconcileReservation(id),
         request(two.app.getHttpServer())
           .post('/cleaning-tasks')
+          .set('x-session-token', MOCK_SESSION_ID)
           .send(dto(id))
           .expect(201),
       ]);
@@ -1001,9 +1005,13 @@ describe('Sincronización de limpiezas (e2e)', () => {
 
     it('el botón tampoco crea si no puede comprobar lo existente', async () => {
       gateway().taskExistsByReservationId.mockRejectedValue(upstreamError(500));
+      one.mocks.openmaint.getSession.mockResolvedValue(
+        mockSession({ role: 'Coordinador' }),
+      );
 
       await request(one.app.getHttpServer())
         .post('/cleaning-tasks')
+        .set('x-session-token', MOCK_SESSION_ID)
         .send({
           hostawayReservationId: 'R-950',
           listingName: 'Suite Azul',

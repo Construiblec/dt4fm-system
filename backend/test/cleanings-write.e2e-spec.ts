@@ -1179,9 +1179,13 @@ describe('API de limpiezas: escritura (e2e)', () => {
     });
 
     it('POST crea, y repetido no duplica', async () => {
+      mocks.openmaint.getSession.mockResolvedValue(
+        mockSession({ role: 'Coordinador' }),
+      );
       const post = () =>
         request(app.getHttpServer())
           .post('/cleaning-tasks')
+          .set(token)
           .send(dto)
           .expect(201);
 
@@ -1200,10 +1204,14 @@ describe('API de limpiezas: escritura (e2e)', () => {
     });
 
     it('POST /generate conserva su resumen', async () => {
+      mocks.openmaint.getSession.mockResolvedValue(
+        mockSession({ role: 'Coordinador' }),
+      );
       store.put(5601, { HostawayReservation: 'R-901' });
 
       const res = await request(app.getHttpServer())
         .post('/cleaning-tasks/generate')
+        .set(token)
         .send({
           checkouts: ['R-901', 'R-902', 'R-903', 'R-904', 'R-905'].map(
             (hostawayReservationId) => ({ ...dto, hostawayReservationId }),
@@ -1224,8 +1232,12 @@ describe('API de limpiezas: escritura (e2e)', () => {
       gateway().getCleaningTasks.mockResolvedValueOnce({
         data: [store.get(ID)],
       });
+      mocks.openmaint.getSession.mockResolvedValueOnce(
+        mockSession({ role: 'Coordinador' }),
+      );
       const open = await request(app.getHttpServer())
         .get('/cleaning-tasks?date=2026-11-25')
+        .set(token)
         .expect(200);
       expect(open.body.tasks).toMatchObject([{ id: ID, phase: 'Assigned' }]);
 

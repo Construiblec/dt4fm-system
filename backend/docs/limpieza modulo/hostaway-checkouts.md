@@ -64,7 +64,7 @@ Devuelve datos de `hostaway.mock.ts` en vez de llamar a la API real. Es lo que u
 
 ## 3. Los dos endpoints del backend
 
-`backend/src/modules/cleaning-tasks/cleaning-tasks.controller.ts` — ninguno de los dos exige cabecera de sesión.
+`backend/src/modules/cleaning-tasks/cleaning-tasks.controller.ts` — ambos exigen `x-session-token` de un rol de coordinación (`SuperUser` o `Coordinador`); sin ella responden 401 y con otro rol 403.
 
 ### `GET /cleaning-tasks/checkouts` — solo lectura
 
@@ -176,7 +176,7 @@ Dos disparadores, ambos apagados sin la variable:
 
 ## 5. Nota sobre autorización
 
-Ninguno de los dos endpoints (`/checkouts`, `/sync*`) exige sesión ni ninguna otra cabecera. Cualquiera con la URL del backend puede disparar una sincronización o leer el calendario de reservas. Es consistente con que la página de openMAINT tampoco envía credenciales propias — pero es el mismo patrón de fondo que llevó a la corrección de propietarios (`BP-001` en el backlog): un endpoint sin exigir identidad es, por definición, público para cualquiera que lo encuentre.
+Desde el 2026-11-25, `/checkouts`, `/sync*`, `GET /`, `POST /` y `/generate` exigen sesión de coordinación (antes no pedían nada). **La página ExtJS de openMAINT debe enviar `x-session-token`** con la sesión del usuario, o recibirá 401. Es consistente con que la página de openMAINT tampoco envía credenciales propias — pero es el mismo patrón de fondo que llevó a la corrección de propietarios (`BP-001` en el backlog): un endpoint sin exigir identidad es, por definición, público para cualquiera que lo encuentre.
 
 No se ha registrado todavía como hallazgo propio porque el impacto es menor —no expone datos de personas, y `sync` es idempotente—, pero merece decidirse antes de production: como mínimo, protegerlo con el mismo secreto compartido que ya usa el webhook de IoT (`X-IoT-Secret` es el patrón a replicar, no reutilizar el mismo secreto).
 

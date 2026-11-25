@@ -173,10 +173,19 @@ export class CleaningTasksController {
     status: 400,
     description: 'Formato de fecha inválido o rango fuera de límites.',
   })
+  @ApiHeader({
+    name: 'x-session-token',
+    description: 'Token de sesión del coordinador',
+    required: true,
+  })
+  @ApiResponse({ status: 401, description: 'Sin sesión.' })
+  @ApiResponse({ status: 403, description: 'El rol no es de coordinación.' })
   async getCheckouts(
     @Query(new ValidationPipe({ transform: true, whitelist: true }))
     query: GetCheckoutsQueryDto,
+    @Headers('x-session-token') sessionToken: string,
   ) {
+    await this.requireCoordinator(sessionToken);
     return this.cleaningTasksService.getCheckouts(query);
   }
 
@@ -225,7 +234,15 @@ export class CleaningTasksController {
     status: 201,
     description: 'Sincronización finalizada correctamente.',
   })
-  async syncToday() {
+  @ApiHeader({
+    name: 'x-session-token',
+    description: 'Token de sesión del coordinador',
+    required: true,
+  })
+  @ApiResponse({ status: 401, description: 'Sin sesión.' })
+  @ApiResponse({ status: 403, description: 'El rol no es de coordinación.' })
+  async syncToday(@Headers('x-session-token') sessionToken: string) {
+    await this.requireCoordinator(sessionToken);
     const today = new Date().toISOString().split('T')[0];
     return this.cleaningTasksService.syncFromHostaway(today, today);
   }
@@ -261,7 +278,18 @@ export class CleaningTasksController {
     status: 201,
     description: 'Sincronización de rango finalizada correctamente.',
   })
-  async sync(@Body() body: { dateFrom?: string; dateTo?: string }) {
+  @ApiHeader({
+    name: 'x-session-token',
+    description: 'Token de sesión del coordinador',
+    required: true,
+  })
+  @ApiResponse({ status: 401, description: 'Sin sesión.' })
+  @ApiResponse({ status: 403, description: 'El rol no es de coordinación.' })
+  async sync(
+    @Body() body: { dateFrom?: string; dateTo?: string },
+    @Headers('x-session-token') sessionToken: string,
+  ) {
+    await this.requireCoordinator(sessionToken);
     const today = new Date().toISOString().split('T')[0];
     const dateFrom = body.dateFrom ?? today;
     const dateTo = body.dateTo ?? today;
@@ -281,16 +309,36 @@ export class CleaningTasksController {
     type: 'string',
   })
   @ApiResponse({ status: 200, description: 'Listado de tareas en OpenMAINT.' })
-  async getCleaningTasks(@Query('date') date?: string) {
+  @ApiHeader({
+    name: 'x-session-token',
+    description: 'Token de sesión del coordinador',
+    required: true,
+  })
+  @ApiResponse({ status: 401, description: 'Sin sesión.' })
+  @ApiResponse({ status: 403, description: 'El rol no es de coordinación.' })
+  async getCleaningTasks(
+    @Headers('x-session-token') sessionToken: string,
+    @Query('date') date?: string,
+  ) {
+    await this.requireCoordinator(sessionToken);
     return this.cleaningTasksService.getCleaningTasks(date);
   }
 
   @Post()
   @ApiOperation({ summary: 'Crear una nueva tarea de limpieza manualmente' })
   @ApiResponse({ status: 201, description: 'Tarea creada con éxito.' })
+  @ApiHeader({
+    name: 'x-session-token',
+    description: 'Token de sesión del coordinador',
+    required: true,
+  })
+  @ApiResponse({ status: 401, description: 'Sin sesión.' })
+  @ApiResponse({ status: 403, description: 'El rol no es de coordinación.' })
   async createCleaningTask(
     @Body(new ValidationPipe({ transform: true })) dto: CreateCleaningTaskDto,
+    @Headers('x-session-token') sessionToken: string,
   ) {
+    await this.requireCoordinator(sessionToken);
     return this.cleaningTasksService.createCleaningTask(dto);
   }
 
@@ -320,7 +368,18 @@ export class CleaningTasksController {
     },
   })
   @ApiResponse({ status: 201, description: 'Tareas generadas correctamente.' })
-  async generateTasks(@Body() body: { checkouts: CreateCleaningTaskDto[] }) {
+  @ApiHeader({
+    name: 'x-session-token',
+    description: 'Token de sesión del coordinador',
+    required: true,
+  })
+  @ApiResponse({ status: 401, description: 'Sin sesión.' })
+  @ApiResponse({ status: 403, description: 'El rol no es de coordinación.' })
+  async generateTasks(
+    @Body() body: { checkouts: CreateCleaningTaskDto[] },
+    @Headers('x-session-token') sessionToken: string,
+  ) {
+    await this.requireCoordinator(sessionToken);
     return this.cleaningTasksService.generateTasksFromCheckouts(body.checkouts);
   }
 
@@ -1106,6 +1165,12 @@ export class CleaningTasksController {
   }
 
   // ─── Helpers privados ─────────────────────────────────────────────────────
+
+  /** Sincronizar y crear desde reservas es de coordinación: antes no exigía sesión. */
+  private async requireCoordinator(sessionToken: string): Promise<void> {
+    this.requireSessionToken(sessionToken);
+    await this.requireCoordinatorRole(sessionToken);
+  }
 
   private requireSessionToken(token: string | undefined): void {
     if (!token) {

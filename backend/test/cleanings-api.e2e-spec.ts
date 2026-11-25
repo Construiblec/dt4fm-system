@@ -1364,12 +1364,16 @@ describe('CleaningsApiController (e2e)', () => {
       );
     });
 
-    it('GET /cleaning-tasks responde sin clave, con la misma forma', async () => {
+    it('GET /cleaning-tasks responde sin clave, con sesión de coordinación', async () => {
       const { getCleaningTasks } = mocks.cleaningTasksOpenmaint;
+      mocks.openmaint.getSession.mockResolvedValueOnce(
+        mockSession({ role: 'Coordinador' }),
+      );
       getCleaningTasks.mockResolvedValueOnce({ data: [taskCard(1501)] });
 
       const res = await request(app.getHttpServer())
         .get('/cleaning-tasks?date=2026-11-16')
+        .set('x-session-token', MOCK_SESSION_ID)
         .expect(200);
 
       expect(getCleaningTasks).toHaveBeenCalledWith('2026-11-16');

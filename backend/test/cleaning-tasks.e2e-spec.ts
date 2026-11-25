@@ -1593,6 +1593,53 @@ describe('CleaningTasksController (e2e)', () => {
       });
     });
 
+    describe('rutas de sincronización y alta desde reservas', () => {
+      const VALID_DTO = {
+        hostawayReservationId: 'R-ACL',
+        listingName: 'Suite',
+        listingId: '1',
+        checkoutDate: '2026-10-08',
+        checkoutTime: '11:00',
+      };
+      const routes: Array<[string, string]> = [
+        ['get', '/cleaning-tasks/checkouts'],
+        ['post', '/cleaning-tasks/sync/today'],
+        ['post', '/cleaning-tasks/sync'],
+        ['get', '/cleaning-tasks'],
+        ['post', '/cleaning-tasks'],
+        ['post', '/cleaning-tasks/generate'],
+      ];
+
+      it.each(routes)(
+        '%s %s: 401 sin sesión, sin tocar nada',
+        async (method, path) => {
+          await (request(app.getHttpServer()) as any)
+            [method](path)
+            .send(VALID_DTO)
+            .expect(401);
+          expect(mocks.hostaway.getCheckouts).not.toHaveBeenCalled();
+          expect(
+            mocks.cleaningTasksOpenmaint.createCleaningTask,
+          ).not.toHaveBeenCalled();
+        },
+      );
+
+      it.each(routes)(
+        '%s %s: 403 si el rol no es de coordinación',
+        async (method, path) => {
+          asOperator();
+          await (request(app.getHttpServer()) as any)
+            [method](path)
+            .send(VALID_DTO)
+            .set('x-session-token', token)
+            .expect(403);
+          expect(
+            mocks.cleaningTasksOpenmaint.createCleaningTask,
+          ).not.toHaveBeenCalled();
+        },
+      );
+    });
+
     describe('Sincronización', () => {
       it('envía HostawayListingID al crear y reporta qué reservas fallaron', async () => {
         mocks.hostaway.getCheckouts.mockResolvedValueOnce({
@@ -1619,8 +1666,12 @@ describe('CleaningTasksController (e2e)', () => {
           .mockResolvedValueOnce({ data: { _id: 1, TaskNumber: 'CT.1' } })
           .mockRejectedValueOnce(new Error('openMAINT no respondió'));
 
+        mocks.openmaint.getSession.mockResolvedValue(
+          mockSession({ role: 'Coordinador' }),
+        );
         const res = await request(app.getHttpServer())
           .post('/cleaning-tasks/sync')
+          .set('x-session-token', token)
           .send({ dateFrom: '2026-10-08', dateTo: '2026-10-08' })
           .expect(201);
 
@@ -1652,8 +1703,12 @@ describe('CleaningTasksController (e2e)', () => {
         }));
         mocks.hostaway.getCheckouts.mockResolvedValueOnce({ result });
 
+        mocks.openmaint.getSession.mockResolvedValue(
+          mockSession({ role: 'Coordinador' }),
+        );
         await request(app.getHttpServer())
           .post('/cleaning-tasks/sync')
+          .set('x-session-token', token)
           .send({ dateFrom: '2026-10-08', dateTo: '2026-10-08' })
           .expect(201);
 
