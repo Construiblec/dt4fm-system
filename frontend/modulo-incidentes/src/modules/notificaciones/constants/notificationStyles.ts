@@ -2,6 +2,7 @@ import {
   Bell,
   BrushCleaning,
   CalendarClock,
+  CalendarSync,
   CheckCircle2,
   ClipboardCheck,
   ClipboardList,
@@ -71,6 +72,12 @@ export const NOTIFICATION_STYLES: Record<string, NotificationStyle> = {
   },
   "cleaning.assigned": {
     icon: BrushCleaning,
+    text: "text-violet-700",
+    soft: "bg-violet-50",
+  },
+  // Mismo violeta que «Asignada»: ambas son del plan del operario.
+  "cleaning.plan-updated": {
+    icon: CalendarSync,
     text: "text-violet-700",
     soft: "bg-violet-50",
   },

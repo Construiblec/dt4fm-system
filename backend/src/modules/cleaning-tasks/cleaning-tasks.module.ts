@@ -1,7 +1,14 @@
 import { Module } from '@nestjs/common';
+import { TypeOrmModule } from '@nestjs/typeorm';
 import { OpenmaintModule } from '../../integrations/openmaint/openmaint.module';
 import { HostawayModule } from '../../integrations/hostaway/hostaway.module';
 import { PushNotificationsModule } from '../push-notifications/push-notifications.module';
+import { CleaningNoticesService } from './cleaning-notices.service';
+import { CleaningPlanningService } from './cleaning-planning.service';
+import { CleaningReservationLockService } from './cleaning-reservation-lock.service';
+import { CleaningSyncService } from './cleaning-sync.service';
+import { CleaningSyncBaseline } from './entities/cleaning-sync-baseline.entity';
+import { CleaningSyncCancellation } from './entities/cleaning-sync-cancellation.entity';
 import { CleaningReadService } from './cleaning-read.service';
 import { CleaningSupervisionsController } from './cleaning-supervisions.controller';
 import { CleaningSupervisionsOpenmaintService } from './cleaning-supervisions.openmaint.service';
@@ -18,7 +25,12 @@ import { HostawaySyncSchedulerService } from './hostaway-sync.scheduler.service'
  * reabrir sin crear un ciclo.
  */
 @Module({
-  imports: [OpenmaintModule, HostawayModule, PushNotificationsModule],
+  imports: [
+    OpenmaintModule,
+    HostawayModule,
+    PushNotificationsModule,
+    TypeOrmModule.forFeature([CleaningSyncCancellation, CleaningSyncBaseline]),
+  ],
   controllers: [CleaningTasksController, CleaningSupervisionsController],
   providers: [
     CleaningTasksService,
@@ -28,7 +40,11 @@ import { HostawaySyncSchedulerService } from './hostaway-sync.scheduler.service'
     CleaningSupervisionsOpenmaintService,
     HostawaySyncSchedulerService,
     CleaningReadService,
+    CleaningReservationLockService,
+    CleaningNoticesService,
+    CleaningPlanningService,
+    CleaningSyncService,
   ],
-  exports: [CleaningReadService],
+  exports: [CleaningReadService, CleaningPlanningService, CleaningSyncService],
 })
 export class CleaningTasksModule {}

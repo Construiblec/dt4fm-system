@@ -17,6 +17,7 @@ import {
 } from '@nestjs/swagger';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
+import { CleaningSyncService } from '../cleaning-tasks/cleaning-sync.service';
 import {
   HOSTAWAY_RESERVATION_EVENTS,
   HOSTAWAY_RESERVATION_OBJECT,
@@ -40,7 +41,10 @@ const IGNORED: WebhookAck = { received: true, processed: false };
 export class ReservationsController {
   private readonly logger = new Logger(ReservationsController.name);
 
-  constructor(private readonly guestStayService: GuestStayService) {}
+  constructor(
+    private readonly guestStayService: GuestStayService,
+    private readonly cleaningSync: CleaningSyncService,
+  ) {}
 
   @Post('hostaway')
   @HttpCode(HttpStatus.OK)
@@ -79,6 +83,9 @@ export class ReservationsController {
     const reservationId = String(
       data.hostawayReservationId ?? data.id ?? '',
     ).trim();
+
+    // Las limpiezas releen la reserva por su id: no les hacen falta las fechas.
+    if (reservationId) this.cleaningSync.signal(reservationId);
 
     if (!reservationId || !data.arrivalDate || !data.departureDate) {
       this.logger.warn(

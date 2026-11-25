@@ -25,7 +25,7 @@ Toda notificación enviada se persiste, aunque la pestaña de historial que la c
 
 ## 3. Alcance implementado
 
-Once notificaciones. La columna *Punto de disparo* indica dónde se ejecuta el código que las lanza.
+La columna *Punto de disparo* indica dónde se ejecuta el código que las lanza.
 
 ### 3.1. Correctivos
 
@@ -52,6 +52,13 @@ Once notificaciones. La columna *Punto de disparo* indica dónde se ejecuta el c
 | Asignación | Empleado de limpieza | `cleaning-tasks.service.ts` → `updateCleaningTask` |
 | Retraso sobre la hora prevista | Empleado de limpieza | `CleaningDelaySchedulerService` |
 | Completada | Supervisores de limpieza | `cleaning-tasks.service.ts` → `completeTask` |
+| Plan actualizado (`cleaning.plan-updated`) | Empleado de limpieza | `cleaning-notices.service.ts` → `CleaningNoticesService` |
+
+**Avisos agrupados de limpieza.** Los cambios de planificación hechos por la API de limpiezas y por la sincronización de reservas no avisan uno a uno: `CleaningNoticesService` los acumula y calcula el **neto** por operario (asignada y retirada en la misma ventana = nada).
+
+* **Ventana:** única para todos los operarios. Se envía tras 60 s sin cambios nuevos, como mucho a los 5 min del primero, o al acumular 500 limpiezas. Al apagar el servicio (`SIGTERM`) se envía lo pendiente, con un tope de 10 s. Vive en memoria: una caída brusca puede perder avisos, no los cambios.
+* **Qué se envía:** si lo único es una limpieza asignada, el `cleaning.assigned` de siempre; si su ubicación no se puede leer en 5 s, o en cualquier otro caso, un solo `cleaning.plan-updated`: título «Plan actualizado: Limpieza», cuerpo con los contadores que no son cero («2 asignadas, 1 reprogramada, 1 retirada, 1 cancelada»), enlace `/dashboard?tab=cleaning` y `entityId` = `plan-<id del empleado>`, de modo que uno nuevo reemplaza en el dispositivo al anterior.
+* **A quién:** al operario asignado y también al que pierde la limpieza. No avisan los cambios de texto, checklist, unidad o fecha de salida por sí solos, ni los hechos por la API sobre limpiezas cerradas. Los cambios desde la aplicación siguen avisando como antes.
 
 ### 3.4. Fuera de alcance y por qué
 
@@ -63,7 +70,7 @@ Once notificaciones. La columna *Punto de disparo* indica dónde se ejecuta el c
 
 ## 4. Limitación estructural: el disparador vive en la aplicación
 
-Los ocho disparadores inmediatos se ejecutan cuando la acción pasa por los endpoints de este backend. **Un cambio de estado hecho directamente en la interfaz web de openMAINT no genera ninguna notificación.**
+Los disparadores inmediatos se ejecutan cuando la acción pasa por los endpoints de este backend; los avisos agrupados, además, cuando el cambio lo hace la sincronización de reservas. **Un cambio de estado hecho directamente en la interfaz web de openMAINT no genera ninguna notificación.**
 
 El backend es un cliente REST de openMAINT: le hace peticiones, pero no escucha nada. No hay ningún código propio ejecutándose cuando alguien avanza un flujo desde la consola de openMAINT.
 

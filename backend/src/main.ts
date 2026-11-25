@@ -25,6 +25,9 @@ async function bootstrap() {
 
   app.useGlobalPipes(new ValidationPipe(validationPipeOptions));
 
+  // Al desplegar, Render manda SIGTERM: así se vacían los avisos pendientes.
+  app.enableShutdownHooks(['SIGTERM', 'SIGINT']);
+
   const config = new DocumentBuilder()
     .setTitle('DT4FM System API')
     .setDescription(
@@ -108,7 +111,7 @@ async function bootstrap() {
         type: 'apiKey',
         name: 'x-api-key',
         in: 'header',
-        description: 'Clave de la API de consulta de limpiezas',
+        description: 'Clave de la API de limpiezas',
       },
       'x-api-key',
     )

@@ -90,6 +90,10 @@ const NEWEST_FIRST = `&sort=${encodeURIComponent(
   JSON.stringify([{ property: '_id', direction: 'DESC' }]),
 )}`;
 
+/** Tope por llamada en las lecturas y escrituras automáticas. */
+const REQUEST_TIMEOUT_MS = 20_000;
+const MAX_STRICT_ROWS = 500;
+
 type BasicActivityRow = Omit<CleaningActivityCard, '_id'> & {
   _id?: number;
   Id?: number;
@@ -228,19 +232,23 @@ export class CleaningTasksOpenmaintService {
     });
   }
 
+  /** Con `config.timeout`, sin respuesta no se sabe si se creó: ver `cause`. */
   async createCleaningTask(
     body: Record<string, unknown>,
+    config?: AxiosRequestConfig,
   ): Promise<OpenmaintCardResponse> {
     return this.executeWithRetry(async (sessionId) => {
       return (await this.client.post(
         '/classes/CleaningTask/cards',
         body,
         sessionId,
+        config,
       )) as OpenmaintCardResponse;
     }, 'createCleaningTask').catch((error) => {
       this.logger.error(`Error al crear tarea — ${describeError(error)}`);
       throw new InternalServerErrorException(
         `Error al crear tarea de limpieza en OpenMAINT: ${error.message}`,
+        { cause: error },
       );
     });
   }
@@ -254,6 +262,7 @@ export class CleaningTasksOpenmaintService {
         `/classes/CleaningTask/cards/${taskId}`,
         body,
         sessionId,
+        { timeout: REQUEST_TIMEOUT_MS },
       )) as OpenmaintCardResponse;
     }, 'updateCleaningTask').catch((error) => {
       this.logger.error(`Error al actualizar tarea — ${describeError(error)}`);
@@ -446,6 +455,17 @@ export class CleaningTasksOpenmaintService {
     });
   }
 
+  /** Como `getUnitById`, pero el error sale sin envolver: distingue inexistente de fallo. */
+  async getUnitByIdWithSession(unitId: number): Promise<UnitResponse> {
+    return this.executeWithRetry(
+      (sessionId) =>
+        this.client.get(`/classes/Unit/cards/${unitId}`, sessionId, {
+          timeout: REQUEST_TIMEOUT_MS,
+        }) as Promise<UnitResponse>,
+      'getUnitByIdWithSession',
+    );
+  }
+
   /**
    * Actualiza una tarea usando el session token del usuario (no la sesión interna).
    */
@@ -600,6 +620,9 @@ export class CleaningTasksOpenmaintService {
       plannedTo?: string;
       employeeId?: number;
       unitId?: number;
+      checkoutDate?: string;
+      /** `false` = sin operario. */
+      assigned?: boolean;
       /** 'newest': las recién creadas primero (por id descendente). */
       sort?: 'newest';
     } = {},
@@ -616,6 +639,8 @@ export class CleaningTasksOpenmaintService {
         plannedTo,
         employeeId,
         unitId,
+        checkoutDate,
+        assigned,
         sort,
       } = options;
 
@@ -695,6 +720,25 @@ export class CleaningTasksOpenmaintService {
             attribute: 'Employee',
             operator: 'equal',
             value: [employeeId],
+          },
+        });
+      }
+
+      if (checkoutDate) {
+        conditions.push({
+          simple: {
+            attribute: 'CheckoutDate',
+            operator: 'equal',
+            value: checkoutDate,
+          },
+        });
+      }
+
+      if (assigned !== undefined) {
+        conditions.push({
+          simple: {
+            attribute: 'Employee',
+            operator: assigned ? 'isnotnull' : 'isnull',
           },
         });
       }
@@ -1057,18 +1101,134 @@ export class CleaningTasksOpenmaintService {
         };
 
         const path = `/classes/CleaningTask/cards?filter=${encodeURIComponent(JSON.stringify(filter))}&limit=1`;
-        const response = (await this.client.get(
-          path,
-          sessionId,
-        )) as OpenmaintCardsResponse;
+        const response = (await this.client.get(path, sessionId, {
+          timeout: REQUEST_TIMEOUT_MS,
+        })) as OpenmaintCardsResponse;
 
-        return (response.data?.length ?? 0) > 0;
+        if (!Array.isArray(response?.data)) {
+          throw new Error('la fuente respondió sin listado de limpiezas');
+        }
+        return response.data.length > 0;
       }, 'taskExistsByReservationId');
     } catch (error) {
       this.logger.error(
         `Error al verificar duplicados — ${describeError(error)}`,
       );
-      return false;
+      // Nunca `false`: se daría por inexistente y se duplicaría la limpieza.
+      throw new InternalServerErrorException(
+        'No se pudo comprobar si la limpieza ya existe',
+      );
     }
+  }
+
+  /** Todas las limpiezas de una reserva, también las canceladas. Lanza si no se puede leer. */
+  async findTasksByReservation(
+    reservationId: string,
+  ): Promise<CleaningTaskCard[]> {
+    return this.listTasksOrThrow(
+      {
+        simple: {
+          attribute: 'HostawayReservation',
+          operator: 'equal',
+          value: reservationId,
+        },
+      },
+      'findTasksByReservation',
+    );
+  }
+
+  /** Limpiezas de Hostaway con esa fecha de salida (YYYY-MM-DD). Lanza si no se puede leer. */
+  async findHostawayTasksByCheckout(date: string): Promise<CleaningTaskCard[]> {
+    return this.listTasksOrThrow(
+      {
+        and: [
+          {
+            simple: {
+              attribute: 'CheckoutDate',
+              operator: 'equal',
+              value: date,
+            },
+          },
+          {
+            simple: { attribute: 'HostawayReservation', operator: 'isnotnull' },
+          },
+        ],
+      },
+      'findHostawayTasksByCheckout',
+    );
+  }
+
+  /** A diferencia de `listUnitsWithListing`, un fallo no pasa por «sin unidades». */
+  async listUnitsWithListingOrThrow(): Promise<UnitListingCard[]> {
+    const filter = {
+      attribute: {
+        simple: { attribute: 'HostawayListingID', operator: 'isnotnull' },
+      },
+    };
+    const response = await this.executeWithRetry(
+      (sessionId) =>
+        this.client.get(
+          `/classes/Unit/cards?limit=${MAX_STRICT_ROWS}&filter=${encodeURIComponent(JSON.stringify(filter))}`,
+          sessionId,
+          { timeout: REQUEST_TIMEOUT_MS },
+        ) as Promise<{ data?: UnitListingCard[] }>,
+      'listUnitsWithListingOrThrow',
+    );
+    if (!Array.isArray(response?.data)) {
+      throw new Error('la fuente respondió sin listado de unidades');
+    }
+    // Cortado, una unidad ambigua pasaría por única.
+    if (response.data.length >= MAX_STRICT_ROWS) {
+      throw new Error('el listado de unidades superó el tope');
+    }
+    return response.data;
+  }
+
+  /** Checklists sin descargar sus plantillas. `attrs` no devuelve `_id`: por eso `Id`. */
+  async listChecklistOptions(): Promise<
+    Array<{ id: number; code: string | null; description: string | null }>
+  > {
+    const response = await this.executeWithRetry(
+      (sessionId) =>
+        this.client.get(
+          '/classes/CleaningActivity/cards?limit=200&attrs=Id,Code,Description',
+          sessionId,
+          { timeout: REQUEST_TIMEOUT_MS },
+        ) as Promise<{ data?: BasicActivityRow[] }>,
+      'listChecklistOptions',
+    );
+    if (!Array.isArray(response?.data)) {
+      throw new Error('la fuente respondió sin listado de checklists');
+    }
+    return response.data.map((row) => ({
+      id: Number(row._id ?? row.Id),
+      code: row.Code ?? null,
+      description: row.Description ?? null,
+    }));
+  }
+
+  private async listTasksOrThrow(
+    attribute: Record<string, unknown>,
+    operation: string,
+  ): Promise<CleaningTaskCard[]> {
+    const response = await this.executeWithRetry(
+      (sessionId) =>
+        this.client.get(
+          `/classes/CleaningTask/cards?limit=${MAX_STRICT_ROWS}&filter=${encodeURIComponent(
+            JSON.stringify({ attribute }),
+          )}${NEWEST_FIRST}`,
+          sessionId,
+          { timeout: REQUEST_TIMEOUT_MS },
+        ) as Promise<{ data?: CleaningTaskCard[] }>,
+      operation,
+    );
+    if (!Array.isArray(response?.data)) {
+      throw new Error('la fuente respondió sin listado de limpiezas');
+    }
+    // Un listado cortado haría pasar por inexistente lo que quedó fuera.
+    if (response.data.length >= MAX_STRICT_ROWS) {
+      throw new Error('el listado de limpiezas superó el tope');
+    }
+    return response.data;
   }
 }

@@ -4,6 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { HostawayModule } from '../../integrations/hostaway/hostaway.module';
 import { OpenmaintModule } from '../../integrations/openmaint/openmaint.module';
+import { CleaningTasksModule } from '../cleaning-tasks/cleaning-tasks.module';
 import { AccessControlController } from './access-control.controller';
 import { AuthorizationsController } from './authorizations.controller';
 import { AuthorizationsService } from './authorizations.service';
@@ -41,6 +42,7 @@ import { SyncRetryService } from './sync-retry.service';
     HttpModule,
     OpenmaintModule,
     HostawayModule,
+    CleaningTasksModule,
   ],
   controllers: [
     AccessControlController,

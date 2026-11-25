@@ -296,6 +296,73 @@ describe('CleaningTasksOpenmaintService — todas las limpiezas', () => {
     });
   });
 
+  it('checkoutDate filtra CheckoutDate por igualdad', async () => {
+    const get = jest.fn().mockResolvedValue({ data: [] });
+    const service = buildService(get);
+
+    await service.getAllTasks({ checkoutDate: '2026-11-26' });
+
+    const [[path]] = get.mock.calls as [[string, string]];
+    expect(filterOf(path)).toEqual({
+      attribute: {
+        simple: {
+          attribute: 'CheckoutDate',
+          operator: 'equal',
+          value: '2026-11-26',
+        },
+      },
+    });
+  });
+
+  it.each([
+    [true, 'isnotnull'],
+    [false, 'isnull'],
+  ])('assigned=%j filtra Employee con %s', async (assigned, operator) => {
+    const get = jest.fn().mockResolvedValue({ data: [] });
+    const service = buildService(get);
+
+    await service.getAllTasks({ assigned });
+
+    const [[path]] = get.mock.calls as [[string, string]];
+    expect(filterOf(path)).toEqual({
+      attribute: { simple: { attribute: 'Employee', operator } },
+    });
+  });
+
+  it('fase, fecha de salida y operario se combinan en un and', async () => {
+    const get = jest.fn().mockResolvedValue({ data: [] });
+    const service = buildService(get);
+
+    await service.getAllTasks({
+      phase: 'Assigned',
+      checkoutDate: '2026-11-26',
+      assigned: false,
+    });
+
+    const [[path]] = get.mock.calls as [[string, string]];
+    expect(filterOf(path)).toEqual({
+      attribute: {
+        and: [
+          {
+            simple: {
+              attribute: 'phase',
+              operator: 'equal',
+              value: 'Assigned',
+            },
+          },
+          {
+            simple: {
+              attribute: 'CheckoutDate',
+              operator: 'equal',
+              value: '2026-11-26',
+            },
+          },
+          { simple: { attribute: 'Employee', operator: 'isnull' } },
+        ],
+      },
+    });
+  });
+
   it('sin endedFrom no añade filtro', async () => {
     const get = jest.fn().mockResolvedValue({ data: [] });
     const service = buildService(get);
@@ -364,5 +431,147 @@ describe('CleaningTasksOpenmaintService — adjuntos con la sesión interna', ()
       data: [],
     });
     expect(get).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('CleaningTasksOpenmaintService — lecturas estrictas', () => {
+  type Call = [string, string, { timeout: number }];
+  const filterOf = (path: string): unknown =>
+    JSON.parse(
+      decodeURIComponent(path.split('filter=')[1].split('&')[0]),
+    ) as unknown;
+
+  const reads: Array<
+    [string, (s: CleaningTasksOpenmaintService) => Promise<unknown>]
+  > = [
+    ['findTasksByReservation', (s) => s.findTasksByReservation('R1')],
+    [
+      'findHostawayTasksByCheckout',
+      (s) => s.findHostawayTasksByCheckout('2026-11-26'),
+    ],
+    ['listUnitsWithListingOrThrow', (s) => s.listUnitsWithListingOrThrow()],
+    ['listChecklistOptions', (s) => s.listChecklistOptions()],
+  ];
+
+  describe.each(reads)('%s', (_, read) => {
+    it('va con plazo y devuelve vacío solo si la fuente lo dice', async () => {
+      const get = jest.fn().mockResolvedValue({ data: [] });
+
+      await expect(read(buildService(get))).resolves.toEqual([]);
+
+      const [[, session, config]] = get.mock.calls as Call[];
+      expect(session).toBe('session');
+      expect(config).toEqual({ timeout: 20_000 });
+    });
+
+    it('un fallo se lanza', async () => {
+      await expect(
+        read(buildService(jest.fn().mockRejectedValue(cmisError()))),
+      ).rejects.toThrow();
+    });
+
+    it.each([undefined, '<html></html>', {}, { data: null }])(
+      'respuesta sin listado (%j) se lanza',
+      async (answer) => {
+        await expect(
+          read(buildService(jest.fn().mockResolvedValue(answer))),
+        ).rejects.toThrow('sin listado');
+      },
+    );
+  });
+
+  it('findTasksByReservation filtra por la reserva, las más nuevas primero', async () => {
+    const get = jest.fn().mockResolvedValue({ data: [{ _id: 1 }] });
+
+    await expect(
+      buildService(get).findTasksByReservation('R1'),
+    ).resolves.toEqual([{ _id: 1 }]);
+
+    const [[path]] = get.mock.calls as Call[];
+    expect(path).toContain('limit=500');
+    expect(path).toContain('&sort=');
+    expect(filterOf(path)).toEqual({
+      attribute: {
+        simple: {
+          attribute: 'HostawayReservation',
+          operator: 'equal',
+          value: 'R1',
+        },
+      },
+    });
+  });
+
+  it('findHostawayTasksByCheckout filtra por fecha y por tener reserva', async () => {
+    const get = jest.fn().mockResolvedValue({ data: [] });
+
+    await buildService(get).findHostawayTasksByCheckout('2026-11-26');
+
+    const [[path]] = get.mock.calls as Call[];
+    expect(filterOf(path)).toEqual({
+      attribute: {
+        and: [
+          {
+            simple: {
+              attribute: 'CheckoutDate',
+              operator: 'equal',
+              value: '2026-11-26',
+            },
+          },
+          {
+            simple: { attribute: 'HostawayReservation', operator: 'isnotnull' },
+          },
+        ],
+      },
+    });
+  });
+
+  it.each([reads[0], reads[1]])(
+    '%s: un listado que llega al tope se lanza',
+    async (_, read) => {
+      const data = Array.from({ length: 500 }, (_, i) => ({ _id: i }));
+      await expect(
+        read(buildService(jest.fn().mockResolvedValue({ data }))),
+      ).rejects.toThrow('superó el tope');
+    },
+  );
+
+  it('listChecklistOptions toma el id de `Id` o de `_id`', async () => {
+    const get = jest.fn().mockResolvedValue({
+      data: [
+        { Id: 40, Code: 'A', Description: 'Aseo' },
+        { _id: 41, Code: 'SUPERVISION' },
+      ],
+    });
+
+    await expect(buildService(get).listChecklistOptions()).resolves.toEqual([
+      { id: 40, code: 'A', description: 'Aseo' },
+      { id: 41, code: 'SUPERVISION', description: null },
+    ]);
+    const [[path]] = get.mock.calls as Call[];
+    expect(path).toContain('attrs=Id,Code,Description');
+  });
+
+  it('taskExistsByReservationId: true o false según haya tarjetas, con plazo', async () => {
+    const get = jest
+      .fn()
+      .mockResolvedValueOnce({ data: [{ _id: 1 }] })
+      .mockResolvedValueOnce({ data: [] });
+    const service = buildService(get);
+
+    await expect(service.taskExistsByReservationId('R1')).resolves.toBe(true);
+    await expect(service.taskExistsByReservationId('R1')).resolves.toBe(false);
+    const [[, , config]] = get.mock.calls as Call[];
+    expect(config).toEqual({ timeout: 20_000 });
+  });
+
+  it('taskExistsByReservationId: un fallo se lanza, nunca es false', async () => {
+    const error: unknown = await buildService(
+      jest.fn().mockRejectedValue(cmisError()),
+    )
+      .taskExistsByReservationId('R1')
+      .catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(InternalServerErrorException);
+    expect((error as Error).message).not.toMatch(/openmaint/i);
   });
 });

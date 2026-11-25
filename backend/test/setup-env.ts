@@ -107,7 +107,32 @@ process.env.CLEANINGS_API_KEYS = [
   'archivos:e2e-clave-archivos-0123456789abcdefghi',
   'varios:e2e-clave-varios-0123456789abcdefghijk',
   'cupo:e2e-clave-cupo-0123456789abcdefghijklm',
+  'apoyo:e2e-clave-apoyo-0123456789abcdefghijkl',
 ].join(',');
+
+// Escritura: cupo de 20/min por cliente, así que uno por bloque.
+process.env.CLEANINGS_WRITE_API_KEYS = [
+  'acceso',
+  'campos',
+  'valores',
+  'lotes',
+  'motivos',
+  'cambios',
+  'referencias',
+  'cancelar',
+  'planes',
+  'cache',
+  'avisos',
+  'avisos-diez',
+  'cupo',
+  'otro',
+]
+  .map((client) => `${client}:e2e-escritura-${client}-0123456789abcdefghij`)
+  .join(',');
+
+// `=` para que el `.env` local no decida a quién se puede asignar.
+process.env.OPENMAINT_CLEANING_TEAM_ID = '2397132';
+process.env.HOSTAWAY_SYNC_DAYS = '2';
 
 // Correo: no debería llegar a usarse (MailerService va mockeado en todas las
 // suites salvo la propia de notifications, que mockea el proveedor por
