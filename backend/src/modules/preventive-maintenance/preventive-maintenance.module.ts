@@ -14,5 +14,7 @@ import { PreventiveMaintenanceService } from './preventive-maintenance.service';
     PreventiveMaintenanceOpenmaintService,
     PreventiveChecklistService,
   ],
+  // Para que la API de integraciones lea el avance del checklist.
+  exports: [PreventiveChecklistService],
 })
 export class PreventiveMaintenanceModule {}

@@ -112,6 +112,7 @@ export type CleaningSupervisionsOpenmaintServiceMock = ReturnType<
 export const createPreventiveMaintenanceOpenmaintServiceMock = () => ({
   findByAssignee: jest.fn().mockResolvedValue({ data: [], meta: { total: 0 } }),
   findAll: jest.fn().mockResolvedValue({ data: [], meta: { total: 0 } }),
+  search: jest.fn().mockResolvedValue({ data: [], meta: { total: 0 } }),
   count: jest.fn().mockResolvedValue(0),
   findByEquipment: jest.fn().mockResolvedValue({ data: [] }),
   findById: jest.fn(),
@@ -153,6 +154,7 @@ export type PreventiveMaintenanceOpenmaintServiceMock = ReturnType<
 
 export const createCorrectiveMaintOpenmaintServiceMock = () => ({
   findAll: jest.fn().mockResolvedValue({ data: [], meta: { total: 0 } }),
+  search: jest.fn().mockResolvedValue({ data: [], meta: { total: 0 } }),
   count: jest.fn().mockResolvedValue(0),
   findById: jest.fn(),
   findWithTasklist: jest.fn(),

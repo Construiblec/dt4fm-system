@@ -108,6 +108,10 @@ process.env.INTEGRATIONS_READ_API_KEYS = [
   'varios:e2e-clave-varios-0123456789abcdefghijk',
   'cupo:e2e-clave-cupo-0123456789abcdefghijklm',
   'apoyo:e2e-clave-apoyo-0123456789abcdefghijkl',
+  'correctivos:e2e-clave-correctivos-0123456789abcdefg',
+  'preventivos:e2e-clave-preventivos-0123456789abcdefg',
+  'tecnicos:e2e-clave-tecnicos-0123456789abcdefghijk',
+  'mantenimiento:e2e-clave-mantenimiento-0123456789abcd',
 ].join(',');
 
 // Las obsoletas vacías: si el .env local las trae, el respaldo las usaría con la nueva vacía.
@@ -137,6 +141,8 @@ process.env.INTEGRATIONS_WRITE_API_KEYS = [
 // `=` para que el `.env` local no decida a quién se puede asignar.
 process.env.OPENMAINT_CLEANING_TEAM_ID = '2397132';
 process.env.HOSTAWAY_SYNC_DAYS = '2';
+// Equipos de mantenimiento (dos, para probar la unión); `=` para que el `.env` local no decida.
+process.env.OPENMAINT_MAINTENANCE_TEAM_IDS = '501,502';
 
 // Correo: no debería llegar a usarse (MailerService va mockeado en todas las
 // suites salvo la propia de notifications, que mockea el proveedor por

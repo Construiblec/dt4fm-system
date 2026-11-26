@@ -102,6 +102,7 @@ Cada servicio tiene su propia instancia de openMAINT y su propia rama de Neon, a
 | `MAIL_REDIRECT_TO` | Vacía | Buzón de pruebas: todo correo sale hacia él, con el destinatario original en el asunto |
 | `HOSTAWAY_USE_MOCK` | `false` | `false` también: la sincronización de tareas de limpieza necesita las reservas reales. La entrega del enlace del huésped por Hostaway está limitada a la reserva de prueba ([guest-stay.service.ts](../src/modules/access-control/guest-stay.service.ts)), un filtro temporal del piloto |
 | `INCIDENT_NOTIFICATION_EMAIL` | Buzón institucional | Buzón de pruebas |
+| `OPENMAINT_MAINTENANCE_TEAM_IDS` | Ids de los equipos de mantenimiento de producción | Ids de los equipos de mantenimiento de staging |
 | `CORS_ALLOWED_ORIGINS` | Solo el dominio de Vercel de producción | El de staging (+ `localhost:5173` para desarrollar contra el backend remoto) |
 
 **`PORT` no se define.** Render la inyecta y [`main.ts`](../src/main.ts) la lee con 3000 como respaldo; fijarla a mano rompe el enrutado de Render.
@@ -140,9 +141,10 @@ A continuación, el detalle de cada variable:
 | `INCIDENT_NOTIFICATION_EMAIL`| Correo administrativo de notificación ante nuevos incidentes. | `admin@dt4fm.com` |
 | `INTEGRATIONS_READ_API_KEYS` | Claves de lectura de la API de integraciones ([limpiezas](integraciones/api-limpiezas.md) y mantenimiento): `nombre:clave` separado por comas, cada clave de 32 caracteres o más, sin comas ni coma final. El cliente envía solo la clave. Se genera con el comando de la cabecera de `.env.example`. Para rotar, añadir otra entrada con el mismo nombre (comparten cupo), cambiar el cliente y quitar la vieja. Una entrada inválida anula toda la lista. Si ninguna de las dos listas tiene claves válidas, la API responde 503. | *(Secreto)* |
 | `INTEGRATIONS_WRITE_API_KEYS` | Claves con permiso de escritura en la misma API, con el mismo formato; también leen. Sin valor, con una entrada inválida o con una clave repetida en `INTEGRATIONS_READ_API_KEYS`, la escritura responde 503 y las claves de lectura siguen funcionando. Una clave de lectura en una ruta de escritura recibe 403. | *(Secreto)* |
+| `OPENMAINT_MAINTENANCE_TEAM_IDS` | Ids de los equipos (`Team`) de mantenimiento, separados por coma: sus empleados son los técnicos de `GET /integrations/v1/technicians`. Vacía o inválida, esa ruta responde 503. Cambian entre instancias. | `<id Team>,<id Team>` |
 | `CORS_ALLOWED_ORIGINS` | Orígenes con permiso de llamar a la API desde el navegador, separados por coma. Vacío usa los tres del piloto por defecto ([`cors.config.ts`](../src/config/cors.config.ts)). | `https://dt4fm-system-f7cc.vercel.app` |
 
-**Renombrado de las claves de la API.** `CLEANINGS_API_KEYS` y `CLEANINGS_WRITE_API_KEYS` pasan a `INTEGRATIONS_READ_API_KEYS` e `INTEGRATIONS_WRITE_API_KEYS`. El código sigue leyendo las viejas como respaldo y, si las usa (o están las dos), deja en el log, una vez por proceso, `CLEANINGS_API_KEYS está obsoleta: renombrar a INTEGRATIONS_READ_API_KEYS`. Con las dos, gana la nueva. Orden de despliegue en cada entorno:
+**Renombrado de las claves de la API.** `CLEANINGS_API_KEYS` y `CLEANINGS_WRITE_API_KEYS` pasan a `INTEGRATIONS_READ_API_KEYS` e `INTEGRATIONS_WRITE_API_KEYS`. El código sigue leyendo las viejas como respaldo y, si las usa (o están las dos), deja en el log al arrancar, una vez por proceso, `CLEANINGS_API_KEYS está obsoleta: renombrar a INTEGRATIONS_READ_API_KEYS`. Con las dos, gana la nueva. Orden de despliegue en cada entorno:
 
 1. Desplegar el código con el respaldo.
 2. Crear las variables nuevas en Render, en staging y en producción, con los mismos valores.
