@@ -7,7 +7,7 @@ type Entry = { value: unknown; expiresAt: number };
 
 /** Caché breve de lecturas correctas; las peticiones simultáneas comparten una sola. */
 @Injectable()
-export class CleaningsCacheService {
+export class IntegrationsCacheService {
   private readonly entries = new Map<string, Entry>();
   private readonly inFlight = new Map<string, Promise<unknown>>();
   private generation = 0;

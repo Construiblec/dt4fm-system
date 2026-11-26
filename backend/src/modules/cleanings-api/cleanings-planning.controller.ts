@@ -8,15 +8,18 @@ import type {
 import { CleaningSyncService } from '../cleaning-tasks/cleaning-sync.service';
 import type { CleaningSyncStatus } from '../cleaning-tasks/cleaning-sync.types';
 import { CleaningsCacheService } from './cleanings-cache.service';
-import { CleaningsApiDocs } from './decorators/cleanings-api-docs.decorator';
+import { CleaningsApiDocs } from './cleanings-api-docs.decorator';
 import {
   ListCleanersQueryDto,
   MAX_RANGE_DAYS,
 } from './dto/list-cleaners-query.dto';
-import { EmptyQueryDto } from './dto/list-cleanings-query.dto';
+import { EmptyQueryDto } from '../integrations-api/dto/empty-query.dto';
 import { CleaningsApiKeyGuard } from './guards/cleanings-api-key.guard';
-import { strictQuery } from './pipes/strict-query.pipe';
-import { resolveCleanersRange, type Range } from './utils/cleaners-range.util';
+import { strictQuery } from '../integrations-api/pipes/strict-query.pipe';
+import {
+  resolveDefaultRange,
+  type Range,
+} from '../integrations-api/utils/default-range.util';
 
 /** Lecturas de apoyo para planificar. */
 @CleaningsApiDocs()
@@ -50,7 +53,7 @@ export class CleaningsPlanningController {
   async cleaners(
     @Query(strictQuery(ListCleanersQueryDto)) query: Record<string, any>,
   ): Promise<{ data: CleanerAgenda[]; meta: Range }> {
-    const range = resolveCleanersRange(query as ListCleanersQueryDto);
+    const range = resolveDefaultRange(query as ListCleanersQueryDto);
     const data = await this.cache.getOrLoad(
       `cleaners:${range.from}:${range.to}`,
       () => this.planning.listCleaners(range.from, range.to),

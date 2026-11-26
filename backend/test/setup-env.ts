@@ -99,9 +99,9 @@ process.env.OPENMAINT_IOT_FALLBACK_SITE_ID ??= '3019998';
 // añadiría ~1.5s a cada test de la ruta de fallo de openMAINT.
 process.env.IOT_CREATE_MAX_ATTEMPTS = '1';
 
-// API de limpiezas, con `=` por el mismo motivo: la suite manda estas claves. Un
+// API de integraciones, con `=` por el mismo motivo: la suite manda estas claves. Un
 // cliente por bloque de pruebas: el cupo (60/min) es por cliente y en memoria.
-process.env.CLEANINGS_API_KEYS = [
+process.env.INTEGRATIONS_READ_API_KEYS = [
   'listado:e2e-clave-listado-0123456789abcdefghij',
   'ficha:e2e-clave-ficha-0123456789abcdefghijkl',
   'archivos:e2e-clave-archivos-0123456789abcdefghi',
@@ -110,8 +110,12 @@ process.env.CLEANINGS_API_KEYS = [
   'apoyo:e2e-clave-apoyo-0123456789abcdefghijkl',
 ].join(',');
 
+// Las obsoletas vacías: si el .env local las trae, el respaldo las usaría con la nueva vacía.
+process.env.CLEANINGS_API_KEYS = '';
+process.env.CLEANINGS_WRITE_API_KEYS = '';
+
 // Escritura: cupo de 20/min por cliente, así que uno por bloque.
-process.env.CLEANINGS_WRITE_API_KEYS = [
+process.env.INTEGRATIONS_WRITE_API_KEYS = [
   'acceso',
   'campos',
   'valores',

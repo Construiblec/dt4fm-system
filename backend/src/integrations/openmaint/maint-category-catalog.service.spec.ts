@@ -58,6 +58,28 @@ describe('MaintCategoryCatalogService', () => {
     expect(get).toHaveBeenCalledTimes(2);
   });
 
+  it('usa la sesión recibida sin pedir la de servicio', async () => {
+    const get = okGet();
+    const serviceGet = jest.fn(() => Promise.resolve('svc'));
+    const service = new MaintCategoryCatalogService(
+      { get } as unknown as OpenmaintClient,
+      { get: serviceGet } as unknown as OpenmaintServiceSession,
+    );
+
+    await service.resolve(1, 12, 'compartida');
+
+    expect(serviceGet).not.toHaveBeenCalled();
+    expect(get).toHaveBeenCalledWith(expect.any(String), 'compartida');
+  });
+
+  it('sin sesión recibida usa la de servicio', async () => {
+    const get = okGet();
+
+    await buildService(get).list();
+
+    expect(get).toHaveBeenCalledWith(expect.any(String), 'svc');
+  });
+
   it('devuelve la caché anterior si la lectura falla', async () => {
     const get = okGet();
     const service = buildService(get);

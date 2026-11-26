@@ -4,7 +4,7 @@ import {
   IsAfter,
   IsInstant,
   IsWithinDays,
-} from './validation-rules';
+} from '../../integrations-api/dto/validation-rules';
 
 export const MAX_RANGE_DAYS = 14;
 

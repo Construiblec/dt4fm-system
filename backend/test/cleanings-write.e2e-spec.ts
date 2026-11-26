@@ -190,7 +190,7 @@ describe('API de limpiezas: escritura (e2e)', () => {
       ['con una entrada inválida', `acceso:${writeKey('acceso')},sinclave`],
       ['con una clave también de lectura', `acceso:${READ_KEY}`],
     ])('503 %s, y la lectura sigue', async (_case, configured) => {
-      await withEnv({ CLEANINGS_WRITE_API_KEYS: configured }, async () => {
+      await withEnv({ INTEGRATIONS_WRITE_API_KEYS: configured }, async () => {
         const res = await patch({ observations: 'x' });
         expect(res.status).toBe(503);
         const other = await call(
@@ -206,7 +206,7 @@ describe('API de limpiezas: escritura (e2e)', () => {
     });
 
     it('la lista de lectura mal configurada no cierra la escritura', async () => {
-      await withEnv({ CLEANINGS_API_KEYS: 'mal' }, async () => {
+      await withEnv({ INTEGRATIONS_READ_API_KEYS: 'mal' }, async () => {
         expect((await patch({ observations: 'x' })).status).toBe(200);
       });
     });

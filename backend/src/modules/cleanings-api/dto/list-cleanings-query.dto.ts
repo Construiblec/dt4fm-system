@@ -7,12 +7,9 @@ import {
   rule,
   ToBoolean,
   ToInt,
-} from './validation-rules';
+} from '../../integrations-api/dto/validation-rules';
 
 export const CLEANING_PHASES = Object.values(PHASE_NAMES);
-
-/** Sin parámetros de consulta: cualquiera que llegue es un 400. */
-export class EmptyQueryDto {}
 
 const IsCompatibleWithAssigned = () =>
   rule(

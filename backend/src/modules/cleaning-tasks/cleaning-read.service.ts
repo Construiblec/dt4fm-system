@@ -6,6 +6,13 @@ import {
   NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
+import { ReadLimiter } from '../../common/integrations/read-limiter';
+import {
+  isHtml,
+  labelOrNull,
+  requireList,
+  upstreamStatus,
+} from '../../common/integrations/upstream.util';
 import { describeError } from '../../common/logging/describe-error.util';
 import {
   CLEANINGS_API_BASE_PATH,
@@ -61,56 +68,8 @@ type ListItem = Awaited<
   ReturnType<CleaningTasksService['toListItems']>
 >[number];
 
-/** Tope de lecturas a la vez; al cerrarse no empieza ninguna más. */
-class ReadLimiter {
-  private active = 0;
-  private closed = false;
-  private readonly waiting: Array<() => void> = [];
-
-  async run<T>(read: () => Promise<T>): Promise<T> {
-    while (!this.closed && this.active >= MAX_CONCURRENCY) {
-      await new Promise<void>((resolve) => this.waiting.push(resolve));
-    }
-    if (this.closed) throw new Error('la lectura ya terminó');
-    this.active++;
-    try {
-      return await read();
-    } finally {
-      this.active--;
-      this.waiting.shift()?.();
-    }
-  }
-
-  close(): void {
-    this.closed = true;
-    this.waiting.splice(0).forEach((resume) => resume());
-  }
-}
-
-/** Un listado sin `data` es un fallo de la fuente, no un listado vacío. */
-const requireList = <T>(response: { data?: T[] } | null | undefined): T[] => {
-  if (!Array.isArray(response?.data)) {
-    throw new Error('la fuente respondió sin listado');
-  }
-  return response.data;
-};
-
-/** Los lookups sin descripción llegan como id interno: no se exponen. */
-const labelOrNull = (value: unknown): string | null =>
-  typeof value === 'string' && value && !/^\d+$/.test(value) ? value : null;
-
 const fileNameOf = (a: AttachmentCard): string | null =>
   a.name || a.fileName || null;
-
-const upstreamStatus = (error: unknown): number | undefined =>
-  (error as { response?: { status?: number } } | null)?.response?.status;
-
-/** Una página HTML es de un proxy caído, no la respuesta de la fuente. */
-const isHtml = (error: unknown): boolean => {
-  const body = (error as { response?: { data?: unknown } } | null)?.response
-    ?.data;
-  return typeof body === 'string' && body.trimStart().startsWith('<');
-};
 
 /** Sin descripción la fase llega como id interno: se traduce o queda en `Unknown`. */
 const phaseName = (phase: unknown): string => {
@@ -299,7 +258,7 @@ export class CleaningReadService implements CleaningReadContract {
     read: (limiter: ReadLimiter) => Promise<T>,
   ): Promise<T> {
     const release = this.takeSlot(kind);
-    const limiter = new ReadLimiter();
+    const limiter = new ReadLimiter(MAX_CONCURRENCY);
     let timer: NodeJS.Timeout | undefined;
     const deadline = new Promise<never>((_, reject) => {
       timer = setTimeout(

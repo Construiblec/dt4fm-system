@@ -1,11 +1,11 @@
-import { CleaningsCacheService } from './cleanings-cache.service';
+import { IntegrationsCacheService } from './integrations-cache.service';
 
-describe('CleaningsCacheService', () => {
-  let cache: CleaningsCacheService;
+describe('IntegrationsCacheService', () => {
+  let cache: IntegrationsCacheService;
 
   beforeEach(() => {
     jest.useFakeTimers();
-    cache = new CleaningsCacheService();
+    cache = new IntegrationsCacheService();
   });
 
   afterEach(() => jest.useRealTimers());
