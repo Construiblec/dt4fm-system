@@ -21,9 +21,11 @@ Variables de entorno. Los valores los entrega, por un canal seguro, quien admini
 
 | Variable | Contenido |
 |---|---|
-| `CLEANINGS_API_URL` | Origen del backend: `https://<host>`, sin ruta y sin barra final |
-| `CLEANINGS_API_KEY` | Clave de lectura. Va en la cabecera `x-api-key` |
-| `CLEANINGS_WRITE_API_KEY` | Clave de escritura, en la misma cabecera. Solo si hace falta planificar |
+| `DT4FM_API_URL` | Origen del backend: `https://<host>`, sin ruta y sin barra final |
+| `DT4FM_READ_API_KEY` | Clave de lectura. Va en la cabecera `x-api-key` |
+| `DT4FM_WRITE_API_KEY` | Clave de escritura, en la misma cabecera. Solo si hace falta planificar |
+
+Las mismas variables y claves sirven también para la API de mantenimiento (`api-mantenimiento.md`).
 
 La clave de escritura también puede leer. Conviene usar la de lectura para consultar y reservar la otra para `PATCH` y `POST`: así una consulta nunca puede cambiar nada. Una clave de lectura en una ruta de escritura recibe 403.
 
@@ -37,12 +39,12 @@ Reglas de las claves:
 ### bash
 
 ```bash
-: "${CLEANINGS_API_URL:?falta}" "${CLEANINGS_API_KEY:?falta}"
+: "${DT4FM_API_URL:?falta}" "${DT4FM_READ_API_KEY:?falta}"
 
 limpiezas() {  # la clave entra por stdin: no queda en la lista de procesos
-  printf 'x-api-key: %s\n' "$CLEANINGS_API_KEY" | curl -sS --max-time 30 -H @- "$@"
+  printf 'x-api-key: %s\n' "$DT4FM_READ_API_KEY" | curl -sS --max-time 30 -H @- "$@"
 }
-BASE="$CLEANINGS_API_URL/integrations/v1/cleanings"
+BASE="$DT4FM_API_URL/integrations/v1/cleanings"
 
 # Terminadas ayer (UTC-5). En macOS: date -v-1d en vez de date -d yesterday
 hoy=$(TZ=ECT5 date +%F); ayer=$(TZ=ECT5 date -d yesterday +%F)
@@ -64,7 +66,7 @@ limpiezas --fail-with-body -G "$BASE" --data-urlencode "phase=Completed" \
 limpiezas --fail-with-body "$BASE/<id>"
 
 # Foto: downloadUrl tal como vino. --fail evita guardar el JSON del error como imagen
-limpiezas --fail -o foto-1.jpg "$CLEANINGS_API_URL<downloadUrl>"
+limpiezas --fail -o foto-1.jpg "$DT4FM_API_URL<downloadUrl>"
 ```
 
 Las variables y la función no pasan de una llamada de terminal a otra: incluir el bloque inicial en cada una. `--fail-with-body` requiere curl 7.76 o posterior.
@@ -72,9 +74,9 @@ Las variables y la función no pasan de una llamada de terminal a otra: incluir 
 ### PowerShell
 
 ```powershell
-if (-not $env:CLEANINGS_API_URL -or -not $env:CLEANINGS_API_KEY) { throw 'Faltan variables' }
-$base = "$env:CLEANINGS_API_URL/integrations/v1/cleanings"
-$h = @{ 'x-api-key' = $env:CLEANINGS_API_KEY }
+if (-not $env:DT4FM_API_URL -or -not $env:DT4FM_READ_API_KEY) { throw 'Faltan variables' }
+$base = "$env:DT4FM_API_URL/integrations/v1/cleanings"
+$h = @{ 'x-api-key' = $env:DT4FM_READ_API_KEY }
 
 # Terminadas ayer (UTC-5), con todas las páginas
 $hoy = [DateTime]::UtcNow.AddHours(-5).Date
@@ -90,7 +92,7 @@ $todas = $todas | Sort-Object id -Unique -Descending   # ver «Paginación»
 
 # Ficha y foto
 $ficha = (Invoke-RestMethod "$base/<id>" -Headers $h -TimeoutSec 30).data
-Invoke-WebRequest ($env:CLEANINGS_API_URL + $ficha.attachments[0].downloadUrl) -Headers $h -OutFile foto-1.jpg -UseBasicParsing
+Invoke-WebRequest ($env:DT4FM_API_URL + $ficha.attachments[0].downloadUrl) -Headers $h -OutFile foto-1.jpg -UseBasicParsing
 ```
 
 ## 2. Filtros del listado
@@ -219,7 +221,7 @@ Fases de una supervisión (`supervision.phase`; `phaseLabel` es su etiqueta):
 
 ## 5. Fotos y archivos
 
-- Pedir `CLEANINGS_API_URL` + `downloadUrl` **tal como viene**, con la misma cabecera. La URL sola no da acceso.
+- Pedir `DT4FM_API_URL` + `downloadUrl` **tal como viene**, con la misma cabecera. La URL sola no da acceso.
 - `Content-Type` es `image/jpeg`, `image/png`, `image/heic` o `image/heif`; cualquier otro archivo llega como `application/octet-stream`. No todos los visores abren HEIC: puede hacer falta convertirlo.
 - Guardar con un nombre propio (p. ej. `limpieza-<id>-1.jpg`): `fileName` lo pone otra persona y puede ser `null`. No ejecutar lo descargado.
 - Cada descarga gasta cupo: bajar solo las fotos necesarias y de una en una.
@@ -317,7 +319,7 @@ Cuerpo `{ "reason": "…" }`, de 1 a 500 caracteres; queda como motivo. Responde
 
 ### `POST plans`
 
-Cuerpo `{ "dryRun": true, "changes": [ { "id": 123, …campos } ] }`, con 1 a 25 cambios y sin repetir `id`. Un error de formato en cualquiera responde 400 y **no guarda ninguno**. Si el formato es válido responde 200 **aunque fallen todos**: mirar siempre los resultados.
+Cuerpo `{ "dryRun": true, "changes": [ { "id": 123, …campos } ] }`, con 1 a 25 cambios y sin repetir `id`. Un error de formato en cualquiera responde 400 y **no guarda ninguno**. Si el formato es válido responde 200 **aunque fallen todos**: mirar siempre los resultados. Si falta `dryRun`, equivale a `false` y los cambios se aplican.
 
 Responde `{ dryRun, results, summary }`: `results` en el orden enviado, cada uno con `{ id, result, warnings, error }`, y `summary` con cuántos hay de cada `result`. No trae las limpiezas actualizadas.
 
@@ -362,13 +364,13 @@ Los cambios de operario u horario en limpiezas abiertas, y las cancelaciones, **
 bash (requiere curl 7.76 o posterior):
 
 ```bash
-: "${CLEANINGS_API_URL:?falta}" "${CLEANINGS_WRITE_API_KEY:?falta}"
+: "${DT4FM_API_URL:?falta}" "${DT4FM_WRITE_API_KEY:?falta}"
 
 planificar() {  # la clave entra por stdin: no queda en la lista de procesos
-  printf 'x-api-key: %s\n' "$CLEANINGS_WRITE_API_KEY" |
+  printf 'x-api-key: %s\n' "$DT4FM_WRITE_API_KEY" |
     curl -sS --fail-with-body --max-time 120 -H @- -H 'Content-Type: application/json' "$@"
 }
-API="$CLEANINGS_API_URL/integrations/v1"
+API="$DT4FM_API_URL/integrations/v1"
 
 # Asignar operario y horario
 planificar -X PATCH "$API/cleanings/<id>" --data '{
@@ -387,9 +389,9 @@ planificar -X POST "$API/plans" --data '{ "dryRun": true, "changes": [
 PowerShell. El cuerpo va en UTF-8 para no perder las tildes:
 
 ```powershell
-if (-not $env:CLEANINGS_API_URL -or -not $env:CLEANINGS_WRITE_API_KEY) { throw 'Faltan variables' }
-$api = "$env:CLEANINGS_API_URL/integrations/v1"
-$w = @{ 'x-api-key' = $env:CLEANINGS_WRITE_API_KEY }
+if (-not $env:DT4FM_API_URL -or -not $env:DT4FM_WRITE_API_KEY) { throw 'Faltan variables' }
+$api = "$env:DT4FM_API_URL/integrations/v1"
+$w = @{ 'x-api-key' = $env:DT4FM_WRITE_API_KEY }
 function Send-Plan($method, $path, $body) {
   $json = [Text.Encoding]::UTF8.GetBytes(($body | ConvertTo-Json -Depth 5))
   Invoke-RestMethod "$api/$path" -Method $method -Headers $w -ContentType 'application/json; charset=utf-8' -Body $json -TimeoutSec 120
@@ -430,7 +432,7 @@ El cuerpo es JSON: `{ statusCode, message, error? }`; `message` puede ser un tex
 |---|---|---|
 | 400 | Parámetro, campo o id inválido o desconocido; operario que no es del equipo de limpieza; checklist o unidad que no existe; fin no posterior al inicio | Leer `message`, corregir y repetir. No reintentar igual |
 | 401 | Clave ausente o inválida | No reintentar. Comprobar que la variable está definida **sin mostrarla** y avisar a la persona |
-| 403 | Clave de lectura en una ruta de escritura | No reintentar. Usar `CLEANINGS_WRITE_API_KEY` si existe; si no, avisar a la persona |
+| 403 | Clave de lectura en una ruta de escritura | No reintentar. Usar `DT4FM_WRITE_API_KEY` si existe; si no, avisar a la persona |
 | 404 | La limpieza o el archivo no existe, o el archivo no es de esa limpieza | Revisar el id; refrescar la ficha si era una foto. Si `message` empieza por `Cannot`, la ruta o el método están mal |
 | 409 | Se intentó cancelar una limpieza terminada o revisada | No reintentar. Informar la fase |
 | 429 | Cupo agotado, o demasiadas claves inválidas desde la misma IP (20 por minuto) | Esperar lo que diga `Retry-After` (60 s) y repetir una vez |
@@ -456,8 +458,8 @@ Copiar esta guía al proyecto (aquí, `docs/api-limpiezas.md`) y pegar:
 ```markdown
 ## API de limpiezas
 - Antes de usarla, leer `docs/api-limpiezas.md` y seguirla.
-- Consultar: `GET` a `$CLEANINGS_API_URL/integrations/v1/…`, cabecera `x-api-key` desde `$CLEANINGS_API_KEY`.
-- **No escribir fuera de lo autorizado.** `PATCH` y `POST` usan `$CLEANINGS_WRITE_API_KEY`, para planificar o cancelar: antes `dryRun`, después revisar `results` y `warnings`. Cancelar no se puede deshacer por la API.
+- Consultar: `GET` a `$DT4FM_API_URL/integrations/v1/…`, cabecera `x-api-key` desde `$DT4FM_READ_API_KEY`.
+- **No escribir fuera de lo autorizado.** `PATCH` y `POST` usan `$DT4FM_WRITE_API_KEY`, para planificar o cancelar: antes `dryRun`, después revisar `results` y `warnings`. Cancelar no se puede deshacer por la API.
 - Nunca imprimir las claves ni ponerlas en URL, código, commits o chat.
 - Días en UTC-5; los instantes llevan zona. Rangos `[desde, hasta)`. «Terminadas ayer» = `endedFrom`/`endedTo`, no `date`. Las limpiezas sin planificar se buscan con `checkoutDate` y `assigned=false`, no con `plannedFrom/To`.
 - Seguir `meta.nextOffset` hasta `null`. Un 5xx o un `warnings` de lectura no significa «no hay datos»: informarlo.
