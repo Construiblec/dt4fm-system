@@ -26,6 +26,8 @@ export type MaintenancePlanWarning =
   | 'started'
   /** Terminada o cancelada. */
   | 'closed'
+  /** Pendiente de la revisión del supervisor: no admite cambios. */
+  | 'pending_review'
   | 'not_dispatched'
   /** La asignación se guardó, pero no la fecha prevista. */
   | 'planned_start_not_saved'
@@ -226,7 +228,7 @@ export type MaintenanceEmployee = {
   isSupplier: boolean;
 };
 
-/** Campo ausente = sin cambio. Los correctivos sumarán aquí sus campos. */
+/** Campo ausente = sin cambio. */
 export type PreventivePlanFields = {
   employeeId?: number;
   plannedStartTime?: string;
@@ -234,7 +236,17 @@ export type PreventivePlanFields = {
   notes?: string;
 };
 
-export type MaintenancePlanFields = PreventivePlanFields;
+export type CorrectivePlanFields = PreventivePlanFields & {
+  teamId?: number;
+  priority?: (typeof CORRECTIVE_PRIORITIES)[number];
+  /** Va siempre junto a `subcategoryId`. */
+  categoryId?: number;
+  subcategoryId?: number;
+  /** Título cuando la subcategoría es «Otro». */
+  otherDescription?: string;
+};
+
+export type MaintenancePlanFields = CorrectivePlanFields;
 
 export type MaintenancePlanChange = { id: number } & MaintenancePlanFields;
 

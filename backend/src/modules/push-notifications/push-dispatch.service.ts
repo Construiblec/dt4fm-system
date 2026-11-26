@@ -16,6 +16,8 @@ import {
   correctiveCompleted,
   correctiveOpened,
   joinLocation,
+  MaintenancePlanChange,
+  maintenancePlanUpdated,
   preventiveAssigned,
   preventivePlanning,
   preventiveResumed,
@@ -90,6 +92,28 @@ export class PushDispatchService {
       });
 
       await this.toRoles(MAINTENANCE_SUPERVISOR_ROLES, message);
+    });
+  }
+
+  /** Al técnico que pierde la orden, cambia de fecha o se cancela (API de integraciones). */
+  async notifyMaintenancePlanUpdated(
+    input: Location & {
+      kind: 'corrective' | 'preventive';
+      id: string | number;
+      employeeId: number;
+      change: MaintenancePlanChange;
+      assetName?: string | null;
+    },
+  ): Promise<void> {
+    await this.safe(async () => {
+      const message = maintenancePlanUpdated({
+        kind: input.kind,
+        id: input.id,
+        change: input.change,
+        location: this.formatLocation(input),
+      });
+
+      await this.toEmployee(input.employeeId, message);
     });
   }
 

@@ -3,6 +3,7 @@ import type {
   DownloadedFile,
   RawOpenmaintAttachment,
 } from '../../../common/utils/openmaint-attachment.util';
+import type { ResolvedCategory } from '../../../integrations/openmaint/maint-category-catalog.service';
 import type {
   MaintenanceChecklist,
   MaintenanceEmployee,
@@ -47,10 +48,18 @@ export interface MaintenanceFlow<
 type StepBase = {
   /** Qué hace; es la nota de auditoría si el cliente no mandó notas. */
   description: string;
-  /** Estado público en que debe quedar la orden tras el paso. */
-  expectStatus: string;
+  /** Estado público en que debe quedar la orden tras el paso (cualquiera de la lista). */
+  expectStatus: string | string[];
   /** Atributos que la tarjeta debe reflejar tras el paso. */
   expectFields: Record<string, unknown>;
+  /** Atributos que la fuente puede descartar: si no quedan, aviso `field_not_saved`. */
+  softFields?: Record<string, unknown>;
+  /** Si falla tras un paso aplicado: error 502 con este mensaje en vez del original. */
+  failMessage?: string;
+  /** Si no se puede confirmar este paso: 502 con este mensaje en vez del genérico. */
+  unconfirmedMessage?: string;
+  /** Es la cancelación: hay que avisar al técnico que la tenía. */
+  cancels?: boolean;
   /** Si este paso falla tras uno aplicado, el cambio cuenta como aplicado con este aviso. */
   warnIfFails?: MaintenancePlanWarning;
   /** Como `warnIfFails`, pero cuando no se pudo releer para comprobarlo. */
@@ -82,6 +91,8 @@ export type PrepareContext = {
   teamIds: number[];
   /** Si el técnico actual no está en `employees`: lo que dice su ficha, leída aparte. */
   currentIsSupplier?: boolean;
+  /** Categoría ya validada, solo si `categoryToResolve` la pidió. */
+  category?: ResolvedCategory;
 };
 
 /** Lo que cada tipo de orden aporta para escribir. */
@@ -91,6 +102,13 @@ export interface MaintenanceWriteFlow<
   /** Con la actividad activa, necesaria para avanzar o guardar. */
   fetchForWrite(sessionId: string, id: number): Promise<TCard | undefined>;
   statusOf(card: TCard): string | null;
+  /** Si `prepare` necesita la lista de técnicos; por defecto, cuando el cambio nombra a uno. */
+  needsEmployees?(card: TCard, fields: MaintenancePlanFields): boolean;
+  /** Categoría y subcategoría que `prepare` necesita validadas, si aplica. */
+  categoryToResolve?(
+    card: TCard,
+    fields: MaintenancePlanFields,
+  ): { categoryId: number; subcategoryId: number } | null;
   prepare(
     card: TCard,
     fields: MaintenancePlanFields,

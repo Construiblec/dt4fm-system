@@ -129,13 +129,19 @@ describe('CorrectivesApiController (e2e)', () => {
       expect(calledMethods()).toEqual([]);
     });
 
-    it('no hay rutas de escritura todavía: 404', async () => {
-      for (const method of ['post', 'patch', 'put', 'delete'] as const) {
+    it('no hay otras rutas de escritura: 404, y las existentes exigen la clave de escritura', async () => {
+      for (const method of ['post', 'put', 'delete'] as const) {
         await request(app.getHttpServer())
           [method](`${BASE}/1`)
           .set('x-api-key', KEY)
           .expect(404);
       }
+      // Con la clave de lectura, PATCH existe pero está vedado.
+      await request(app.getHttpServer())
+        .patch(`${BASE}/1`)
+        .set('x-api-key', KEY)
+        .send({ employeeId: 7 })
+        .expect(403);
       expect(calledMethods()).toEqual([]);
     });
   });

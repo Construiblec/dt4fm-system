@@ -140,6 +140,14 @@ process.env.INTEGRATIONS_WRITE_API_KEYS = [
   'prev-cancelar',
   'prev-lotes',
   'prev-fallos',
+  'cm-acceso',
+  'cm-despacho',
+  'cm-campos',
+  'cm-reprogramar',
+  'cm-estados',
+  'cm-cancelar',
+  'cm-lotes',
+  'cm-fallos',
 ]
   .map((client) => `${client}:e2e-escritura-${client}-0123456789abcdefghij`)
   .join(',');
@@ -149,6 +157,8 @@ process.env.OPENMAINT_CLEANING_TEAM_ID = '2397132';
 process.env.HOSTAWAY_SYNC_DAYS = '2';
 // Equipos de mantenimiento (dos, para probar la unión); `=` para que el `.env` local no decida.
 process.env.OPENMAINT_MAINTENANCE_TEAM_IDS = '501,502';
+// Vacía por defecto: cada prueba pone la acción de vuelta a asignación que necesite.
+process.env.OPENMAINT_CM_BACK_TO_ASSIGNMENT_ACTION_ID = '';
 
 // Correo: no debería llegar a usarse (MailerService va mockeado en todas las
 // suites salvo la propia de notifications, que mockea el proveedor por

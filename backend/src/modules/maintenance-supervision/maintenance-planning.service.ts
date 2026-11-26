@@ -7,7 +7,6 @@ import {
   Injectable,
   Logger,
   NotFoundException,
-  NotImplementedException,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -18,8 +17,13 @@ import {
   upstreamStatus,
 } from '../../common/integrations/upstream.util';
 import { describeError } from '../../common/logging/describe-error.util';
+import {
+  MaintCategoryCatalogService,
+  type ResolvedCategory,
+} from '../../integrations/openmaint/maint-category-catalog.service';
 import { OpenmaintService } from '../../integrations/openmaint/openmaint.service';
 import { CleaningTasksSessionService } from '../cleaning-tasks/cleaning-tasks.session.service';
+import type { CorrectiveMaintCard } from './corrective-maint.openmaint.service';
 import type { PreventiveMaintCard } from '../preventive-maintenance/preventive-maintenance.openmaint.service';
 import { PushDispatchService } from '../push-notifications/push-dispatch.service';
 import type {
@@ -28,6 +32,7 @@ import type {
   FlowStep,
   MaintenanceWriteFlow,
 } from './flows/maintenance-flow.types';
+import { CorrectiveFlow } from './flows/corrective-flow';
 import { PreventiveFlow } from './flows/preventive-flow';
 import {
   loadMaintenanceEmployees,
@@ -55,11 +60,18 @@ const READ_TIMEOUT_MS = 20_000;
 const MIN_CHAIN_MS = 15_000;
 const MAX_CONCURRENCY = 5;
 
-const FIELD_NAMES: ReadonlyArray<keyof MaintenancePlanFields> = [
+const CHANGE_FIELDS: ReadonlyArray<keyof MaintenancePlanFields> = [
   'employeeId',
   'plannedStartTime',
-  'notes',
+  'teamId',
+  'priority',
+  'categoryId',
+  'subcategoryId',
+  'otherDescription',
 ];
+
+/** Estados en que el técnico aún no tiene la orden en su lista. */
+const NOT_LIVE = ['Assignment', 'Planning'];
 
 const WRITE_TIMEOUT_MESSAGE =
   'El cambio tardó demasiado y puede haberse guardado: comprobar antes de repetir';
@@ -103,6 +115,10 @@ type PlanContext = {
   employees: () => Promise<MaintenanceEmployee[]>;
   /** Si el empleado es un proveedor, leído de su ficha: una vez por empleado. */
   isSupplier: (employeeId: number) => Promise<boolean>;
+  category: (
+    categoryId: number,
+    subcategoryId: number,
+  ) => Promise<ResolvedCategory>;
 };
 
 type BatchEntry = {
@@ -116,10 +132,16 @@ const attr = (card: Card, name: string): unknown =>
   (card as Record<string, unknown>)[name];
 
 /** Las fechas se comparan en segundos: la fuente no conserva los milisegundos. */
-const sameValue = (actual: unknown, expected: unknown): boolean => {
+const DATE_FIELDS = ['ExpExecStartDate', 'ExecStartDate', 'ExecEndDate'];
+
+const sameValue = (
+  name: string,
+  actual: unknown,
+  expected: unknown,
+): boolean => {
   if (expected === null) return actual === null || actual === undefined;
   if (typeof expected === 'number') return Number(actual) === expected;
-  if (typeof expected === 'string') {
+  if (typeof expected === 'string' && DATE_FIELDS.includes(name)) {
     const a = toSeconds(actual as string | null);
     const e = toSeconds(expected);
     return a !== null && e !== null ? a === e : actual === expected;
@@ -142,16 +164,11 @@ const upstreamMessage = (error: unknown): string => {
 
 /** Lo que se puede rechazar sin leer la orden. */
 const assertFields = (fields: MaintenancePlanFields): void => {
-  if (FIELD_NAMES.every((name) => fields[name] === undefined)) {
+  const changes = CHANGE_FIELDS.some((name) => fields[name] !== undefined);
+  if (!changes && fields.notes === undefined) {
     throw new BadRequestException('No hay nada que actualizar');
   }
-  if (
-    fields.notes !== undefined &&
-    fields.employeeId === undefined &&
-    fields.plannedStartTime === undefined
-  ) {
-    throw new BadRequestException(NOTES_ALONE_MESSAGE);
-  }
+  if (!changes) throw new BadRequestException(NOTES_ALONE_MESSAGE);
 };
 
 /**
@@ -163,7 +180,7 @@ export class MaintenancePlanningService implements MaintenancePlanningContract {
   private readonly logger = new Logger(MaintenancePlanningService.name);
   /** Última escritura en cola de cada orden. */
   private readonly locks = new Map<string, Promise<void>>();
-  private readonly flows: Partial<Record<MaintenanceKind, Flow>>;
+  private readonly flows: Record<MaintenanceKind, Flow>;
 
   constructor(
     preventive: PreventiveFlow,
@@ -171,8 +188,13 @@ export class MaintenancePlanningService implements MaintenancePlanningContract {
     private readonly session: CleaningTasksSessionService,
     private readonly config: ConfigService,
     private readonly push: PushDispatchService,
+    corrective: CorrectiveFlow,
+    private readonly categories: MaintCategoryCatalogService,
   ) {
-    this.flows = { preventive: preventive as unknown as Flow };
+    this.flows = {
+      preventive: preventive as unknown as Flow,
+      corrective: corrective as unknown as Flow,
+    };
   }
 
   async update(
@@ -357,9 +379,14 @@ export class MaintenancePlanningService implements MaintenancePlanningContract {
       outcome = flow.cancelSteps(card, intent.reason);
     } else {
       const { fields } = intent;
-      // La lista se lee solo si el cambio nombra a un técnico.
-      const employees =
-        fields.employeeId === undefined ? [] : await context.employees();
+      // La lista se lee solo si el cambio nombra a un técnico o a un equipo.
+      const needsTeam =
+        flow.needsEmployees?.(card, fields) ?? fields.employeeId !== undefined;
+      const employees = needsTeam ? await context.employees() : [];
+      const wanted = flow.categoryToResolve?.(card, fields);
+      const category = wanted
+        ? await context.category(wanted.categoryId, wanted.subcategoryId)
+        : undefined;
       const current = attr(card, 'Assignee');
       const needsCard =
         fields.employeeId !== undefined &&
@@ -368,8 +395,8 @@ export class MaintenancePlanningService implements MaintenancePlanningContract {
         !employees.some((employee) => employee.id === current);
       outcome = flow.prepare(card, fields, {
         employees,
-        teamIds:
-          fields.employeeId === undefined ? [] : parseTeamIds(this.config),
+        teamIds: needsTeam ? parseTeamIds(this.config) : [],
+        category,
         currentIsSupplier: needsCard
           ? await context.isSupplier(current)
           : undefined,
@@ -408,9 +435,36 @@ export class MaintenancePlanningService implements MaintenancePlanningContract {
     let current = first;
     const warnings: MaintenancePlanWarning[] = [];
     for (const [index, step] of steps.entries()) {
+      // Si la fuente no autocopió el inicio real, no hay nada que restablecer.
+      if (
+        step.type === 'restoreExecStart' &&
+        this.reached(flow, current, step)
+      ) {
+        continue;
+      }
       try {
-        current = await this.applyStep(flow, kind, id, current, step, audit);
+        current = await this.applyStep(
+          flow,
+          kind,
+          id,
+          current,
+          step,
+          audit,
+          first,
+          warnings,
+        );
       } catch (error) {
+        const unconfirmed = error instanceof UnconfirmedException;
+        if (unconfirmed && step.unconfirmedMessage) {
+          throw new BadGatewayException(step.unconfirmedMessage);
+        }
+        if (index > 0 && step.failMessage) {
+          throw new BadGatewayException(
+            unconfirmed
+              ? 'No se pudo confirmar el resultado; comprobar antes de repetir'
+              : step.failMessage,
+          );
+        }
         if (index === 0 || !step.warnIfFails) throw error;
         warnings.push(
           error instanceof UnconfirmedException && step.warnIfUnconfirmed
@@ -434,6 +488,8 @@ export class MaintenancePlanningService implements MaintenancePlanningContract {
     before: Card,
     step: FlowStep,
     audit: { client: string; notes?: string },
+    origin: Card,
+    warnings: MaintenancePlanWarning[],
   ): Promise<Card> {
     const noun = NOUN[kind];
     const note = `[API · ${safeActor(audit.client)}] ${audit.notes ?? step.description}`;
@@ -452,10 +508,16 @@ export class MaintenancePlanningService implements MaintenancePlanningContract {
     }
 
     const saved = await this.reread(flow, id);
-    if (saved && this.reached(flow, saved, step)) {
+    // Un guardado fallido sin nada duro que comprobar no se da por aplicado.
+    const unverifiable =
+      failure !== undefined &&
+      step.type === 'save' &&
+      Object.keys(step.expectFields).length === 0;
+    if (saved && !unverifiable && this.reached(flow, saved, step)) {
       if (step.type === 'save')
         this.logSave(noun, id, audit.client, before, saved, step);
-      if (step.assigns) this.notifyAssigned(kind, saved);
+      this.warnDiscarded(noun, id, saved, step, warnings);
+      this.notifyStep(flow, kind, origin, before, saved, step);
       return saved;
     }
 
@@ -481,10 +543,12 @@ export class MaintenancePlanningService implements MaintenancePlanningContract {
 
   /** El estado y los campos que el paso debía dejar. */
   private reached(flow: Flow, card: Card, step: FlowStep): boolean {
+    const status = flow.statusOf(card);
     return (
-      flow.statusOf(card) === step.expectStatus &&
+      status !== null &&
+      [step.expectStatus].flat().includes(status) &&
       Object.entries(step.expectFields).every(([name, expected]) =>
-        sameValue(attr(card, name), expected),
+        sameValue(name, attr(card, name), expected),
       )
     );
   }
@@ -511,34 +575,167 @@ export class MaintenancePlanningService implements MaintenancePlanningContract {
     );
   }
 
+  /** La fuente acepta el guardado y descarta lo que el paso no admite. */
+  private warnDiscarded(
+    noun: string,
+    id: number,
+    saved: Card,
+    step: FlowStep,
+    warnings: MaintenancePlanWarning[],
+  ): void {
+    const missed = Object.entries(step.softFields ?? {})
+      .filter(
+        ([name, expected]) => !sameValue(name, attr(saved, name), expected),
+      )
+      .map(([name]) => name);
+    if (missed.length === 0) return;
+    this.logger.warn(`${noun} ${id}: la fuente no guardó ${missed.join(', ')}`);
+    const add = (warning: MaintenancePlanWarning) => {
+      if (!warnings.includes(warning)) warnings.push(warning);
+    };
+    if (missed.includes('ExpExecStartDate')) add('planned_start_not_saved');
+    if (missed.some((name) => name !== 'ExpExecStartDate')) {
+      add('field_not_saved');
+    }
+  }
+
+  /**
+   * Avisos al técnico tras confirmar un paso. `origin` es la orden antes de
+   * toda la cadena: quien ya la tenía no la recibe «como nueva».
+   */
+  private notifyStep(
+    flow: Flow,
+    kind: MaintenanceKind,
+    origin: Card,
+    before: Card,
+    saved: Card,
+    step: FlowStep,
+  ): void {
+    const technician = (card: Card) => {
+      const value = attr(card, 'Assignee');
+      return typeof value === 'number' ? value : null;
+    };
+    const planned = (card: Card) =>
+      toSeconds(attr(card, 'ExpExecStartDate') as string | null);
+    const wasLive = !NOT_LIVE.includes(flow.statusOf(origin) ?? '');
+    const previous = technician(before);
+    const next = technician(saved);
+    const rescheduled =
+      wasLive &&
+      next !== null &&
+      technician(origin) === next &&
+      planned(before) !== planned(saved);
+
+    if (step.cancels) {
+      // Sin despachar, el técnico nunca supo de la orden.
+      const target = next ?? previous;
+      if (wasLive && target !== null) {
+        this.notifyChange(kind, saved, target, 'cancelled');
+      }
+      return;
+    }
+    const changed = previous !== next;
+    if (wasLive && previous !== null && changed) {
+      this.notifyChange(kind, saved, previous, 'removed');
+    }
+    // Una vez por cadena: cuando el técnico cambia en este paso, o se repite el despacho.
+    if (
+      next !== null &&
+      ((changed && technician(origin) !== next) || (step.assigns && !wasLive))
+    ) {
+      this.notifyAssigned(kind, saved);
+    } else if (rescheduled) {
+      this.notifyChange(kind, saved, next, 'rescheduled');
+    }
+  }
+
   /** Fire-and-forget: el aviso nunca cambia el resultado. */
   private notifyAssigned(kind: MaintenanceKind, card: Card): void {
-    if (kind !== 'preventive') return;
-    const {
-      _id,
-      Assignee,
-      _CISubset_description,
-      _CI_description,
-      _Site_description,
-    } = card as PreventiveMaintCard;
-    if (!Assignee) return;
-    try {
-      void Promise.resolve(
+    if (kind === 'preventive') {
+      const {
+        _id,
+        Assignee,
+        _CISubset_description,
+        _CI_description,
+        _Site_description,
+      } = card as PreventiveMaintCard;
+      if (!Assignee) return;
+      this.send(kind, _id, () =>
         this.push.notifyPreventiveAssigned({
           id: _id,
           assigneeId: Assignee,
           assetName: _CISubset_description ?? _CI_description,
           buildingName: _Site_description,
         }),
-      ).catch((error: unknown) => this.warnNotice(_id, error));
+      );
+      return;
+    }
+    const {
+      _id,
+      Assignee,
+      _Unit_description,
+      _Floor_description,
+      _Site_description,
+    } = card as CorrectiveMaintCard;
+    if (!Assignee) return;
+    this.send(kind, _id, () =>
+      this.push.notifyCorrectiveAssigned({
+        id: _id,
+        assigneeId: Assignee,
+        unitName: _Unit_description,
+        floorName: _Floor_description,
+        buildingName: _Site_description,
+      }),
+    );
+  }
+
+  private notifyChange(
+    kind: MaintenanceKind,
+    card: Card,
+    employeeId: number,
+    change: 'removed' | 'rescheduled' | 'cancelled',
+  ): void {
+    const place =
+      kind === 'preventive'
+        ? {
+            assetName:
+              (card as PreventiveMaintCard)._CISubset_description ??
+              (card as PreventiveMaintCard)._CI_description,
+            buildingName: (card as PreventiveMaintCard)._Site_description,
+          }
+        : {
+            unitName: (card as CorrectiveMaintCard)._Unit_description,
+            floorName: (card as CorrectiveMaintCard)._Floor_description,
+            buildingName: (card as CorrectiveMaintCard)._Site_description,
+          };
+    this.send(kind, card._id, () =>
+      this.push.notifyMaintenancePlanUpdated({
+        kind,
+        id: card._id,
+        employeeId,
+        change,
+        ...place,
+      }),
+    );
+  }
+
+  private send(
+    kind: MaintenanceKind,
+    id: number,
+    notify: () => Promise<unknown>,
+  ): void {
+    try {
+      void Promise.resolve(notify()).catch((error: unknown) =>
+        this.warnNotice(kind, id, error),
+      );
     } catch (error) {
-      this.warnNotice(_id, error);
+      this.warnNotice(kind, id, error);
     }
   }
 
-  private warnNotice(id: number, error: unknown): void {
+  private warnNotice(kind: MaintenanceKind, id: number, error: unknown): void {
     this.logger.warn(
-      `No se pudo avisar al técnico del preventivo ${id} — ${describeError(error)}`,
+      `No se pudo avisar al técnico del ${NOUN[kind].toLowerCase()} ${id} — ${describeError(error)}`,
     );
   }
 
@@ -571,6 +768,12 @@ export class MaintenancePlanningService implements MaintenancePlanningContract {
         suppliers.set(employeeId, load);
         return load();
       },
+      category: (categoryId, subcategoryId) =>
+        this.source('las categorías', deadline, () =>
+          this.withSession((sessionId) =>
+            this.categories.resolve(categoryId, subcategoryId, sessionId),
+          ),
+        ),
       employees: once(() =>
         this.source('los técnicos', deadline, () =>
           this.withSession((sessionId) =>
@@ -670,9 +873,7 @@ export class MaintenancePlanningService implements MaintenancePlanningContract {
   }
 
   private flowOf(kind: MaintenanceKind): Flow {
-    const flow = this.flows[kind];
-    if (!flow) throw new NotImplementedException(`Sin escritura para ${kind}`);
-    return flow;
+    return this.flows[kind];
   }
 
   // ─── Plazo, sesión y errores ────────────────────────────────────────────────

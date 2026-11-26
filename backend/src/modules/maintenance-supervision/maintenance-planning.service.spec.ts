@@ -5,10 +5,10 @@ import {
   GatewayTimeoutException,
   Logger,
   NotFoundException,
-  NotImplementedException,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { PM_ACTIONS } from '../preventive-maintenance/constants/preventive-maint.constants';
+import { CorrectiveFlow } from './flows/corrective-flow';
 import { PreventiveFlow } from './flows/preventive-flow';
 import { MaintenancePlanningService } from './maintenance-planning.service';
 
@@ -134,6 +134,9 @@ const build = (cards: Card[]) => {
     notifyPreventiveAssigned: jest.fn(
       (): Promise<unknown> => Promise.resolve(),
     ),
+    notifyMaintenancePlanUpdated: jest.fn(
+      (): Promise<unknown> => Promise.resolve(),
+    ),
   };
   const service = new MaintenancePlanningService(
     new PreventiveFlow(gateway as never),
@@ -141,6 +144,8 @@ const build = (cards: Card[]) => {
     session as never,
     config as never,
     push as never,
+    new CorrectiveFlow({} as never, config as never),
+    { resolve: jest.fn() } as never,
   );
   return { service, gateway, openmaint, session, config, push, store };
 };
@@ -241,7 +246,8 @@ describe('MaintenancePlanningService (preventivos)', () => {
         activityId: 'act-10',
         fields: { Assignee: 7, ExpExecStartDate: START },
       });
-      expect(push.notifyPreventiveAssigned).not.toHaveBeenCalled();
+      // El técnico nuevo recibe la orden aunque el cambio sea un guardado.
+      expect(push.notifyPreventiveAssigned).toHaveBeenCalledTimes(1);
       expect(log).toHaveBeenCalledWith(
         expect.stringContaining(
           'Preventivo 10: planificación cambiada por cli',
@@ -482,7 +488,9 @@ describe('MaintenancePlanningService (preventivos)', () => {
         result: 'applied',
         warnings: ['started'],
       });
-      expect(push.notifyPreventiveAssigned).not.toHaveBeenCalled();
+      expect(push.notifyPreventiveAssigned).toHaveBeenCalledWith(
+        expect.objectContaining({ assigneeId: 7 }),
+      );
     });
 
     it('en suspensión usa CHANGE_ASSIGNEE y sigue suspendido', async () => {
@@ -944,7 +952,7 @@ describe('MaintenancePlanningService (preventivos)', () => {
       expect(push.notifyPreventiveAssigned).not.toHaveBeenCalled();
     });
 
-    it('aplica en orden, lee los técnicos una vez y avisa solo de lo asignado', async () => {
+    it('aplica en orden, lee los técnicos una vez y avisa a cada técnico nuevo', async () => {
       const { service, openmaint, push, store } = build([
         order(10, 'Planning'),
         order(11, 'Acceptance', { Assignee: 8 }),
@@ -969,7 +977,8 @@ describe('MaintenancePlanningService (preventivos)', () => {
       ]);
       expect(results[2].error).toMatchObject({ statusCode: 400 });
       expect(openmaint.getEmployees).toHaveBeenCalledTimes(1);
-      expect(push.notifyPreventiveAssigned).toHaveBeenCalledTimes(1);
+      // Asignación en planificación y reasignación en aceptación; la fallida no avisa.
+      expect(push.notifyPreventiveAssigned).toHaveBeenCalledTimes(2);
       expect(store.get(11)!.Assignee).toBe(7);
     });
 
@@ -1085,11 +1094,61 @@ describe('MaintenancePlanningService (preventivos)', () => {
 
     expect(result.result).toBe('applied');
   });
+  describe('avisos de cambio de plan', () => {
+    it('al reasignar en aceptación avisa al nuevo y retira al anterior', async () => {
+      const { service, push } = build([
+        order(10, 'Acceptance', { Assignee: 7 }),
+      ]);
 
-  it('los correctivos aún no tienen escritura', async () => {
-    const { service } = build([]);
-    await expect(
-      service.update('corrective', 1, { employeeId: 7 }, 'c'),
-    ).rejects.toBeInstanceOf(NotImplementedException);
+      await service.update('preventive', 10, { employeeId: 8 }, 'c');
+
+      expect(push.notifyPreventiveAssigned).toHaveBeenCalledTimes(1);
+      expect(push.notifyPreventiveAssigned).toHaveBeenCalledWith(
+        expect.objectContaining({ assigneeId: 8 }),
+      );
+      expect(push.notifyMaintenancePlanUpdated).toHaveBeenCalledTimes(1);
+      expect(push.notifyMaintenancePlanUpdated).toHaveBeenCalledWith({
+        kind: 'preventive',
+        id: 10,
+        employeeId: 7,
+        change: 'removed',
+        assetName: 'Bomba 1',
+        buildingName: 'Pradera',
+      });
+    });
+
+    it('al cambiar la fecha de un preventivo asignado avisa al técnico', async () => {
+      const { service, push } = build([
+        order(10, 'Acceptance', { Assignee: 7 }),
+      ]);
+
+      await service.update('preventive', 10, { plannedStartTime: START }, 'c');
+
+      expect(push.notifyMaintenancePlanUpdated).toHaveBeenCalledWith(
+        expect.objectContaining({ employeeId: 7, change: 'rescheduled' }),
+      );
+    });
+
+    it('asignar y fijar la fecha en planificación no manda aviso de cambio', async () => {
+      const { service, push } = build([order(10, 'Planning')]);
+
+      await service.update(
+        'preventive',
+        10,
+        { employeeId: 7, plannedStartTime: START },
+        'c',
+      );
+
+      expect(push.notifyPreventiveAssigned).toHaveBeenCalledTimes(1);
+      expect(push.notifyMaintenancePlanUpdated).not.toHaveBeenCalled();
+    });
+
+    it('cancelar sin técnico no avisa a nadie', async () => {
+      const { service, push } = build([order(10, 'Planning')]);
+
+      await service.cancel('preventive', 10, 'x', 'c');
+
+      expect(push.notifyMaintenancePlanUpdated).not.toHaveBeenCalled();
+    });
   });
 });

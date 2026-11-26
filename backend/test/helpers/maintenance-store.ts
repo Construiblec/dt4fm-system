@@ -1,4 +1,8 @@
-import { resolveCorrectiveStatus } from '../../src/modules/maintenance-supervision/constants/corrective-maint.constants';
+import {
+  CM_ACTIONS,
+  CM_STATUS_CODE_TO_NAME,
+  resolveCorrectiveStatus,
+} from '../../src/modules/maintenance-supervision/constants/corrective-maint.constants';
 import {
   PM_ACTIONS,
   PM_STATUS_CODE_TO_NAME,
@@ -90,6 +94,18 @@ export class MaintenanceStore {
     fields: any;
   }[] = [];
   readonly saves: { id: number; fields: any }[] = [];
+  /** Lo mismo para los correctivos. */
+  readonly cmAdvances: {
+    id: number;
+    action: number;
+    notes?: string;
+    fields: any;
+  }[] = [];
+  readonly cmSaves: { id: number; fields: any }[] = [];
+  /** Id de la acción «Volver a asignación»; `null` = en la fuente aún no existe. */
+  backAction: number | null = null;
+  /** Atributos que la fuente descarta en silencio al guardar o avanzar. */
+  discard: string[] = [];
   /** Actividad activa de cada preventivo: cada avance gasta la anterior. */
   private readonly activities = new Map<number, number>();
 
@@ -178,6 +194,28 @@ export class MaintenanceStore {
       .mockImplementation(
         withSession((id: number, options: any) =>
           this.savePreventive(id, options),
+        ),
+      );
+
+    cm.findWithTasklist.mockReset().mockImplementation(
+      withSession((id: number) =>
+        this.byId(this.correctives, id).then(({ data }) => ({
+          data: { ...data, _tasklist: [{ _id: this.activityOf(id) }] },
+        })),
+      ),
+    );
+    cm.advance
+      .mockReset()
+      .mockImplementation(
+        withSession((id: number, options: any) =>
+          this.advanceCorrective(id, options),
+        ),
+      );
+    cm.saveFields
+      .mockReset()
+      .mockImplementation(
+        withSession((id: number, options: any) =>
+          this.saveCorrective(id, options),
         ),
       );
 
@@ -306,6 +344,118 @@ export class MaintenanceStore {
     ) {
       moveTo('PM-Suspension');
     }
+    return Promise.resolve({ data: {} });
+  }
+
+  private staleActivity() {
+    return Object.assign(new Error('tarea gastada'), {
+      response: {
+        status: 500,
+        data: { messages: [{ message: 'task not found for instanceId 1' }] },
+      },
+    });
+  }
+
+  private keep(fields: Record<string, unknown> = {}, allowed?: string[]) {
+    return Object.fromEntries(
+      Object.entries(fields).filter(
+        ([name]) =>
+          !this.discard.includes(name) && (!allowed || allowed.includes(name)),
+      ),
+    );
+  }
+
+  /** Atributos escribibles de cada paso del flujo CM. */
+  private cmWritable(status: string): string[] {
+    switch (status) {
+      case 'Assignment':
+        return [
+          'Assignee',
+          'Team',
+          'ExpExecStartDate',
+          'Priority',
+          'Category',
+          'Subcategory',
+          'ShortDescr',
+          'Asset',
+        ];
+      case 'Execution':
+        return ['Assignee', 'ExecStartDate'];
+      case 'Management':
+        return ['Assignee', 'Team'];
+      default:
+        return [];
+    }
+  }
+
+  /**
+   * Como la fuente: al entrar en Execution copia la fecha prevista al inicio
+   * real, y volver a asignación solo existe si hay acción configurada.
+   */
+  private advanceCorrective(
+    id: number,
+    options: {
+      activityId: string;
+      action: number;
+      notes?: string;
+      fields?: any;
+    },
+  ) {
+    const card = this.correctives.get(id);
+    if (!card) return Promise.reject(upstreamError(404));
+    if (options.activityId !== this.activityOf(id)) {
+      return Promise.reject(this.staleActivity());
+    }
+    this.cmAdvances.push({
+      id,
+      action: options.action,
+      notes: options.notes,
+      fields: options.fields ?? {},
+    });
+
+    const status = CM_STATUS_CODE_TO_NAME[card._ProcessStatus_code];
+    const moveTo = (code: string, flow = 'open.running') => {
+      Object.assign(card, this.keep(options.fields, this.cmWritable(status)), {
+        _ProcessStatus_code: code,
+        _FlowStatus_code: flow,
+      });
+      if (code === 'CM-Execution') card.ExecStartDate = card.ExpExecStartDate;
+      this.describeAssignee(card);
+      this.activities.set(id, (this.activities.get(id) ?? 0) + 1);
+    };
+    if (options.action === CM_ACTIONS.ASSIGN && status === 'Assignment') {
+      moveTo('CM-Execution');
+    } else if (
+      options.action === CM_ACTIONS.CHANGE_ASSIGNEE &&
+      status === 'Execution'
+    ) {
+      moveTo('CM-Execution');
+    } else if (
+      options.action === CM_ACTIONS.REJECT_AND_CLOSE &&
+      status === 'Assignment'
+    ) {
+      moveTo('CM-Canceled', 'closed.aborted');
+    } else if (
+      this.backAction !== null &&
+      options.action === this.backAction &&
+      status === 'Execution'
+    ) {
+      moveTo('CM-Assignment');
+    }
+    return Promise.resolve({ data: {} });
+  }
+
+  private saveCorrective(
+    id: number,
+    options: { activityId: string; fields: Record<string, unknown> },
+  ) {
+    const card = this.correctives.get(id);
+    if (!card) return Promise.reject(upstreamError(404));
+    this.cmSaves.push({ id, fields: options.fields });
+
+    const status = CM_STATUS_CODE_TO_NAME[card._ProcessStatus_code];
+    Object.assign(card, this.keep(options.fields, this.cmWritable(status)));
+    this.describeAssignee(card);
     return Promise.resolve({ data: {} });
   }
 

@@ -113,7 +113,7 @@ describe('MaintenanceReadService', () => {
     preventiveGateway.findAttachments.mockResolvedValue({ data: [] });
 
     service = new MaintenanceReadService(
-      new CorrectiveFlow(correctiveGateway as never),
+      new CorrectiveFlow(correctiveGateway as never, config as never),
       new PreventiveFlow(preventiveGateway as never),
       openmaint as never,
       catalog as never,

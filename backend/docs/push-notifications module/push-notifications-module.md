@@ -32,8 +32,9 @@ La columna *Punto de disparo* indica dónde se ejecuta el código que las lanza.
 | Evento | Destinatario | Punto de disparo |
 |---|---|---|
 | Apertura | Supervisores de mantenimiento | `incidents.service.ts` → `sendIncidentNotificationInBackground` |
-| Asignación | Empleado o proveedor asignado | `maintenance-supervision.service.ts` → `assignCorrective` |
+| Asignación | Empleado o proveedor asignado | `maintenance-supervision.service.ts` → `assignCorrective`; también `MaintenancePlanningService` (API de integraciones) |
 | Paso a Contabilidad (completado) | Supervisores de mantenimiento | `incidents.service.ts` → `sendIncidentFinishedNotificationInBackground` |
+| Plan actualizado (`maintenance.plan-updated`: retirada, nueva fecha o cancelación) | Empleado que tenía la orden | `maintenance-planning.service.ts` → `MaintenancePlanningService` (API de integraciones) |
 
 ### 3.2. Preventivos
 
@@ -41,9 +42,10 @@ La columna *Punto de disparo* indica dónde se ejecuta el código que las lanza.
 |---|---|---|
 | Planificación, un mes antes | Supervisores de mantenimiento | `PreventivePlanningSchedulerService` |
 | Planificación, dos días antes | Supervisores de mantenimiento | `PreventivePlanningSchedulerService` |
-| Asignación | Empleado o proveedor asignado | `maintenance-supervision.service.ts` → `assignPreventive` |
+| Asignación | Empleado o proveedor asignado | `maintenance-supervision.service.ts` → `assignPreventive`; también `MaintenancePlanningService` (API de integraciones) |
 | Suspensión | Supervisores de mantenimiento | `preventive-maintenance.service.ts` → `suspendPreventiveMaintenance` |
 | Des-suspensión (reanudación) | Empleado o proveedor asignado | `maintenance-supervision.service.ts` → `resumePreventive` |
+| Plan actualizado (`maintenance.plan-updated`: retirada, nueva fecha o cancelación) | Empleado que tenía la orden | `maintenance-planning.service.ts` → `MaintenancePlanningService` (API de integraciones) |
 
 ### 3.3. Limpieza
 

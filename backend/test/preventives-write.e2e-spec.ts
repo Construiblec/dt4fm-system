@@ -324,7 +324,10 @@ describe('API de preventivos: escritura (e2e)', () => {
       });
       expect(store.advances).toEqual([]);
       expect(store.saves).toHaveLength(1);
-      noPush();
+      // El técnico nuevo recibe la orden aunque el cambio sea un guardado.
+      expect(mocks.pushDispatch.notifyPreventiveAssigned).toHaveBeenCalledTimes(
+        1,
+      );
     });
 
     it('un guardado con notas avisa notes_not_saved', async () => {
@@ -370,7 +373,10 @@ describe('API de preventivos: escritura (e2e)', () => {
       const date = await patch({ plannedStartTime: START }, card._id);
       expect(date.status).toBe(409);
       expect(store.saves).toHaveLength(1);
-      noPush();
+      // El técnico nuevo recibe la orden aunque el cambio sea un guardado.
+      expect(mocks.pushDispatch.notifyPreventiveAssigned).toHaveBeenCalledTimes(
+        1,
+      );
     });
 
     it('Suspension: cambia el técnico con PM04-Return y sigue suspendido', async () => {
@@ -389,7 +395,10 @@ describe('API de preventivos: escritura (e2e)', () => {
       expect((await patch({ plannedStartTime: START }, card._id)).status).toBe(
         409,
       );
-      noPush();
+      // El técnico nuevo recibe la orden aunque el cambio sea un guardado.
+      expect(mocks.pushDispatch.notifyPreventiveAssigned).toHaveBeenCalledTimes(
+        1,
+      );
     });
 
     it('Completed: 409 con cambios y unchanged con aviso closed sin ellos', async () => {
@@ -534,7 +543,7 @@ describe('API de preventivos: escritura (e2e)', () => {
       noPush();
     });
 
-    it('aplica en orden y avisa solo de las asignaciones', async () => {
+    it('aplica en orden y avisa a cada técnico nuevo', async () => {
       const planning = put('Planning');
       const accepted = put('Acceptance', { Assignee: 8 });
       const bad = put('Planning');
@@ -560,7 +569,7 @@ describe('API de preventivos: escritura (e2e)', () => {
       expect(store.preventives.get(accepted._id)!.Assignee).toBe(7);
       expect(store.preventives.get(bad._id)!.Assignee).toBeUndefined();
       expect(mocks.pushDispatch.notifyPreventiveAssigned).toHaveBeenCalledTimes(
-        1,
+        2,
       );
     });
 
