@@ -1,10 +1,14 @@
+import type { HttpException } from '@nestjs/common';
 import type {
   DownloadedFile,
   RawOpenmaintAttachment,
 } from '../../../common/utils/openmaint-attachment.util';
 import type {
   MaintenanceChecklist,
+  MaintenanceEmployee,
   MaintenanceKind,
+  MaintenancePlanFields,
+  MaintenancePlanWarning,
   MaintenanceReadAttachment,
   MaintenanceReadDetail,
   MaintenanceReadFilters,
@@ -17,10 +21,7 @@ export type DetailExtras = {
   checklist: MaintenanceChecklist | null;
 };
 
-/**
- * Lo que cambia entre correctivos y preventivos al leer. La escritura sumará
- * aquí `prepare(card, fields)` y `cancelSteps(card)`, que devuelven los pasos.
- */
+/** Lo que cambia entre correctivos y preventivos al leer. */
 export interface MaintenanceFlow<
   TCard extends { _id: number } = { _id: number },
 > {
@@ -41,4 +42,66 @@ export interface MaintenanceFlow<
   ): Promise<DownloadedFile>;
   toItem(card: TCard): MaintenanceReadItem;
   toDetail(card: TCard, extras: DetailExtras): MaintenanceReadDetail;
+}
+
+type StepBase = {
+  /** Qué hace; es la nota de auditoría si el cliente no mandó notas. */
+  description: string;
+  /** Estado público en que debe quedar la orden tras el paso. */
+  expectStatus: string;
+  /** Atributos que la tarjeta debe reflejar tras el paso. */
+  expectFields: Record<string, unknown>;
+  /** Si este paso falla tras uno aplicado, el cambio cuenta como aplicado con este aviso. */
+  warnIfFails?: MaintenancePlanWarning;
+  /** Como `warnIfFails`, pero cuando no se pudo releer para comprobarlo. */
+  warnIfUnconfirmed?: MaintenancePlanWarning;
+  /** Tras aplicarlo hay que avisar al técnico de la asignación. */
+  assigns?: boolean;
+};
+
+export type FlowStep =
+  | (StepBase & {
+      type: 'advance';
+      action: number;
+      fields: Record<string, unknown>;
+    })
+  | (StepBase & { type: 'save'; fields: Record<string, unknown> })
+  | (StepBase & { type: 'restoreExecStart'; value: string | null });
+
+/** Sin pasos = no hay nada que escribir. */
+export type FlowPlan = {
+  steps: FlowStep[];
+  warnings: MaintenancePlanWarning[];
+};
+
+export type FlowOutcome = FlowPlan | { error: HttpException };
+
+/** Datos ya leídos que `prepare` necesita; ella nunca llama a la fuente. */
+export type PrepareContext = {
+  employees: MaintenanceEmployee[];
+  teamIds: number[];
+  /** Si el técnico actual no está en `employees`: lo que dice su ficha, leída aparte. */
+  currentIsSupplier?: boolean;
+};
+
+/** Lo que cada tipo de orden aporta para escribir. */
+export interface MaintenanceWriteFlow<
+  TCard extends { _id: number } = { _id: number },
+> extends MaintenanceFlow<TCard> {
+  /** Con la actividad activa, necesaria para avanzar o guardar. */
+  fetchForWrite(sessionId: string, id: number): Promise<TCard | undefined>;
+  statusOf(card: TCard): string | null;
+  prepare(
+    card: TCard,
+    fields: MaintenancePlanFields,
+    context: PrepareContext,
+  ): FlowOutcome;
+  cancelSteps(card: TCard, reason: string): FlowOutcome;
+  /** `card` debe traer la actividad activa; `note` solo la usan los avances. */
+  execute(
+    sessionId: string,
+    card: TCard,
+    step: FlowStep,
+    note: string,
+  ): Promise<void>;
 }

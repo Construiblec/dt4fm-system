@@ -5,12 +5,14 @@ import { MaintenanceSupervisionModule } from '../maintenance-supervision/mainten
 import { CorrectivesApiController } from './correctives-api.controller';
 import { MaintenanceSupportController } from './maintenance-support.controller';
 import { PreventivesApiController } from './preventives-api.controller';
+import { PreventivesWriteController } from './preventives-write.controller';
 
 @Module({
   imports: [MaintenanceSupervisionModule, IntegrationsApiModule],
   controllers: [
     CorrectivesApiController,
     PreventivesApiController,
+    PreventivesWriteController,
     MaintenanceSupportController,
   ],
   providers: [MaintenanceCacheService],

@@ -134,6 +134,12 @@ process.env.INTEGRATIONS_WRITE_API_KEYS = [
   'avisos-diez',
   'cupo',
   'otro',
+  'prev-acceso',
+  'prev-campos',
+  'prev-estados',
+  'prev-cancelar',
+  'prev-lotes',
+  'prev-fallos',
 ]
   .map((client) => `${client}:e2e-escritura-${client}-0123456789abcdefghij`)
   .join(',');

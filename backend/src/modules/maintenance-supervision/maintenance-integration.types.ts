@@ -3,6 +3,9 @@ import type { RegisterLogEntry } from '../../common/utils/openmaint-register.uti
 /** Prefijo público de la API; las URLs de descarga cuelgan de aquí. */
 export const MAINTENANCE_API_BASE_PATH = '/integrations/v1';
 
+export const NOTES_ALONE_MESSAGE =
+  'Las notas solo se registran junto con un cambio de técnico o una cancelación';
+
 export type MaintenanceKind = 'corrective' | 'preventive';
 
 export const CORRECTIVE_PRIORITIES = [
@@ -14,8 +17,24 @@ export const CORRECTIVE_PRIORITIES = [
 
 export type MaintenanceRef = { id: number; name: string | null };
 
-/** Avisos de lectura; los de escritura se suman en su propio paso. */
+/** Avisos de lectura. */
 export type MaintenanceWarning = 'pending_review' | 'checklist_unavailable';
+
+/** Avisos de una escritura. */
+export type MaintenancePlanWarning =
+  /** Ya empezó: el cambio puede no llegar a quien la ejecuta. */
+  | 'started'
+  /** Terminada o cancelada. */
+  | 'closed'
+  | 'not_dispatched'
+  /** La asignación se guardó, pero no la fecha prevista. */
+  | 'planned_start_not_saved'
+  /** La fecha se envió sin error, pero no se pudo comprobar si quedó guardada. */
+  | 'planned_start_unconfirmed'
+  /** Las notas no se registraron: solo los avances del flujo las guardan. */
+  | 'notes_not_saved'
+  | 'field_not_saved'
+  | 'exec_start_not_restored';
 
 /** Rangos `[desde, hasta)` en instantes ISO 8601 (UTC). */
 type RangeFilters = {
@@ -197,4 +216,62 @@ export interface MaintenanceReadContract {
     to: string;
   }): Promise<MaintenanceTechnician[]>;
   categories(): Promise<MaintenanceCategory[]>;
+}
+
+/** Empleado de un equipo de mantenimiento. */
+export type MaintenanceEmployee = {
+  id: number;
+  name: string;
+  team: MaintenanceRef | null;
+  isSupplier: boolean;
+};
+
+/** Campo ausente = sin cambio. Los correctivos sumarán aquí sus campos. */
+export type PreventivePlanFields = {
+  employeeId?: number;
+  plannedStartTime?: string;
+  /** Solo se registra en un avance del flujo (asignar, cambiar técnico suspendido, cancelar). */
+  notes?: string;
+};
+
+export type MaintenancePlanFields = PreventivePlanFields;
+
+export type MaintenancePlanChange = { id: number } & MaintenancePlanFields;
+
+export type MaintenancePlanResult = {
+  id: number;
+  result: 'applied' | 'unchanged';
+  warnings: MaintenancePlanWarning[];
+  /** `null`: se guardó, pero no se pudo releer. */
+  data: MaintenanceReadItem | null;
+};
+
+export type MaintenanceBatchResult = {
+  id: number;
+  /** `valid` solo con `dryRun`; `not_attempted` = se agotó el plazo del lote. */
+  result: 'applied' | 'unchanged' | 'valid' | 'failed' | 'not_attempted';
+  warnings: MaintenancePlanWarning[];
+  error: { statusCode: number; message: string } | null;
+};
+
+/** `client` es el nombre del cliente de la API, solo para la auditoría. */
+export interface MaintenancePlanningContract {
+  update(
+    kind: MaintenanceKind,
+    id: number,
+    fields: MaintenancePlanFields,
+    client: string,
+  ): Promise<MaintenancePlanResult>;
+  cancel(
+    kind: MaintenanceKind,
+    id: number,
+    reason: string,
+    client: string,
+  ): Promise<MaintenancePlanResult>;
+  batch(
+    kind: MaintenanceKind,
+    changes: MaintenancePlanChange[],
+    dryRun: boolean,
+    client: string,
+  ): Promise<MaintenanceBatchResult[]>;
 }

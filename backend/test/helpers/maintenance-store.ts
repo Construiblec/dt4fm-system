@@ -1,5 +1,8 @@
 import { resolveCorrectiveStatus } from '../../src/modules/maintenance-supervision/constants/corrective-maint.constants';
-import { PM_STATUS_CODE_TO_NAME } from '../../src/modules/preventive-maintenance/constants/preventive-maint.constants';
+import {
+  PM_ACTIONS,
+  PM_STATUS_CODE_TO_NAME,
+} from '../../src/modules/preventive-maintenance/constants/preventive-maint.constants';
 import type {
   CorrectiveMaintOpenmaintServiceMock,
   PreventiveMaintenanceOpenmaintServiceMock,
@@ -79,6 +82,16 @@ export class MaintenanceStore {
   readonly attachments = new Map<string, StoredAttachment[]>();
   readonly checklists = new Map<number, unknown[]>();
   employees: StoredOrder[] = [];
+  /** Lo que los gateways preventivos recibieron al escribir. */
+  readonly advances: {
+    id: number;
+    action: number;
+    notes?: string;
+    fields: any;
+  }[] = [];
+  readonly saves: { id: number; fields: any }[] = [];
+  /** Actividad activa de cada preventivo: cada avance gasta la anterior. */
+  private readonly activities = new Map<number, number>();
 
   corrective(
     status: string,
@@ -146,6 +159,28 @@ export class MaintenanceStore {
         ),
       );
 
+    pm.findWithTasklist.mockReset().mockImplementation(
+      withSession((id: number) =>
+        this.byId(this.preventives, id).then(({ data }) => ({
+          data: { ...data, _tasklist: [{ _id: this.activityOf(id) }] },
+        })),
+      ),
+    );
+    pm.advance
+      .mockReset()
+      .mockImplementation(
+        withSession((id: number, options: any) =>
+          this.advancePreventive(id, options),
+        ),
+      );
+    pm.saveFields
+      .mockReset()
+      .mockImplementation(
+        withSession((id: number, options: any) =>
+          this.savePreventive(id, options),
+        ),
+      );
+
     cm.findById
       .mockReset()
       .mockImplementation(
@@ -210,6 +245,91 @@ export class MaintenanceStore {
         }),
       ),
     );
+  }
+
+  private activityOf(id: number): string {
+    return `act-${id}-${this.activities.get(id) ?? 0}`;
+  }
+
+  private describeAssignee(card: StoredOrder): void {
+    const found = this.employees.find((e) => e._id === card.Assignee);
+    if (found) card._Assignee_description = found.Description;
+  }
+
+  /** Como la fuente: una actividad gastada falla; un avance sin salida no mueve nada. */
+  private advancePreventive(
+    id: number,
+    options: {
+      activityId: string;
+      action: number;
+      notes?: string;
+      fields?: any;
+    },
+  ) {
+    const card = this.preventives.get(id);
+    if (!card) return Promise.reject(upstreamError(404));
+    if (options.activityId !== this.activityOf(id)) {
+      return Promise.reject(
+        Object.assign(new Error('tarea gastada'), {
+          response: {
+            status: 500,
+            data: {
+              messages: [{ message: 'task not found for instanceId 1' }],
+            },
+          },
+        }),
+      );
+    }
+    this.advances.push({
+      id,
+      action: options.action,
+      notes: options.notes,
+      fields: options.fields ?? {},
+    });
+
+    const status = PM_STATUS_CODE_TO_NAME[card._ProcessStatus_code];
+    const moveTo = (code: string, flow = 'open.running') => {
+      Object.assign(card, options.fields, {
+        _ProcessStatus_code: code,
+        _FlowStatus_code: flow,
+      });
+      this.describeAssignee(card);
+      this.activities.set(id, (this.activities.get(id) ?? 0) + 1);
+    };
+    if (options.action === PM_ACTIONS.ASSIGN && status === 'Planning') {
+      moveTo('PM-Assignment');
+    } else if (options.action === PM_ACTIONS.CANCEL && status === 'Planning') {
+      moveTo('PM-Canceled', 'closed.aborted');
+    } else if (
+      options.action === PM_ACTIONS.CHANGE_ASSIGNEE &&
+      status === 'Suspension'
+    ) {
+      moveTo('PM-Suspension');
+    }
+    return Promise.resolve({ data: {} });
+  }
+
+  /** Lo que el paso no declara escribible se descarta en silencio. */
+  private savePreventive(
+    id: number,
+    options: { activityId: string; fields: Record<string, unknown> },
+  ) {
+    const card = this.preventives.get(id);
+    if (!card) return Promise.reject(upstreamError(404));
+    this.saves.push({ id, fields: options.fields });
+
+    const status = PM_STATUS_CODE_TO_NAME[card._ProcessStatus_code];
+    const writable =
+      status === 'Acceptance'
+        ? ['Assignee', 'ExpExecStartDate']
+        : status === 'Execution'
+          ? ['Assignee']
+          : [];
+    for (const [name, value] of Object.entries(options.fields)) {
+      if (writable.includes(name)) card[name] = value;
+    }
+    this.describeAssignee(card);
+    return Promise.resolve({ data: {} });
   }
 
   private byId(map: Map<number, StoredOrder>, id: number) {

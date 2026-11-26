@@ -8,6 +8,7 @@ import { PushNotificationsModule } from '../push-notifications/push-notification
 import { CorrectiveMaintOpenmaintService } from './corrective-maint.openmaint.service';
 import { CorrectiveFlow } from './flows/corrective-flow';
 import { PreventiveFlow } from './flows/preventive-flow';
+import { MaintenancePlanningService } from './maintenance-planning.service';
 import { MaintenanceReadService } from './maintenance-read.service';
 import { MaintenanceSupervisionController } from './maintenance-supervision.controller';
 import { MaintenanceSupervisionService } from './maintenance-supervision.service';
@@ -35,7 +36,8 @@ import { MaintenanceSupervisionService } from './maintenance-supervision.service
     CorrectiveFlow,
     PreventiveFlow,
     MaintenanceReadService,
+    MaintenancePlanningService,
   ],
-  exports: [MaintenanceReadService],
+  exports: [MaintenanceReadService, MaintenancePlanningService],
 })
 export class MaintenanceSupervisionModule {}

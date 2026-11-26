@@ -120,9 +120,12 @@ export class CleaningTasksSessionService implements OnModuleInit {
   }
 
   /**
-   * Invalida la sesión actual (fuerza refresco en próxima llamada)
+   * Invalida la sesión actual (fuerza refresco en próxima llamada). Con
+   * `failedId` solo si sigue siendo la actual: otra petición pudo renovarla ya.
    */
-  invalidateSession(): void {
+  invalidateSession(failedId?: string): void {
+    if (failedId !== undefined && failedId !== this.sessionId) return;
+
     // Quien la invalida (un 401) ya dejó su propia línea de aviso.
     this.logger.debug(
       'Sesión de servicio invalidada: se renueva en la próxima llamada',

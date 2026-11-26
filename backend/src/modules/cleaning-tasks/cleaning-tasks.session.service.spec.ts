@@ -95,6 +95,24 @@ describe('CleaningTasksSessionService', () => {
     expect(post).toHaveBeenCalledTimes(2);
   });
 
+  it('con el id fallido solo invalida si sigue siendo la sesión actual', async () => {
+    post.mockResolvedValueOnce(loginOk('vieja'));
+    await service.getSessionId();
+
+    service.invalidateSession('otra');
+    await service.getSessionId();
+    expect(post).toHaveBeenCalledTimes(1);
+
+    service.invalidateSession('vieja');
+    post.mockResolvedValueOnce(loginOk('nueva'));
+    expect(await service.getSessionId()).toBe('nueva');
+
+    // La nueva ya está renovada: un 401 de la vieja no la tira.
+    service.invalidateSession('vieja');
+    expect(await service.getSessionId()).toBe('nueva');
+    expect(post).toHaveBeenCalledTimes(2);
+  });
+
   it.each([401, 403])(
     'un login %i no se reintenta durante el enfriamiento y sí después',
     async (status) => {

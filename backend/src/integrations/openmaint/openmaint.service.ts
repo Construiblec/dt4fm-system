@@ -439,6 +439,17 @@ export class OpenmaintService {
     )) as EmployeeCardsResponse;
   }
 
+  /** Como `getEmployeeCard`, pero un fallo se propaga: quien decide sobre ella no puede asumir. */
+  async readEmployeeCard(
+    employeeId: number,
+    sessionId: string,
+  ): Promise<{ data?: { _id?: number; _type?: string } }> {
+    return (await this.client.get(
+      `/classes/Employee/cards/${employeeId}`,
+      sessionId,
+    )) as { data?: { _id?: number; _type?: string } };
+  }
+
   async getEmployeeCard(employeeId: number, sessionId: string): Promise<any> {
     try {
       return await this.client.get(

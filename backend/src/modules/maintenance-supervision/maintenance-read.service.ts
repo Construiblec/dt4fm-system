@@ -10,8 +10,6 @@ import { ConfigService } from '@nestjs/config';
 import { ReadLimiter } from '../../common/integrations/read-limiter';
 import {
   isHtml,
-  labelOrNull,
-  requireList,
   upstreamStatus,
 } from '../../common/integrations/upstream.util';
 import { describeError } from '../../common/logging/describe-error.util';
@@ -22,14 +20,18 @@ import {
   PreventiveChecklistItem,
   PreventiveChecklistService,
 } from '../preventive-maintenance/preventive-checklist.service';
-import { SUPPLIER_EMPLOYEE_TYPE } from './constants/supervision-roles.constants';
 import { CorrectiveFlow } from './flows/corrective-flow';
 import type { MaintenanceFlow } from './flows/maintenance-flow.types';
 import { PreventiveFlow } from './flows/preventive-flow';
 import { toReadAttachment } from './flows/projection.util';
+import {
+  loadMaintenanceEmployees,
+  parseTeamIds,
+} from './maintenance-employees.util';
 import type {
   MaintenanceCategory,
   MaintenanceChecklist,
+  MaintenanceEmployee,
   MaintenanceKind,
   MaintenanceReadContract,
   MaintenanceReadDetail,
@@ -50,8 +52,6 @@ const AGENDA_MAX = 2000;
 const MAX_ACTIVE = { read: 8, download: 3 };
 /** Una lectura colgada no retiene su cupo más que esto. */
 const SLOT_TIMEOUT_MS = 60_000;
-
-const TEAM_IDS_VARIABLE = 'OPENMAINT_MAINTENANCE_TEAM_IDS';
 
 type SlotKind = keyof typeof MAX_ACTIVE;
 
@@ -178,7 +178,7 @@ export class MaintenanceReadService implements MaintenanceReadContract {
     from: string;
     to: string;
   }): Promise<MaintenanceTechnician[]> {
-    const teamIds = this.teamIds();
+    const teamIds = parseTeamIds(this.config);
 
     return this.execute(
       'technicians',
@@ -415,55 +415,17 @@ export class MaintenanceReadService implements MaintenanceReadContract {
       : { value: null, unresolved: true };
   }
 
-  private teamIds(): number[] {
-    const raw = this.config.get<string>(TEAM_IDS_VARIABLE)?.trim() ?? '';
-    const ids = raw.split(',').map((part) => part.trim());
-
-    if (!raw || ids.some((id) => !/^\d+$/.test(id) || !Number(id))) {
-      throw new ServiceUnavailableException(
-        'El equipo de mantenimiento no está configurado',
-      );
-    }
-
-    return [...new Set(ids.map(Number))];
-  }
-
-  private async readEmployees(
+  private readEmployees(
     teamIds: number[],
     sessionId: string,
     limiter: ReadLimiter,
-  ): Promise<
-    Pick<MaintenanceTechnician, 'id' | 'name' | 'team' | 'isSupplier'>[]
-  > {
-    const teams = await Promise.all(
-      teamIds.map((teamId) =>
-        limiter.run(() => this.openmaint.getEmployees(sessionId, teamId)),
-      ),
+  ): Promise<MaintenanceEmployee[]> {
+    return loadMaintenanceEmployees(
+      this.openmaint,
+      sessionId,
+      teamIds,
+      (read) => limiter.run(read),
     );
-
-    // `limit=500` en la fuente: si hay más, la lista quedaría incompleta.
-    teams.forEach((response) => {
-      const total = (response as { meta?: { total?: number } }).meta?.total;
-      if (total !== undefined && total > requireList(response).length) {
-        throw new Error('la fuente tiene más empleados de los leídos');
-      }
-    });
-
-    const employees = new Map(
-      teams.flatMap((response) => requireList(response)).map((e) => [e._id, e]),
-    );
-    return [...employees.values()].map((employee) => ({
-      id: employee._id,
-      name: employee.Description?.trim() || String(employee._id),
-      team:
-        employee.Team != null
-          ? {
-              id: employee.Team,
-              name: labelOrNull(employee._Team_description),
-            }
-          : null,
-      isSupplier: employee._type === SUPPLIER_EMPLOYEE_TYPE,
-    }));
   }
 
   /** Todas las órdenes abiertas con cesionario; superar el tope es un error. */
