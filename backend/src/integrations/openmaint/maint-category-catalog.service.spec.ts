@@ -58,6 +58,27 @@ describe('MaintCategoryCatalogService', () => {
     expect(get).toHaveBeenCalledTimes(2);
   });
 
+  it.each(['MaintCategory', 'MaintSubcategory'])(
+    'una respuesta de %s sin data falla y no cachea un catálogo vacío',
+    async (broken) => {
+      const get = jest.fn((path: string) =>
+        Promise.resolve(
+          path.includes(broken)
+            ? {}
+            : path.includes('MaintSubcategory')
+              ? subcategories
+              : categories,
+        ),
+      );
+      const service = buildService(get);
+
+      await expect(service.list()).rejects.toThrow('sin listado');
+
+      get.mockImplementation(okGet());
+      expect(await service.list()).toHaveLength(2);
+    },
+  );
+
   it('usa la sesión recibida sin pedir la de servicio', async () => {
     const get = okGet();
     const serviceGet = jest.fn(() => Promise.resolve('svc'));

@@ -5,9 +5,8 @@ import { describeError } from '../../common/logging/describe-error.util';
 import { OpenmaintClient } from '../../integrations/openmaint/openmaint.client';
 
 /**
- * Servicio de sesión interna exclusivo para el módulo CleaningTasks.
- * Maneja su propia sesión con OpenMAINT usando credenciales del .env.
- * Auto-refresca la sesión cuando expira.
+ * Sesión de servicio compartida con OpenMAINT (credenciales del .env), usada por
+ * limpiezas y mantenimiento. Se renueva sola al expirar.
  */
 @Injectable()
 export class CleaningTasksSessionService implements OnModuleInit {

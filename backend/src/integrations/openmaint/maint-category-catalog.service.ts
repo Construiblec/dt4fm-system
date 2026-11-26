@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
+import { requireList } from '../../common/integrations/upstream.util';
 import { OpenmaintClient } from './openmaint.client';
 import { OpenmaintServiceSession } from './openmaint.service-session';
 
@@ -113,14 +114,16 @@ export class MaintCategoryCatalogService {
         ) as Promise<CardsResponse<SubcategoryCard>>,
       ]);
 
+      // Sin `data` es un fallo, no un catálogo vacío: así no se cachea 15 min.
       this.cache = this.build(
-        categories?.data ?? [],
-        subcategories?.data ?? [],
+        requireList(categories),
+        requireList(subcategories),
       );
       this.cachedAt = Date.now();
 
       return this.cache;
     } catch (error) {
+      // Con la caché vencida pero llena, un fallo sirve la lista anterior.
       if (this.cache) {
         return this.cache;
       }
