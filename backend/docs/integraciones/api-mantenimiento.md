@@ -211,7 +211,7 @@ El nombre de quien reportó la novedad no se expone como campo. Puede aparecer d
 
 | Campo | Qué es | Qué significa `null` / vacío |
 |---|---|---|
-| `log[]` | Bitácora de la orden, de la más antigua a la más reciente: `{ at, stepCode, step, author, role, note, isRejection }`. Solo trae los pasos con nota, sin el reporte inicial | `[]` = sin notas |
+| `log[]` | Bitácora de la orden, de la más antigua a la más reciente: `{ at, stepCode, step, author, role, note, isRejection }`. Solo trae los pasos con nota. En correctivos no incluye el reporte inicial (va en `reportNotes`) | `[]` = sin notas |
 | `log[].at` | Fecha y hora **sin zona**, en la hora local de la fuente. No convertirla ni suponer UTC-5 | No se pudo leer |
 | `log[].stepCode` | Código interno del paso. Ignorar | — |
 | `log[].step`, `author`, `role` | Nombre del paso, de quien lo registró y su rol | Sin dato |
