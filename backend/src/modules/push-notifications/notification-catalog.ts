@@ -18,6 +18,7 @@ export const NOTIFICATION_TYPES = {
   CLEANING_CORRECTIONS_ASSIGNED: 'cleaning.corrections-assigned',
   CLEANING_CORRECTIONS_FIXED: 'cleaning.corrections-fixed',
   CLEANING_PLAN_UPDATED: 'cleaning.plan-updated',
+  MAINTENANCE_PLAN_UPDATED: 'maintenance.plan-updated',
 } as const;
 
 export { MAINTENANCE_SUPERVISOR_ROLES, CLEANING_SUPERVISOR_ROLES };
@@ -187,6 +188,35 @@ export const preventiveResumed = (input: {
     `${input.location}`,
   deepLink: DEEP_LINKS.preventiveDetailAssignee(input.id),
   entityKind: 'preventive',
+  entityId: String(input.id),
+});
+
+export type MaintenancePlanChange = 'removed' | 'rescheduled' | 'cancelled';
+
+const PLAN_CHANGE_BODY: Record<MaintenancePlanChange, string> = {
+  removed: 'Ya no tienes asignado el mantenimiento en',
+  rescheduled: 'Cambió la fecha del mantenimiento en',
+  cancelled: 'Se canceló el mantenimiento en',
+};
+
+/** Al técnico cuyo correctivo o preventivo cambia desde la API de integraciones. */
+export const maintenancePlanUpdated = (input: {
+  kind: 'corrective' | 'preventive';
+  id: string | number;
+  change: MaintenancePlanChange;
+  location: string;
+}): PushMessage => ({
+  type: NOTIFICATION_TYPES.MAINTENANCE_PLAN_UPDATED,
+  title:
+    input.kind === 'corrective'
+      ? 'Plan actualizado: Mantenimiento Correctivo'
+      : 'Plan actualizado: Mantenimiento Preventivo',
+  body: `${PLAN_CHANGE_BODY[input.change]} ${input.location}`,
+  deepLink:
+    input.kind === 'corrective'
+      ? DEEP_LINKS.correctiveList
+      : DEEP_LINKS.preventiveList,
+  entityKind: input.kind,
   entityId: String(input.id),
 });
 

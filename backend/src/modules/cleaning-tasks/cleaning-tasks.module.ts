@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { OpenmaintModule } from '../../integrations/openmaint/openmaint.module';
+import { ServiceAccountSessionModule } from '../../integrations/openmaint/service-account/service-account-session.module';
 import { HostawayModule } from '../../integrations/hostaway/hostaway.module';
 import { PushNotificationsModule } from '../push-notifications/push-notifications.module';
 import { CleaningNoticesService } from './cleaning-notices.service';
@@ -16,7 +17,6 @@ import { CleaningSupervisionsService } from './cleaning-supervisions.service';
 import { CleaningTasksController } from './cleaning-tasks.controller';
 import { CleaningTasksService } from './cleaning-tasks.service';
 import { CleaningTasksOpenmaintService } from './cleaning-tasks.openmaint.service';
-import { CleaningTasksSessionService } from './cleaning-tasks.session.service';
 import { HostawaySyncSchedulerService } from './hostaway-sync.scheduler.service';
 
 /**
@@ -27,6 +27,7 @@ import { HostawaySyncSchedulerService } from './hostaway-sync.scheduler.service'
 @Module({
   imports: [
     OpenmaintModule,
+    ServiceAccountSessionModule,
     HostawayModule,
     PushNotificationsModule,
     TypeOrmModule.forFeature([CleaningSyncCancellation, CleaningSyncBaseline]),
@@ -35,7 +36,6 @@ import { HostawaySyncSchedulerService } from './hostaway-sync.scheduler.service'
   providers: [
     CleaningTasksService,
     CleaningTasksOpenmaintService,
-    CleaningTasksSessionService,
     CleaningSupervisionsService,
     CleaningSupervisionsOpenmaintService,
     HostawaySyncSchedulerService,

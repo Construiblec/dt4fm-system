@@ -35,6 +35,7 @@ export const createOpenmaintServiceMock = () => ({
   resolveCleaningEmployeeId: jest.fn().mockResolvedValue(null),
   getEmployees: jest.fn().mockResolvedValue({ data: [] }),
   getEmployeeCard: jest.fn().mockResolvedValue(null),
+  readEmployeeCard: jest.fn(),
   findTenantByDescription: jest.fn().mockResolvedValue(null),
   findTenantByIdNumber: jest.fn().mockResolvedValue(null),
   createOwnerUser: jest

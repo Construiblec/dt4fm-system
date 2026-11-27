@@ -307,15 +307,16 @@ describe('CleaningsApiController (e2e)', () => {
         ['con una clave corta', 'agente:corta'],
         ['con una entrada inválida', `varios:${KEYS.varios},sinclave`],
       ])('503 %s, aunque la clave sea buena', async (_case, configured) => {
-        const { CLEANINGS_API_KEYS, CLEANINGS_WRITE_API_KEYS } = process.env;
-        process.env.CLEANINGS_API_KEYS = configured;
-        process.env.CLEANINGS_WRITE_API_KEYS = '';
+        const { INTEGRATIONS_READ_API_KEYS, INTEGRATIONS_WRITE_API_KEYS } =
+          process.env;
+        process.env.INTEGRATIONS_READ_API_KEYS = configured;
+        process.env.INTEGRATIONS_WRITE_API_KEYS = '';
         try {
           await get(`${BASE}/1002`, KEYS.varios).expect(503);
         } finally {
           Object.assign(process.env, {
-            CLEANINGS_API_KEYS,
-            CLEANINGS_WRITE_API_KEYS,
+            INTEGRATIONS_READ_API_KEYS,
+            INTEGRATIONS_WRITE_API_KEYS,
           });
         }
         expect(calledMethods()).toEqual([]);

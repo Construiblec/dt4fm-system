@@ -90,6 +90,7 @@ describe('PreventiveChecklistService', () => {
     const mock: GatewayMock = {
       findByAssignee: jest.fn(),
       findAll: jest.fn(),
+      search: jest.fn(),
       count: jest.fn(),
       findByEquipment: jest.fn(),
       downloadAttachment: jest.fn(),

@@ -18,8 +18,8 @@ describe('Claves de lectura y escritura', () => {
 
   const configure = (readKeys?: string, writeKeys?: string) => {
     const env: Record<string, string | undefined> = {
-      CLEANINGS_API_KEYS: readKeys,
-      CLEANINGS_WRITE_API_KEYS: writeKeys,
+      INTEGRATIONS_READ_API_KEYS: readKeys,
+      INTEGRATIONS_WRITE_API_KEYS: writeKeys,
     };
     const config = {
       get: (name: string) => env[name],
@@ -34,7 +34,7 @@ describe('Claves de lectura y escritura', () => {
     const request = {
       headers: key === undefined ? {} : { 'x-api-key': key },
       ip: '10.0.0.1',
-      cleaningsClient: undefined as string | undefined,
+      integrationsClient: undefined as string | undefined,
     };
     headers = {};
     const context = {
@@ -50,13 +50,13 @@ describe('Claves de lectura y escritura', () => {
 
     try {
       guard.canActivate(context);
-      return { status: 200, message: '', client: request.cleaningsClient };
+      return { status: 200, message: '', client: request.integrationsClient };
     } catch (error) {
       const exception = error as HttpException;
       return {
         status: exception.getStatus(),
         message: exception.message,
-        client: request.cleaningsClient,
+        client: request.integrationsClient,
       };
     }
   };

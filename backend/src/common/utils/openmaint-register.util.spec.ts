@@ -124,6 +124,17 @@ describe('extractRegisterLog', () => {
     expect(extractRegisterLog(null)).toEqual([]);
   });
 
+  it('en preventivos la primera entrada también cuenta', () => {
+    const html =
+      entry({ step: 'PM01 - Apertura', note: 'Cancelado por la API' }) +
+      entry({ step: 'PM02 - Asignación' });
+
+    expect(extractRegisterLog(html, null, true).map((i) => i.note)).toEqual([
+      'Cancelado por la API',
+    ]);
+    expect(extractRegisterLog(html)).toEqual([]);
+  });
+
   it('marca como rechazo la nota de CM05 seguida de la vuelta a asignación', () => {
     const html =
       opening +

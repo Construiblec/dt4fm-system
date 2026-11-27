@@ -7,6 +7,7 @@ import {
   cleaningReopened,
   correctiveOpened,
   joinLocation,
+  maintenancePlanUpdated,
 } from './notification-catalog';
 
 describe('joinLocation', () => {
@@ -194,5 +195,50 @@ describe('correcciones de limpieza', () => {
 
     expect(message.type).toBe('cleaning.corrections-fixed');
     expect(message.deepLink).toBe('/supervision/5000');
+  });
+});
+
+describe('maintenancePlanUpdated', () => {
+  const location = joinLocation('Depto 402', 'I - Inglaterra');
+
+  it.each([
+    [
+      'removed',
+      'Ya no tienes asignado el mantenimiento en Depto 402 · Inglaterra',
+    ],
+    [
+      'rescheduled',
+      'Cambió la fecha del mantenimiento en Depto 402 · Inglaterra',
+    ],
+    ['cancelled', 'Se canceló el mantenimiento en Depto 402 · Inglaterra'],
+  ] as const)('%s: mismo tipo y cuerpo propio', (change, body) => {
+    const message = maintenancePlanUpdated({
+      kind: 'corrective',
+      id: 12,
+      change,
+      location,
+    });
+
+    expect(message).toEqual({
+      type: 'maintenance.plan-updated',
+      title: 'Plan actualizado: Mantenimiento Correctivo',
+      body,
+      deepLink: '/dashboard?tab=maintenance&kind=corrective',
+      entityKind: 'corrective',
+      entityId: '12',
+    });
+  });
+
+  it('en un preventivo enlaza a la lista de preventivos', () => {
+    const message = maintenancePlanUpdated({
+      kind: 'preventive',
+      id: 5,
+      change: 'rescheduled',
+      location,
+    });
+
+    expect(message.title).toBe('Plan actualizado: Mantenimiento Preventivo');
+    expect(message.deepLink).toBe('/dashboard?tab=maintenance&kind=preventive');
+    expect(message.entityKind).toBe('preventive');
   });
 });

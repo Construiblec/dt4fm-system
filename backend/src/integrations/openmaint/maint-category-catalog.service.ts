@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
+import { requireList } from '../../common/integrations/upstream.util';
 import { OpenmaintClient } from './openmaint.client';
 import { OpenmaintServiceSession } from './openmaint.service-session';
 
@@ -94,32 +95,35 @@ export class MaintCategoryCatalogService {
     private readonly serviceSession: OpenmaintServiceSession,
   ) {}
 
-  async list(): Promise<MaintCategory[]> {
+  /** Con `sessionId` se usa esa sesión en vez de iniciar una propia. */
+  async list(sessionId?: string): Promise<MaintCategory[]> {
     if (this.cache && Date.now() - this.cachedAt < CACHE_TTL_MS) {
       return this.cache;
     }
 
     try {
-      const sessionId = await this.serviceSession.get();
+      const session = sessionId ?? (await this.serviceSession.get());
       const [categories, subcategories] = await Promise.all([
         this.client.get(
           '/classes/MaintCategory/cards?limit=500',
-          sessionId,
+          session,
         ) as Promise<CardsResponse<CategoryCard>>,
         this.client.get(
           '/classes/MaintSubcategory/cards?limit=1000',
-          sessionId,
+          session,
         ) as Promise<CardsResponse<SubcategoryCard>>,
       ]);
 
+      // Sin `data` es un fallo, no un catálogo vacío: así no se cachea 15 min.
       this.cache = this.build(
-        categories?.data ?? [],
-        subcategories?.data ?? [],
+        requireList(categories),
+        requireList(subcategories),
       );
       this.cachedAt = Date.now();
 
       return this.cache;
     } catch (error) {
+      // Con la caché vencida pero llena, un fallo sirve la lista anterior.
       if (this.cache) {
         return this.cache;
       }
@@ -131,8 +135,9 @@ export class MaintCategoryCatalogService {
   async resolve(
     categoryId: number,
     subcategoryId: number,
+    sessionId?: string,
   ): Promise<ResolvedCategory> {
-    const categories = await this.list();
+    const categories = await this.list(sessionId);
     const category = categories.find((item) => item.id === categoryId);
     const subcategory = category?.subcategories.find(
       (item) => item.id === subcategoryId,

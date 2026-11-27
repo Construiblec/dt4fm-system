@@ -6,7 +6,7 @@ const OFFSET_MS = 5 * 60 * 60 * 1000;
 const DEFAULT_DAYS = 2;
 
 /** Sin extremos: desde hoy 00:00 hasta pasado mañana 00:00, hora local. */
-export const resolveCleanersRange = (query: Partial<Range>): Range => {
+export const resolveDefaultRange = (query: Partial<Range>): Range => {
   const today =
     Math.floor((Date.now() - OFFSET_MS) / DAY_MS) * DAY_MS + OFFSET_MS;
 

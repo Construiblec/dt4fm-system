@@ -14,7 +14,7 @@ import { CleaningSyncService } from '../cleaning-tasks/cleaning-sync.service';
 import { RateLimiterService } from '../password-recovery/rate-limiter.service';
 import { CleaningsCacheService } from './cleanings-cache.service';
 import { CleaningsPlanningController } from './cleanings-planning.controller';
-import { resolveCleanersRange } from './utils/cleaners-range.util';
+import { resolveDefaultRange } from '../integrations-api/utils/default-range.util';
 
 const READ = 'r'.repeat(32);
 const WRITE = 'w'.repeat(32);
@@ -40,8 +40,8 @@ describe('CleaningsPlanningController', () => {
     sync = { status: jest.fn().mockReturnValue({ enabled: true }) };
 
     const env: Record<string, string> = {
-      CLEANINGS_API_KEYS: `lector:${READ}`,
-      CLEANINGS_WRITE_API_KEYS: `editor:${WRITE}`,
+      INTEGRATIONS_READ_API_KEYS: `lector:${READ}`,
+      INTEGRATIONS_WRITE_API_KEYS: `editor:${WRITE}`,
     };
     const moduleRef = await Test.createTestingModule({
       controllers: [CleaningsPlanningController],
@@ -95,7 +95,7 @@ describe('CleaningsPlanningController', () => {
     });
 
     it('por defecto, hoy y mañana', async () => {
-      const range = resolveCleanersRange({});
+      const range = resolveDefaultRange({});
       const res = await get('cleaners').expect(200);
 
       expect((res.body as { meta: unknown }).meta).toEqual(range);
@@ -109,7 +109,7 @@ describe('CleaningsPlanningController', () => {
     ])('a las %s el día local empieza el %s', (now, from, to) => {
       jest.useFakeTimers({ now: new Date(now) });
 
-      expect(resolveCleanersRange({})).toEqual({
+      expect(resolveDefaultRange({})).toEqual({
         from: `${from}T05:00:00.000Z`,
         to: `${to}T05:00:00.000Z`,
       });

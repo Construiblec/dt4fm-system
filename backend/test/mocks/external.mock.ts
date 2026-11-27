@@ -84,6 +84,7 @@ export const createPushDispatchServiceMock = () => ({
   notifyCorrectiveOpened: jest.fn().mockResolvedValue(undefined),
   notifyCorrectiveAssigned: jest.fn().mockResolvedValue(undefined),
   notifyCorrectiveCompleted: jest.fn().mockResolvedValue(undefined),
+  notifyMaintenancePlanUpdated: jest.fn().mockResolvedValue(undefined),
   notifyPreventivePlanning: jest.fn().mockResolvedValue(undefined),
   notifyPreventiveAssigned: jest.fn().mockResolvedValue(undefined),
   notifyPreventiveSuspended: jest.fn().mockResolvedValue(undefined),

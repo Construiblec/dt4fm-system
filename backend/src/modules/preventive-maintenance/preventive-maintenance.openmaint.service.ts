@@ -1,5 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
 import FormData from 'form-data';
+import {
+  composeFilter,
+  equalsCondition,
+  instantRange,
+  type FilterCondition,
+  type InstantRange,
+} from '../../common/integrations/maint-filter.util';
 import { toImageDataUrl } from '../../common/utils/image-data-url.util';
 import { OpenmaintClient } from '../../integrations/openmaint/openmaint.client';
 import {
@@ -8,6 +15,7 @@ import {
 } from './constants/checklist.constants';
 import {
   MAINTENANCE_MANUAL_CLASS,
+  PM_STATUS_NAME_TO_ID,
   PmStatusId,
   PREV_MAINT_CONFIG_CLASS,
   PREVENTIVE_MAINT_PROCESS,
@@ -206,12 +214,6 @@ export type PreventiveCountOptions = {
   assigned?: boolean;
 };
 
-/** Condición de filtro de OpenMAINT, ya sea simple o compuesta. */
-type FilterCondition =
-  | { simple: { attribute: string; operator: string; value?: string[] } }
-  | { or: FilterCondition[] }
-  | { and: FilterCondition[] };
-
 export type AdvanceOptions = {
   /** `_id` de la tarea activa (`_tasklist[0]._id`) */
   activityId: string;
@@ -231,6 +233,29 @@ export type SaveFieldsOptions = {
   /** `_id` de la tarea activa (`_tasklist[0]._id`) */
   activityId: string;
   fields: Record<string, unknown>;
+};
+
+/** Criterios de `search`, la lectura completa que usa la API de integraciones. */
+export type PreventiveSearchOptions = {
+  limit: number;
+  offset: number;
+  /** Nombre estable del estado. */
+  status?: string;
+  assigned?: boolean;
+  employeeId?: number;
+  teamId?: number;
+  /** `Site` */
+  buildingId?: number;
+  /** `CI` */
+  assetId?: number;
+  /** `PrevMaintConfig` */
+  planId?: number;
+  /** Cada rango es `[desde, hasta)` en instantes ISO. */
+  opened?: InstantRange;
+  planned?: InstantRange;
+  due?: InstantRange;
+  started?: InstantRange;
+  ended?: InstantRange;
 };
 
 const INSTANCES_PATH = `/processes/${PREVENTIVE_MAINT_PROCESS}/instances`;
@@ -311,6 +336,31 @@ export class PreventiveMaintenanceOpenmaintService {
           ? ` y ExpExecStartDate en [${from ?? '—'}, ${to ?? '—'}]`
           : ''),
     );
+
+    return (await this.client.get(
+      `${INSTANCES_PATH}?${params.toString()}`,
+      sessionId,
+    )) as PreventiveMaintCardsResponse;
+  }
+
+  /**
+   * Lectura filtrada con la tarjeta completa y el orden de `findAll`. Un estado
+   * desconocido lanza error: nunca se convierte en «sin filtro».
+   */
+  async search(
+    sessionId: string,
+    options: PreventiveSearchOptions,
+  ): Promise<PreventiveMaintCardsResponse> {
+    const { limit, offset } = options;
+    const params = new URLSearchParams({
+      include_tasklist: 'false',
+      start: String(offset),
+      limit: String(limit),
+      sort: JSON.stringify([{ property: 'Sorting', direction: 'DESC' }]),
+      filter: JSON.stringify(this.buildSearchFilter(options)),
+    });
+
+    this.logger.log('Consultando preventivos para la API de integraciones');
 
     return (await this.client.get(
       `${INSTANCES_PATH}?${params.toString()}`,
@@ -667,7 +717,41 @@ export class PreventiveMaintenanceOpenmaintService {
   }
 
   private equals(attribute: string, value: number): FilterCondition {
-    return { simple: { attribute, operator: 'equal', value: [String(value)] } };
+    return equalsCondition(attribute, value);
+  }
+
+  private buildSearchFilter(options: PreventiveSearchOptions) {
+    const optional = (attribute: string, value?: number) =>
+      value === undefined ? null : this.equals(attribute, value);
+
+    let status: FilterCondition | null = null;
+    if (options.status !== undefined) {
+      if (!Object.hasOwn(PM_STATUS_NAME_TO_ID, options.status)) {
+        throw new Error(`Estado de preventivo desconocido: ${options.status}`);
+      }
+      status = this.equals(
+        'ProcessStatus',
+        PM_STATUS_NAME_TO_ID[options.status],
+      );
+    }
+
+    return composeFilter([
+      status,
+      // Con `employeeId` el `assigned` sobra: ya implica cesionario.
+      options.employeeId === undefined
+        ? this.assignedCondition(options.assigned)
+        : null,
+      optional('Assignee', options.employeeId),
+      optional('Team', options.teamId),
+      optional('Site', options.buildingId),
+      optional('CI', options.assetId),
+      optional('PrevMaintConfig', options.planId),
+      instantRange('OpeningDate', options.opened),
+      instantRange('ExpExecStartDate', options.planned),
+      instantRange('DueExecEndDate', options.due),
+      instantRange('ExecStartDate', options.started),
+      instantRange('ExecEndDate', options.ended),
+    ]);
   }
 
   /**
