@@ -1,7 +1,12 @@
-import { ExecutionContext, HttpException } from '@nestjs/common';
+import { ExecutionContext, HttpException, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { IntegrationsApiKeyGuard } from '../../integrations-api/guards/integrations-api-key.guard';
+import { MaintenanceApiKeyGuard } from '../../integrations-api/guards/maintenance-api-key.guard';
+import { MaintenanceWriteApiKeyGuard } from '../../integrations-api/guards/maintenance-write-api-key.guard';
+import { resetKeyListWarnings } from '../../integrations-api/utils/read-key-list.util';
 import { RateLimiterService } from '../../password-recovery/rate-limiter.service';
 import { CleaningsApiKeyGuard } from './cleanings-api-key.guard';
+import { CleaningsWriteApiKeyGuard } from './cleanings-write-api-key.guard';
 
 const KEY_A = 'a'.repeat(32);
 const KEY_B = 'b'.repeat(40);
@@ -10,14 +15,17 @@ const KEY_C = 'c'.repeat(32);
 describe('CleaningsApiKeyGuard', () => {
   let headers: Record<string, string>;
 
+  const configOf = (env: Record<string, string | undefined>) =>
+    ({ get: (name: string) => env[name] }) as unknown as ConfigService;
+
   const guardWith = (value?: string) =>
     new CleaningsApiKeyGuard(
-      { get: () => value } as unknown as ConfigService,
+      configOf({ INTEGRATIONS_READ_API_KEYS: value }),
       new RateLimiterService(),
     );
 
   const call = (
-    guard: CleaningsApiKeyGuard,
+    guard: IntegrationsApiKeyGuard,
     key?: string,
     ip = '10.0.0.1',
   ): { status: number; message: string } => {
@@ -46,6 +54,116 @@ describe('CleaningsApiKeyGuard', () => {
   };
 
   afterEach(() => jest.useRealTimers());
+
+  describe('variables obsoletas', () => {
+    let warn: jest.SpyInstance;
+
+    beforeEach(() => {
+      resetKeyListWarnings();
+      warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+    });
+
+    afterEach(() => warn.mockRestore());
+
+    it('usa CLEANINGS_API_KEYS si la nueva está vacía y avisa una sola vez', () => {
+      const guard = new CleaningsApiKeyGuard(
+        configOf({
+          CLEANINGS_API_KEYS: `uno:${KEY_A}`,
+          INTEGRATIONS_READ_API_KEYS: ' ',
+        }),
+        new RateLimiterService(),
+      );
+
+      expect(call(guard, KEY_A).status).toBe(200);
+      expect(call(guard, KEY_A).status).toBe(200);
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(warn).toHaveBeenCalledWith(
+        'CLEANINGS_API_KEYS está obsoleta: renombrar a INTEGRATIONS_READ_API_KEYS',
+      );
+    });
+
+    it('con las dos gana la nueva y también avisa', () => {
+      const guard = new CleaningsApiKeyGuard(
+        configOf({
+          CLEANINGS_API_KEYS: `viejo:${KEY_A}`,
+          INTEGRATIONS_READ_API_KEYS: `nuevo:${KEY_B}`,
+        }),
+        new RateLimiterService(),
+      );
+
+      expect(call(guard, KEY_B).status).toBe(200);
+      expect(call(guard, KEY_A).status).toBe(401);
+      expect(warn).toHaveBeenCalledTimes(1);
+    });
+
+    it('la variable de escritura obsoleta también sirve y avisa', () => {
+      const guard = new CleaningsWriteApiKeyGuard(
+        configOf({
+          INTEGRATIONS_READ_API_KEYS: `lector:${KEY_A}`,
+          CLEANINGS_WRITE_API_KEYS: `editor:${KEY_B}`,
+        }),
+        new RateLimiterService(),
+      );
+
+      expect(call(guard, KEY_B).status).toBe(200);
+      expect(warn).toHaveBeenCalledWith(
+        'CLEANINGS_WRITE_API_KEYS está obsoleta: renombrar a INTEGRATIONS_WRITE_API_KEYS',
+      );
+    });
+
+    it('sin avisos si solo están las nuevas', () => {
+      expect(call(guardWith(`uno:${KEY_A}`), KEY_A).status).toBe(200);
+      expect(warn).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('familia de mantenimiento', () => {
+    const env = {
+      INTEGRATIONS_READ_API_KEYS: `lector:${KEY_A}`,
+      INTEGRATIONS_WRITE_API_KEYS: `editor:${KEY_B}`,
+    };
+
+    it('mensajes 503 propios', () => {
+      const empty = configOf({});
+
+      expect(
+        call(new MaintenanceApiKeyGuard(empty, new RateLimiterService()), KEY_A)
+          .message,
+      ).toBe('La API de mantenimiento no está configurada');
+      expect(
+        call(
+          new MaintenanceWriteApiKeyGuard(empty, new RateLimiterService()),
+          KEY_A,
+        ).message,
+      ).toBe('La escritura de mantenimiento no está configurada');
+      expect(
+        call(new CleaningsApiKeyGuard(empty, new RateLimiterService()), KEY_A)
+          .message,
+      ).toBe('La API de limpiezas no está configurada');
+      expect(
+        call(
+          new CleaningsWriteApiKeyGuard(empty, new RateLimiterService()),
+          KEY_A,
+        ).message,
+      ).toBe('La escritura de limpiezas no está configurada');
+    });
+
+    it('cupos por familia, pero el contador de IP es común', () => {
+      const limiter = new RateLimiterService();
+      const cleanings = new CleaningsApiKeyGuard(configOf(env), limiter);
+      const maintenance = new MaintenanceApiKeyGuard(configOf(env), limiter);
+
+      for (let i = 0; i < 60; i += 1) call(cleanings, KEY_A);
+      expect(call(cleanings, KEY_A).status).toBe(429);
+      expect(call(maintenance, KEY_A).status).toBe(200);
+
+      for (let i = 0; i < 10; i += 1) {
+        expect(call(cleanings, 'mala', '10.9.9.9').status).toBe(401);
+        expect(call(maintenance, 'mala', '10.9.9.9').status).toBe(401);
+      }
+      expect(call(maintenance, 'mala', '10.9.9.9').status).toBe(429);
+    });
+  });
 
   it.each([
     ['sin variable', undefined],

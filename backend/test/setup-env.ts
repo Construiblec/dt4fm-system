@@ -99,19 +99,27 @@ process.env.OPENMAINT_IOT_FALLBACK_SITE_ID ??= '3019998';
 // añadiría ~1.5s a cada test de la ruta de fallo de openMAINT.
 process.env.IOT_CREATE_MAX_ATTEMPTS = '1';
 
-// API de limpiezas, con `=` por el mismo motivo: la suite manda estas claves. Un
+// API de integraciones, con `=` por el mismo motivo: la suite manda estas claves. Un
 // cliente por bloque de pruebas: el cupo (60/min) es por cliente y en memoria.
-process.env.CLEANINGS_API_KEYS = [
+process.env.INTEGRATIONS_READ_API_KEYS = [
   'listado:e2e-clave-listado-0123456789abcdefghij',
   'ficha:e2e-clave-ficha-0123456789abcdefghijkl',
   'archivos:e2e-clave-archivos-0123456789abcdefghi',
   'varios:e2e-clave-varios-0123456789abcdefghijk',
   'cupo:e2e-clave-cupo-0123456789abcdefghijklm',
   'apoyo:e2e-clave-apoyo-0123456789abcdefghijkl',
+  'correctivos:e2e-clave-correctivos-0123456789abcdefg',
+  'preventivos:e2e-clave-preventivos-0123456789abcdefg',
+  'tecnicos:e2e-clave-tecnicos-0123456789abcdefghijk',
+  'mantenimiento:e2e-clave-mantenimiento-0123456789abcd',
 ].join(',');
 
+// Las obsoletas vacías: si el .env local las trae, el respaldo las usaría con la nueva vacía.
+process.env.CLEANINGS_API_KEYS = '';
+process.env.CLEANINGS_WRITE_API_KEYS = '';
+
 // Escritura: cupo de 20/min por cliente, así que uno por bloque.
-process.env.CLEANINGS_WRITE_API_KEYS = [
+process.env.INTEGRATIONS_WRITE_API_KEYS = [
   'acceso',
   'campos',
   'valores',
@@ -126,6 +134,20 @@ process.env.CLEANINGS_WRITE_API_KEYS = [
   'avisos-diez',
   'cupo',
   'otro',
+  'prev-acceso',
+  'prev-campos',
+  'prev-estados',
+  'prev-cancelar',
+  'prev-lotes',
+  'prev-fallos',
+  'cm-acceso',
+  'cm-despacho',
+  'cm-campos',
+  'cm-reprogramar',
+  'cm-estados',
+  'cm-cancelar',
+  'cm-lotes',
+  'cm-fallos',
 ]
   .map((client) => `${client}:e2e-escritura-${client}-0123456789abcdefghij`)
   .join(',');
@@ -133,6 +155,10 @@ process.env.CLEANINGS_WRITE_API_KEYS = [
 // `=` para que el `.env` local no decida a quién se puede asignar.
 process.env.OPENMAINT_CLEANING_TEAM_ID = '2397132';
 process.env.HOSTAWAY_SYNC_DAYS = '2';
+// Equipos de mantenimiento (dos, para probar la unión); `=` para que el `.env` local no decida.
+process.env.OPENMAINT_MAINTENANCE_TEAM_IDS = '501,502';
+// Vacía por defecto: cada prueba pone la acción de vuelta a asignación que necesite.
+process.env.OPENMAINT_CM_BACK_TO_ASSIGNMENT_ACTION_ID = '';
 
 // Correo: no debería llegar a usarse (MailerService va mockeado en todas las
 // suites salvo la propia de notifications, que mockea el proveedor por

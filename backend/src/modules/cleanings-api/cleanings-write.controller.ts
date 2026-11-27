@@ -15,8 +15,8 @@ import type {
   CleaningPlanResult,
 } from '../cleaning-tasks/cleaning-planning.types';
 import { CleaningsCacheService } from './cleanings-cache.service';
-import { CleaningsApiDocs } from './decorators/cleanings-api-docs.decorator';
-import { CleaningsClient } from './decorators/cleanings-client.decorator';
+import { CleaningsApiDocs } from './cleanings-api-docs.decorator';
+import { IntegrationsClient } from '../integrations-api/decorators/integrations-client.decorator';
 import {
   CancelCleaningDto,
   CleaningPlanBatchDto,
@@ -25,11 +25,11 @@ import {
   toPlanChanges,
   toPlanFields,
 } from './dto/cleaning-plan.dto';
-import { EmptyQueryDto } from './dto/list-cleanings-query.dto';
+import { EmptyQueryDto } from '../integrations-api/dto/empty-query.dto';
 import { CleaningsWriteApiKeyGuard } from './guards/cleanings-write-api-key.guard';
-import { PositiveIntPipe } from './pipes/positive-int.pipe';
-import { strictBody } from './pipes/strict-body.pipe';
-import { strictQuery } from './pipes/strict-query.pipe';
+import { PositiveIntPipe } from '../integrations-api/pipes/positive-int.pipe';
+import { strictBody } from '../integrations-api/pipes/strict-body.pipe';
+import { strictQuery } from '../integrations-api/pipes/strict-query.pipe';
 
 type WriteResponse = Omit<CleaningPlanResult, 'id'>;
 type BatchSummary = Record<CleaningBatchResult['result'], number>;
@@ -78,7 +78,7 @@ export class CleaningsWriteController {
     @Query(strictQuery(EmptyQueryDto)) _query: Record<string, any>,
     @Param('id', PositiveIntPipe) id: unknown,
     @Body(strictBody(CleaningPlanFieldsDto)) body: Record<string, any>,
-    @CleaningsClient() client: string,
+    @IntegrationsClient() client: string,
   ): Promise<WriteResponse> {
     const fields = toPlanFields(body as CleaningPlanFieldsDto);
 
@@ -101,7 +101,7 @@ export class CleaningsWriteController {
     @Query(strictQuery(EmptyQueryDto)) _query: Record<string, any>,
     @Param('id', PositiveIntPipe) id: unknown,
     @Body(strictBody(CancelCleaningDto)) body: Record<string, any>,
-    @CleaningsClient() client: string,
+    @IntegrationsClient() client: string,
   ): Promise<WriteResponse> {
     const { reason } = body as CancelCleaningDto;
 
@@ -123,7 +123,7 @@ export class CleaningsWriteController {
   async plans(
     @Query(strictQuery(EmptyQueryDto)) _query: Record<string, any>,
     @Body(strictBody(CleaningPlanBatchDto)) body: Record<string, any>,
-    @CleaningsClient() client: string,
+    @IntegrationsClient() client: string,
   ): Promise<{
     dryRun: boolean;
     results: CleaningBatchResult[];

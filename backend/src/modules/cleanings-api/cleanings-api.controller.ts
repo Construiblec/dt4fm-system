@@ -22,20 +22,20 @@ import type {
   CleaningReadItem,
 } from '../cleaning-tasks/cleaning-read.types';
 import { CleaningsCacheService } from './cleanings-cache.service';
-import { CleaningsApiDocs } from './decorators/cleanings-api-docs.decorator';
+import { CleaningsApiDocs } from './cleanings-api-docs.decorator';
+import { EmptyQueryDto } from '../integrations-api/dto/empty-query.dto';
 import {
   CLEANING_PHASES,
-  EmptyQueryDto,
   ListCleaningsQueryDto,
 } from './dto/list-cleanings-query.dto';
 import { CleaningsApiKeyGuard } from './guards/cleanings-api-key.guard';
-import { FileIdPipe } from './pipes/file-id.pipe';
-import { PositiveIntPipe } from './pipes/positive-int.pipe';
-import { strictQuery } from './pipes/strict-query.pipe';
+import { FileIdPipe } from '../integrations-api/pipes/file-id.pipe';
+import { PositiveIntPipe } from '../integrations-api/pipes/positive-int.pipe';
+import { strictQuery } from '../integrations-api/pipes/strict-query.pipe';
 import {
   attachmentDisposition,
   safeContentType,
-} from './utils/download-headers.util';
+} from '../integrations-api/utils/download-headers.util';
 
 type ListMeta = {
   total: number | null;

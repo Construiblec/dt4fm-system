@@ -5,9 +5,8 @@ import { describeError } from '../../common/logging/describe-error.util';
 import { OpenmaintClient } from '../../integrations/openmaint/openmaint.client';
 
 /**
- * Servicio de sesión interna exclusivo para el módulo CleaningTasks.
- * Maneja su propia sesión con OpenMAINT usando credenciales del .env.
- * Auto-refresca la sesión cuando expira.
+ * Sesión de servicio compartida con OpenMAINT (credenciales del .env), usada por
+ * limpiezas y mantenimiento. Se renueva sola al expirar.
  */
 @Injectable()
 export class CleaningTasksSessionService implements OnModuleInit {
@@ -121,9 +120,12 @@ export class CleaningTasksSessionService implements OnModuleInit {
   }
 
   /**
-   * Invalida la sesión actual (fuerza refresco en próxima llamada)
+   * Invalida la sesión actual (fuerza refresco en próxima llamada). Con
+   * `failedId` solo si sigue siendo la actual: otra petición pudo renovarla ya.
    */
-  invalidateSession(): void {
+  invalidateSession(failedId?: string): void {
+    if (failedId !== undefined && failedId !== this.sessionId) return;
+
     // Quien la invalida (un 401) ya dejó su propia línea de aviso.
     this.logger.debug(
       'Sesión de servicio invalidada: se renueva en la próxima llamada',

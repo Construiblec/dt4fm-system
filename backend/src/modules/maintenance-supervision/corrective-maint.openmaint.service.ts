@@ -4,8 +4,19 @@ import type {
   DownloadedFile,
   RawOpenmaintAttachment,
 } from '../../common/utils/openmaint-attachment.util';
+import {
+  composeFilter,
+  equalsCondition,
+  instantRange,
+  nullCondition,
+  type FilterCondition,
+  type InstantRange,
+} from '../../common/integrations/maint-filter.util';
 import { OpenmaintClient } from '../../integrations/openmaint/openmaint.client';
 import {
+  CM_DERIVED_ASSIGNED,
+  CM_STATUS_IDS,
+  CM_STATUS_NAME_TO_ID,
   CmStatusId,
   CORRECTIVE_MAINT_PROCESS,
 } from './constants/corrective-maint.constants';
@@ -131,11 +142,27 @@ export type CountOptions = {
   assigned?: boolean;
 };
 
-/** Condición de filtro de OpenMAINT, ya sea simple o compuesta. */
-type FilterCondition =
-  | { simple: { attribute: string; operator: string; value?: string[] } }
-  | { or: FilterCondition[] }
-  | { and: FilterCondition[] };
+/** Criterios de `search`, la lectura completa que usa la API de integraciones. */
+export type CorrectiveSearchOptions = {
+  limit: number;
+  offset: number;
+  /** Nombre estable del estado; `Assigned` y `Execution` se separan por `ExecStartDate`. */
+  status?: string;
+  assigned?: boolean;
+  employeeId?: number;
+  teamId?: number;
+  /** `Site` */
+  buildingId?: number;
+  unitId?: number;
+  priorityId?: number;
+  categoryId?: number;
+  subcategoryId?: number;
+  /** Cada rango es `[desde, hasta)` en instantes ISO. */
+  opened?: InstantRange;
+  planned?: InstantRange;
+  started?: InstantRange;
+  ended?: InstantRange;
+};
 
 const INSTANCES_PATH = `/processes/${CORRECTIVE_MAINT_PROCESS}/instances`;
 
@@ -184,6 +211,31 @@ export class CorrectiveMaintOpenmaintService {
           : '') +
         (assigned === undefined ? '' : ` y assigned=${assigned}`),
     );
+
+    return (await this.client.get(
+      `${INSTANCES_PATH}?${params.toString()}`,
+      sessionId,
+    )) as CorrectiveMaintCardsResponse;
+  }
+
+  /**
+   * Lectura filtrada con la tarjeta completa y el orden de `findAll`. Un estado
+   * desconocido lanza error: nunca se convierte en «sin filtro».
+   */
+  async search(
+    sessionId: string,
+    options: CorrectiveSearchOptions,
+  ): Promise<CorrectiveMaintCardsResponse> {
+    const { limit, offset } = options;
+    const params = new URLSearchParams({
+      include_tasklist: 'false',
+      start: String(offset),
+      limit: String(limit),
+      sort: JSON.stringify([{ property: 'Sorting', direction: 'DESC' }]),
+      filter: JSON.stringify(this.buildSearchFilter(options)),
+    });
+
+    this.logger.log('Consultando correctivos para la API de integraciones');
 
     return (await this.client.get(
       `${INSTANCES_PATH}?${params.toString()}`,
@@ -392,7 +444,49 @@ export class CorrectiveMaintOpenmaintService {
   }
 
   private equals(attribute: string, value: number): FilterCondition {
-    return { simple: { attribute, operator: 'equal', value: [String(value)] } };
+    return equalsCondition(attribute, value);
+  }
+
+  private buildSearchFilter(options: CorrectiveSearchOptions) {
+    const optional = (attribute: string, value?: number) =>
+      value === undefined ? null : this.equals(attribute, value);
+
+    return composeFilter([
+      ...this.derivedStatusConditions(options.status),
+      // Con `employeeId` el `assigned` sobra: ya implica cesionario.
+      options.employeeId === undefined
+        ? this.assignedCondition(options.assigned)
+        : null,
+      optional('Assignee', options.employeeId),
+      optional('Team', options.teamId),
+      optional('Site', options.buildingId),
+      optional('Unit', options.unitId),
+      optional('Priority', options.priorityId),
+      optional('Category', options.categoryId),
+      optional('Subcategory', options.subcategoryId),
+      instantRange('OpeningDate', options.opened),
+      instantRange('ExpExecStartDate', options.planned),
+      instantRange('ExecStartDate', options.started),
+      instantRange('ExecEndDate', options.ended),
+    ]);
+  }
+
+  /** `Assigned` y `Execution` son el mismo estado de OpenMAINT con y sin inicio real. */
+  private derivedStatusConditions(status?: string): FilterCondition[] {
+    if (status === undefined) return [];
+
+    if (status === CM_DERIVED_ASSIGNED || status === 'Execution') {
+      return [
+        this.equals('ProcessStatus', CM_STATUS_IDS.EXECUTION),
+        nullCondition('ExecStartDate', status === CM_DERIVED_ASSIGNED),
+      ];
+    }
+
+    if (!Object.hasOwn(CM_STATUS_NAME_TO_ID, status)) {
+      throw new Error(`Estado de correctivo desconocido: ${status}`);
+    }
+
+    return [this.equals('ProcessStatus', CM_STATUS_NAME_TO_ID[status])];
   }
 
   /**

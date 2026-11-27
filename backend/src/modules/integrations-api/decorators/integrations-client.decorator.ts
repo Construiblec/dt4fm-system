@@ -2,9 +2,9 @@ import { createParamDecorator, type ExecutionContext } from '@nestjs/common';
 import type { Request } from 'express';
 
 /** El guard deja aquí el nombre del cliente de la clave. */
-export type CleaningsRequest = Request & { cleaningsClient?: string };
+export type IntegrationsRequest = Request & { integrationsClient?: string };
 
-export const CleaningsClient = createParamDecorator(
+export const IntegrationsClient = createParamDecorator(
   (_data: unknown, context: ExecutionContext) =>
-    context.switchToHttp().getRequest<CleaningsRequest>().cleaningsClient,
+    context.switchToHttp().getRequest<IntegrationsRequest>().integrationsClient,
 );

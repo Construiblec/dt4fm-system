@@ -10,10 +10,10 @@ const RESPONSES: [status: number, description: string][] = [
   [504, 'La fuente no respondió a tiempo.'],
 ];
 
-/** Lo común a los controladores de la API. */
-export const CleaningsApiDocs = () =>
+/** Lo común a los controladores de la API de integraciones. */
+export const IntegrationsApiDocs = (tag: string) =>
   applyDecorators(
-    ApiTags('API de limpiezas'),
+    ApiTags(tag),
     ApiSecurity('x-api-key'),
     ...RESPONSES.map(([status, description]) =>
       ApiResponse({ status, description }),

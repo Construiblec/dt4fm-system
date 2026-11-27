@@ -23,7 +23,7 @@ import {
   Nullable,
   Optional,
   Trim,
-} from './validation-rules';
+} from '../../integrations-api/dto/validation-rules';
 
 export const MAX_CHANGES = 25;
 

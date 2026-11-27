@@ -10,6 +10,9 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { once, withTimeout } from '../../common/integrations/async.util';
+import { safeActor } from '../../common/integrations/safe-actor.util';
+import { requireList } from '../../common/integrations/upstream.util';
 import { describeError } from '../../common/logging/describe-error.util';
 import { CleaningNoticesService } from './cleaning-notices.service';
 import type {
@@ -123,35 +126,6 @@ type BatchEntry = {
   result?: CleaningBatchResult;
 };
 
-const once = <T>(load: () => Promise<T>): (() => Promise<T>) => {
-  let pending: Promise<T> | undefined;
-  return () => (pending ??= load());
-};
-
-const withTimeout = async <T>(
-  work: Promise<T>,
-  ms: number,
-  onTimeout: () => Error,
-): Promise<T> => {
-  let timer: NodeJS.Timeout | undefined;
-  const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(onTimeout()), ms);
-  });
-  try {
-    return await Promise.race([work, timeout]);
-  } finally {
-    clearTimeout(timer);
-  }
-};
-
-/** Un listado sin `data` es un fallo de la fuente, no un listado vacío. */
-const requireList = <T>(response: { data?: T[] } | null | undefined): T[] => {
-  if (!Array.isArray(response?.data)) {
-    throw new Error('la fuente respondió sin listado');
-  }
-  return response.data;
-};
-
 /** 404 o 400 de la fuente; una página HTML es de un proxy caído. */
 const isMissing = (error: unknown): boolean => {
   const response = (
@@ -262,13 +236,6 @@ const toSnapshot = (state: PlanState): CleaningPlanSnapshot => ({
   plannedStartTime: state.plannedStartTime,
   plannedEndTime: state.plannedEndTime,
 });
-
-/** El nombre del cliente va al log: una línea y sin caracteres raros. */
-const safeActor = (actor: string): string =>
-  String(actor ?? '')
-    .replace(/[^\p{L}\p{N} ._@-]/gu, '')
-    .trim()
-    .slice(0, 64) || 'desconocido';
 
 const toIsoSeconds = (
   value: string | null,

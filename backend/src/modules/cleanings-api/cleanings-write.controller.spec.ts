@@ -76,8 +76,8 @@ describe('CleaningsWriteController', () => {
     detail = jest.fn().mockResolvedValue({ id: 7 });
 
     const env: Record<string, string> = {
-      CLEANINGS_API_KEYS: `lector:${READ}`,
-      CLEANINGS_WRITE_API_KEYS: `editor:${WRITE}`,
+      INTEGRATIONS_READ_API_KEYS: `lector:${READ}`,
+      INTEGRATIONS_WRITE_API_KEYS: `editor:${WRITE}`,
     };
     const moduleRef = await Test.createTestingModule({
       controllers: [CleaningsApiController, CleaningsWriteController],
