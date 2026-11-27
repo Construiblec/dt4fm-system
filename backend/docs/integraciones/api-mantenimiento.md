@@ -354,7 +354,7 @@ Correctivos:
 | `Accounting` | 409 con cambios; sin cambios, `unchanged` con `pending_review` | 409 |
 | `Completed`, `Canceled` | 409 con cambios; sin cambios, `unchanged` con `closed` | 409 |
 
-**Reprogramar o cancelar un correctivo ya asignado** (y sin empezar) necesita una acción de reasignación que depende de cómo esté configurado el backend. Mientras no esté disponible, ambas responden **409** («Reprogramar un correctivo ya asignado aún no está disponible; solo se puede cambiar el técnico», y «Cancelar un correctivo ya asignado aún no está disponible») y no se escribe nada. **Cambiar el técnico sí funciona.** Si la reprogramación está disponible, el técnico recibe un aviso de nueva fecha y, en una cancelación, un aviso de cancelación.
+**Reprogramar o cancelar un correctivo ya asignado** (y sin empezar) necesita una acción de reasignación que depende de cómo esté configurado el backend. Mientras no esté disponible, ambas responden **409** («Reprogramar un correctivo ya asignado aún no está disponible; solo se puede cambiar el técnico», y «Cancelar un correctivo ya asignado aún no está disponible») y no se escribe nada. **Cambiar el técnico sí funciona.** Si la reprogramación está disponible, el técnico recibe un aviso de nueva fecha y, en una cancelación, un aviso de cancelación. **Limitación:** solo vale para los correctivos abiertos con la versión actual del flujo. Uno abierto antes de que la vía estuviera disponible responde **502** («La fuente de datos aceptó la petición pero no aplicó el cambio»): no se guarda nada y la orden sigue asignada. En ese caso, cambiar el técnico funciona, y reprogramar o cancelar hay que hacerlo desde la aplicación.
 
 Preventivos:
 
