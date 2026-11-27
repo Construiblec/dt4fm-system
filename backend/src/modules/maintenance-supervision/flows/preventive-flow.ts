@@ -352,7 +352,7 @@ export class PreventiveFlow implements MaintenanceWriteFlow<PreventiveMaintCard>
 
     return {
       ...this.toItem(card),
-      log: extractRegisterLog(register, card._ProcessStatus_code),
+      log: extractRegisterLog(register, card._ProcessStatus_code, true),
       attachments,
       checklist,
     };

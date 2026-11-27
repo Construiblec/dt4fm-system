@@ -114,6 +114,8 @@ export function extractRegisterLog(
   register: string | null,
   /** Estado actual del proceso: distingue un rechazo aún sin reasignar. */
   currentStatusCode?: string | null,
+  /** Preventivos: su primera entrada es un paso más, no el reporte. */
+  includeFirst = false,
 ): RegisterLogEntry[] {
   if (!register) {
     return [];
@@ -148,6 +150,6 @@ export function extractRegisterLog(
           ? entries[index + 1].stepCode === 'CM02'
           : (currentStatusCode ?? '').endsWith('Assignment')),
     }))
-    .slice(1)
+    .slice(includeFirst ? 0 : 1)
     .filter((entry) => entry.note !== '');
 }
